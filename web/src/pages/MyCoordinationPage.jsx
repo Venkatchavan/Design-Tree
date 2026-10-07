@@ -18,15 +18,7 @@ import EmptyState from '../components/EmptyState.jsx';
 import Field from '../components/Field.jsx';
 import { MAN_HOUR_NOTE } from '../components/SignOutButton.jsx';
 import { meetingsApi } from '../lib/phase4bApi.js';
-import {
-  MeetingDetailModal,
-  ScheduleMeetingModal,
-  empName as mtgEmpName,
-  fmtDate as mtgFmtDate,
-  idOf as mtgIdOf,
-  isOverdueAction,
-  projLabel as mtgProjLabel,
-} from '../components/MeetingsCommon.jsx';
+import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
 
 const SERVICES = [
   'Structure',
@@ -688,103 +680,7 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
 }
 
 function CoordinationMeetingsTab() {
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [showSudden, setShowSudden] = useState(false);
-  const [detailId, setDetailId] = useState(null);
-  const [projectFilter, setProjectFilter] = useState('');
-
-  const listQ = useQuery({ queryKey: ['meetings'], queryFn: () => meetingsApi.list({}) });
-  const absenceQ = useQuery({ queryKey: ['absence-log'], queryFn: () => meetingsApi.absenceLog({}) });
-
-  const items = listQ.data?.items ?? [];
-  const absenceItems = absenceQ.data?.items ?? [];
-
-  const scheduled = items.filter((m) => String(m.status ?? '').toLowerCase() === 'scheduled');
-  const held = items.filter((m) => String(m.status ?? '').toLowerCase() === 'held');
-  const overdueActions = useMemo(() => {
-    let n = 0;
-    for (const m of items) for (const a of m.actions ?? []) if (isOverdueAction(a)) n += 1;
-    return n;
-  }, [items]);
-
-  const filteredHistory = projectFilter
-    ? items.filter((m) => mtgIdOf(m.project) === projectFilter)
-    : items;
-
-  return (
-    <>
-      <div className="kpi-grid">
-        <KpiCard label="Scheduled" value={scheduled.length} accent="blueprint" />
-        <KpiCard label="Held" value={held.length} accent="forest" />
-        <KpiCard label="Overdue actions" value={overdueActions} accent="rust" />
-        <KpiCard label="Total meetings" value={items.length} accent="neutral" />
-      </div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-        <button type="button" className="btn-primary" onClick={() => setShowSchedule(true)}>+ Schedule Meeting</button>
-        <button type="button" className="btn-primary" onClick={() => setShowSudden(true)}>+ Add Sudden Meeting</button>
-      </div>
-      <Panel title="All meetings">
-        {listQ.isLoading ? <EmptyState text="Loading…" /> : listQ.isError ? (
-          <div className="login-error" role="alert" style={{ display: 'block' }}>{listQ.error.message}</div>
-        ) : (
-          <DataTable
-            columns={[
-              { key: 'title', label: 'Title', render: (r) => r.title ?? '—' },
-              { key: 'project', label: 'Project', render: (r) => mtgProjLabel(r.project) },
-              { key: 'date', label: 'Date', render: (r) => `${mtgFmtDate(r.date)} ${r.startTime ?? ''}` },
-              { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
-              { key: 'actions', label: 'Actions', render: (r) => `${(r.actions ?? []).length}` },
-            ]}
-            rows={items}
-            emptyText="No meetings yet."
-            onRowClick={(r) => setDetailId(r._id ?? r.id)}
-          />
-        )}
-      </Panel>
-      <Panel title="Absence log">
-        {absenceQ.isLoading ? <EmptyState text="Loading…" /> : absenceQ.isError ? (
-          <div className="login-error" role="alert" style={{ display: 'block' }}>{absenceQ.error.message}</div>
-        ) : (
-          <DataTable
-            columns={[
-              { key: 'meeting', label: 'Meeting', render: (r) => r.meeting?.title ?? r.title ?? '—' },
-              { key: 'project', label: 'Project', render: (r) => mtgProjLabel(r.project ?? r.meeting?.project) },
-              { key: 'employee', label: 'Employee', render: (r) => mtgEmpName(r.employee) },
-              { key: 'reason', label: 'Reason', render: (r) => r.reason ?? '—' },
-              { key: 'date', label: 'Date', render: (r) => mtgFmtDate(r.date ?? r.respondedAt) },
-            ]}
-            rows={absenceItems}
-            emptyText="No absence entries."
-          />
-        )}
-      </Panel>
-      <Panel title="Project history">
-        <div className="form-row" style={{ maxWidth: 320 }}>
-          <label className="form-label">Filter by project</label>
-          <select className="filter-select" style={{ width: '100%' }} value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
-            <option value="">All projects</option>
-            {[...new Map(items.map((m) => [mtgIdOf(m.project), m.project])).entries()].filter(([k]) => k).map(([k, p]) => (
-              <option key={k} value={k}>{mtgProjLabel(p)}</option>
-            ))}
-          </select>
-        </div>
-        <DataTable
-          columns={[
-            { key: 'title', label: 'Title', render: (r) => r.title ?? '—' },
-            { key: 'project', label: 'Project', render: (r) => mtgProjLabel(r.project) },
-            { key: 'date', label: 'Date', render: (r) => mtgFmtDate(r.date) },
-            { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
-          ]}
-          rows={filteredHistory}
-          emptyText="No meetings for this filter."
-          onRowClick={(r) => setDetailId(r._id ?? r.id)}
-        />
-      </Panel>
-      {showSchedule && <ScheduleMeetingModal onClose={() => setShowSchedule(false)} />}
-      {showSudden && <ScheduleMeetingModal sudden onClose={() => setShowSudden(false)} />}
-      {detailId && <MeetingDetailModal meetingId={detailId} manage onClose={() => setDetailId(null)} />}
-    </>
-  );
+  return <SpocMeetings />;
 }
 
 export default function MyCoordinationPage({ bootstrap }) {

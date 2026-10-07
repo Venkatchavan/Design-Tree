@@ -3,7 +3,9 @@ import mongoose from 'mongoose';
 export const MEETING_CATEGORIES = ['Scheduled', 'Sudden'];
 export const MEETING_TYPES = ['Client / DRM', 'DesignTree / Arictech', 'PMC', 'Other'];
 export const MEETING_MODES = ['Online', 'Offline'];
-export const MEETING_STATUSES = ['Scheduled', 'Held', 'Cancelled'];
+// Stored statuses: Held == spec Completed. Rescheduled kept so the
+// "Moved from <date>" history survives (R11).
+export const MEETING_STATUSES = ['Scheduled', 'Held', 'Rescheduled', 'Cancelled'];
 export const INVITE_RESPONSES = ['Pending', 'Available', 'Not Available'];
 export const UNAVAILABLE_REASONS = [
   'Another scheduled meeting',
@@ -13,7 +15,23 @@ export const UNAVAILABLE_REASONS = [
   'Personal reason',
   'Other — specify',
 ];
-export const ACTION_STATUSES = ['Open', 'In Progress', 'Completed'];
+// Spec §12: Pending / In Progress / Completed (legacy 'Open' migrated to Pending).
+export const ACTION_STATUSES = ['Pending', 'In Progress', 'Completed'];
+export const ACTION_PRIORITIES = ['High', 'Medium', 'Low'];
+export const MEETING_SERVICES = [
+  'Structural',
+  'Mechanical',
+  'Electrical',
+  'Plumbing',
+  'Fire',
+  'MEP Coordination',
+];
+export const CONDUCTED_BY_BY_TYPE = {
+  'Client / DRM': ['Client', 'DRM'],
+  'DesignTree / Arictech': ['DesignTree', 'Arictech'],
+  PMC: ['PMC'],
+  Other: ['Other'],
+};
 
 const inviteSchema = new mongoose.Schema(
   {
@@ -52,14 +70,16 @@ const actionSchema = new mongoose.Schema(
   {
     text: { type: String, required: true, trim: true },
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+    service: { type: String, trim: true },
     priority: {
       type: String,
       enum: ['High', 'Medium', 'Low'],
       default: 'Medium',
     },
     due: { type: Date },
-    status: { type: String, enum: ACTION_STATUSES, default: 'Open' },
+    status: { type: String, enum: ACTION_STATUSES, default: 'Pending' },
     note: { type: String, trim: true },
+    remarks: { type: String, trim: true },
     completedAt: { type: Date },
   },
   { timestamps: true },
@@ -91,6 +111,10 @@ const meetingSchema = new mongoose.Schema(
     link: { type: String, trim: true },
     location: { type: String, trim: true },
     responsible: { type: String, trim: true },
+    responsibleRole: { type: String, trim: true },
+    conductedBy: { type: String, trim: true },
+    externalParticipants: { type: String, trim: true },
+    additionalParticipantsText: { type: String, trim: true },
     reason: { type: String, trim: true },
     stage: { type: String, trim: true },
     participants: [
@@ -100,6 +124,13 @@ const meetingSchema = new mongoose.Schema(
           ref: 'Employee',
         },
         name: { type: String, trim: true },
+        _id: false,
+      },
+    ],
+    additionalParticipants: [
+      {
+        name: { type: String, trim: true },
+        organisation: { type: String, trim: true },
         _id: false,
       },
     ],
@@ -114,6 +145,7 @@ const meetingSchema = new mongoose.Schema(
       nextMeeting: { type: Date },
     },
     momDoc: { type: String, trim: true },
+    momDocPath: { type: String, trim: true },
     cancelReason: { type: String, trim: true },
     actions: [actionSchema],
     status: {

@@ -14,6 +14,7 @@ import {
   listMeetings,
   markHeld,
   meetingFilesUpload,
+  meetingMomUpload,
   rescheduleMeeting,
   respondInvite,
   saveAttendance,
@@ -21,6 +22,7 @@ import {
   setActionNote,
   setActionStatus,
   updateMeeting,
+  uploadMomDoc,
   uploadRefDocs,
 } from '../controllers/meetings.controller.js';
 
@@ -45,6 +47,14 @@ router.post(
   (req, res, next) =>
     meetingFilesUpload(req, res, (err) =>
       err ? next(err) : uploadRefDocs(req, res, next),
+    ),
+);
+router.post(
+  '/:id/mom-doc',
+  requireRole(...SCHEDULERS),
+  (req, res, next) =>
+    meetingMomUpload(req, res, (err) =>
+      err ? next(err) : uploadMomDoc(req, res, next),
     ),
 );
 router.get('/:id/mom/download', requireInternal(), downloadMom);

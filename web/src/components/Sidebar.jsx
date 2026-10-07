@@ -27,7 +27,7 @@ export default function Sidebar({
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-mark">D</div>
-        <div className="brand-name">Datum</div>
+        <div className="brand-name">DesignTree</div>
       </div>
       <nav className="nav">
         {nav.map((item, i) => (

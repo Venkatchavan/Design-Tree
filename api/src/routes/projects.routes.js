@@ -5,6 +5,7 @@ import {
   CREATOR_ROLES,
   createProject,
   getProject,
+  getProjectTeam,
   listProjects,
   projectFilters,
   projectStats,
@@ -22,6 +23,7 @@ router.use(requireAuth);
 router.get('/', requireView('dashboard'), listProjects);
 router.get('/stats', requireView('dashboard'), projectStats);
 router.get('/filters', requireView('dashboard'), projectFilters);
+router.get('/:id/team', requireAuth, getProjectTeam);
 router.get('/:id', requireView('dashboard'), getProject);
 router.post('/', requireRole(...CREATOR_ROLES), createProject);
 router.put('/:id', requireRole(...CREATOR_ROLES), updateProject);

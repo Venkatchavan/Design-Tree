@@ -1,7 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { employeesApi, meApi, projectsApi } from '../lib/api.js';
+import { meApi, projectsApi } from '../lib/api.js';
 import { UNAVAILABLE_REASONS, meetingsApi } from '../lib/phase4bApi.js';
+import {
+  CONDUCTED_BY_BY_TYPE,
+  MEETING_SERVICES,
+} from '../lib/meetingsLogic.js';
 import Panel from './Panel.jsx';
 import DataTable from './DataTable.jsx';
 import StatusPill, { statusTone } from './StatusPill.jsx';
@@ -55,66 +59,135 @@ export function actionLabel(a) {
   return a.status ?? '—';
 }
 
-export function ScheduleMeetingModal({ sudden, onClose }) {
+function defaultDate(sudden) {
+  const d = new Date();
+  if (!sudden) d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultTime(sudden, which) {
+  if (!sudden) return which === 'start' ? '11:00' : '12:00';
+  const h = new Date().getHours();
+  if (which === 'start') return `${String(h).padStart(2, '0')}:00`;
+  return `${String((h + 1) % 24).padStart(2, '0')}:00`;
+}
+
+// v2 form (§5–§7): project team checklist (2A), service chips, responsible
+// banner (3B), conducted-by by type, link/location swap, ref docs.
+export function ScheduleMeetingModal({ sudden, onClose, onCreated }) {
   const queryClient = useQueryClient();
   const [project, setProject] = useState('');
-  const [services, setServices] = useState('');
+  const [checkedServices, setCheckedServices] = useState([]);
   const [title, setTitle] = useState('');
   const [agenda, setAgenda] = useState('');
   const [type, setType] = useState('Client / DRM');
-  const [date, setDate] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [mode, setMode] = useState('Offline');
+  const [date, setDate] = useState(defaultDate(sudden));
+  const [startTime, setStartTime] = useState(defaultTime(sudden, 'start'));
+  const [endTime, setEndTime] = useState(defaultTime(sudden, 'end'));
+  const [mode, setMode] = useState('Online');
   const [link, setLink] = useState('');
   const [location, setLocation] = useState('');
+  const [conductedBy, setConductedBy] = useState('Client');
+  const [externalParticipants, setExternalParticipants] = useState('');
   const [reason, setReason] = useState('');
+  const [recording, setRecording] = useState('over');
   const [participants, setParticipants] = useState([]);
+  const [additionalParticipants, setAdditionalParticipants] = useState('');
+  const [files, setFiles] = useState([]);
   const [err, setErr] = useState('');
+  const [teamTouched, setTeamTouched] = useState(false);
 
   const projQ = useQuery({ queryKey: ['projects', 'mtg'], queryFn: () => projectsApi.list({ status: 'Active' }) });
-  const empQ = useQuery({ queryKey: ['employees-mtg'], queryFn: () => employeesApi.list({}) });
   const projects = projQ.data?.items ?? [];
-  const employees = empQ.data?.items ?? [];
+  const teamQ = useQuery({
+    queryKey: ['project-team', project],
+    queryFn: () => meetingsApi.projectTeam(project),
+    enabled: !!project,
+  });
+  const team = teamQ.data ?? null;
+  const members = useMemo(() => team?.members ?? [], [team]);
+  const responsible = team?.responsible ?? null;
+
+  const conductedOptions = useMemo(() => {
+    const base = CONDUCTED_BY_BY_TYPE[type] ?? ['Other'];
+    const names = members
+      .map((m) => [m?.employee?.firstName, m?.employee?.lastName].filter(Boolean).join(' '))
+      .filter(Boolean);
+    const merged = [...base];
+    for (const n of names) if (!merged.includes(n)) merged.push(n);
+    return merged;
+  }, [type, members]);
+
+  // Defaults when the project changes: committed services, team ticked.
+  useEffect(() => {
+    if (!team) return;
+    setCheckedServices(team.committedServices ?? []);
+    if (!teamTouched) {
+      setParticipants(members.map((m) => String(m?.employee?._id ?? m?.employee?.id ?? '')).filter(Boolean));
+    }
+    const base = CONDUCTED_BY_BY_TYPE[type] ?? ['Other'];
+    setConductedBy(base[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamQ.data]);
+
+  useEffect(() => {
+    const base = CONDUCTED_BY_BY_TYPE[type] ?? ['Other'];
+    setConductedBy((prev) => (base.includes(prev) ? prev : base[0]));
+  }, [type]);
 
   const create = useMutation({
     mutationFn: (body) => meetingsApi.create(body),
     onSuccess: async (data) => {
-      const id = data?.item?._id ?? data?.item?.id ?? data?._id ?? data?.id;
-      if (sudden && id) {
+      const item = data?.item ?? data;
+      const id = item?._id ?? item?.id;
+      const count = participants.length;
+      if (files.length > 0 && id) {
         try {
-          await meetingsApi.held(id);
+          await meetingsApi.refDocs(id, files);
         } catch {
-          /* keep created meeting even if held fails */
+          /* keep meeting even if docs fail */
         }
       }
       queryClient.invalidateQueries({ queryKey: ['meetings'] });
-      onClose();
+      queryClient.invalidateQueries({ queryKey: ['absence-log'] });
+      const msg = sudden
+        ? 'Sudden meeting saved. Mark attendance and record the MOM.'
+        : `Meeting scheduled. Invitations sent to ${count} team member${count === 1 ? '' : 's'}.`;
+      if (onCreated) onCreated(msg, id);
+      else onClose();
     },
     onError: (e) => setErr(e.message),
   });
 
+  function toggleService(s) {
+    setCheckedServices((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  }
+
   function toggleParticipant(id) {
+    setTeamTouched(true);
     setParticipants((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   function submit(e) {
     e.preventDefault();
     setErr('');
-    if (!title.trim()) {
-      setErr('Title is required.');
+    const missing = [];
+    if (!title.trim()) missing.push('a meeting title');
+    if (!date) missing.push('a meeting date');
+    if (startTime && endTime && endTime <= startTime) {
+      setErr('End time must be after start time.');
       return;
     }
-    if (!date) {
-      setErr('Date is required.');
+    if (checkedServices.length === 0) missing.push('at least one service');
+    if (participants.length === 0) missing.push('at least one team member');
+    if (sudden && !reason.trim()) missing.push('the reason for the sudden meeting');
+    if (missing.length > 0) {
+      setErr(`Add ${missing.join(', ')} to continue.`);
       return;
     }
     create.mutate({
       project: project || undefined,
-      services: services
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
+      services: checkedServices,
       title: title.trim(),
       agenda: agenda || undefined,
       category: sudden ? 'Sudden' : 'Scheduled',
@@ -123,74 +196,131 @@ export function ScheduleMeetingModal({ sudden, onClose }) {
       startTime: startTime || undefined,
       endTime: endTime || undefined,
       mode: mode || undefined,
-      link: link || undefined,
-      location: location || undefined,
-      reason: sudden ? reason || undefined : undefined,
+      link: mode === 'Online' ? link || undefined : undefined,
+      location: mode !== 'Online' ? location || undefined : undefined,
+      conductedBy: conductedBy || undefined,
+      externalParticipants: externalParticipants || undefined,
+      additionalParticipantsText: additionalParticipants || undefined,
+      reason: sudden ? reason.trim() : undefined,
       participants: participants.map((employee) => ({ employee })),
-      ...(sudden ? { status: 'Held' } : {}),
     });
   }
 
   return (
-    <Modal title={sudden ? 'Add sudden meeting (saved as held)' : 'Schedule meeting'} wide onClose={onClose}>
-      <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>Responsible: Project SPOC</p>
+    <Modal title={sudden ? 'Add sudden meeting' : 'Schedule meeting'} wide onClose={onClose}>
+      <p style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-faint)', marginBottom: 12 }}>
+        {sudden ? 'Unplanned meeting' : 'Planned meeting'}
+      </p>
       <form onSubmit={submit}>
         <div className="field-grid">
           <div className="form-row">
             <label className="form-label">Project</label>
-            <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
+            <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => { setProject(e.target.value); setTeamTouched(false); }}>
               <option value="">Select project</option>
               {projects.map((p) => (
-                <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>{p.name ?? p.code ?? '—'}</option>
+                <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>{p.code ? `${p.code} - ` : ''}{p.name ?? '—'}</option>
               ))}
             </select>
           </div>
-          <div className="form-row"><label className="form-label">Services</label><input className="form-input" value={services} onChange={(e) => setServices(e.target.value)} placeholder="e.g. Structure, Electrical" /></div>
-          <div className="form-row"><label className="form-label">Title *</label><input className="form-input" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
           <div className="form-row">
-            <label className="form-label">Type</label>
-            <select className="filter-select" style={{ width: '100%' }} value={type} onChange={(e) => setType(e.target.value)} disabled={sudden}>
+            <label className="form-label">Meeting type</label>
+            <select className="filter-select" style={{ width: '100%' }} value={type} onChange={(e) => setType(e.target.value)}>
               <option>Client / DRM</option>
               <option>DesignTree / Arictech</option>
               <option>PMC</option>
               <option>Other</option>
             </select>
           </div>
-          <div className="form-row"><label className="form-label">Date *</label><input className="form-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Start</label><input className="form-input" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">End</label><input className="form-input" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} /></div>
-          <div className="form-row">
-            <label className="form-label">Mode</label>
-            <select className="filter-select" style={{ width: '100%' }} value={mode} onChange={(e) => setMode(e.target.value)}>
-              <option>Offline</option>
-              <option>Online</option>
-            </select>
-          </div>
-          <div className="form-row"><label className="form-label">Link</label><input className="form-input" value={link} onChange={(e) => setLink(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Location</label><input className="form-input" value={location} onChange={(e) => setLocation(e.target.value)} /></div>
-          {sudden && (
-            <div className="form-row"><label className="form-label">Reason (sudden)</label><input className="form-input" value={reason} onChange={(e) => setReason(e.target.value)} /></div>
-          )}
         </div>
-        <div className="form-row"><label className="form-label">Agenda</label><textarea className="form-input" value={agenda} onChange={(e) => setAgenda(e.target.value)} /></div>
-        <div className="section-label">Participants ({participants.length} selected)</div>
-        {empQ.isLoading ? <EmptyState text="Loading employees…" /> : (
-          <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }}>
-            {employees.map((e) => {
-              const id = String(e._id ?? e.id);
-              return (
-                <label key={id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, padding: '3px 0' }}>
-                  <input type="checkbox" checked={participants.includes(id)} onChange={() => toggleParticipant(id)} />
-                  {empName(e)} · {e.designation ?? ''}
-                </label>
-              );
-            })}
+        {project && (
+          <div style={{ background: 'var(--teal-bg, #e6f7f4)', borderRadius: 6, padding: '9px 12px', fontSize: 12.5, marginBottom: 12 }}>
+            {teamQ.isLoading ? 'Loading team…' : teamQ.isError ? 'Could not load project team.'
+              : `Responsible: ${responsible?.label ?? 'Project SPOC'}`}
+            <div style={{ color: 'var(--ink-muted)', fontSize: 11.5 }}>Set automatically from the project&apos;s committed services.</div>
           </div>
         )}
+        <div className="form-row"><label className="form-label">Meeting title / subject</label><input className="form-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Weekly DRM review, Week 41" /></div>
+        {sudden && (
+          <>
+            <div className="form-row"><label className="form-label">Reason for the sudden meeting</label><textarea className="form-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="What triggered this meeting?" /></div>
+            <div className="form-row">
+              <label className="form-label">Recording</label>
+              <label style={{ display: 'flex', gap: 6, fontSize: 12.5, marginBottom: 4 }}><input type="radio" checked={recording === 'over'} onChange={() => setRecording('over')} /> Meeting is over: record attendance and MOM now</label>
+              <label style={{ display: 'flex', gap: 6, fontSize: 12.5 }}><input type="radio" checked={recording === 'live'} onChange={() => setRecording('live')} /> Meeting in progress: add details as it runs</label>
+            </div>
+          </>
+        )}
+        <div className="field-grid">
+          <div className="form-row"><label className="form-label">Meeting date</label><input className="form-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+          <div className="form-row"><label className="form-label">Start time</label><input className="form-input" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></div>
+          <div className="form-row"><label className="form-label">End time</label><input className="form-input" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} /></div>
+          <div className="form-row">
+            <label className="form-label">Meeting mode</label>
+            <select className="filter-select" style={{ width: '100%' }} value={mode} onChange={(e) => setMode(e.target.value)}>
+              <option>Online</option>
+              <option>Offline</option>
+            </select>
+          </div>
+          {mode === 'Online' ? (
+            <div className="form-row"><label className="form-label">Meeting link</label><input className="form-input" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://" /></div>
+          ) : (
+            <div className="form-row"><label className="form-label">Meeting location</label><input className="form-input" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Site office, Hebbal" /></div>
+          )}
+          <div className="form-row">
+            <label className="form-label">Meeting conducted by</label>
+            <select className="filter-select" style={{ width: '100%' }} value={conductedBy} onChange={(e) => setConductedBy(e.target.value)}>
+              {conductedOptions.map((o) => (<option key={o} value={o}>{o}</option>))}
+            </select>
+          </div>
+          <div className="form-row"><label className="form-label">External participants</label><input className="form-input" value={externalParticipants} onChange={(e) => setExternalParticipants(e.target.value)} placeholder="Client PM, architect, PMC…" /></div>
+        </div>
+        <div className="form-row">
+          <label className="form-label">Services discussed</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {MEETING_SERVICES.map((s) => (
+              <label key={s} style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12.5, border: '1px solid var(--border)', borderRadius: 20, padding: '5px 11px', background: checkedServices.includes(s) ? 'var(--teal-bg, #e6f7f4)' : undefined }}>
+                <input type="checkbox" checked={checkedServices.includes(s)} onChange={() => toggleService(s)} />
+                {s}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="form-row"><label className="form-label">Meeting agenda / purpose</label><textarea className="form-input" value={agenda} onChange={(e) => setAgenda(e.target.value)} /></div>
+        <div className="form-row">
+          <label className="form-label">Project reference / documents</label>
+          <input type="file" multiple onChange={(e) => setFiles([...(e.target.files ?? [])])} />
+          <div style={{ fontSize: 11.5, color: 'var(--ink-muted)', marginTop: 4 }}>Shared with the selected team members along with the meeting link.</div>
+        </div>
+        <div className="section-label">Project team members ({participants.length} selected)</div>
+        {!project ? <EmptyState text="Select a project to load its team." />
+          : teamQ.isLoading ? <EmptyState text="Loading project team…" />
+          : teamQ.isError ? <div className="login-error" role="alert" style={{ display: 'block' }}>Could not load the project team.</div>
+          : members.length === 0 ? <EmptyState text="No team members linked to this project." />
+          : (
+            <>
+              <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }}>
+                {members.map((m) => {
+                  const id = String(m?.employee?._id ?? m?.employee?.id ?? '');
+                  const e = m?.employee ?? {};
+                  return (
+                    <label key={id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, padding: '3px 0' }}>
+                      <input type="checkbox" checked={participants.includes(id)} onChange={() => toggleParticipant(id)} />
+                      <span>{empName(e)} · {e.designation ?? ''}{m.service ? ` · ${m.service}` : ''}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-muted)', marginTop: 4 }}>Pulled from the selected project&apos;s team. Selected members receive the invitation in their Meeting Dashboard.</div>
+            </>
+          )}
+        <div className="form-row" style={{ marginTop: 10 }}><label className="form-label">Additional participants (not in project team)</label><input className="form-input" value={additionalParticipants} onChange={(e) => setAdditionalParticipants(e.target.value)} placeholder="Comma-separated names" /></div>
         {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-        <button type="submit" className="btn-primary" disabled={create.isPending} style={{ marginTop: 10 }}>
-          {create.isPending ? 'Saving…' : sudden ? 'Save as held' : 'Schedule meeting'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+          <button type="button" className="approve-btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn-primary" disabled={create.isPending}>
+            {create.isPending ? 'Saving…' : sudden ? 'Save sudden meeting' : 'Schedule meeting'}
+          </button>
+        </div>
       </form>
     </Modal>
   );
@@ -207,7 +337,6 @@ export function MeetingDetailModal({ meetingId, onClose, manage = false }) {
   const [actionOwner, setActionOwner] = useState('');
   const [actionDue, setActionDue] = useState('');
   const [actionPriority, setActionPriority] = useState('Medium');
-  const [refFiles, setRefFiles] = useState([]);
   const [err, setErr] = useState('');
   const [attendance, setAttendance] = useState(null);
 
@@ -350,7 +479,7 @@ export function MeetingDetailModal({ meetingId, onClose, manage = false }) {
                   render: (a) => (
                     <span style={{ display: 'flex', gap: 6 }}>
                       <button type="button" className="approve-btn" onClick={() => flipAction.mutate({ actionId: a._id ?? a.id, status: 'Completed' })}>Complete</button>
-                      <button type="button" className="approve-btn" onClick={() => flipAction.mutate({ actionId: a._id ?? a.id, status: 'Open' })}>Reopen</button>
+                      <button type="button" className="approve-btn" onClick={() => flipAction.mutate({ actionId: a._id ?? a.id, status: 'Pending' })}>Reopen</button>
                     </span>
                   ),
                 },

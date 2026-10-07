@@ -351,12 +351,8 @@ function MyMeetingsTab() {
     const inv = myInviteOf(m);
     return !inv || (inv.response !== 'Available' && inv.response !== 'Not Available');
   });
-  const openActions = myActions.filter((a) => ['Pending', 'In Progress'].includes(a.status));
-  const overdueActions = openActions.filter((a) => {
-    if (!a.due) return false;
-    const d = new Date(a.due);
-    return !Number.isNaN(d.getTime()) && d < today;
-  });
+  const openActions = myActions.filter((a) => ['Pending', 'Open', 'In Progress'].includes(a.status));
+  const overdueActions = openActions.filter((a) => isOverdueAction(a));
   const attendedCount = log.filter((m) => {
     const att = (m.attendance ?? []).find((x) => mtgIdOf(x.employee) === String(myEmpId));
     return att?.present;

@@ -189,7 +189,7 @@ function AuthGate() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthGate />
+      <AuthGate className="app-watermark"/>
     </BrowserRouter>
   )
 }

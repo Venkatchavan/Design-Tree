@@ -129,6 +129,40 @@ export async function getProject(req, res, next) {
   }
 }
 
+// SPOC Meetings §7 / decision 2A: team members come from Teams linked to
+// the project. Empty list yields an empty-state on the client.
+export async function getProjectTeam(req, res, next) {
+  try {
+    const { projectTeamBundle } = await import('../utils/meetingTeam.js');
+    const project = await Project.findById(req.params.id).lean();
+    if (!project) return res.status(404).json({ message: 'Project not found.' });
+    const bundle = await projectTeamBundle(project);
+    return res.status(200).json({
+      project: {
+        _id: project._id,
+        name: project.name,
+        code: project.code,
+        clientName: project.clientName ?? project.contacts?.client?.company ?? '',
+        scope: project.scope ?? [],
+      },
+      committedServices: bundle.committed,
+      responsible: bundle.responsible,
+      members: bundle.members.map((m) => ({
+        employee: m.employee,
+        service: m.service,
+        team: m.team,
+      })),
+      allocations: (bundle.allocations ?? []).map((a) => ({
+        coordinator: a.coordinator,
+        services: a.services ?? [],
+        status: a.status,
+      })),
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 export async function createProject(req, res, next) {
   try {
     const parsed = projectSchema.safeParse(req.body);

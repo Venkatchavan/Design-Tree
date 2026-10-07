@@ -193,11 +193,11 @@ export const holidaySchema = z
 export const meetingSchema = z
   .object({
     project: objectId.optional(),
-    title: z.string().trim().min(1),
+    title: z.string().trim().min(1, 'Add a meeting title to continue.'),
     agenda: strOpt,
     category: z.enum(MEETING_CATEGORIES).optional(),
     type: z.enum(MEETING_TYPES).optional(),
-    services: z.array(z.string().trim()).optional(),
+    services: z.array(z.string().trim()).min(1, 'Add at least one service to continue.'),
     date: z.coerce.date(),
     startTime: strOpt,
     endTime: strOpt,
@@ -205,13 +205,22 @@ export const meetingSchema = z
     link: strOpt,
     location: strOpt,
     responsible: strOpt,
+    responsibleRole: strOpt,
+    conductedBy: strOpt,
+    externalParticipants: strOpt,
+    additionalParticipantsText: strOpt,
+    additionalParticipants: z
+      .array(
+        z.object({ name: strOpt, organisation: strOpt }).strict(),
+      )
+      .optional(),
     reason: strOpt,
     stage: strOpt,
     participants: z
       .array(
         z.object({ employee: objectId.optional(), name: strOpt }).strict(),
       )
-      .optional(),
+      .min(1, 'Select at least one team member to continue.'),
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -219,7 +228,7 @@ export const meetingSchema = z
       ctx.addIssue({ code: 'custom', message: 'End time must be after start time.' });
     }
     if (v.category === 'Sudden' && !v.reason?.trim()) {
-      ctx.addIssue({ code: 'custom', message: 'Sudden meetings need a reason.' });
+      ctx.addIssue({ code: 'custom', message: 'Add the reason for the sudden meeting.' });
     }
   });
 export const meetingUpdateSchema = z
@@ -236,6 +245,10 @@ export const meetingUpdateSchema = z
     link: strOpt,
     location: strOpt,
     responsible: strOpt,
+    responsibleRole: strOpt,
+    conductedBy: strOpt,
+    externalParticipants: strOpt,
+    additionalParticipantsText: strOpt,
     stage: strOpt,
     status: z.enum(MEETING_STATUSES).optional(),
   })
@@ -263,16 +276,25 @@ export const attendanceSchema = z
           })
           .strict(),
       )
-      .min(1),
+      .optional(),
+    additionalParticipants: z
+      .array(z.object({ name: strOpt, organisation: strOpt }).strict())
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (v) => (v.attendance?.length ?? 0) > 0 || (v.additionalParticipants?.length ?? 0) > 0,
+    { message: 'Mark attendance or add a participant who attended.' },
+  );
 export const actionSchema = z
   .object({
-    text: z.string().trim().min(1),
+    text: z.string().trim().min(1, 'Enter the task first.'),
     owner: objectId.optional(),
+    service: strOpt,
     priority: z.enum(['High', 'Medium', 'Low']).optional(),
     due: dateOpt,
     note: strOpt,
+    remarks: strOpt,
   })
   .strict();
 export const actionStatusSchema = z

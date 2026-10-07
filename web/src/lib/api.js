@@ -68,6 +68,7 @@ export const projectsApi = {
   stats: () => request('/api/projects/stats'),
   filters: () => request('/api/projects/filters'),
   get: (id) => request(`/api/projects/${id}`),
+  team: (id) => request(`/api/projects/${id}/team`),
   create: (body) =>
     request('/api/projects', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) =>

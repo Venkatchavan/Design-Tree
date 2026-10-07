@@ -70,6 +70,7 @@ export const supportApi = {
 export const meetingsApi = {
   list: (params = {}) => request(`/api/meetings${toQuery(params)}`),
   get: (id) => request(`/api/meetings/${id}`),
+  projectTeam: (projectId) => request(`/api/projects/${projectId}/team`),
   create: (body) =>
     request('/api/meetings', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) =>
@@ -96,6 +97,22 @@ export const meetingsApi = {
       body: JSON.stringify(body),
     }),
   momDownloadUrl: (id) => `${API_BASE}/api/meetings/${id}/mom/download`,
+  momDoc: async (id, files) => {
+    const form = new FormData();
+    for (const f of files) form.append('files', f);
+    const res = await fetch(`${API_BASE}/api/meetings/${id}/mom-doc`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.message ?? 'Upload failed.');
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  },
   refDocs: async (id, files) => {
     const form = new FormData();
     for (const f of files) form.append('files', f);

@@ -10,6 +10,25 @@ import { User } from '../models/User.js';
 import { uploadMany } from '../utils/storage.js';
 
 export const meetingFilesUpload = uploadMany('files', 'meetings', 10);
+export const meetingMomUpload = uploadMany('files', 'meetings', 2);
+
+const POP_PROJ_FULL = 'name code branch clientName scope';
+
+function invalidMessage(parsed) {
+  const issues = parsed.error?.issues ?? [];
+  const msgs = issues.map((i) => i.message).filter(Boolean);
+  const uniq = [...new Set(msgs)];
+  if (uniq.length === 0) return 'Invalid data.';
+  return uniq.slice(0, 4).join(' ');
+}
+
+// Legacy 'Open' action status predates the spec (now 'Pending'). Normalise
+// in memory before any save so old documents keep validating.
+function normaliseActionStatuses(doc) {
+  for (const a of doc.actions ?? []) {
+    if (a.status === 'Open') a.status = 'Pending';
+  }
+}
 import {
   actionSchema,
   actionStatusSchema,
@@ -33,52 +52,74 @@ export async function listMeetings(req, res, next) {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
     if (req.query.status) filter.status = req.query.status;
+    if (req.query.category) filter.category = req.query.category;
+    if (req.query.type) filter.type = req.query.type;
+    if (req.query.service) filter.services = req.query.service;
+    if (req.query.responsible) filter.responsible = new RegExp(req.query.responsible, 'i');
+    if (req.query.from || req.query.to) {
+      filter.date = {};
+      if (req.query.from) filter.date.$gte = new Date(req.query.from);
+      if (req.query.to) filter.date.$lte = new Date(req.query.to);
+    }
     if (req.query.mine === 'true') {
       const empId = await myEmployeeId(req.user.id);
       if (!empId) return res.status(200).json({ items: [], total: 0 });
       filter['invites.employee'] = empId;
     }
     const items = await Meeting.find(filter)
-      .populate('project', POP_PROJ)
+      .populate('project', POP_PROJ_FULL)
       .populate('invites.employee', POP_EMP)
       .populate('attendance.employee', POP_EMP)
+      .populate('participants.employee', POP_EMP)
       .populate('actions.owner', POP_EMP)
       .sort({ date: -1 })
       .limit(200);
+    for (const m of items) normaliseActionStatuses(m);
     return res.status(200).json({ items, total: items.length });
   } catch (err) {
     return next(err);
   }
 }
 
-export async function getMeeting(req, res, next) {
+// 3B: service-based responsibility with Team Lead mapping. The Team Lead
+// of the relevant service team acts as Structural Design Lead /
+// MEP Coordinator; the SPOC allocation is the fallback and the default
+// for full-SMEPF or multi-service meetings (R1).
+async function responsibleFor(projectId, services) {
   try {
-    const doc = await Meeting.findById(req.params.id)
-      .populate('project', POP_PROJ)
-      .populate('invites.employee', POP_EMP)
-      .populate('attendance.employee', POP_EMP)
-      .populate('participants.employee', POP_EMP)
-      .populate('actions.owner', POP_EMP);
-    if (!doc) return res.status(404).json({ message: 'Not found.' });
-    return res.status(200).json({ item: doc });
-  } catch (err) {
-    return next(err);
+    const { projectTeamBundle } = await import('../utils/meetingTeam.js');
+    if (!projectId) throw new Error('no-project');
+    const project = await Project.findById(projectId).lean();
+    if (!project) throw new Error('no-project');
+    const bundle = await projectTeamBundle(project);
+    const committed = services?.length ? services : bundle.committed;
+    const { resolveResponsible } = await import('../utils/meetingTeam.js');
+    const r = resolveResponsible({
+      project,
+      teams: bundle.teams,
+      allocations: bundle.allocations,
+      committed,
+    });
+    return { name: r.name, role: r.role, label: r.label };
+  } catch {
+    const set = new Set((services ?? []).map((s) => String(s).toLowerCase()));
+    const smepf = ['structural', 'mechanical', 'electrical', 'plumbing', 'fire'];
+    const hasAll = smepf.every((s) => set.has(s));
+    if (hasAll) return { name: '', role: 'SPOC', label: 'Project SPOC (SMEPF services)' };
+    if (set.size === 1 && set.has('structural')) {
+      return { name: '', role: 'Structural Design Lead', label: 'Structural Design Lead (Structural services only)' };
+    }
+    if (set.size > 0 && !set.has('structural')) {
+      return { name: '', role: 'MEP Coordinator', label: 'MEP Coordinator' };
+    }
+    return { name: '', role: 'SPOC', label: 'Project SPOC with service leads' };
   }
-}
-
-function responsibleFor(services) {
-  const set = new Set((services ?? []).map((s) => s.toLowerCase()));
-  const smepf = ['structural', 'mechanical', 'electrical', 'plumbing', 'fire'];
-  const hasAll = smepf.every((s) => set.has(s));
-  if (hasAll) return 'Project SPOC (SMEPF services)';
-  if (set.size === 1 && set.has('structural')) return 'Structural Design Lead';
-  return 'Project SPOC with service leads';
 }
 
 export async function createMeeting(req, res, next) {
   const parsed = meetingSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ message: 'Invalid data.' });
+    return res.status(400).json({ message: invalidMessage(parsed) });
   }
   try {
     const category = parsed.data.category ?? 'Scheduled';
@@ -105,14 +146,24 @@ export async function createMeeting(req, res, next) {
       );
       momNo = `MOM-${code}-${String(counter.seq).padStart(3, '0')}`;
     }
+    // Auto responsibility (R1) unless the client pinned one.
+    let responsible = parsed.data.responsible;
+    let responsibleRole = parsed.data.responsibleRole;
+    if (!responsible) {
+      const r = await responsibleFor(parsed.data.project, parsed.data.services);
+      responsible = r.name || r.label;
+      responsibleRole = r.role;
+    }
     const doc = await Meeting.create({
       ...parsed.data,
       momNo,
       category,
       status: category === 'Sudden' ? 'Held' : 'Scheduled',
       invites: category === 'Scheduled' ? invites : [],
-      responsible:
-        parsed.data.responsible ?? responsibleFor(parsed.data.services),
+      // Sudden meetings collect no availability responses (R4).
+      attendance: [],
+      responsible,
+      responsibleRole,
       createdBy: req.user.id,
     });
     return res.status(201).json({ item: doc });
@@ -124,17 +175,18 @@ export async function createMeeting(req, res, next) {
 export async function updateMeeting(req, res, next) {
   const parsed = meetingUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ message: 'Invalid data.' });
+    return res.status(400).json({ message: invalidMessage(parsed) });
   }
   try {
     const doc = await Meeting.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Not found.' });
-    if (doc.status === 'Held' && parsed.data.status !== 'Held') {
+    if (doc.status === 'Held' && parsed.data.status && parsed.data.status !== 'Held') {
       return res
         .status(422)
         .json({ message: 'Held meetings cannot be reopened.' });
     }
     Object.assign(doc, parsed.data);
+    normaliseActionStatuses(doc);
     await doc.save();
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -143,6 +195,7 @@ export async function updateMeeting(req, res, next) {
 }
 
 // Reschedule keeps the original date (R11); only before held.
+// Sets status to Rescheduled so the derived display status survives.
 export async function rescheduleMeeting(req, res, next) {
   try {
     const { date, startTime, endTime } = req.body ?? {};
@@ -158,6 +211,8 @@ export async function rescheduleMeeting(req, res, next) {
     doc.date = new Date(date);
     if (startTime !== undefined) doc.startTime = startTime;
     if (endTime !== undefined) doc.endTime = endTime;
+    doc.status = 'Rescheduled';
+    normaliseActionStatuses(doc);
     await doc.save();
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -169,14 +224,18 @@ export async function markHeld(req, res, next) {
   try {
     const doc = await Meeting.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Not found.' });
+    if (doc.status === 'Cancelled') {
+      return res.status(422).json({ message: 'Cancelled meetings cannot be marked held.' });
+    }
     doc.status = 'Held';
     // Seed attendance from invitees; SPOC corrects it afterwards.
-    if (doc.attendance.length === 0) {
+    if (doc.attendance.length === 0 && doc.invites.length > 0) {
       doc.attendance = doc.invites.map((i) => ({
         employee: i.employee,
         present: true,
       }));
     }
+    normaliseActionStatuses(doc);
     await doc.save();
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -197,6 +256,7 @@ export async function cancelMeeting(req, res, next) {
     if (typeof req.body?.reason === 'string' && req.body.reason.trim()) {
       doc.cancelReason = req.body.reason.trim();
     }
+    normaliseActionStatuses(doc);
     await doc.save();
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -217,13 +277,19 @@ async function requireHeld(doc, res) {
 export async function saveAttendance(req, res, next) {
   const parsed = attendanceSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ message: 'Invalid data.' });
+    return res.status(400).json({ message: invalidMessage(parsed) });
   }
   try {
     const doc = await Meeting.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Not found.' });
     if (!(await requireHeld(doc, res))) return undefined;
-    doc.attendance = parsed.data.attendance;
+    if (parsed.data.attendance !== undefined) doc.attendance = parsed.data.attendance;
+    if (parsed.data.additionalParticipants !== undefined) {
+      doc.additionalParticipants = parsed.data.additionalParticipants.filter(
+        (p) => p?.name?.trim() || p?.organisation?.trim(),
+      );
+    }
+    normaliseActionStatuses(doc);
     await doc.save();
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -234,7 +300,7 @@ export async function saveAttendance(req, res, next) {
 export async function saveMom(req, res, next) {
   const parsed = momSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ message: 'Invalid data.' });
+    return res.status(400).json({ message: invalidMessage(parsed) });
   }
   try {
     const doc = await Meeting.findById(req.params.id);
@@ -249,6 +315,7 @@ export async function saveMom(req, res, next) {
     }
     doc.mom = mom;
     if (parsed.data.momDoc !== undefined) doc.momDoc = parsed.data.momDoc;
+    normaliseActionStatuses(doc);
     await doc.save();
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -259,13 +326,30 @@ export async function saveMom(req, res, next) {
 export async function addAction(req, res, next) {
   const parsed = actionSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ message: 'Invalid data.' });
+    return res.status(400).json({ message: invalidMessage(parsed) });
   }
   try {
     const doc = await Meeting.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Not found.' });
     if (!(await requireHeld(doc, res))) return undefined;
-    doc.actions.push(parsed.data);
+    // Auto-fill service from the owner's team membership when omitted.
+    let service = parsed.data.service;
+    if (!service && parsed.data.owner) {
+      try {
+        const { Team } = await import('../models/Team.js');
+        const t = await Team.findOne({
+          projects: doc.project,
+          'members.employee': parsed.data.owner,
+        })
+          .select('service')
+          .lean();
+        if (t?.service) service = t.service;
+      } catch {
+        /* best effort only */
+      }
+    }
+    doc.actions.push({ ...parsed.data, service, status: parsed.data.status ?? 'Pending' });
+    normaliseActionStatuses(doc);
     await doc.save();
     return res.status(201).json({ item: doc });
   } catch (err) {
@@ -274,10 +358,11 @@ export async function addAction(req, res, next) {
 }
 
 // E9: only the owner (or superuser) changes an action's status.
+// SPOCs/coordinators/superusers can also move SPOC-managed items.
 export async function setActionStatus(req, res, next) {
   const parsed = actionStatusSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ message: 'Invalid data.' });
+    return res.status(400).json({ message: invalidMessage(parsed) });
   }
   try {
     const doc = await Meeting.findById(req.params.id);
@@ -287,7 +372,8 @@ export async function setActionStatus(req, res, next) {
     const empId = await myEmployeeId(req.user.id);
     const mine =
       empId != null && action.owner?.toString?.() === empId.toString();
-    if (!mine && !isSuperRole(req.user.role)) {
+    const manager = ['coordinator', 'design_mgmt_head'].includes(req.user.role);
+    if (!mine && !manager && !isSuperRole(req.user.role)) {
       return res.status(403).json({
         message: 'Only the assigned owner can change this action item.',
       });
@@ -296,6 +382,8 @@ export async function setActionStatus(req, res, next) {
     // R10/E10: completion date set automatically, cleared on reopen.
     action.completedAt =
       parsed.data.status === 'Completed' ? new Date() : undefined;
+    normaliseActionStatuses(doc);
+    action.status = parsed.data.status;
     await doc.save();
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -315,12 +403,14 @@ export async function setActionNote(req, res, next) {
     const empId = await myEmployeeId(req.user.id);
     const mine =
       empId != null && action.owner?.toString?.() === empId.toString();
-    if (!mine && !isSuperRole(req.user.role)) {
+    const manager = ['coordinator', 'design_mgmt_head'].includes(req.user.role);
+    if (!mine && !manager && !isSuperRole(req.user.role)) {
       return res.status(403).json({
         message: 'Only the assigned owner can update this action item.',
       });
     }
     action.note = note || undefined;
+    normaliseActionStatuses(doc);
     await doc.save();
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -337,6 +427,32 @@ export async function uploadRefDocs(req, res, next) {
       return res.status(400).json({ message: 'No files uploaded.' });
     }
     doc.refDocs.push(...req.files.map((f) => `meetings/${f.filename}`));
+    normaliseActionStatuses(doc);
+    await doc.save();
+    return res.status(200).json({ item: doc });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+// MOM document upload (PDF / Word / Excel). Records the file by name and
+// path; counts as a recorded MOM together with discussion points (R8).
+export async function uploadMomDoc(req, res, next) {
+  try {
+    const doc = await Meeting.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Not found.' });
+    if (doc.status !== 'Held') {
+      return res.status(422).json({
+        message: 'Attendance, MOM and action items need a held meeting (R7).',
+      });
+    }
+    if (!req.files?.length) {
+      return res.status(400).json({ message: 'No files uploaded.' });
+    }
+    const f = req.files[0];
+    doc.momDocPath = `meetings/${f.filename}`;
+    doc.momDoc = f.originalname ?? f.filename;
+    normaliseActionStatuses(doc);
     await doc.save();
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -398,8 +514,12 @@ export async function downloadMom(req, res, next) {
       `Time: ${[doc.startTime, doc.endTime].filter(Boolean).join('–') || '—'}`,
       `Meeting type: ${doc.type ?? ''} (${doc.category ?? ''})`,
       `Mode: ${doc.mode ?? ''}${doc.mode === 'Online' && doc.link ? ` – ${doc.link}` : ''}${doc.mode !== 'Online' && doc.location ? ` – ${doc.location}` : ''}`,
-      `Organised by (SPOC): ${doc.responsible ?? ''}`,
+      `Conducted by: ${doc.conductedBy ?? '—'}`,
+      `Organised by (SPOC): ${doc.responsible ?? ''}${doc.responsibleRole ? ` (${doc.responsibleRole})` : ''}`,
+      `External participants: ${doc.externalParticipants ?? '—'}`,
       `Services: ${(doc.services ?? []).join(', ')}`,
+      ...(doc.reason ? [`Reason (sudden): ${doc.reason}`] : []),
+      ...(doc.agenda ? [`Agenda: ${doc.agenda}`] : []),
       '',
       'ATTENDANCE',
       ...doc.invites.map(
@@ -408,6 +528,8 @@ export async function downloadMom(req, res, next) {
       ...((doc.participants ?? [])
         .filter((p) => !p.employee)
         .map((p) => `- ${p.name ?? '—'}: Attended`)),
+      ...((doc.additionalParticipants ?? [])
+        .map((p) => `- ${p.name ?? '—'}${p.organisation ? ` (${p.organisation})` : ''}: Attended`)),
       '',
       'KEY DISCUSSION POINTS',
       mom.discussion?.trim() || '—',
@@ -448,10 +570,7 @@ export async function downloadMom(req, res, next) {
 export async function respondInvite(req, res, next) {
   const parsed = inviteResponseSchema.safeParse(req.body);
   if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    return res
-      .status(400)
-      .json({ message: issue?.message ?? 'Invalid response.' });
+    return res.status(400).json({ message: invalidMessage(parsed) });
   }
   try {
     const doc = await Meeting.findById(req.params.id);
@@ -484,30 +603,76 @@ export async function respondInvite(req, res, next) {
   }
 }
 
+export async function getMeeting(req, res, next) {
+  try {
+    const doc = await Meeting.findById(req.params.id)
+      .populate('project', POP_PROJ_FULL)
+      .populate('invites.employee', POP_EMP)
+      .populate('attendance.employee', POP_EMP)
+      .populate('participants.employee', POP_EMP)
+      .populate('actions.owner', POP_EMP);
+    if (!doc) return res.status(404).json({ message: 'Not found.' });
+    normaliseActionStatuses(doc);
+    return res.status(200).json({ item: doc });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+// Absence log (§16.3): built from attendance marked Not attended on held
+// meetings — not from availability responses. Blank reasons surface as
+// "Not given" on the client so the SPOC can follow up.
 export async function absenceLog(req, res, next) {
   try {
-    const filter = {};
+    const filter = { status: 'Held' };
     if (req.query.project) filter.project = req.query.project;
+    if (req.query.type) filter.type = req.query.type;
+    if (req.query.from || req.query.to) {
+      filter.date = {};
+      if (req.query.from) filter.date.$gte = new Date(req.query.from);
+      if (req.query.to) filter.date.$lte = new Date(req.query.to);
+    }
     const meetings = await Meeting.find(filter)
-      .populate('invites.employee', POP_EMP)
-      .populate('project', POP_PROJ)
+      .populate('attendance.employee', 'firstName lastName empId designation department')
+      .populate('project', 'name code')
       .sort({ date: -1 })
       .limit(200);
+    const memberFilter = String(req.query.member ?? '').toLowerCase();
+    const serviceFilter = String(req.query.service ?? '').toLowerCase();
     const rows = [];
     for (const m of meetings) {
-      for (const i of m.invites) {
-        if (i.response === 'Not Available') {
-          rows.push({
-            meeting: m._id.toString(),
+      for (const a of m.attendance ?? []) {
+        if (a.present) continue;
+        const emp = a.employee && typeof a.employee === 'object' ? a.employee : null;
+        const service = emp?.department ?? '';
+        if (serviceFilter && String(service).toLowerCase() !== serviceFilter) continue;
+        const empId = emp?._id ? String(emp._id) : '';
+        if (memberFilter && empId !== memberFilter) continue;
+        rows.push({
+          meeting: {
+            _id: m._id,
             title: m.title,
-            project: m.project,
+            momNo: m.momNo,
             date: m.date,
-            employee: i.employee,
-            reason: i.reason,
-            note: i.note,
-            respondedAt: i.respondedAt,
-          });
-        }
+            startTime: m.startTime,
+            endTime: m.endTime,
+            category: m.category,
+            type: m.type,
+            mode: m.mode,
+            link: m.link,
+            location: m.location,
+            conductedBy: m.conductedBy,
+            responsible: m.responsible,
+            responsibleRole: m.responsibleRole,
+            services: m.services ?? [],
+            agenda: m.agenda,
+          },
+          project: m.project,
+          date: m.date,
+          employee: a.employee,
+          service,
+          reason: a.reason ?? '',
+        });
       }
     }
     return res.status(200).json({ items: rows, total: rows.length });
