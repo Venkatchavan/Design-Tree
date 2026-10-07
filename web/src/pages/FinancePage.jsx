@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { employeesApi } from '../lib/api.js';
 import { billingApi, bookingsApi } from '../lib/phase3Api.js';
+import { leaveApi, travelApi } from '../lib/phase4bApi.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -16,8 +18,11 @@ const TABS = [
 ];
 const money = (v) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 
-export default function FinancePage() {
+export default function FinancePage({ bootstrap }) {
   const [tab, setTab] = useState('travel');
+  const role = bootstrap?.role?.key ?? '';
+  const qc = useQueryClient();
+  const canDecideLeave = role === 'finance' || role === 'hr' || role === 'founding_director' || role === 'working_director';
   const overview = useQuery({ queryKey: ['finance-overview'], queryFn: billingApi.financeOverview });
   const revenue = useQuery({ queryKey: ['revenue-by-project'], queryFn: billingApi.revenueByProject });
   const costs = useQuery({ queryKey: ['project-costs'], queryFn: billingApi.projectCosts });
@@ -26,6 +31,19 @@ export default function FinancePage() {
     queryFn: () => billingApi.stages({}),
   });
   const bookings = useQuery({ queryKey: ['bookings-finance'], queryFn: () => bookingsApi.list({}) });
+  const settlements = useQuery({ queryKey: ['travel-settlements'], queryFn: () => travelApi.list({}) });
+  const employees = useQuery({ queryKey: ['employees-finance'], queryFn: () => employeesApi.list({}) });
+  const leaves = useQuery({ queryKey: ['finance-leaves'], queryFn: () => leaveApi.list({}) });
+  const decideLeave = useMutation({
+    mutationFn: ({ id, status }) => leaveApi.decide(id, { status }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['finance-leaves'] }),
+  });
+  const financeEmpIds = new Set(
+    (employees.data?.items ?? []).filter((e) => e.department === 'Finance').map((e) => String(e._id)),
+  );
+  const financeLeaves = (leaves.data?.items ?? []).filter((r) =>
+    financeEmpIds.has(String(r.employee?._id ?? r.employee ?? '')),
+  );
   const o = overview.data ?? {};
 
   return (
@@ -93,20 +111,37 @@ export default function FinancePage() {
 
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
       {tab === 'travel' && (
-        <Panel title="Travel expense summary">
-          <DataTable
-            columns={[
-              { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
-              { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-              { key: 'dates', label: 'Dates', render: (r) => `${r.departureDate ? new Date(r.departureDate).toLocaleDateString() : '—'} → ${r.returnDate ? new Date(r.returnDate).toLocaleDateString() : '—'}` },
-              { key: 'hotel', label: 'Hotel' },
-              { key: 'nights', label: 'Nights' },
-              { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-            ]}
-            rows={bookings.data?.items ?? []}
-            emptyText="No travel bookings yet. Detailed expense settlement arrives with Leave & Travel in Phase 4."
-          />
-        </Panel>
+        <>
+          <Panel title="Travel expense summary">
+            <DataTable
+              columns={[
+                { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+                { key: 'dates', label: 'Dates', render: (r) => `${r.departureDate ? new Date(r.departureDate).toLocaleDateString() : '—'} → ${r.returnDate ? new Date(r.returnDate).toLocaleDateString() : '—'}` },
+                { key: 'hotel', label: 'Hotel' },
+                { key: 'nights', label: 'Nights' },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+              ]}
+              rows={bookings.data?.items ?? []}
+              emptyText="No travel bookings yet."
+            />
+          </Panel>
+          <Panel title="Settled travel expenses">
+            <DataTable
+              columns={[
+                { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+                { key: 'advance', label: 'Advance received', render: (r) => money(r.advanceReceived) },
+                { key: 'actual', label: 'Actual expense', render: (r) => money(r.actualExpense) },
+                { key: 'hospitality', label: 'Hospitality', render: (r) => (r.hospitality ? 'Client-arranged (excluded)' : money(0)) },
+                { key: 'balance', label: 'Balance', render: (r) => money(r.balance) },
+                { key: 'settlement', label: 'Settlement', render: (r) => r.settlementStatus ?? '—' },
+              ]}
+              rows={(settlements.data?.items ?? []).filter((r) => (r.actualExpense ?? 0) > 0 || r.settlementStatus)}
+              emptyText="No settled travel expenses yet. Employees settle trips in Leave & Travel."
+            />
+          </Panel>
+        </>
       )}
       {tab === 'hours' && (
         <Panel title="Login hours by project and stage">
@@ -139,7 +174,28 @@ export default function FinancePage() {
       )}
       {tab === 'leave' && (
         <Panel title="Finance leave approvals">
-          <EmptyState text="Finance team leave requests will appear here when Leave & Travel arrives in Phase 4." />
+          <DataTable
+            columns={[
+              { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+              { key: 'leaveType', label: 'Type' },
+              { key: 'from', label: 'From', render: (r) => r.from ? new Date(r.from).toLocaleDateString() : '—' },
+              { key: 'to', label: 'To', render: (r) => r.to ? new Date(r.to).toLocaleDateString() : '—' },
+              { key: 'days', label: 'Days' },
+              { key: 'reason', label: 'Reason' },
+              { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+              {
+                key: 'actions', label: 'Action', render: (r) => canDecideLeave && r.status === 'Pending' ? (
+                  <span style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => decideLeave.mutate({ id: r._id, status: 'Approved' })}>Approve</button>
+                    <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => decideLeave.mutate({ id: r._id, status: 'Rejected' })}>Reject</button>
+                  </span>
+                ) : '—',
+              },
+            ]}
+            rows={financeLeaves}
+            emptyText="No finance team leave requests. Other departments are actioned in Leave & Travel → Approvals."
+          />
+          {decideLeave.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{decideLeave.error.message}</div>}
         </Panel>
       )}
     </div>

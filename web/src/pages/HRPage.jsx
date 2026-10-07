@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { employeesApi, request, teamsApi, workEntriesApi } from '../lib/api.js';
+import { leaveApi, travelApi } from '../lib/phase4bApi.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -105,9 +106,64 @@ function OverviewTab() {
           )}
         </Panel>
       </div>
-      <Panel title="Attendance"><EmptyState text="Attendance arrives in Phase 4." /></Panel>
-      <Panel title="Travel"><EmptyState text="Travel tracking arrives in Phase 4." /></Panel>
+      <AttendancePanel />
+      <TravelPanel />
     </>
+  );
+}
+
+function AttendancePanel() {
+  const q = useQuery({ queryKey: ['hr-leaves'], queryFn: () => leaveApi.list({}) });
+  const today = new Date().toISOString().slice(0, 10);
+  const onLeave = (q.data?.items ?? []).filter((r) => {
+    if (r.status !== 'Approved') return false;
+    const from = String(r.from ?? '').slice(0, 10);
+    const to = String(r.to ?? '').slice(0, 10);
+    return from <= today && today <= to;
+  });
+  return (
+    <Panel title="Attendance today">
+      {q.isLoading ? (
+        <EmptyState text="Loading…" />
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+            { key: 'branch', label: 'Branch', render: (r) => r.employee?.branch ?? '—' },
+            { key: 'service', label: 'Service', render: (r) => r.employee?.department ?? '—' },
+            { key: 'status', label: "Today's status", render: () => <StatusPill status="On leave">On leave</StatusPill> },
+          ]}
+          rows={onLeave}
+          emptyText="Nobody on approved leave today."
+        />
+      )}
+    </Panel>
+  );
+}
+
+function TravelPanel() {
+  const q = useQuery({ queryKey: ['hr-travels'], queryFn: () => travelApi.list({}) });
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = (q.data?.items ?? []).filter(
+    (r) => r.status === 'Approved' && String(r.returnDate ?? r.departureDate ?? '') >= today,
+  );
+  return (
+    <Panel title="Upcoming travel">
+      {q.isLoading ? (
+        <EmptyState text="Loading…" />
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+            { key: 'route', label: 'Route', render: (r) => `${r.fromCity ?? '—'} → ${r.toCity ?? '—'}` },
+            { key: 'dates', label: 'Dates', render: (r) => `${r.departureDate ? String(r.departureDate).slice(0, 10) : '—'} → ${r.returnDate ? String(r.returnDate).slice(0, 10) : '—'}` },
+            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+          ]}
+          rows={upcoming}
+          emptyText="No upcoming approved travel."
+        />
+      )}
+    </Panel>
   );
 }
 
@@ -482,6 +538,16 @@ function TrackTab() {
     queryFn: () => workEntriesApi.list({ employee: selectedId }),
     enabled: !!selectedId,
   });
+  const leaveQ = useQuery({
+    queryKey: ['track-leave', selectedId],
+    queryFn: () => leaveApi.list({ employee: selectedId }),
+    enabled: !!selectedId,
+  });
+  const travelQ = useQuery({
+    queryKey: ['track-travel', selectedId],
+    queryFn: () => travelApi.list({ employee: selectedId }),
+    enabled: !!selectedId,
+  });
 
   const emp = detailQ.data?.employee ?? null;
   const memberships = useMemo(() => {
@@ -577,8 +643,39 @@ function TrackTab() {
               </>
             )}
           </Panel>
-          <Panel title="Leave"><EmptyState text="Leave records arrive in Phase 4." /></Panel>
-          <Panel title="Travel"><EmptyState text="Travel records arrive in Phase 4." /></Panel>
+          <Panel title="Leave">
+            {leaveQ.isLoading ? (
+              <EmptyState text="Loading…" />
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'leaveType', label: 'Type' },
+                  { key: 'from', label: 'From', render: (r) => String(r.from ?? '').slice(0, 10) },
+                  { key: 'to', label: 'To', render: (r) => String(r.to ?? '').slice(0, 10) },
+                  { key: 'days', label: 'Days' },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                ]}
+                rows={leaveQ.data?.items ?? []}
+                emptyText="No leave history for this employee."
+              />
+            )}
+          </Panel>
+          <Panel title="Travel">
+            {travelQ.isLoading ? (
+              <EmptyState text="Loading…" />
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'route', label: 'Route', render: (r) => `${r.fromCity ?? '—'} → ${r.toCity ?? '—'}` },
+                  { key: 'dates', label: 'Dates', render: (r) => `${r.departureDate ? String(r.departureDate).slice(0, 10) : '—'} → ${r.returnDate ? String(r.returnDate).slice(0, 10) : '—'}` },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                  { key: 'settlement', label: 'Settlement', render: (r) => r.settlementStatus ?? '—' },
+                ]}
+                rows={travelQ.data?.items ?? []}
+                emptyText="No travel history for this employee."
+              />
+            )}
+          </Panel>
         </>
       )}
     </>

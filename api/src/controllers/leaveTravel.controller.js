@@ -118,6 +118,19 @@ export async function decideLeave(req, res, next) {
     return res.status(400).json({ message: 'Invalid data.' });
   }
   try {
+    // Finance may decide only its own department's leaves (§4.14).
+    if (req.user.role === 'finance') {
+      const target = await LeaveRequest.findById(req.params.id).populate(
+        'employee',
+        'department',
+      );
+      if (!target) return res.status(404).json({ message: 'Not found.' });
+      if (target.employee?.department !== 'Finance') {
+        return res.status(403).json({
+          message: 'Finance can only decide its own team leaves.',
+        });
+      }
+    }
     const doc = await LeaveRequest.findByIdAndUpdate(
       req.params.id,
       {

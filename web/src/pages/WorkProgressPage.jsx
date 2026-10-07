@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { bootstrapApi, teamsApi, workEntriesApi } from '../lib/api.js';
+import { holidaysApi } from '../lib/phase4bApi.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -270,10 +271,54 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
       )}
 
       {tab === 'holiday' && (
-        <Panel title="Other holiday work">
-          <EmptyState text="Holiday calendar arrives in Phase 4 — only Sunday derivation is shown for now." />
-        </Panel>
+        <HolidayWork date={date} />
       )}
+    </>
+  );
+}
+
+function HolidayWork({ date }) {
+  const year = String(date).slice(0, 4);
+  const holidaysQ = useQuery({
+    queryKey: ['holidays', year],
+    queryFn: () => holidaysApi.list({ year }),
+  });
+  const yearQ = useQuery({
+    queryKey: ['work-entries-year', year, date],
+    queryFn: () => workEntriesApi.list({ from: `${year}-01-01`, to: date }),
+  });
+  const holidays = holidaysQ.data?.items ?? [];
+  const holidaySet = new Set(
+    holidays.map((h) => String(h.date ?? '').slice(0, 10)),
+  );
+  const rows = (yearQ.data?.items ?? []).filter((e) =>
+    holidaySet.has(String(e.date ?? '').slice(0, 10)),
+  );
+  return (
+    <>
+      <Panel title={`Holiday calendar — ${year}`}>
+        <DataTable
+          columns={[
+            { key: 'date', label: 'Date', render: (h) => String(h.date ?? '').slice(0, 10) },
+            { key: 'name', label: 'Holiday' },
+          ]}
+          rows={holidays}
+          emptyText="No holidays in the calendar yet. HR adds them in HR → Holiday calendar."
+        />
+      </Panel>
+      <Panel title="Work on other holidays">
+        <DataTable
+          columns={[
+            { key: 'wu', label: 'WU / Ref', render: (e) => wuDisplay(e) },
+            { key: 'employee', label: 'Employee', render: (e) => empName(e.employee) },
+            { key: 'project', label: 'Project', render: (e) => projLabel(e.project) },
+            { key: 'hours', label: 'Hours' },
+            { key: 'date', label: 'Date', render: (e) => String(e.date ?? '').slice(0, 10) },
+          ]}
+          rows={rows}
+          emptyText="No work logged on holidays in this period."
+        />
+      </Panel>
     </>
   );
 }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, projectsApi } from '../lib/api.js';
 import { bookingsApi } from '../lib/phase3Api.js';
+import { allowanceApi } from '../lib/phase4bApi.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -117,10 +118,45 @@ export default function TravelBookingPage({ bootstrap }) {
           )}
         </Panel>
       ) : (
-        <Panel title="LA / Cab / Other request log">
-          <EmptyState text="Local allowance, cab and other travel requests will appear here when Leave & Travel arrives in Phase 4." />
-        </Panel>
+        <AllowanceLog canDecide={canWrite} />
       )}
     </div>
+  );
+}
+
+function AllowanceLog({ canDecide }) {
+  const qc = useQueryClient();
+  const list = useQuery({ queryKey: ['allowances-finance'], queryFn: () => allowanceApi.list({}) });
+  const decide = useMutation({
+    mutationFn: ({ id, status }) => allowanceApi.decide(id, { status }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['allowances-finance'] }),
+  });
+  return (
+    <Panel title="LA / Cab / Other request log">
+      <DataTable
+        columns={[
+          { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+          { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+          { key: 'reqType', label: 'Type' },
+          { key: 'date', label: 'Date', render: (r) => r.date ? new Date(r.date).toLocaleDateString() : '—' },
+          { key: 'route', label: 'Route', render: (r) => r.route ?? `${r.pickup ?? ''} → ${r.drop ?? ''}` },
+          { key: 'amount', label: 'Amount', render: (r) => `₹${Number(r.amount ?? 0).toLocaleString('en-IN')}` },
+          { key: 'bill', label: 'Bill' },
+          { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+          { key: 'remarks', label: 'Remarks' },
+          {
+            key: 'review', label: 'Review', render: (r) => canDecide && r.status === 'Pending' ? (
+              <span style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="approve-btn" disabled={decide.isPending} onClick={() => decide.mutate({ id: r._id, status: 'Approved' })}>Approve</button>
+                <button type="button" className="approve-btn" disabled={decide.isPending} onClick={() => decide.mutate({ id: r._id, status: 'Rejected' })}>Reject</button>
+              </span>
+            ) : '—',
+          },
+        ]}
+        rows={list.data?.items ?? []}
+        emptyText="No local allowance, cab or other travel requests."
+      />
+      {decide.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{decide.error.message}</div>}
+    </Panel>
   );
 }

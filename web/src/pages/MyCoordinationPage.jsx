@@ -116,6 +116,26 @@ function OverviewTab({ myAllocs, activeProjects, activeLoading }) {
     queryKey: ['work-revisions-open'],
     queryFn: () => request(`/api/work/revisions${toQuery({ status: 'Open' })}`),
   });
+  const meetingsQ = useQuery({
+    queryKey: ['meetings-week'],
+    queryFn: () => meetingsApi.list({}),
+  });
+  const weekMeetings = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+    return (meetingsQ.data?.items ?? []).filter((m) => {
+      if (m.status === 'Cancelled') return false;
+      if (myIds.size > 0) {
+        const pid = String(m.project?._id ?? m.project ?? '');
+        if (!myIds.has(pid)) return false;
+      }
+      const d = m.date ? new Date(m.date) : null;
+      return d && d >= start && d < end;
+    });
+  }, [meetingsQ.data, myIds]);
 
   const revItems = revisions.data?.items ?? [];
   const myRevisions = useMemo(() => {
@@ -147,10 +167,24 @@ function OverviewTab({ myAllocs, activeProjects, activeLoading }) {
         <KpiCard label="My projects" value={myAllocs.length} accent="blueprint" />
         <KpiCard label="Open revisions" value={myRevisions.length} accent="amber" />
         <KpiCard label="Overdue revisions" value={overdue.length} accent="rust" />
-        <KpiCard label="Meetings this week" value="—" accent="neutral" />
+        <KpiCard label="Meetings this week" value={meetingsQ.isLoading ? '…' : weekMeetings.length} accent="teal" />
       </div>
       <Panel title="Meetings this week">
-        <EmptyState text="Meetings arrive in Phase 4 — no meeting data yet." />
+        {meetingsQ.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'title', label: 'Meeting' },
+              { key: 'project', label: 'Project', render: (m) => m.project?.name ?? '—' },
+              { key: 'date', label: 'Date', render: (m) => (m.date ? String(m.date).slice(0, 10) : '—') },
+              { key: 'time', label: 'Time', render: (m) => [m.startTime, m.endTime].filter(Boolean).join('–') || '—' },
+              { key: 'status', label: 'Status', render: (m) => <StatusPill status={m.status}>{m.status}</StatusPill> },
+            ]}
+            rows={weekMeetings}
+            emptyText="No meetings scheduled for your projects this week. Schedule one in the Meetings tab."
+          />
+        )}
       </Panel>
 
       {myAllocs.length === 0 ? (

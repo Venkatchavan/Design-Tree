@@ -14,6 +14,7 @@ import {
   teamsMineApi,
 } from '../lib/workApi.js';
 import { meetingsApi } from '../lib/phase4bApi.js';
+import { transmittalsApi } from '../lib/phase3Api.js';
 import {
   MeetingDetailModal,
   ResponseBox,
@@ -812,7 +813,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp }) {
             </button>
           </Panel>
           <Panel title="Transmittal details">
-            <EmptyState text="Transmittal details arrive in Phase 3." />
+            <MyTransmittals />
           </Panel>
         </>
       )}
@@ -840,5 +841,31 @@ export default function MyWorkPage({ bootstrap: bootstrapProp }) {
 
       {tab === 'meetings' && <MyMeetingsTab />}
     </>
+  );
+}
+
+function MyTransmittals() {
+  const scopeQ = useQuery({
+    queryKey: ['transmittals-mine'],
+    queryFn: () => transmittalsApi.teamScope(),
+  });
+  const rows = scopeQ.data?.items ?? [];
+  if (scopeQ.isLoading) return <EmptyState text="Loading…" />;
+  if (scopeQ.isError) {
+    return <EmptyState text="Transmittal details are unavailable for this role." />;
+  }
+  return (
+    <DataTable
+      columns={[
+        { key: 'trNo', label: 'TR no.', render: (r) => <span className="mono">{r.trNo}</span> },
+        { key: 'project', label: 'Project', render: (r) => r.drawing?.project?.name ?? projLabel(r.drawing?.project) },
+        { key: 'drawing', label: 'Drawing', render: (r) => r.drawing?.drawingNo ?? '—' },
+        { key: 'rev', label: 'Rev', render: (r) => r.rev ?? '—' },
+        { key: 'date', label: 'Date', render: (r) => (r.date ? fmtDate(r.date) : '—') },
+        { key: 'ack', label: 'Ack. status', render: (r) => <StatusPill tone={toneFor(r.status)}>{r.status ?? '—'}</StatusPill> },
+      ]}
+      rows={rows}
+      emptyText="No transmittals for your projects yet."
+    />
   );
 }

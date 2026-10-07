@@ -89,7 +89,16 @@ export default function CertificatesPage() {
         ]} rows={requests.data?.items ?? []} emptyText="No completion certificate requests." /></Panel>
       </>}
 
-      {tab === 'uploads' && <Panel title="Client-uploaded certificates"><EmptyState text="Client uploads will be listed here when the Client Portal upload flow is available in Phase 4." /></Panel>}
+      {tab === 'uploads' && <Panel title="Client-uploaded certificates"><DataTable columns={[
+          { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+          { key: 'category', label: 'Category' },
+          { key: 'createdAt', label: 'Requested', render: (r) => r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—' },
+          { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+          { key: 'file', label: 'Uploaded file', render: (r) => {
+            const cert = (list.data?.items ?? []).find((c) => c.status === 'Uploaded' && String(c.project?._id ?? c.project ?? '') === String(r.project?._id ?? r.project ?? '') && (c.certType ?? '') === (r.category ?? ''));
+            return cert?.file ?? '—';
+          } },
+        ]} rows={(requests.data?.items ?? []).filter((r) => r.status === 'Uploaded')} emptyText="No client-uploaded certificates yet. Clients upload against requests from the Project Portal." /></Panel>}
     </div>
   );
 }

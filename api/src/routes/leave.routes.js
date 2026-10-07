@@ -33,6 +33,8 @@ const LEAVE_APPROVERS = [
   'assoc_technical_director',
   'technical_director',
   'hr',
+  // Finance decides its own team's leaves only (checked in decideLeave).
+  'finance',
 ];
 const TRAVEL_APPROVERS = [...LEAVE_APPROVERS, 'finance'];
 
