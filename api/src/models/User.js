@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { ROLE_KEYS } from '../config/roles.js';
 
 const userSchema = new mongoose.Schema(
   {
@@ -12,8 +13,15 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
     passwordHash: { type: String, required: true, select: false },
-    role: { type: String, required: true, index: true, default: 'founding_director' },
+    role: {
+      type: String,
+      required: true,
+      index: true,
+      enum: ROLE_KEYS,
+      default: 'founding_director',
+    },
     isActive: { type: Boolean, default: true },
+    employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   },
   { timestamps: true },
 );

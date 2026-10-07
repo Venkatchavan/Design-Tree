@@ -24,6 +24,7 @@ function toPublicUser(user) {
     email: user.email,
     name: user.name,
     role: user.role,
+    employee: user.employee?._id?.toString?.() ?? user.employee?.toString?.() ?? null,
   };
 }
 
