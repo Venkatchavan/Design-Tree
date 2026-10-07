@@ -109,7 +109,7 @@ export async function uploadForRequest(req, res, next) {
       project: request.project,
       certType: request.category,
       status: 'Uploaded',
-      file: req.file.filename,
+      file: `certificates/${req.file.filename}`,
       createdBy: req.user.id,
     });
     return res.status(201).json({ item: cert });

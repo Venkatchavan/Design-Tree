@@ -7,9 +7,10 @@ import {
   certificates,
   createCertificate,
   createCertRequest,
+  downloadCertificate,
   downloadTemplate,
   listTemplates,
-  uploadFile,
+  uploadTemplateFile,
 } from '../controllers/certificates.controller.js';
 
 const router = Router();
@@ -27,7 +28,7 @@ const VIEWERS = [
 
 router.get('/templates/all', requireRole(...VIEWERS), listTemplates);
 router.post('/templates', requireRole('admin_billing'), (req, res, next) =>
-  uploadFile(req, res, (err) =>
+  uploadTemplateFile(req, res, (err) =>
     err ? next(err) : addTemplate(req, res, next),
   ),
 );
@@ -39,5 +40,6 @@ router.post('/requests', requireRole('admin_billing'), createCertRequest);
 router.get('/', requireRole(...VIEWERS), certificates.list);
 router.post('/', requireRole('admin_billing'), createCertificate);
 router.get('/:id', requireRole(...VIEWERS), certificates.get);
+router.get('/:id/file', requireRole(...VIEWERS), downloadCertificate);
 
 export default router;

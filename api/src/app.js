@@ -1,4 +1,3 @@
-import path from 'node:path';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
@@ -8,6 +7,7 @@ import billingRoutes from './routes/billing.routes.js';
 import bookingsRoutes from './routes/bookings.routes.js';
 import certificatesRoutes from './routes/certificates.routes.js';
 import designmgmtRoutes from './routes/designmgmt.routes.js';
+import documentsRoutes from './routes/documents.routes.js';
 import employeesRoutes from './routes/employees.routes.js';
 import leaveRoutes from './routes/leave.routes.js';
 import marketingRoutes from './routes/marketing.routes.js';
@@ -65,9 +65,10 @@ export function createApp() {
   app.use('/api/portal', portalRoutes);
   app.use('/api/notifications', notificationsRoutes);
   app.use('/api/reports', reportsRoutes);
-  // Certificate/template file downloads (auth-checked download route exists;
-  // static serving is a convenience for intranet use).
-  app.use('/uploads', express.static(path.resolve('uploads')));
+  // Document files are served ONLY through auth-checked download routes
+  // (certificates, templates, visits, bills, employees, marketing).
+  // No public static file serving.
+  app.use('/api/documents', documentsRoutes);
 
   app.use((req, res) => {
     res.status(404).json({ message: `Not found: ${req.method} ${req.path}` });

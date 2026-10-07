@@ -17,6 +17,8 @@ const drawingSchema = new mongoose.Schema(
     date: { type: Date, default: Date.now },
     issuedTo: { type: String, trim: true },
     method: { type: String, trim: true },
+    // Email proof screenshot / PDF for a drawing submission (§4.2).
+    proof: { type: String, trim: true },
     sharedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },

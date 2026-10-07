@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, projectsApi } from '../lib/api.js';
 import { SUPER_ROLES } from '../lib/session.js';
 import { allowanceApi, holidaysApi, leaveApi, travelApi } from '../lib/phase4bApi.js';
+import { docsApi, fileUrl } from '../lib/docsApi.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -497,47 +498,57 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
   const [passengers, setPassengers] = useState('');
   const [description, setDescription] = useState('');
   const [purpose, setPurpose] = useState('');
+  const [billFile, setBillFile] = useState(null);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
-  const create = useMutation({
-    mutationFn: (body) => allowanceApi.create(body),
-    onSuccess: () => {
-      onDone();
-      setErr('');
-      setDate('');
-      setProject('');
-      setAmount('');
-      setDays('');
-      setRoute('');
-      setPickup('');
-      setDrop('');
-      setMeetingTime('');
-      setVehicle('');
-      setPassengers('');
-      setDescription('');
-      setPurpose('');
-    },
-    onError: (e) => setErr(e.message),
-  });
+  function resetForm() {
+    setDate('');
+    setProject('');
+    setAmount('');
+    setDays('');
+    setRoute('');
+    setPickup('');
+    setDrop('');
+    setMeetingTime('');
+    setVehicle('');
+    setPassengers('');
+    setDescription('');
+    setPurpose('');
+    setBillFile(null);
+  }
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
     setErr('');
-    create.mutate({
-      reqType,
-      date: date || undefined,
-      project: project || undefined,
-      amount: amount === '' ? undefined : Number(amount),
-      days: days === '' ? undefined : Number(days),
-      route: route || undefined,
-      pickup: pickup || undefined,
-      drop: drop || undefined,
-      meetingTime: meetingTime || undefined,
-      vehicle: vehicle || undefined,
-      passengers: passengers === '' ? undefined : Number(passengers),
-      description: description || undefined,
-      purpose: purpose || undefined,
-    });
+    setBusy(true);
+    try {
+      const created = await allowanceApi.create({
+        reqType,
+        date: date || undefined,
+        project: project || undefined,
+        amount: amount === '' ? undefined : Number(amount),
+        days: days === '' ? undefined : Number(days),
+        route: route || undefined,
+        pickup: pickup || undefined,
+        drop: drop || undefined,
+        meetingTime: meetingTime || undefined,
+        vehicle: vehicle || undefined,
+        passengers: passengers === '' ? undefined : Number(passengers),
+        description: description || undefined,
+        purpose: purpose || undefined,
+      });
+      const id = created?.item?._id ?? created?.item?.id;
+      if (billFile && id) {
+        await docsApi.allowanceBill(id, billFile);
+      }
+      onDone();
+      resetForm();
+    } catch (e2) {
+      setErr(e2.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -572,9 +583,10 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
           </div>
           <div className="form-row"><label className="form-label">Description</label><input className="form-input" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
           <div className="form-row"><label className="form-label">Purpose</label><input className="form-input" value={purpose} onChange={(e) => setPurpose(e.target.value)} /></div>
+          <div className="form-row"><label className="form-label">Bill / invoice (attachment)</label><input type="file" onChange={(e) => setBillFile(e.target.files?.[0] ?? null)} /></div>
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-          <button type="submit" className="btn-primary" disabled={create.isPending}>
-            {create.isPending ? 'Submitting…' : 'Submit request'}
+          <button type="submit" className="btn-primary" disabled={busy}>
+            {busy ? 'Submitting…' : 'Submit request'}
           </button>
         </form>
       </Panel>
@@ -587,6 +599,7 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
               { key: 'reqType', label: 'Type' },
               { key: 'date', label: 'Date', render: (r) => fmtDate(r.date) },
               { key: 'amount', label: 'Amount' },
+              { key: 'bill', label: 'Bill', render: (r) => (r.bill ? <a href={fileUrl(r.bill)} download>Download</a> : '—') },
               { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
             ]}
             rows={mine}

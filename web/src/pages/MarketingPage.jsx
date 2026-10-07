@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { marketingApi } from '../lib/phase4aApi.js';
+import { docsApi, fileUrl } from '../lib/docsApi.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -31,6 +32,9 @@ export default function MarketingPage({ bootstrap, user, viewKey }) {
   const [search, setSearch] = useState('');
   const [contactType, setContactType] = useState('');
   const [briefProject, setBriefProject] = useState(null);
+  const [briefFiles, setBriefFiles] = useState([]);
+  const [briefUploading, setBriefUploading] = useState(false);
+  const [briefUploadErr, setBriefUploadErr] = useState('');
   const [briefForm, setBriefForm] = useState({
     highlights: '',
     testimonial: '',
@@ -430,6 +434,53 @@ export default function MarketingPage({ bootstrap, user, viewKey }) {
                 {saveBrief.isPending ? 'Saving…' : 'Save brief'}
               </button>
             </form>
+          )}
+          {briefItem && (
+            <div style={{ marginTop: 16 }}>
+              <div className="section-label">Photos / renders</div>
+              {(briefItem.photos ?? []).length > 0 && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                  {(briefItem.photos ?? []).map((p, i) => (
+                    <a key={i} href={fileUrl(p)} download>
+                      Photo {i + 1}
+                    </a>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf"
+                  onChange={(e) => setBriefFiles([...(e.target.files ?? [])])}
+                />
+                <button
+                  type="button"
+                  className="approve-btn"
+                  disabled={briefUploading || briefFiles.length === 0}
+                  onClick={async () => {
+                    const pid = briefProject?.id ?? briefProject?._id;
+                    if (!pid) return;
+                    setBriefUploading(true);
+                    setBriefUploadErr('');
+                    try {
+                      await docsApi.briefPhotos(pid, briefFiles);
+                      setBriefFiles([]);
+                      qc.invalidateQueries({ queryKey: ['marketing-brief'] });
+                    } catch (err) {
+                      setBriefUploadErr(err.message);
+                    } finally {
+                      setBriefUploading(false);
+                    }
+                  }}
+                >
+                  {briefUploading ? 'Uploading…' : 'Upload photos'}
+                </button>
+              </div>
+              {briefUploadErr && (
+                <div className="login-error" role="alert" style={{ display: 'block' }}>{briefUploadErr}</div>
+              )}
+            </div>
           )}
         </Modal>
       )}

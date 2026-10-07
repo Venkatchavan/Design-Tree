@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { employeesApi, request, teamsApi, workEntriesApi } from '../lib/api.js';
 import { leaveApi, travelApi } from '../lib/phase4bApi.js';
+import { docsApi, fileUrl } from '../lib/docsApi.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -494,6 +495,7 @@ function ManageTab({ bootstrap }) {
                     <Field label="Mobile" value={emp.mobile} />
                     <Field label="Status" value={emp.status} />
                   </div>
+                  <EmployeeDocuments empId={emp._id ?? emp.id} docs={emp.documents ?? []} />
                   <div className="section-label" style={{ marginTop: 12 }}>Linked login</div>
                   {!login ? (
                     <EmptyState text="No login linked to this employee." />
@@ -510,6 +512,72 @@ function ManageTab({ bootstrap }) {
           )}
         </Modal>
       )}
+    </>
+  );
+}
+
+function EmployeeDocuments({ empId, docs }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState('');
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function upload(e) {
+    e.preventDefault();
+    if (!file) {
+      setErr('Choose a file first.');
+      return;
+    }
+    setBusy(true);
+    setErr('');
+    try {
+      await docsApi.employeeDoc(empId, file, name);
+      setName('');
+      setFile(null);
+      queryClient.invalidateQueries({ queryKey: ['employee', empId] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    } catch (e2) {
+      setErr(e2.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="section-label" style={{ marginTop: 12 }}>Documents</div>
+      {(docs ?? []).length === 0 ? (
+        <EmptyState text="No documents on file for this employee." />
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'name', label: 'Document' },
+            {
+              key: 'at', label: 'Uploaded', render: (d) => (d.at ? String(d.at).slice(0, 10) : '—'),
+            },
+            {
+              key: 'file', label: 'File', render: (d) => (d.file ? <a href={fileUrl(d.file)} download>Download</a> : '—'),
+            },
+          ]}
+          rows={docs ?? []}
+          emptyText="No documents on file for this employee."
+        />
+      )}
+      <form onSubmit={upload} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
+        <input
+          className="form-input"
+          style={{ maxWidth: 220 }}
+          placeholder="Document name (e.g. Aadhaar)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <button type="submit" className="approve-btn" disabled={busy}>
+          {busy ? 'Uploading…' : 'Upload'}
+        </button>
+      </form>
+      {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
     </>
   );
 }

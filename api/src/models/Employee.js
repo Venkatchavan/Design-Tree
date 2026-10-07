@@ -89,6 +89,15 @@ employeeSchema.pre('validate', async function autoEmpId() {
 
 employeeSchema.add({
   hourlyRate: { type: Number, min: 0, default: 0 },
+  documents: [
+    {
+      name: { type: String, trim: true },
+      file: { type: String, trim: true },
+      at: { type: Date, default: Date.now },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      _id: false,
+    },
+  ],
 });
 
 export const Employee =

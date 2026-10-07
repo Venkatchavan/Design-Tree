@@ -1,6 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import multer from 'multer';
 import {
   Certificate,
   CertRequest,
@@ -8,25 +5,21 @@ import {
 } from '../models/Certificate.js';
 import { makeCrud } from '../utils/crud.js';
 import {
+  removeFile,
+  sendDownload,
+  uploadSingle,
+} from '../utils/storage.js';
+import {
   certificateSchema,
   certRequestSchema,
 } from '../validation/phase3.schema.js';
 
 const POP_PROJ = 'name code branch';
 
-const uploadDir = path.resolve('uploads');
-fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadDir),
-  filename: (_req, file, cb) =>
-    cb(null, `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`),
-});
-
-export const uploadFile = multer({
-  storage,
-  limits: { fileSize: 15 * 1024 * 1024 },
-}).single('file');
+// Client / issued certificate files.
+export const uploadFile = uploadSingle('file', 'certificates');
+// Template files.
+export const uploadTemplateFile = uploadSingle('file', 'templates');
 
 export const certificates = makeCrud(Certificate, {
   create: certificateSchema,
@@ -71,12 +64,16 @@ export async function addTemplate(req, res, next) {
     }
     const category = String(req.body?.category ?? '').trim();
     if (!category) {
-      fs.unlink(req.file.path, () => {});
+      removeFile(`templates/${req.file.filename}`);
       return res.status(400).json({ message: 'Certificate category is required.' });
     }
     const doc = await CertTemplate.findOneAndUpdate(
       { category },
-      { category, file: req.file.filename, uploadedBy: req.user.id },
+      {
+        category,
+        file: `templates/${req.file.filename}`,
+        uploadedBy: req.user.id,
+      },
       { upsert: true, new: true, returnDocument: 'after' },
     );
     return res.status(201).json({ item: doc });
@@ -91,9 +88,18 @@ export async function addTemplate(req, res, next) {
 export async function downloadTemplate(req, res, next) {
   try {
     const doc = await CertTemplate.findById(req.params.id);
-    if (!doc) return res.status(404).json({ message: 'Not found.' });
-    const full = path.join(uploadDir, path.basename(doc.file));
-    return res.download(full, doc.file);
+    if (!doc || !doc.file) return res.status(404).json({ message: 'Not found.' });
+    return sendDownload(res, doc.file, next);
+  } catch (err) {
+    return next(err);
+  }
+}
+
+export async function downloadCertificate(req, res, next) {
+  try {
+    const doc = await Certificate.findById(req.params.id);
+    if (!doc || !doc.file) return res.status(404).json({ message: 'Not found.' });
+    return sendDownload(res, doc.file, next);
   } catch (err) {
     return next(err);
   }

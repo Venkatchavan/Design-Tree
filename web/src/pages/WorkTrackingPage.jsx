@@ -33,6 +33,7 @@ import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Field from '../components/Field.jsx';
 import { MAN_HOUR_NOTE } from '../components/SignOutButton.jsx';
+import { docsApi, fileUrl } from '../lib/docsApi.js';
 
 const VARIANT_FOR_ROLE = {
   qs: 'qs',
@@ -562,7 +563,8 @@ function QaqcTools({ projects, employees, user }) {
   const [vProject, setVProject] = useState('');
   const [vType, setVType] = useState('');
   const [vDate, setVDate] = useState(todayISO());
-  const [vPhotos, setVPhotos] = useState('');
+  const [vPhotoFiles, setVPhotoFiles] = useState([]);
+  const [vUploading, setVUploading] = useState(false);
   const [vRemarksClient, setVRemarksClient] = useState('');
   const [vRemarksDesigner, setVRemarksDesigner] = useState('');
   const [vAdditional, setVAdditional] = useState(false);
@@ -642,7 +644,7 @@ function QaqcTools({ projects, employees, user }) {
     mutationFn: (body) => visitsApi.create(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['site-visits'] });
-      setVProject(''); setVType(''); setVDate(todayISO()); setVPhotos('');
+      setVProject(''); setVType(''); setVDate(todayISO()); setVPhotoFiles([]);
       setVRemarksClient(''); setVRemarksDesigner('');
       setVAdditional(false); setVDiscFound(false); setVSeverity('');
       setVErr('');
@@ -687,24 +689,38 @@ function QaqcTools({ projects, employees, user }) {
     onError: (e) => setRErr(e.message),
   });
 
-  function submitVisit(e) {
+  async function submitVisit(e) {
     e.preventDefault();
     setVErr('');
     if (!vProject) {
       setVErr('Project is required.');
       return;
     }
-    visitSave.mutate({
-      project: vProject,
-      visitType: vType || undefined,
-      date: vDate || undefined,
-      photos: vPhotos.split('\n').map((s) => s.trim()).filter(Boolean),
-      remarksClient: vRemarksClient || undefined,
-      remarksDesigner: vRemarksDesigner || undefined,
-      additionalVisit: vAdditional || undefined,
-      discrepancyFound: vDiscFound || undefined,
-      severity: vSeverity || undefined,
-    });
+    setVUploading(true);
+    try {
+      const created = await visitsApi.create({
+        project: vProject,
+        visitType: vType || undefined,
+        date: vDate || undefined,
+        remarksClient: vRemarksClient || undefined,
+        remarksDesigner: vRemarksDesigner || undefined,
+        additionalVisit: vAdditional || undefined,
+        discrepancyFound: vDiscFound || undefined,
+        severity: vSeverity || undefined,
+      });
+      const id = created?.item?._id ?? created?.item?.id;
+      if (vPhotoFiles.length > 0 && id) {
+        await docsApi.visitPhotos(id, vPhotoFiles);
+      }
+      queryClient.invalidateQueries({ queryKey: ['site-visits'] });
+      setVProject(''); setVType(''); setVDate(todayISO()); setVPhotoFiles([]);
+      setVRemarksClient(''); setVRemarksDesigner('');
+      setVAdditional(false); setVDiscFound(false); setVSeverity('');
+    } catch (err) {
+      setVErr(err.message);
+    } finally {
+      setVUploading(false);
+    }
   }
 
   function submitDisc(e) {
@@ -797,8 +813,18 @@ function QaqcTools({ projects, employees, user }) {
               </div>
             </div>
             <div className="form-row">
-              <label className="form-label">Photo URLs (one per line)</label>
-              <textarea className="form-input" value={vPhotos} onChange={(e) => setVPhotos(e.target.value)} />
+              <label className="form-label">Site photos (upload)</label>
+              <input
+                type="file"
+                multiple
+                accept="image/*,.pdf"
+                onChange={(e) => setVPhotoFiles([...(e.target.files ?? [])])}
+              />
+              {vPhotoFiles.length > 0 && (
+                <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 4 }}>
+                  {vPhotoFiles.length} file(s) selected
+                </div>
+              )}
             </div>
             <div className="form-row">
               <label className="form-label">Client remarks</label>
@@ -819,8 +845,8 @@ function QaqcTools({ projects, employees, user }) {
               </label>
             </div>
             {vErr && <div className="login-error" role="alert" style={{ display: 'block' }}>{vErr}</div>}
-            <button type="submit" className="btn-primary" disabled={visitSave.isPending}>
-              {visitSave.isPending ? 'Saving…' : 'Log visit'}
+            <button type="submit" className="btn-primary" disabled={vUploading}>
+              {vUploading ? 'Saving…' : 'Log visit'}
             </button>
           </form>
         </Panel>
@@ -836,6 +862,23 @@ function QaqcTools({ projects, employees, user }) {
                   { key: 'severity', label: 'Severity' },
                   { key: 'additionalVisit', label: 'Addl.', render: (v) => (v.additionalVisit ? 'Yes' : '—') },
                   { key: 'discrepancyFound', label: 'Disc.', render: (v) => (v.discrepancyFound ? 'Yes' : '—') },
+                  {
+                    key: 'photos', label: 'Photos', render: (v) => (v.photos ?? []).length === 0 ? '—' : (
+                      <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {(v.photos ?? []).map((p, i) => (
+                          String(p).includes('/') ? (
+                            <a key={i} href={fileUrl(p)} download>
+                              Photo {i + 1}
+                            </a>
+                          ) : (
+                            <a key={i} href={String(p)} target="_blank" rel="noreferrer">
+                              Link {i + 1}
+                            </a>
+                          )
+                        ))}
+                      </span>
+                    ),
+                  },
                 ]}
                 rows={visits}
                 emptyText="No site visits yet."

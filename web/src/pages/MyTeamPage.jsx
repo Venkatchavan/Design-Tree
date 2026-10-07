@@ -18,6 +18,7 @@ import {
 } from '../lib/workApi.js';
 import { transmittalsApi } from '../lib/phase3Api.js';
 import { SUPER_ROLES } from '../lib/session.js';
+import { docsApi, fileUrl } from '../lib/docsApi.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -664,6 +665,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
                   { key: 'project', label: 'Project', render: (d) => projLabel(d.project) },
                   { key: 'stage', label: 'Stage', render: (d) => d.stage ?? '—' },
                   { key: 'rev', label: 'Rev', render: (d) => d.rev ?? '—' },
+                  { key: 'proof', label: 'Email proof', render: (d) => (d.proof ? <a href={fileUrl(d.proof)} download>Download</a> : '—') },
                 ]}
                 rows={teamDrawings}
                 emptyText="No drawings yet."
@@ -1404,38 +1406,44 @@ function DrawingModal({ teamProjects, onClose }) {
   const [title, setTitle] = useState('');
   const [stage, setStage] = useState('');
   const [rev, setRev] = useState('');
+  const [proofFile, setProofFile] = useState(null);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const create = useMutation({
-    mutationFn: (body) => drawingsApi.create(body),
-    onSuccess: () => {
+  async function submit(e) {
+    e.preventDefault();
+    setErr('');
+    if (!project) {
+      setErr('Select a project.');
+      return;
+    }
+    if (!drawingNo.trim() || !title.trim()) {
+      setErr('Drawing number and title are required.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const created = await drawingsApi.create({
+        project,
+        drawingNo: drawingNo.trim(),
+        title: title.trim(),
+        stage: stage || undefined,
+        rev: rev || undefined,
+      });
+      const id = created?.item?._id ?? created?.item?.id;
+      if (proofFile && id) {
+        await docsApi.drawingProof(id, proofFile);
+      }
       queryClient.invalidateQueries({ queryKey: ['drawings'] });
       onClose();
-    },
-    onError: (e) => setErr(e.message),
-  });
+    } catch (e2) {
+      setErr(e2.message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <Modal title="Add drawing" onClose={onClose}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setErr('');
-          if (!project) {
-            setErr('Select a project.');
-            return;
-          }
-          if (!drawingNo.trim() || !title.trim()) {
-            setErr('Drawing number and title are required.');
-            return;
-          }
-          create.mutate({
-            project,
-            drawingNo: drawingNo.trim(),
-            title: title.trim(),
-            stage: stage || undefined,
-            rev: rev || undefined,
-          });
-        }}
-      >
+      <form onSubmit={submit}>
         <div className="form-row">
           <label className="form-label">Project *</label>
           <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
@@ -1465,9 +1473,13 @@ function DrawingModal({ teamProjects, onClose }) {
             <input className="form-input" value={rev} onChange={(e) => setRev(e.target.value)} />
           </div>
         </div>
+        <div className="form-row">
+          <label className="form-label">Email proof (screenshot / PDF)</label>
+          <input type="file" accept="image/*,.pdf" onChange={(e) => setProofFile(e.target.files?.[0] ?? null)} />
+        </div>
         {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-        <button type="submit" className="btn-primary" disabled={create.isPending}>
-          {create.isPending ? 'Saving…' : 'Add drawing'}
+        <button type="submit" className="btn-primary" disabled={busy}>
+          {busy ? 'Saving…' : 'Add drawing'}
         </button>
       </form>
     </Modal>

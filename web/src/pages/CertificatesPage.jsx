@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { projectsApi } from '../lib/api.js';
+import { API_BASE, projectsApi } from '../lib/api.js';
 import { certificatesApi } from '../lib/phase3Api.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -96,7 +96,8 @@ export default function CertificatesPage() {
           { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
           { key: 'file', label: 'Uploaded file', render: (r) => {
             const cert = (list.data?.items ?? []).find((c) => c.status === 'Uploaded' && String(c.project?._id ?? c.project ?? '') === String(r.project?._id ?? r.project ?? '') && (c.certType ?? '') === (r.category ?? ''));
-            return cert?.file ?? '—';
+            const id = cert?._id ?? cert?.id;
+            return cert?.file && id ? <a href={`${API_BASE}/api/certificates/${id}/file`} download>Download</a> : '—';
           } },
         ]} rows={(requests.data?.items ?? []).filter((r) => r.status === 'Uploaded')} emptyText="No client-uploaded certificates yet. Clients upload against requests from the Project Portal." /></Panel>}
     </div>
