@@ -241,12 +241,28 @@ export const meetingUpdateSchema = z
   })
   .strict();
 export const momSchema = z
-  .object({ mom: z.string().trim().optional(), momDoc: strOpt })
+  .object({
+    discussion: z.string().trim().optional(),
+    decisions: z.string().trim().optional(),
+    followUp: z.string().trim().optional(),
+    nextMeeting: dateOpt,
+    momDoc: strOpt,
+    // Legacy single-text MOM from earlier builds.
+    mom: z.string().trim().optional(),
+  })
   .strict();
 export const attendanceSchema = z
   .object({
     attendance: z
-      .array(z.object({ employee: objectId, present: z.boolean().optional() }).strict())
+      .array(
+        z
+          .object({
+            employee: objectId,
+            present: z.boolean().optional(),
+            reason: strOpt,
+          })
+          .strict(),
+      )
       .min(1),
   })
   .strict();
@@ -254,7 +270,9 @@ export const actionSchema = z
   .object({
     text: z.string().trim().min(1),
     owner: objectId.optional(),
+    priority: z.enum(['High', 'Medium', 'Low']).optional(),
     due: dateOpt,
+    note: strOpt,
   })
   .strict();
 export const actionStatusSchema = z

@@ -79,18 +79,39 @@ export const meetingsApi = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
-  held: (id) => request(`/api/meetings/${id}/held`, { method: 'POST' }),
-  cancel: (id) => request(`/api/meetings/${id}/cancel`, { method: 'POST' }),
+  held: (id) => request(`/api/meetings/${id}/held`, { method: 'PATCH' }),
+  cancel: (id, body) =>
+    request(`/api/meetings/${id}/cancel`, {
+      method: 'PATCH',
+      body: JSON.stringify(body ?? {}),
+    }),
   attendance: (id, body) =>
     request(`/api/meetings/${id}/attendance`, {
-      method: 'POST',
+      method: 'PUT',
       body: JSON.stringify(body),
     }),
   mom: (id, body) =>
     request(`/api/meetings/${id}/mom`, {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify(body),
     }),
+  momDownloadUrl: (id) => `${API_BASE}/api/meetings/${id}/mom/download`,
+  refDocs: async (id, files) => {
+    const form = new FormData();
+    for (const f of files) form.append('files', f);
+    const res = await fetch(`${API_BASE}/api/meetings/${id}/refdocs`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.message ?? 'Upload failed.');
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  },
   addAction: (id, body) =>
     request(`/api/meetings/${id}/actions`, {
       method: 'POST',
@@ -98,6 +119,11 @@ export const meetingsApi = {
     }),
   actionStatus: (id, actionId, body) =>
     request(`/api/meetings/${id}/actions/${actionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  actionNote: (id, actionId, body) =>
+    request(`/api/meetings/${id}/actions/${actionId}/note`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),

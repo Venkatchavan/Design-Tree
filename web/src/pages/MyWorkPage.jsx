@@ -21,6 +21,8 @@ import {
   actionLabel,
   fmtDate as mtgFmtDate,
   idOf as mtgIdOf,
+  isDueSoonAction,
+  isOverdueAction,
   projLabel as mtgProjLabel,
 } from '../components/MeetingsCommon.jsx';
 import {
@@ -275,25 +277,10 @@ function MyMeetingsTab() {
   const listQ = useQuery({ queryKey: ['meetings', 'mine'], queryFn: () => meetingsApi.list({ mine: true }) });
   const items = listQ.data?.items ?? [];
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const upcoming = items.filter((m) => {
-    const s = String(m.status ?? '').toLowerCase();
-    if (s !== 'scheduled') return false;
-    if (!m.date) return true;
-    const d = new Date(m.date);
-    return Number.isNaN(d.getTime()) || d >= today;
+  const momList = items.filter((m) => {
+    const mom = m.mom && typeof m.mom === 'object' ? m.mom : {};
+    return !!((mom.discussion ?? '').trim() || (mom.decisions ?? '').trim() || m.momDoc);
   });
-  const log = items.filter((m) => {
-    const s = String(m.status ?? '').toLowerCase();
-    if (['held', 'cancelled', 'canceled'].includes(s)) return true;
-    if (m.date) {
-      const d = new Date(m.date);
-      if (!Number.isNaN(d.getTime()) && d < today) return true;
-    }
-    return false;
-  });
-  const withMom = items.filter((m) => m.mom);
   const momMeeting = momId ? items.find((m) => String(m._id ?? m.id) === String(momId)) : null;
 
   const myActions = useMemo(() => {
@@ -302,7 +289,14 @@ function MyMeetingsTab() {
       for (const a of m.actions ?? []) {
         const ownerId = mtgIdOf(a.owner);
         if (myEmpId && ownerId && ownerId === String(myEmpId)) {
-          out.push({ ...a, meetingId: m._id ?? m.id, meetingTitle: m.title, meetingDate: m.date });
+          out.push({
+            ...a,
+            meetingId: m._id ?? m.id,
+            meetingTitle: m.title,
+            meetingDate: m.date,
+            meetingMomNo: m.momNo,
+            meetingProject: mtgProjLabel(m.project),
+          });
         }
       }
     }
@@ -316,81 +310,483 @@ function MyMeetingsTab() {
     },
   });
 
+  const saveNote = useMutation({
+    mutationFn: ({ meetingId, actionId, note }) => meetingsApi.actionNote(meetingId, actionId, { note }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['meetings'] });
+    },
+  });
+
+  // ---- Employee-dashboard derivations (§5, §11) ----
+  const dayKey = (d) => {
+    if (!d) return '';
+    const dt = new Date(d);
+    if (Number.isNaN(dt.getTime())) return '';
+    return dt.toISOString().slice(0, 10);
+  };
+  const todayKey = dayKey(new Date());
+  const myInviteOf = (m) => (m.invites ?? []).find((v) => mtgIdOf(v.employee) === String(myEmpId)) ?? null;
+  const momAvailable = (m) => {
+    const mom = m.mom && typeof m.mom === 'object' ? m.mom : {};
+    return !!((mom.discussion ?? '').trim() || (mom.decisions ?? '').trim() || m.momDoc);
+  };
+  // Employee-facing status (§11.1): Upcoming / Rescheduled / Awaiting update /
+  // Completed · MOM pending / Completed / Cancelled.
+  const empStatus = (m) => {
+    const s = String(m.status ?? '').toLowerCase();
+    if (s === 'cancelled' || s === 'canceled') return 'Cancelled';
+    if (s === 'held') return momAvailable(m) ? 'Completed' : 'Completed · MOM pending';
+    const dk = dayKey(m.date);
+    if (m.originalDate && dk && dk >= todayKey) return 'Rescheduled';
+    if (dk && dk < todayKey) return 'Awaiting update';
+    return 'Upcoming';
+  };
+  const isUpcoming = (m) => ['Upcoming', 'Rescheduled'].includes(empStatus(m));
+  const inLog = (m) => !isUpcoming(m);
+
+  const upcoming = items.filter(isUpcoming);
+  const log = items.filter(inLog);
+  const todayMeetings = upcoming.filter((m) => dayKey(m.date) === todayKey);
+  const pendingResponses = upcoming.filter((m) => {
+    const inv = myInviteOf(m);
+    return !inv || (inv.response !== 'Available' && inv.response !== 'Not Available');
+  });
+  const openActions = myActions.filter((a) => ['Pending', 'In Progress'].includes(a.status));
+  const overdueActions = openActions.filter((a) => {
+    if (!a.due) return false;
+    const d = new Date(a.due);
+    return !Number.isNaN(d.getTime()) && d < today;
+  });
+  const attendedCount = log.filter((m) => {
+    const att = (m.attendance ?? []).find((x) => mtgIdOf(x.employee) === String(myEmpId));
+    return att?.present;
+  }).length;
+
+  const [inviteFilter, setInviteFilter] = useState('all');
+  const [logProject, setLogProject] = useState('');
+  const [logMom, setLogMom] = useState('all');
+  const [actionFilter, setActionFilter] = useState('open');
+  const [confirmMsg, setConfirmMsg] = useState('');
+
+  const filteredInvites = upcoming.filter((m) => {
+    if (inviteFilter === 'awaiting') return pendingResponses.includes(m);
+    if (inviteFilter === 'responded') return !pendingResponses.includes(m);
+    return true;
+  });
+  const projectOptions = useMemo(() => {
+    const map = new Map();
+    for (const m of log) {
+      const id = mtgIdOf(m.project);
+      if (id && !map.has(id)) map.set(id, mtgProjLabel(m.project));
+    }
+    return [...map.entries()];
+  }, [log]);
+  const filteredLog = log.filter((m) => {
+    if (logProject && mtgIdOf(m.project) !== logProject) return false;
+    if (logMom === 'available' && !momAvailable(m)) return false;
+    if (logMom === 'pending' && !(m.status === 'Held' && !momAvailable(m))) return false;
+    return true;
+  });
+  const filteredActions = myActions.filter((a) => {
+    if (actionFilter === 'open') return ['Pending', 'In Progress'].includes(a.status);
+    if (actionFilter === 'overdue') return isOverdueAction(a);
+    if (actionFilter === 'completed') return a.status === 'Completed';
+    return true;
+  });
+
+  function setStatusWithConfirm(meetingId, actionId, status) {
+    flip.mutate(
+      { meetingId, actionId, status },
+      { onSuccess: () => setConfirmMsg(`Status set to ${status}.`) },
+    );
+  }
+
   return (
     <>
-      <Panel title="My invitations (upcoming scheduled)">
-        {listQ.isLoading ? <EmptyState text="Loading…" /> : listQ.isError ? (
-          <div className="login-error" role="alert" style={{ display: 'block' }}>{listQ.error.message}</div>
-        ) : upcoming.length === 0 ? (
-          <EmptyState text="No upcoming invitations." />
+      <div className="kpi-grid cols-6">
+        <KpiCard label="Today's meetings" value={todayMeetings.length} accent="blueprint" />
+        <KpiCard label="Upcoming meetings" value={upcoming.length} accent="teal" />
+        <KpiCard label="Pending responses" value={pendingResponses.length} accent={pendingResponses.length > 0 ? 'amber' : 'neutral'} />
+        <KpiCard label="Open action items" value={openActions.length} accent="violet" />
+        <KpiCard label="Overdue action items" value={overdueActions.length} accent={overdueActions.length > 0 ? 'rust' : 'neutral'} />
+        <KpiCard label="Meetings attended" value={attendedCount} accent="forest" />
+      </div>
+      {listQ.isError && (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{listQ.error.message}</div>
+      )}
+      <Panel title="Today's meetings">
+        {listQ.isLoading ? <EmptyState text="Loading…" /> : todayMeetings.length === 0 ? (
+          <EmptyState text="No meetings today." />
         ) : (
-          upcoming.map((m) => (
-            <div key={String(m._id ?? m.id)} style={{ borderBottom: '1px solid var(--border)', padding: '10px 0' }}>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <b style={{ fontSize: 13.5 }}>{m.title ?? '—'}</b>
-                <StatusPill tone={statusTone(m.status)}>{m.status ?? '—'}</StatusPill>
-                <span style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>{mtgProjLabel(m.project)} · {mtgFmtDate(m.date)} {m.startTime ?? ''}</span>
-                <button type="button" className="approve-btn" onClick={() => setDetailId(m._id ?? m.id)}>Details</button>
-              </div>
-              <ResponseBox meeting={m} myEmpId={myEmpId} />
-            </div>
+          todayMeetings.map((m) => (
+            <MeetingCard key={String(m._id ?? m.id)} m={m} myEmpId={myEmpId} onDetails={setDetailId} />
           ))
         )}
       </Panel>
-      <Panel title="Meeting log (held / cancelled / past)">
+      <Panel title="Upcoming meetings">
+        {listQ.isLoading ? <EmptyState text="Loading…" /> : (
+          <DataTable
+            columns={[
+              { key: 'date', label: 'Date', render: (r) => dayLabel(r.date) },
+              { key: 'title', label: 'Title', render: (r) => r.title ?? '—' },
+              { key: 'project', label: 'Project', render: (r) => mtgProjLabel(r.project) },
+              { key: 'time', label: 'Time', render: (r) => [r.startTime, r.endTime].filter(Boolean).join('–') || '—' },
+              { key: 'type', label: 'Type', render: (r) => r.type ?? '—' },
+              { key: 'response', label: 'Response', render: (r) => <ResponseLabel meeting={r} myEmpId={myEmpId} /> },
+            ]}
+            rows={upcoming.filter((m) => dayLabel(m.date) !== 'Today')}
+            emptyText="No other upcoming meetings."
+            onRowClick={(r) => setDetailId(r._id ?? r.id)}
+          />
+        )}
+      </Panel>
+      <Panel title="Pending availability responses">
+        {pendingResponses.length === 0 ? (
+          <EmptyState text="You have responded to every invitation." />
+        ) : (
+          pendingResponses.map((m) => (
+            <MeetingCard key={String(m._id ?? m.id)} m={m} myEmpId={myEmpId} onDetails={setDetailId} />
+          ))
+        )}
+      </Panel>
+      <Panel title="My action items (up to 5 open)">
         <DataTable
           columns={[
-            { key: 'title', label: 'Title', render: (r) => r.title ?? '—' },
-            { key: 'project', label: 'Project', render: (r) => mtgProjLabel(r.project) },
-            { key: 'date', label: 'Date', render: (r) => mtgFmtDate(r.date) },
-            { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+            { key: 'text', label: 'Action', render: (a) => a.text ?? '—' },
+            { key: 'due', label: 'Due', render: (a) => `${mtgFmtDate(a.due)} · ${actionLabel(a)}` },
+            { key: 'status', label: 'Status', render: (a) => <StatusPill tone={statusTone(a.status)}>{a.status ?? '—'}</StatusPill> },
+            { key: 'project', label: 'Project', render: (a) => a.meetingProject ?? '—' },
           ]}
-          rows={log}
-          emptyText="No past meetings."
+          rows={[...openActions].sort((a, b) => String(a.due ?? '') < String(b.due ?? '') ? -1 : 1).slice(0, 5)}
+          emptyText="No open action items."
+        />
+      </Panel>
+      <Panel title="Meeting invitations">
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          {[
+            ['all', 'All upcoming'],
+            ['awaiting', 'Awaiting my response'],
+            ['responded', 'Responded'],
+          ].map(([k, label]) => (
+            <button key={k} type="button" className={`tab-btn${inviteFilter === k ? ' active' : ''}`} onClick={() => setInviteFilter(k)}>
+              {label}{k === 'awaiting' && pendingResponses.length > 0 ? ` (${pendingResponses.length})` : ''}
+            </button>
+          ))}
+        </div>
+        {listQ.isLoading ? <EmptyState text="Loading…" /> : filteredInvites.length === 0 ? (
+          <EmptyState text="No invitations in this view." />
+        ) : (
+          filteredInvites.map((m) => (
+            <MeetingCard key={String(m._id ?? m.id)} m={m} myEmpId={myEmpId} onDetails={setDetailId} />
+          ))
+        )}
+      </Panel>
+      <Panel title="Meeting log">
+        <div className="field-grid" style={{ marginBottom: 10 }}>
+          <div className="form-row">
+            <label className="form-label">Project</label>
+            <select className="filter-select" style={{ width: '100%' }} value={logProject} onChange={(e) => setLogProject(e.target.value)}>
+              <option value="">All my projects</option>
+              {projectOptions.map(([id, label]) => (<option key={id} value={id}>{label}</option>))}
+            </select>
+          </div>
+          <div className="form-row">
+            <label className="form-label">MOM</label>
+            <select className="filter-select" style={{ width: '100%' }} value={logMom} onChange={(e) => setLogMom(e.target.value)}>
+              <option value="all">All</option>
+              <option value="available">MOM available</option>
+              <option value="pending">MOM pending</option>
+            </select>
+          </div>
+        </div>
+        <DataTable
+          columns={[
+            { key: 'datetime', label: 'Date & time', render: (r) => `${mtgFmtDate(r.date)}${r.startTime ? ` ${r.startTime}` : ''}${r.endTime ? `–${r.endTime}` : ''}` },
+            { key: 'project', label: 'Project', render: (r) => mtgProjLabel(r.project) },
+            { key: 'meeting', label: 'Meeting', render: (r) => `${r.title ?? '—'} · ${r.type ?? ''}` },
+            { key: 'link', label: 'Link', render: (r) => r.mode === 'Online' && r.link ? <a href={r.link} target="_blank" rel="noreferrer">Join</a> : r.mode === 'Online' ? '—' : `Offline: ${r.location ?? '—'}` },
+            { key: 'organiser', label: 'Organiser', render: (r) => r.responsible ?? '—' },
+            { key: 'invited', label: 'Invited', render: (r) => (r.invites ?? []).length || (r.participants ?? []).length || '—' },
+            { key: 'attended', label: 'Attended', render: (r) => attendanceNames(r) },
+            { key: 'unavailable', label: 'Unavailable & reason', render: (r) => unavailableList(r) },
+            { key: 'you', label: 'You', render: (r) => myAttendance(r, myEmpId) },
+            { key: 'status', label: 'Status', render: (r) => <StatusPill tone={empStatusTone(empStatus(r))}>{empStatus(r)}</StatusPill> },
+            { key: 'mom', label: 'MOM', render: (r) => momAvailable(r) ? <StatusPill tone="forest">Available</StatusPill> : r.status === 'Held' ? <StatusPill tone="amber">Pending</StatusPill> : '—' },
+          ]}
+          rows={filteredLog}
+          emptyText="Meetings move here automatically once they are held. Open one to read the MOM and your action items."
           onRowClick={(r) => setDetailId(r._id ?? r.id)}
         />
       </Panel>
       <Panel title="MOM view">
-        {withMom.length === 0 ? <EmptyState text="No MOM published yet." /> : (
+        {momList.length === 0 ? <EmptyState text="No MOM published yet." /> : (
           <>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-              {withMom.map((m) => (
+              {momList.map((m) => (
                 <button key={String(m._id ?? m.id)} type="button" className={`tab-btn${String(momId) === String(m._id ?? m.id) ? ' active' : ''}`} onClick={() => setMomId(m._id ?? m.id)}>
-                  {m.title ?? '—'}
+                  {m.momNo ?? m.title ?? '—'}
                 </button>
               ))}
             </div>
             {!momMeeting ? <EmptyState text="Select a meeting to read its MOM." /> : (
-              <p style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{momMeeting.mom}</p>
+              <MomViewer meeting={momMeeting} />
             )}
           </>
         )}
       </Panel>
       <Panel title={`My action items (${myActions.length})`}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          {[
+            ['open', 'Open'],
+            ['overdue', 'Overdue'],
+            ['completed', 'Completed'],
+            ['all', 'All'],
+          ].map(([k, label]) => (
+            <button key={k} type="button" className={`tab-btn${actionFilter === k ? ' active' : ''}`} onClick={() => setActionFilter(k)}>
+              {label}{k === 'overdue' && overdueActions.length > 0 ? ` (${overdueActions.length})` : ''}
+            </button>
+          ))}
+        </div>
+        {confirmMsg && <p style={{ fontSize: 12.5, color: 'var(--forest-dark)' }}>{confirmMsg}</p>}
         <DataTable
           columns={[
-            { key: 'text', label: 'Action', render: (a) => a.text ?? '—' },
-            { key: 'meeting', label: 'Meeting', render: (a) => `${a.meetingTitle ?? '—'} · ${mtgFmtDate(a.meetingDate)}` },
-            { key: 'due', label: 'Due', render: (a) => `${mtgFmtDate(a.due)} · ${actionLabel(a)}` },
-            { key: 'status', label: 'Status', render: (a) => <StatusPill tone={statusTone(a.status)}>{a.status ?? '—'}</StatusPill> },
+            { key: 'text', label: 'Action / task', render: (a) => <><div>{a.text ?? '—'}</div><div style={{ fontSize: 11.5, color: 'var(--ink-muted)' }}>{a.note ?? ''}</div></> },
+            { key: 'project', label: 'Project', render: (a) => a.meetingProject ?? '—' },
+            { key: 'meeting', label: 'From meeting', render: (a) => <button type="button" className="approve-btn" onClick={() => setDetailId(a.meetingId)}>{a.meetingMomNo ?? a.meetingTitle ?? 'Open'}</button> },
             {
-              key: 'flip',
-              label: 'Update',
-              render: (a) => (
-                <span style={{ display: 'flex', gap: 6 }}>
-                  <button type="button" className="approve-btn" onClick={() => flip.mutate({ meetingId: a.meetingId, actionId: a._id ?? a.id, status: 'Completed' })}>Complete</button>
-                  <button type="button" className="approve-btn" onClick={() => flip.mutate({ meetingId: a.meetingId, actionId: a._id ?? a.id, status: 'Open' })}>Reopen</button>
-                </span>
+              key: 'priority', label: 'Priority', render: (a) => {
+                const p = a.priority ?? 'Medium';
+                return <StatusPill tone={p === 'High' ? 'rust' : p === 'Low' ? 'neutral' : 'amber'}>{p}</StatusPill>;
+              },
+            },
+            {
+              key: 'due', label: 'Due date', render: (a) => {
+                const over = isOverdueAction(a);
+                const days = over && a.due ? Math.ceil((Date.now() - new Date(a.due).getTime()) / 86400000) : 0;
+                return <span style={{ color: over ? 'var(--rust-dark)' : isDueSoonAction(a) ? 'var(--amber-dark)' : undefined }}>
+                  {mtgFmtDate(a.due)}{over ? ` · ${days}d overdue` : ''}
+                </span>;
+              },
+            },
+            {
+              key: 'status', label: 'Status', render: (a) => (
+                <select
+                  className="filter-select"
+                  value={a.status ?? 'Pending'}
+                  onChange={(e) => setStatusWithConfirm(a.meetingId, a._id ?? a.id, e.target.value)}
+                >
+                  <option>Pending</option>
+                  <option>In Progress</option>
+                  <option>Completed</option>
+                </select>
+              ),
+            },
+            { key: 'completed', label: 'Completed', render: (a) => (a.completedAt ? mtgFmtDate(a.completedAt) : '—') },
+            {
+              key: 'note', label: 'Update note', render: (a) => (
+                <input
+                  className="form-input"
+                  style={{ minWidth: 140 }}
+                  placeholder="Progress update for SPOC"
+                  defaultValue={a.note ?? ''}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v !== (a.note ?? '')) {
+                      saveNote.mutate(
+                        { meetingId: a.meetingId, actionId: a._id ?? a.id, note: v },
+                        { onSuccess: () => setConfirmMsg('Update saved.') },
+                      );
+                    }
+                  }}
+                />
               ),
             },
           ]}
-          rows={myActions}
-          emptyText="No action items assigned to you."
+          rows={filteredActions}
+          emptyText="No action items in this view."
         />
       </Panel>
       {detailId && <MeetingDetailModal meetingId={detailId} onClose={() => setDetailId(null)} />}
     </>
   );
+}
+
+const SERVICE_CODES = {
+  structural: 'S',
+  mechanical: 'M',
+  electrical: 'E',
+  plumbing: 'P',
+  fire: 'F',
+  'mep coordination': 'MC',
+};
+
+function serviceCodes(services) {
+  return (services ?? []).map((s) => {
+    const key = String(s ?? '').toLowerCase();
+    return SERVICE_CODES[key] ?? String(s ?? '').slice(0, 1).toUpperCase();
+  });
+}
+
+function dayLabel(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return String(d);
+  const key = dt.toISOString().slice(0, 10);
+  const now = new Date();
+  const todayK = now.toISOString().slice(0, 10);
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  if (key === todayK) return 'Today';
+  if (key === tomorrow.toISOString().slice(0, 10)) return 'Tomorrow';
+  return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function empStatusTone(s) {
+  const v = String(s ?? '').toLowerCase();
+  if (v === 'upcoming') return 'teal';
+  if (v === 'rescheduled') return 'amber';
+  if (v === 'awaiting update') return 'neutral';
+  if (v === 'completed') return 'forest';
+  if (v === 'completed · mom pending') return 'amber';
+  if (v === 'cancelled') return 'rust';
+  return statusTone(s);
+}
+
+function ResponseLabel({ meeting, myEmpId }) {
+  const inv = (meeting?.invites ?? []).find(
+    (v) => String(typeof v.employee === 'object' ? (v.employee?._id ?? v.employee?.id ?? '') : v.employee) === String(myEmpId),
+  );
+  if (!inv || (inv.response !== 'Available' && inv.response !== 'Not Available')) {
+    return <StatusPill tone="amber">Response needed</StatusPill>;
+  }
+  return inv.response === 'Available'
+    ? <StatusPill tone="forest">You: available</StatusPill>
+    : <StatusPill tone="rust">You: not available</StatusPill>;
+}
+
+function inviteeNames(meeting) {
+  const names = [];
+  for (const p of meeting?.participants ?? []) {
+    if (p.employee) continue;
+    if (p.name) names.push(p.name);
+  }
+  return names;
+}
+
+function MeetingCard({ m, myEmpId, onDetails }) {
+  const inv = (m.invites ?? []).find(
+    (v) => String(typeof v.employee === 'object' ? (v.employee?._id ?? v.employee?.id ?? '') : v.employee) === String(myEmpId),
+  );
+  const proj = m.project ?? {};
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 10 }}>
+      <div style={{ fontSize: 11, color: 'var(--ink-faint)' }}>
+        {proj.code ?? ''}{proj.code && proj.name ? ' · ' : ''}{proj.name ?? ''}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '4px 0' }}>
+        <b style={{ fontSize: 14 }}>{m.title ?? '—'}</b>
+        <ResponseLabel meeting={m} myEmpId={myEmpId} />
+        <button type="button" className="approve-btn" onClick={() => onDetails(m._id ?? m.id)}>Details</button>
+      </div>
+      <div style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
+        {dayLabel(m.date)}
+        {[m.startTime, m.endTime].filter(Boolean).length > 0 && ` · ${[m.startTime, m.endTime].filter(Boolean).join('–')}`}
+        {` · ${m.type ?? ''} · ${m.mode ?? ''}`}
+      </div>
+      <div style={{ fontSize: 12.5, marginTop: 4 }}>
+        Organised by (SPOC): {m.responsible ?? '—'}
+        {m.mode === 'Online' && m.link && (
+          <> · <a href={m.link} target="_blank" rel="noreferrer">Meeting link</a>{' '}
+          <button type="button" className="approve-btn" onClick={() => navigator.clipboard?.writeText(m.link)}>Copy link</button></>
+        )}
+        {m.mode !== 'Online' && m.location && <> · {m.location}</>}
+      </div>
+      <div style={{ fontSize: 12.5, marginTop: 4 }}>
+        Services: {serviceCodes(m.services).join(', ') || '—'}
+      </div>
+      <div style={{ fontSize: 12.5, marginTop: 4 }}>
+        Participants: {(m.invites ?? []).map((v, i) => {
+          const emp = v.employee ?? {};
+          const name = [emp.firstName, emp.lastName].filter(Boolean).join(' ') || emp.empId || '—';
+          const you = String(emp._id ?? emp.id ?? '') === String(myEmpId);
+          return <span key={i}>{i > 0 ? ', ' : ''}{name}{you ? ' (YOU)' : ''}</span>;
+        })}
+        {inviteeNames(m).map((n, i) => <span key={`x${i}`}>, {n}</span>)}
+      </div>
+      {m.agenda && <div style={{ fontSize: 12.5, marginTop: 4 }}><b>Agenda / purpose:</b> {m.agenda}</div>}
+      {(m.refDocs ?? []).length > 0 && (
+        <div style={{ fontSize: 12.5, marginTop: 4 }}>
+          Reference documents: {(m.refDocs ?? []).map((d, i) => <span key={i}>{i > 0 ? ', ' : ''}{String(d).split('/').pop()}</span>)}
+        </div>
+      )}
+      <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', marginTop: 4 }}>
+        Invitation received {inv?.invitedAt ? new Date(inv.invitedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+        {m.momNo ? ` · ${m.momNo}` : ''}
+      </div>
+      <ResponseBox meeting={m} myEmpId={myEmpId} organiser={m.responsible} />
+    </div>
+  );
+}
+
+function MomViewer({ meeting }) {
+  const mom = meeting?.mom && typeof meeting.mom === 'object' ? meeting.mom : {};
+  return (
+    <div className="field-grid">
+      <div><div className="form-label">Key discussion points</div><p style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{mom.discussion?.trim() || '—'}</p></div>
+      <div><div className="form-label">Decisions taken</div><p style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{mom.decisions?.trim() || '—'}</p></div>
+      <div><div className="form-label">Follow-up requirements</div><p style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{mom.followUp?.trim() || '—'}</p></div>
+      <div><div className="form-label">Next meeting date</div><p style={{ fontSize: 13 }}>{mom.nextMeeting ? new Date(mom.nextMeeting).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</p></div>
+      <div>
+        <div className="form-label">MOM document</div>
+        <p style={{ fontSize: 13 }}>{meeting?.momDoc ?? 'Entered in system'}</p>
+      </div>
+      <div>
+        <div className="form-label">Download</div>
+        <a className="approve-btn" style={{ textDecoration: 'none', display: 'inline-block' }} href={meetingsApi.momDownloadUrl(meeting._id ?? meeting.id)} download>
+          Download MOM
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function attendanceNames(m) {
+  const att = m.attendance ?? [];
+  if (att.length === 0) return 'Not marked';
+  return att
+    .filter((x) => x.present)
+    .map((x) => {
+      const e = x.employee ?? {};
+      return typeof e === 'string' ? e : ([e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || '—');
+    })
+    .join(', ') || '—';
+}
+
+function unavailableList(m) {
+  const out = [];
+  for (const x of m.attendance ?? []) {
+    if (x.present) continue;
+    const e = x.employee ?? {};
+    const name = typeof e === 'string' ? e : ([e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || '—');
+    out.push(`${name}${x.reason ? ` — ${x.reason}` : ''}`);
+  }
+  if (out.length > 0) return out.join('; ');
+  const resp = (m.invites ?? [])
+    .filter((v) => v.response === 'Not Available')
+    .map((v) => {
+      const e = v.employee ?? {};
+      const name = typeof e === 'string' ? e : ([e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || '—');
+      return `${name}${v.reason ? ` — ${v.reason}` : ' — Not given'}`;
+    });
+  return resp.join('; ') || '—';
+}
+
+function myAttendance(m, myEmpId) {
+  const att = (m.attendance ?? []).find(
+    (x) => String(typeof x.employee === 'object' ? (x.employee?._id ?? x.employee?.id ?? '') : x.employee) === String(myEmpId),
+  );
+  if (!att) return 'Not marked';
+  return att.present ? 'Attended' : 'Absent';
 }
 
 export default function MyWorkPage({ bootstrap: bootstrapProp }) {

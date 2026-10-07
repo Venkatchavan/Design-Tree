@@ -782,7 +782,7 @@ function CoordinationMeetingsTab() {
       </Panel>
       {showSchedule && <ScheduleMeetingModal onClose={() => setShowSchedule(false)} />}
       {showSudden && <ScheduleMeetingModal sudden onClose={() => setShowSudden(false)} />}
-      {detailId && <MeetingDetailModal meetingId={detailId} onClose={() => setDetailId(null)} />}
+      {detailId && <MeetingDetailModal meetingId={detailId} manage onClose={() => setDetailId(null)} />}
     </>
   );
 }

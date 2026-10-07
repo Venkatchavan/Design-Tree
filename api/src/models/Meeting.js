@@ -30,6 +30,7 @@ const inviteSchema = new mongoose.Schema(
     reason: { type: String, trim: true },
     note: { type: String, trim: true },
     respondedAt: { type: Date },
+    invitedAt: { type: Date, default: Date.now },
     _id: false,
   },
 );
@@ -42,6 +43,7 @@ const attendanceSchema = new mongoose.Schema(
       required: true,
     },
     present: { type: Boolean, default: true },
+    reason: { type: String, trim: true },
     _id: false,
   },
 );
@@ -50,8 +52,14 @@ const actionSchema = new mongoose.Schema(
   {
     text: { type: String, required: true, trim: true },
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+    priority: {
+      type: String,
+      enum: ['High', 'Medium', 'Low'],
+      default: 'Medium',
+    },
     due: { type: Date },
     status: { type: String, enum: ACTION_STATUSES, default: 'Open' },
+    note: { type: String, trim: true },
     completedAt: { type: Date },
   },
   { timestamps: true },
@@ -95,10 +103,18 @@ const meetingSchema = new mongoose.Schema(
         _id: false,
       },
     ],
+    momNo: { type: String, trim: true, uppercase: true, index: true },
     invites: [inviteSchema],
     attendance: [attendanceSchema],
-    mom: { type: String, trim: true },
+    refDocs: [{ type: String, trim: true }],
+    mom: {
+      discussion: { type: String, trim: true },
+      decisions: { type: String, trim: true },
+      followUp: { type: String, trim: true },
+      nextMeeting: { type: Date },
+    },
     momDoc: { type: String, trim: true },
+    cancelReason: { type: String, trim: true },
     actions: [actionSchema],
     status: {
       type: String,
