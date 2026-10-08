@@ -4,15 +4,16 @@ import { EMPLOYEE_STATUSES } from '../models/Employee.js';
 const dateOpt = z.coerce.date().optional();
 const strOpt = z.string().trim().optional();
 
-// Payroll-master form (§4.7): core fields validated, the rest accepted
-// as-submitted and stored on the employee record.
+// Create: only firstName is mandatory; update (partial) is all-optional.
+// Login (email/password/role) is validated separately and required on
+// create only for login-capable callers (see controller).
 export const employeeSchema = z
   .object({
     empId: z.string().trim().optional(),
     salutation: strOpt,
     firstName: z.string().trim().min(1),
     middleName: strOpt,
-    lastName: z.string().trim().min(1),
+    lastName: strOpt,
     shortName: strOpt,
     fatherName: strOpt,
     motherName: strOpt,
@@ -20,11 +21,11 @@ export const employeeSchema = z
     sex: strOpt,
     maritalStatus: strOpt,
     spouseName: strOpt,
-    designation: z.string().trim().min(1),
+    designation: strOpt,
     qualification: strOpt,
-    department: z.string().trim().min(1),
+    department: strOpt,
     reportingManager: strOpt,
-    branch: z.string().trim().min(1),
+    branch: strOpt,
     division: strOpt,
     salaryStructure: strOpt,
     bank: z
@@ -49,7 +50,7 @@ export const employeeSchema = z
     stdCode: strOpt,
     phone: strOpt,
     mobile: strOpt,
-    dateOfJoining: z.coerce.date(),
+    dateOfJoining: dateOpt,
     salaryFrom: dateOpt,
     leavingDate: dateOpt,
     leavingReason: strOpt,

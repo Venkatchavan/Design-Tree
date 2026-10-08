@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { ROLE_KEYS } from '../config/roles.js';
+import { ROLE_KEYS, USER_ADMIN_ROLES, isSuperRole } from '../config/roles.js';
 import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
 import {
@@ -18,7 +18,13 @@ export async function listEmployees(req, res, next) {
     const filter = {};
     if (branch) filter.branch = branch;
     if (department) filter.department = department;
-    if (status) filter.status = status;
+    if (status) {
+      const s = String(status).trim().toLowerCase();
+      if (s === 'active') filter.status = 'Active';
+      else if (s === 'on leave' || s === 'on-leave' || s === 'onleave') filter.status = 'On Leave';
+      else if (s === 'exited') filter.status = 'Exited';
+      else filter.status = status;
+    }
     if (search) {
       const rx = new RegExp(escapeRegExp(search), 'i');
       filter.$or = [
@@ -77,6 +83,14 @@ export async function createEmployee(req, res, next) {
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid employee data.', errors: parsed.error.issues });
     }
+    // Mandatory-4 on create: firstName (schema) + login email/password/role,
+    // but only for callers who may provision logins. Others may create
+    // login-less records (route guard currently limits POST to those roles).
+    const callerRole = req.user?.role;
+    const canProvisionLogin = isSuperRole(callerRole) || USER_ADMIN_ROLES.includes(callerRole);
+    if (canProvisionLogin && login == null) {
+      return res.status(400).json({ message: 'Login email, password and role are required.' });
+    }
     let loginData = null;
     if (login != null) {
       const loginParsed = employeeLoginSchema.safeParse(login);
@@ -109,7 +123,7 @@ export async function createEmployee(req, res, next) {
 
     if (loginData) {
       try {
-        const name = `${employee.firstName} ${employee.lastName}`.trim();
+        const name = `${employee.firstName ?? ''} ${employee.lastName ?? ''}`.trim() || loginData.email;
         const user = await User.create({
           name,
           email: loginData.email,
