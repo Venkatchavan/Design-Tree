@@ -42,6 +42,13 @@ if (-not $mongoUser -or -not $mongoPass) {
   throw "MONGO_ROOT_USER / MONGO_ROOT_PASSWORD not found in .env - cannot authenticate mongorestore."
 }
 
+# Guard against deploying/operating with development values: the production
+# .env must never be a copy of api/.env (localhost Mongo/origin).
+$origin = $env_map["CLIENT_ORIGIN"]
+if ($origin -match "localhost|127\.0\.0\.1") {
+  throw "CLIENT_ORIGIN is '$origin' - this looks like api/.env (development) values. Aborting: use the production root .env."
+}
+
 $dumpWin = Join-Path (Join-Path $backupsRootWin "mongo") "$Backup.gz"
 $snapWin = Join-Path (Join-Path $backupsRootWin "uploads") $Backup
 if (-not (Test-Path -LiteralPath $dumpWin)) { throw "Database archive not found: $dumpWin" }

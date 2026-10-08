@@ -1,5 +1,6 @@
 import { isSuperRole } from '../config/roles.js';
 import { Counter } from '../models/Counter.js';
+import { notify, userIdsForEmployees } from '../models/Notification.js';
 import { Employee } from '../models/Employee.js';
 import {
   INVITE_RESPONSES,
@@ -20,6 +21,42 @@ function invalidMessage(parsed) {
   const uniq = [...new Set(msgs)];
   if (uniq.length === 0) return 'Invalid data.';
   return uniq.slice(0, 4).join(' ');
+}
+
+function fmtDayShort(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+// Relevance-targeted live notifications (bell + socket push).
+// Every call is fire-and-forget: a failed push must never fail the meeting write.
+function meetingLink(doc) {
+  return { view: 'meeting', id: String(doc._id) };
+}
+
+async function notifyInvitees(doc, title, detail) {
+  try {
+    const users = await userIdsForEmployees((doc.invites ?? []).map((i) => i.employee));
+    if (users.length === 0) return;
+    await notify({
+      users,
+      project: doc.project,
+      link: meetingLink(doc),
+      title,
+      detail,
+      type: 'meeting',
+    });
+  } catch {
+    /* bell/push best-effort only */
+  }
+}
+
+function spocUserOf(doc) {
+  const id = doc.createdBy?._id ?? doc.createdBy;
+  const s = String(id ?? '');
+  return /^[0-9a-fA-F]{24}$/.test(s) ? [s] : [];
 }
 
 // Legacy 'Open' action status predates the spec (now 'Pending'). Normalise
@@ -166,6 +203,13 @@ export async function createMeeting(req, res, next) {
       responsibleRole,
       createdBy: req.user.id,
     });
+    if (category === 'Scheduled') {
+      notifyInvitees(
+        doc,
+        `Meeting invitation: ${doc.title}`,
+        `${fmtDayShort(doc.date)}${doc.startTime ? `, ${doc.startTime}` : ''} · ${doc.type ?? ''}`,
+      ).catch(() => {});
+    }
     return res.status(201).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -214,6 +258,11 @@ export async function rescheduleMeeting(req, res, next) {
     doc.status = 'Rescheduled';
     normaliseActionStatuses(doc);
     await doc.save();
+    notifyInvitees(
+      doc,
+      `Meeting rescheduled: ${doc.title}`,
+      `New date ${fmtDayShort(doc.date)}${doc.startTime ? `, ${doc.startTime}` : ''}`,
+    ).catch(() => {});
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -237,6 +286,7 @@ export async function markHeld(req, res, next) {
     }
     normaliseActionStatuses(doc);
     await doc.save();
+    notifyInvitees(doc, `Meeting held: ${doc.title}`, 'Attendance and MOM follow.').catch(() => {});
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -258,6 +308,11 @@ export async function cancelMeeting(req, res, next) {
     }
     normaliseActionStatuses(doc);
     await doc.save();
+    notifyInvitees(
+      doc,
+      `Meeting cancelled: ${doc.title}`,
+      doc.cancelReason ? `Reason: ${doc.cancelReason}` : '',
+    ).catch(() => {});
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -317,6 +372,7 @@ export async function saveMom(req, res, next) {
     if (parsed.data.momDoc !== undefined) doc.momDoc = parsed.data.momDoc;
     normaliseActionStatuses(doc);
     await doc.save();
+    notifyInvitees(doc, `MOM published: ${doc.title}`, doc.momNo ? `${doc.momNo}` : '').catch(() => {});
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -351,6 +407,25 @@ export async function addAction(req, res, next) {
     doc.actions.push({ ...parsed.data, service, status: parsed.data.status ?? 'Pending' });
     normaliseActionStatuses(doc);
     await doc.save();
+    try {
+      const added = doc.actions[doc.actions.length - 1];
+      const ownerUsers = added.owner ? await userIdsForEmployees([added.owner]) : [];
+      const recipients = [...new Set([...ownerUsers, ...spocUserOf(doc)])].filter(
+        (u) => u !== String(req.user.id),
+      );
+      if (recipients.length > 0) {
+        await notify({
+          users: recipients,
+          project: doc.project,
+          link: meetingLink(doc),
+          title: `Action assigned: ${added.text?.slice(0, 80) ?? 'new task'}`,
+          detail: `${doc.title ?? ''}${added.due ? ` · due ${fmtDayShort(added.due)}` : ''}`,
+          type: 'action',
+        });
+      }
+    } catch {
+      /* bell/push best-effort only */
+    }
     return res.status(201).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -385,6 +460,24 @@ export async function setActionStatus(req, res, next) {
     normaliseActionStatuses(doc);
     action.status = parsed.data.status;
     await doc.save();
+    try {
+      const ownerUsers = action.owner ? await userIdsForEmployees([action.owner]) : [];
+      const recipients = [...new Set([...ownerUsers, ...spocUserOf(doc)])].filter(
+        (u) => u !== String(req.user.id),
+      );
+      if (recipients.length > 0) {
+        await notify({
+          users: recipients,
+          project: doc.project,
+          link: meetingLink(doc),
+          title: `Action ${parsed.data.status === 'Completed' ? 'completed' : 'reopened'}: ${action.text?.slice(0, 80) ?? ''}`,
+          detail: doc.title ?? '',
+          type: 'action',
+        });
+      }
+    } catch {
+      /* bell/push best-effort only */
+    }
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -412,6 +505,24 @@ export async function setActionNote(req, res, next) {
     action.note = note || undefined;
     normaliseActionStatuses(doc);
     await doc.save();
+    try {
+      const ownerUsers = action.owner ? await userIdsForEmployees([action.owner]) : [];
+      const recipients = [...new Set([...ownerUsers, ...spocUserOf(doc)])].filter(
+        (u) => u !== String(req.user.id),
+      );
+      if (recipients.length > 0 && note) {
+        await notify({
+          users: recipients,
+          project: doc.project,
+          link: meetingLink(doc),
+          title: `Progress update: ${action.text?.slice(0, 80) ?? ''}`,
+          detail: note.slice(0, 140),
+          type: 'action',
+        });
+      }
+    } catch {
+      /* bell/push best-effort only */
+    }
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -454,6 +565,7 @@ export async function uploadMomDoc(req, res, next) {
     doc.momDoc = f.originalname ?? f.filename;
     normaliseActionStatuses(doc);
     await doc.save();
+    notifyInvitees(doc, `MOM document uploaded: ${doc.title}`, doc.momDoc ?? '').catch(() => {});
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -597,6 +709,27 @@ export async function respondInvite(req, res, next) {
     target.note = parsed.data.note;
     target.respondedAt = new Date();
     await doc.save();
+    try {
+      const responders = await Employee.findById(empId).select('firstName lastName').lean();
+      const name = responders
+        ? [responders.firstName, responders.lastName].filter(Boolean).join(' ')
+        : 'A team member';
+      const recipients = spocUserOf(doc).filter((u) => u !== String(req.user.id));
+      if (recipients.length > 0) {
+        await notify({
+          users: recipients,
+          project: doc.project,
+          link: meetingLink(doc),
+          title: `${name} is ${parsed.data.response === 'Available' ? 'available' : 'not available'}: ${doc.title}`,
+          detail: parsed.data.response === 'Not Available' && parsed.data.reason
+            ? `${parsed.data.reason}${parsed.data.note ? ` — ${parsed.data.note}` : ''}`
+            : '',
+          type: 'meeting-response',
+        });
+      }
+    } catch {
+      /* bell/push best-effort only */
+    }
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);

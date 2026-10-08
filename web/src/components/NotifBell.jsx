@@ -1,7 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
+import { meApi } from '../lib/api.js';
 import { notificationsApi } from '../lib/phase4bApi.js';
+import { subscribeNotifications } from '../lib/realtime.js';
+
+// Deep-link map for notification click-through (bell only, 2A).
+function pathForLink(link, role) {
+  if (!link?.view) return null;
+  switch (link.view) {
+    case 'meeting':
+      return role === 'coordinator' ? '/my-coordination' : '/my-work';
+    case 'leave':
+    case 'travel':
+    case 'allowance':
+      return '/leave-travel';
+    case 'support':
+      return '/support';
+    case 'transmittal':
+      return '/transmittals';
+    case 'revision':
+      return role === 'team_lead' ? '/my-team' : '/my-coordination';
+    default:
+      return null;
+  }
+}
 
 function timeAgo(v) {
   if (!v) return '';
@@ -18,12 +42,25 @@ export default function NotifBell() {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const q = useQuery({
     queryKey: ['notifications'],
     queryFn: notificationsApi.list,
+    // Fallback when the live socket is down; the socket invalidates sooner.
     refetchInterval: 60000,
   });
+  const meQ = useQuery({ queryKey: ['me'], queryFn: meApi });
+  const myRole = meQ.data?.user?.role;
+
+  // Live push (2A): any relevant notification refreshes the badge instantly.
+  useEffect(
+    () =>
+      subscribeNotifications(() => {
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      }),
+    [queryClient],
+  );
 
   const items = q.data?.items ?? [];
   const unread = q.data?.unread ?? items.filter((n) => !n.read).length;
@@ -50,6 +87,11 @@ export default function NotifBell() {
   function handleItem(n) {
     const id = n.id ?? n._id;
     if (!n.read && id) readOne.mutate(id);
+    const path = pathForLink(n.link, myRole);
+    if (path) {
+      setOpen(false);
+      navigate(path);
+    }
   }
 
   return (
