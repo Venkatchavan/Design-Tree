@@ -101,7 +101,7 @@ function ShellPage({ bootstrap, user, viewKey, activeView }) {
       bootstrap={bootstrap}
       user={user}
       activeView={activeView ?? viewKey}
-      crumbs={['Datum', def.label]}
+      crumbs={['DesignTree', def.label]}
     >
       {Cmp ? (
         <Cmp bootstrap={bootstrap} user={user} viewKey={viewKey} />

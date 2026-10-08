@@ -54,7 +54,7 @@ export default function LoginPage() {
           </div>
         </div>
         <div className="login-main">
-          <div className="login-title">Sign in to Datum</div>
+          <div className="login-title">Sign in to DesignTree</div>
           <div className="login-sub">
             Enter your work email and password to continue.
           </div>
