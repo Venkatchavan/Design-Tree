@@ -2,3 +2,8 @@ node_modules
 dist
 .env
 uploads/
+# Production deployment secrets / host-local files (never commit).
+certs/*.crt
+certs/*.key
+gateway/.htpasswd
+backups/

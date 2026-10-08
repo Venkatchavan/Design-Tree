@@ -1,0 +1,19 @@
+# Build context for the gateway image (repo root). Keep it lean:
+# only web/ source + gateway/ config are needed to build the image.
+node_modules
+**/node_modules
+dist
+**/dist
+uploads
+api/uploads
+.env
+.env.*
+*.log
+.git
+project-reference
+docs
+scripts
+certs
+gateway/.htpasswd
+backups
+api
