@@ -98,14 +98,13 @@ const projectSchema = new mongoose.Schema(
     requirements: { type: String, trim: true },
     complexity: { type: String, enum: PROJECT_COMPLEXITIES, trim: true },
     // Project activation: Admin activates the project and assigns the
-    // confirmed SPOC. Defaults to Activated (set at creation) so existing
-    // projects and the initiation walkthrough stay green; re-activation
-    // via POST /api/projects/:id/activate confirms/assigns the SPOC.
+    // confirmed SPOC. New projects default to Pending; Admin confirms via
+    // POST /api/projects/:id/activate which assigns the SPOC.
     activation: {
       status: {
         type: String,
         enum: ACTIVATION_STATUSES,
-        default: 'Activated',
+        default: 'Pending',
         index: true,
       },
       activatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

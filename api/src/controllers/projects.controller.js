@@ -172,14 +172,16 @@ export async function createProject(req, res, next) {
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid project data.' });
     }
+    const activationStatus = parsed.data.activation?.status ?? 'Pending';
     const project = await Project.create({
       ...parsed.data,
       code: parsed.data.code.toUpperCase(),
       activation: {
         ...(parsed.data.activation ?? {}),
-        status: parsed.data.activation?.status ?? 'Activated',
-        activatedBy: req.user.id,
-        activatedAt: new Date(),
+        status: activationStatus,
+        ...(activationStatus === 'Activated'
+          ? { activatedBy: req.user.id, activatedAt: new Date() }
+          : {}),
       },
     });
     // Best-effort post-creation wiring: seed the 16-step design workflow
@@ -317,10 +319,14 @@ export async function saveTeamConfirmation(req, res, next) {
 
     const current = project.teamConfirmation?.toObject?.() ?? {};
     const status = parsed.data.status ?? current.status ?? 'Pending';
+    const disciplines = parsed.data.disciplines ?? current.disciplines ?? [];
+    if (parsed.data.sharedToAdmin && (status !== 'Confirmed' || disciplines.length === 0)) {
+      return res.status(400).json({ message: 'Confirm the team with at least one discipline before sharing to Admin.' });
+    }
     project.teamConfirmation = {
       ...current,
       status,
-      disciplines: parsed.data.disciplines ?? current.disciplines ?? [],
+      disciplines,
     };
     if (status === 'Confirmed' && !current.confirmedAt) {
       project.teamConfirmation.confirmedBy = req.user.id;

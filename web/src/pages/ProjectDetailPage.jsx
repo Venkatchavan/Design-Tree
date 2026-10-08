@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { projectsApi } from '../lib/api.js';
+import { projectsApi, employeesApi, usersApi } from '../lib/api.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -121,12 +121,132 @@ function contactText(c) {
   return String(c);
 }
 
-export default function ProjectDetailPage() {
+function DirectoryPreview({ projectId }) {
+  const dirQ = useQuery({
+    queryKey: ['directory', projectId],
+    queryFn: () => projectsApi.directory(projectId),
+    retry: false,
+  });
+  if (dirQ.isLoading) return <EmptyState text="Loading directory…" />;
+  if (dirQ.isError) return null;
+  const sections = dirQ.data?.item?.sections ?? [];
+  if (sections.length === 0) return <EmptyState text="No directory sections yet." />;
+  return (
+    <DataTable
+      columns={[
+        { key: 'title', label: 'Section' },
+        {
+          key: 'body',
+          label: 'Content',
+          render: (r) => (
+            <span style={{ whiteSpace: 'pre-wrap' }}>{String(r.body ?? '').slice(0, 220) || '—'}</span>
+          ),
+        },
+      ]}
+      rows={sections}
+      emptyText="No directory sections yet."
+    />
+  );
+}
+
+function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState((initialIds ?? []).map(String));
+  const [saved, setSaved] = useState(false);
+
+  const usersQ = useQuery({
+    queryKey: ['users-portal', projectId],
+    queryFn: () => usersApi.list({}),
+    enabled: isAdmin,
+    retry: false,
+  });
+  const save = useMutation({
+    mutationFn: (userIds) => projectsApi.setPortalUsers(projectId, userIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      setSaved(true);
+    },
+  });
+
+  if (!isAdmin) return null;
+  const users = usersQ.data?.items ?? usersQ.data ?? [];
+  const external = users.filter((u) => u.role === 'client' || u.role === 'architect');
+
+  function toggle(uid) {
+    setSaved(false);
+    setSelected((prev) => (prev.includes(uid) ? prev.filter((x) => x !== uid) : [...prev, uid]));
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="section-label">Directory access — Client / Architect portal</div>
+      {usersQ.isLoading ? (
+        <EmptyState text="Loading users…" />
+      ) : usersQ.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>
+          {usersQ.error.message}
+        </div>
+      ) : external.length === 0 ? (
+        <EmptyState text="No client / architect logins yet — create them in HR / Users first." />
+      ) : (
+        <>
+          {external.map((u) => {
+            const uid = String(u._id ?? u.id);
+            return (
+              <label key={uid} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}>
+                <input type="checkbox" checked={selected.includes(uid)} onChange={() => toggle(uid)} />
+                {u.name ?? u.email} ({u.role})
+              </label>
+            );
+          })}
+          {save.isError && (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>
+              {save.error.message}
+            </div>
+          )}
+          <button
+            type="button"
+            className="approve-btn"
+            disabled={save.isPending}
+            onClick={() => save.mutate(selected)}
+            style={{ marginTop: 8 }}
+          >
+            {save.isPending ? 'Saving…' : 'Save portal access'}
+          </button>
+          {saved && <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Portal access saved.</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function ProjectDetailPage({ bootstrap }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [modal, setModal] = useState(null);
+  const [spocId, setSpocId] = useState('');
 
   const q = useQuery({ queryKey: ['project', id], queryFn: () => projectsApi.get(id) });
+  const role = bootstrap?.role?.key ?? '';
+  const isSuper = role === 'founding_director' || role === 'working_director';
+  const isAdmin = role === 'admin_billing' || isSuper;
+
+  const employees = useQuery({
+    queryKey: ['employees-spoc', id],
+    queryFn: () => employeesApi.list({}),
+    enabled: isAdmin,
+    retry: false,
+  });
+  const activate = useMutation({
+    mutationFn: (body) => projectsApi.activate(id, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['projects-stats'] });
+      setSpocId('');
+    },
+  });
 
   if (q.isLoading) return <EmptyState text="Loading project…" />;
   if (q.isError) {
@@ -219,6 +339,67 @@ export default function ProjectDetailPage() {
           <Field label="Shared to Admin" value={project.teamConfirmation?.sharedToAdminAt ? fmtDate(project.teamConfirmation.sharedToAdminAt) : null} />
           <Field label="Final approval" value={project.finalApproval?.status} />
         </div>
+        {(project.teamConfirmation?.disciplines?.length ?? 0) > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div className="section-label">Confirmed team (DMH)</div>
+            <DataTable
+              columns={[
+                { key: 'discipline', label: 'Discipline' },
+                { key: 'spoc', label: 'SPOC' },
+                { key: 'ptlTl', label: 'PTL / TL' },
+                { key: 'detail', label: 'Detail' },
+              ]}
+              rows={project.teamConfirmation.disciplines}
+              emptyText="No confirmed disciplines."
+            />
+          </div>
+        )}
+        {isAdmin && project.activation?.status !== 'Activated' && (
+          <div style={{ marginTop: 12 }}>
+            <div className="section-label">Admin activation — assign confirmed SPOC</div>
+            <div className="form-row" style={{ maxWidth: 360 }}>
+              <label className="form-label" htmlFor="pd-spoc">SPOC (coordinator)</label>
+              <select
+                id="pd-spoc"
+                className="filter-select"
+                value={spocId}
+                onChange={(e) => setSpocId(e.target.value)}
+              >
+                <option value="">Select…</option>
+                {((employees.data?.items ?? employees.data ?? [])).map((e) => (
+                  <option key={e._id ?? e.id} value={e._id ?? e.id}>
+                    {[e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || e.email} ({e.empId ?? '—'})
+                  </option>
+                ))}
+              </select>
+            </div>
+            {activate.isError && (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>
+                {activate.error.message}
+              </div>
+            )}
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={activate.isPending}
+              onClick={() => activate.mutate(spocId ? { coordinator: spocId } : {})}
+            >
+              {activate.isPending ? 'Activating…' : 'Activate project'}
+            </button>
+            <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
+              Activation assigns the SPOC and opens the SPOC workspace. Re-activation re-confirms.
+            </p>
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Project Directory">
+        <DirectoryPreview projectId={id} />
+        <PortalAccessPanel
+          projectId={id}
+          initialIds={project.portalUsers ?? []}
+          isAdmin={isAdmin}
+        />
       </Panel>
 
       <Panel title="Work order">

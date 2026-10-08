@@ -12,6 +12,7 @@ import {
 import {
   areaApi,
   bimApi,
+  boqApi,
   convApi,
   discApi,
   gbsApi,
@@ -46,7 +47,7 @@ const VARIANT_FOR_ROLE = {
 };
 
 const FUNCTION_TITLES = {
-  qs: 'QS',
+  qs: 'QS / BOQ',
   qaqc: 'QA/QC',
   bim: 'BIM',
   gbs: 'GBS',
@@ -446,7 +447,7 @@ function QsSettlement({ projects, roleKey }) {
 
   return (
     <>
-      <Panel title="Area settlement">
+      <Panel title="QS / BOQ — Area settlement">
         <form onSubmit={handleSubmit}>
           <div className="field-grid">
             <div className="form-row">
@@ -487,7 +488,7 @@ function QsSettlement({ projects, roleKey }) {
           </button>
         </form>
       </Panel>
-      <Panel title="Settlement register">
+      <Panel title="QS / BOQ — Settlement register">
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           <select className="filter-select" value={filterProject} onChange={(e) => setFilterProject(e.target.value)}>
             <option value="">All projects</option>
@@ -544,6 +545,193 @@ function QsSettlement({ projects, roleKey }) {
               ]}
               rows={rows}
               emptyText="No settlements recorded yet."
+            />
+          </>
+        )}
+      </Panel>
+    </>
+  );
+}
+
+/* ---------------- QS / BOQ items ---------------- */
+
+function BoqItems({ projects, roleKey }) {
+  const queryClient = useQueryClient();
+  const [filterProject, setFilterProject] = useState('');
+  const [project, setProject] = useState('');
+  const [itemNo, setItemNo] = useState('');
+  const [description, setDescription] = useState('');
+  const [unit, setUnit] = useState('');
+  const [qty, setQty] = useState('');
+  const [rate, setRate] = useState('');
+  const [status, setStatus] = useState('Draft');
+  const [remarks, setRemarks] = useState('');
+  const [err, setErr] = useState('');
+
+  const canCreate = roleKey === 'qs' || SUPER_ROLES.includes(roleKey);
+  const canReview = roleKey === 'qs_head' || SUPER_ROLES.includes(roleKey);
+
+  const listQ = useQuery({
+    queryKey: ['boq-items', { project: filterProject }],
+    queryFn: () => boqApi.list(filterProject ? { project: filterProject } : {}),
+  });
+  const rows = listQ.data?.items ?? [];
+
+  const save = useMutation({
+    mutationFn: (body) => boqApi.create(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['boq-items'] });
+      setProject('');
+      setItemNo('');
+      setDescription('');
+      setUnit('');
+      setQty('');
+      setRate('');
+      setStatus('Draft');
+      setRemarks('');
+      setErr('');
+    },
+    onError: (e) => setErr(e.message),
+  });
+
+  const review = useMutation({
+    mutationFn: ({ id, next }) => boqApi.review(id, { status: next }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['boq-items'] }),
+    onError: (e) => setErr(e.message),
+  });
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    setErr('');
+    if (!project) {
+      setErr('Project is required.');
+      return;
+    }
+    if (!description.trim()) {
+      setErr('Description is required.');
+      return;
+    }
+    save.mutate({
+      project,
+      itemNo: itemNo || undefined,
+      description,
+      unit: unit || undefined,
+      qty: qty === '' ? undefined : Number(qty),
+      rate: rate === '' ? undefined : Number(rate),
+      status,
+      remarks: remarks || undefined,
+    });
+  }
+
+  return (
+    <>
+      {canCreate && (
+        <Panel title="QS / BOQ — BOQ items (QS logs Draft → Submitted)">
+          <form onSubmit={handleSubmit}>
+            <div className="field-grid">
+              <div className="form-row">
+                <label className="form-label">Project</label>
+                <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
+                  <ProjectOptions projects={projects} />
+                </select>
+              </div>
+              <div className="form-row">
+                <label className="form-label">Item no</label>
+                <input className="form-input" value={itemNo} onChange={(e) => setItemNo(e.target.value)} />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Unit</label>
+                <input className="form-input" value={unit} onChange={(e) => setUnit(e.target.value)} />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Qty</label>
+                <input className="form-input" type="number" step="0.01" value={qty} onChange={(e) => setQty(e.target.value)} />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Rate</label>
+                <input className="form-input" type="number" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Status</label>
+                <select className="filter-select" value={status} onChange={(e) => setStatus(e.target.value)}>
+                  <option>Draft</option>
+                  <option>Submitted</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-row">
+              <label className="form-label">Description *</label>
+              <input className="form-input" value={description} onChange={(e) => setDescription(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label className="form-label">Remarks</label>
+              <input className="form-input" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+            </div>
+            {qty !== '' && rate !== '' && (
+              <p style={{ fontSize: 13.5 }}>
+                Amount: <b className="mono">{Number(qty) * Number(rate)}</b>
+              </p>
+            )}
+            {err && (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>
+                {err}
+              </div>
+            )}
+            <button type="submit" className="btn-primary" disabled={save.isPending}>
+              {save.isPending ? 'Saving…' : 'Add BOQ item'}
+            </button>
+          </form>
+        </Panel>
+      )}
+      <Panel title="QS / BOQ — BOQ register">
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+          <select className="filter-select" value={filterProject} onChange={(e) => setFilterProject(e.target.value)}>
+            <option value="">All projects</option>
+            {(projects ?? []).map((p) => (
+              <option key={p._id ?? p.id} value={p._id ?? p.id}>
+                {p.name ?? p.code ?? '—'}
+              </option>
+            ))}
+          </select>
+        </div>
+        {listQ.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : (
+          <>
+            <InlineError error={listQ.isError ? listQ.error : (review.isError ? review.error : null)} />
+            <DataTable
+              columns={[
+                { key: 'project', label: 'Project', render: (r) => r?.project?.name ?? r?.project ?? '—' },
+                { key: 'itemNo', label: 'Item' },
+                { key: 'description', label: 'Description' },
+                { key: 'unit', label: 'Unit' },
+                { key: 'qty', label: 'Qty' },
+                { key: 'rate', label: 'Rate' },
+                { key: 'amount', label: 'Amount' },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  render: (r) => (r.status ? <StatusPill tone={statusTone(r.status)}>{r.status}</StatusPill> : '—'),
+                },
+                ...(canReview
+                  ? [{
+                    key: 'review',
+                    label: 'Review',
+                    render: (r) => (
+                      <span style={{ display: 'flex', gap: 8 }}>
+                        <button type="button" className="approve-btn" disabled={review.isPending} onClick={() => review.mutate({ id: r._id ?? r.id, next: 'Submitted' })}>
+                          Submit
+                        </button>
+                        <button type="button" className="approve-btn" disabled={review.isPending} onClick={() => review.mutate({ id: r._id ?? r.id, next: 'Approved' })}>
+                          Approve
+                        </button>
+                      </span>
+                    ),
+                  }]
+                  : []),
+              ]}
+              rows={rows}
+              emptyText="No BOQ items yet."
             />
           </>
         )}
@@ -1885,6 +2073,7 @@ export default function WorkTrackingPage({ bootstrap, user }) {
       {tab === 'work' && <LogWorkTab projects={projects} variant={variant} />}
       {tab === 'revisions' && <RevisionsTab projects={projects} />}
       {tab === 'function' && variant === 'qs' && <QsSettlement projects={projects} roleKey={roleKey} />}
+      {tab === 'function' && variant === 'qs' && <BoqItems projects={projects} roleKey={roleKey} />}
       {tab === 'function' && variant === 'qaqc' && <QaqcTools projects={projects} employees={employees} user={user} />}
       {tab === 'function' && variant === 'bim' && <BimOrders projects={projects} />}
       {tab === 'function' && variant === 'gbs' && <GbsCert projects={projects} />}

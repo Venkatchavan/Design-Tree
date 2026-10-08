@@ -14,10 +14,24 @@ import EmptyState from '../components/EmptyState.jsx';
 
 const SUPER = new Set(['founding_director', 'working_director']);
 const STEP_STATUSES = ['Not Started', 'In Progress', 'Completed', 'On Hold'];
+const TEAM_SERVICES = [
+  'Structural',
+  'Mechanical',
+  'Electrical',
+  'Plumbing',
+  'Fire',
+  'BIM',
+  'QA/QC',
+  'Peer Review',
+  'QS/BOQ',
+  'Other',
+];
+const TEAM_STATUSES = ['Pending', 'Confirmed'];
 
 const TABS = [
   { key: 'workflow', label: 'Workflow' },
   { key: 'matrix', label: 'Responsibility matrix' },
+  { key: 'team', label: 'Team finalisation' },
   { key: 'deliverables', label: 'Deliverables tracker' },
   { key: 'rfis', label: 'RFIs' },
   { key: 'updates', label: 'Team & client updates' },
@@ -37,6 +51,10 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
   const [project, setProject] = useState('');
   const [steps, setSteps] = useState([]);
   const [matrix, setMatrix] = useState({});
+  const [teamStatus, setTeamStatus] = useState('Pending');
+  const [disciplines, setDisciplines] = useState([]);
+  const [sharedToAdmin, setSharedToAdmin] = useState(false);
+  const [teamLoadedFor, setTeamLoadedFor] = useState('');
 
   const projects = useQuery({
     queryKey: ['projects-design-mgmt'],
@@ -73,6 +91,12 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
     queryFn: () => spocApi.entriesList({ project: activeProject }),
     enabled: !!activeProject && tab === 'updates',
   });
+  const projectDetail = useQuery({
+    queryKey: ['project', activeProject],
+    queryFn: () => projectsApi.get(activeProject),
+    enabled: !!activeProject && tab === 'team',
+    retry: false,
+  });
 
   useEffect(() => {
     const item = design.data?.item;
@@ -103,6 +127,54 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
     mutationFn: designApi.save,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['design', activeProject] }),
   });
+  const saveTeam = useMutation({
+    mutationFn: (body) => projectsApi.saveTeam(activeProject, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', activeProject] });
+      qc.invalidateQueries({ queryKey: ['projects-design-mgmt'] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
+  useEffect(() => {
+    if (tab !== 'team') return;
+    const p = projectDetail.data?.project;
+    if (!p || teamLoadedFor === activeProject) return;
+    // Prefill editable team form (same pattern as workflow prefill above).
+    setTeamStatus(p.teamConfirmation?.status ?? 'Pending');
+    setDisciplines(
+      Array.isArray(p.teamConfirmation?.disciplines) && p.teamConfirmation.disciplines.length > 0
+        ? p.teamConfirmation.disciplines.map((d) => ({
+            discipline: d.discipline ?? '',
+            spoc: d.spoc ?? '',
+            ptlTl: d.ptlTl ?? '',
+            detail: d.detail ?? '',
+          }))
+        : [],
+    );
+    setSharedToAdmin(Boolean(p.teamConfirmation?.sharedToAdminAt));
+    setTeamLoadedFor(activeProject);
+  }, [tab, projectDetail.data, activeProject, teamLoadedFor]);
+
+  function patchDiscipline(idx, field, value) {
+    setDisciplines((prev) => prev.map((d, i) => (i === idx ? { ...d, [field]: value } : d)));
+  }
+
+  function submitTeam(e) {
+    e.preventDefault();
+    saveTeam.mutate({
+      status: teamStatus,
+      disciplines: disciplines
+        .filter((d) => d.discipline || d.spoc || d.ptlTl || d.detail)
+        .map((d) => ({
+          discipline: d.discipline,
+          spoc: d.spoc || undefined,
+          ptlTl: d.ptlTl || undefined,
+          detail: d.detail || undefined,
+        })),
+      sharedToAdmin,
+    });
+  }
 
   const delRows = useMemo(() => arr(deliverables.data), [deliverables.data]);
   const onTrack = delRows.filter((d) =>
@@ -355,6 +427,164 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
             <div className="login-error" role="alert" style={{ display: 'block' }}>
               {saveError}
             </div>
+          )}
+        </Panel>
+      )}
+
+      {tab === 'team' && (
+        <Panel title="Project team finalisation — SPOC / PTL / TL per discipline">
+          {projectDetail.isLoading ? (
+            <EmptyState text="Loading team confirmation…" />
+          ) : (
+            <form onSubmit={submitTeam}>
+              <div className="form-row" style={{ maxWidth: 320 }}>
+                <label className="form-label">Team status</label>
+                {canEdit ? (
+                  <select
+                    className="filter-select"
+                    value={teamStatus}
+                    onChange={(e) => setTeamStatus(e.target.value)}
+                  >
+                    {TEAM_STATUSES.map((s) => (
+                      <option key={s}>{s}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <StatusPill status={teamStatus}>{teamStatus}</StatusPill>
+                )}
+              </div>
+              {projectDetail.data?.project?.teamConfirmation?.sharedToAdminAt && (
+                <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
+                  Shared to Admin: {fmtDate(projectDetail.data.project.teamConfirmation.sharedToAdminAt)}
+                </p>
+              )}
+              <DataTable
+                columns={[
+                  {
+                    key: 'discipline',
+                    label: 'Discipline',
+                    render: (r) =>
+                      canEdit ? (
+                        <select
+                          className="filter-select"
+                          value={r.discipline ?? ''}
+                          onChange={(e) => patchDiscipline(r._rowKey, 'discipline', e.target.value)}
+                        >
+                          <option value="">Select…</option>
+                          {TEAM_SERVICES.map((s) => (
+                            <option key={s}>{s}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        (r.discipline || '—')
+                      ),
+                  },
+                  {
+                    key: 'spoc',
+                    label: 'SPOC',
+                    render: (r) =>
+                      canEdit ? (
+                        <input
+                          className="form-input"
+                          value={r.spoc ?? ''}
+                          onChange={(e) => patchDiscipline(r._rowKey, 'spoc', e.target.value)}
+                        />
+                      ) : (
+                        (r.spoc || '—')
+                      ),
+                  },
+                  {
+                    key: 'ptlTl',
+                    label: 'PTL / TL',
+                    render: (r) =>
+                      canEdit ? (
+                        <input
+                          className="form-input"
+                          value={r.ptlTl ?? ''}
+                          onChange={(e) => patchDiscipline(r._rowKey, 'ptlTl', e.target.value)}
+                        />
+                      ) : (
+                        (r.ptlTl || '—')
+                      ),
+                  },
+                  {
+                    key: 'detail',
+                    label: 'Designers / Engineers / Detail',
+                    render: (r) =>
+                      canEdit ? (
+                        <input
+                          className="form-input"
+                          value={r.detail ?? ''}
+                          onChange={(e) => patchDiscipline(r._rowKey, 'detail', e.target.value)}
+                        />
+                      ) : (
+                        (r.detail || '—')
+                      ),
+                  },
+                  {
+                    key: 'actions',
+                    label: '',
+                    render: (r) =>
+                      canEdit ? (
+                        <button
+                          type="button"
+                          className="back-link"
+                          onClick={() => setDisciplines((prev) => prev.filter((_, j) => j !== r._rowKey))}
+                        >
+                          Remove
+                        </button>
+                      ) : null,
+                  },
+                ]}
+                rows={disciplines.map((d, i) => ({ ...d, _rowKey: i }))}
+                emptyText="No disciplines yet — add Structural / MEPF / BIM / QA/QC / Peer Review / QS rows."
+              />
+              {canEdit && (
+                <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="approve-btn"
+                    onClick={() =>
+                      setDisciplines((prev) => [...prev, { discipline: '', spoc: '', ptlTl: '', detail: '' }])
+                    }
+                  >
+                    + Add discipline
+                  </button>
+                </div>
+              )}
+              {canEdit && (
+                <div className="form-row" style={{ marginTop: 12 }}>
+                  <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}>
+                    <input
+                      type="checkbox"
+                      checked={sharedToAdmin}
+                      onChange={(e) => setSharedToAdmin(e.target.checked)}
+                    />
+                    Share confirmed team to Admin
+                  </label>
+                </div>
+              )}
+              {canEdit && (
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={saveTeam.isPending || !activeProject}
+                  style={{ marginTop: 12 }}
+                >
+                  {saveTeam.isPending ? 'Saving…' : 'Save team confirmation'}
+                </button>
+              )}
+              {saveTeam.isError && (
+                <div className="login-error" role="alert" style={{ display: 'block' }}>
+                  {saveTeam.error.message}
+                </div>
+              )}
+              {saveTeam.isSuccess && (
+                <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>
+                  Team saved. Sharing notifies Admin / Billing.
+                </p>
+              )}
+            </form>
           )}
         </Panel>
       )}

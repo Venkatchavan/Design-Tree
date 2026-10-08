@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { employeesApi, projectsApi, request, toQuery } from '../lib/api.js';
@@ -52,6 +52,132 @@ const REVISION_STATUSES = [
   'Awaiting Architect',
   'Awaiting Internal Team',
 ];
+
+const DIRECTORY_KEYS = [
+  'project-information',
+  'client-details',
+  'architect-details',
+  'pmc-details',
+  'work-order',
+  'bim-work-order',
+  'project-team',
+  'scope-services',
+  'project-documents',
+  'communication-records',
+];
+
+function DirectorySectionsEditor() {
+  const queryClient = useQueryClient();
+  const [projectId, setProjectId] = useState('');
+  const [sections, setSections] = useState([]);
+  const [loadedFor, setLoadedFor] = useState('');
+
+  const projQ = useQuery({
+    queryKey: ['projects', 'active-dir-sections'],
+    queryFn: () => projectsApi.list({ status: 'Active' }),
+  });
+  const projects = projQ.data?.items ?? [];
+  const effectiveId = projectId || projects[0]?._id || projects[0]?.id || '';
+
+  const dirQ = useQuery({
+    queryKey: ['directory', effectiveId],
+    queryFn: () => projectsApi.directory(effectiveId),
+    enabled: !!effectiveId,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!dirQ.data || loadedFor === effectiveId) return;
+    const incoming = dirQ.data?.item?.sections ?? [];
+    const byKey = new Map(incoming.map((s) => [s.key, s]));
+    setSections(
+      DIRECTORY_KEYS.map((key) => ({
+        key,
+        title: byKey.get(key)?.title ?? key,
+        body: byKey.get(key)?.body ?? '',
+      })),
+    );
+    setLoadedFor(effectiveId);
+  }, [dirQ.data, effectiveId, loadedFor]);
+
+  const save = useMutation({
+    mutationFn: (body) => projectsApi.saveDirectory(effectiveId, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['directory', effectiveId] });
+      setLoadedFor('');
+    },
+  });
+
+  function patchSection(key, body) {
+    setSections((prev) => prev.map((s) => (s.key === key ? { ...s, body } : s)));
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    save.mutate({ sections });
+  }
+
+  return (
+    <Panel title="Project Directory — 10 sections (SPOC owned)">
+      <div className="form-row" style={{ maxWidth: 420 }}>
+        <label className="form-label">Project</label>
+        <select
+          className="filter-select"
+          style={{ width: '100%' }}
+          value={effectiveId}
+          onChange={(e) => {
+            setProjectId(e.target.value);
+            setLoadedFor('');
+          }}
+        >
+          {projects.map((p) => (
+            <option key={p._id ?? p.id} value={p._id ?? p.id}>
+              {p.name ?? p.code ?? '—'}
+            </option>
+          ))}
+        </select>
+      </div>
+      {dirQ.isLoading ? (
+        <EmptyState text="Loading directory…" />
+      ) : dirQ.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>
+          {dirQ.error.message}
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          {sections.map((s) => (
+            <div className="form-row" key={s.key} style={{ marginTop: 10 }}>
+              <label className="form-label" htmlFor={`dir-${s.key}`}>
+                {s.title || s.key}
+              </label>
+              <textarea
+                id={`dir-${s.key}`}
+                className="form-input"
+                rows={3}
+                value={s.body ?? ''}
+                onChange={(e) => patchSection(s.key, e.target.value)}
+                placeholder={`${s.key}…`}
+              />
+            </div>
+          ))}
+          {save.isError && (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>
+              {save.error.message}
+            </div>
+          )}
+          <button type="submit" className="btn-primary" disabled={save.isPending || !effectiveId} style={{ marginTop: 12 }}>
+            {save.isPending ? 'Saving…' : 'Save directory'}
+          </button>
+          {dirQ.data?.item?.updatedAt && (
+            <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
+              Last updated: {new Date(dirQ.data.item.updatedAt).toLocaleDateString()}
+            </p>
+          )}
+        </form>
+      )}
+    </Panel>
+  );
+}
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -454,6 +580,7 @@ function DirectoryTab() {
           </button>
         </form>
       </Panel>
+      <DirectorySectionsEditor />
     </>
   );
 }

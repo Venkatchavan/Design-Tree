@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, projectsApi, request, toQuery, workEntriesApi } from '../lib/api.js';
-import { areaApi, bimApi, discApi, peerApi, visitsApi } from '../lib/functionsApi.js';
+import { areaApi, bimApi, boqApi, discApi, peerApi, visitsApi } from '../lib/functionsApi.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -25,7 +25,7 @@ const HEAD_TABS = [
   { key: 'bim-head', label: 'BIM' },
   { key: 'gbs-head', label: 'GBS' },
   { key: 'peer-review-head', label: 'Peer review' },
-  { key: 'qs-head', label: 'QS' },
+  { key: 'qs-head', label: 'QS / BOQ' },
 ];
 
 function useTeamLog(projectIds, serviceLabel, enabled) {
@@ -85,6 +85,12 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     queryKey: ['function-areas'],
     queryFn: () => areaApi.list({}),
     enabled: active === 'qs-head',
+  });
+  const boq = useQuery({
+    queryKey: ['function-boq'],
+    queryFn: () => boqApi.list({}),
+    enabled: active === 'qs-head',
+    retry: false,
   });
   const employees = useQuery({
     queryKey: ['function-employees'],
@@ -172,6 +178,10 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     mutationFn: ({ id, body }) => areaApi.review(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['function-areas'] }),
   });
+  const reviewBoq = useMutation({
+    mutationFn: ({ id, body }) => boqApi.review(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['function-boq'] }),
+  });
   const decideLeave = useMutation({
     mutationFn: ({ id, status }) =>
       request(`/api/leave-travel/leave/${id}/decision`, {
@@ -185,6 +195,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
   const discRows = arr(discs.data);
   const peerRows = arr(peers.data);
   const areaRows = arr(areas.data);
+  const boqRows = arr(boq.data);
   const bimRows = arr(bimOrders.data);
   const empRows = arr(employees.data);
   const leaveRows = arr(qsLeave.data);
@@ -237,6 +248,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     approveVisit.error?.message ??
     approvePeer.error?.message ??
     reviewArea.error?.message ??
+    reviewBoq.error?.message ??
     decideLeave.error?.message;
 
   return (
@@ -467,12 +479,13 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
       {active === 'qs-head' && (
         <>
           <div className="kpi-grid cols-4">
-            <KpiCard label="Area settlements" value={areaRows.length} accent="blueprint" />
-            <KpiCard label="Pending review" value={areaRows.filter((a) => ['pending', 'submitted', 'open'].includes(String(a.status ?? a.reviewStatus ?? '').toLowerCase())).length} accent="amber" />
+            <KpiCard label="QS / BOQ — Area settlements" value={areaRows.length} accent="blueprint" />
+            <KpiCard label="QS / BOQ — BOQ items" value={boqRows.length} accent="forest" />
+            <KpiCard label="Pending review" value={areaRows.filter((a) => ['pending', 'submitted', 'open'].includes(String(a.status ?? a.reviewStatus ?? '').toLowerCase())).length + boqRows.filter((b) => String(b.status ?? '').toLowerCase() !== 'approved').length} accent="amber" />
             <KpiCard label="QS leave requests" value={qsLeaveRows.length} accent="teal" />
             <KpiCard label="Team log entries (derived)" value={qsLog.data?.length ?? 0} accent="violet" />
           </div>
-          <Panel title="Area settlements">
+          <Panel title="QS / BOQ — Area settlements">
             <DataTable
               columns={[
                 { key: 'project', label: 'Project', render: (r) => r.project?.name ?? projectName(r.project) },
@@ -495,6 +508,35 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
               ]}
               rows={areaRows}
               emptyText="No area settlements yet."
+            />
+          </Panel>
+          <Panel title="QS / BOQ — BOQ items (QS Head review)">
+            <DataTable
+              columns={[
+                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? projectName(r.project) },
+                { key: 'itemNo', label: 'Item', render: (r) => r.itemNo ?? '—' },
+                { key: 'description', label: 'Description', render: (r) => r.description ?? '—' },
+                { key: 'qty', label: 'Qty', render: (r) => r.qty ?? '—' },
+                { key: 'rate', label: 'Rate', render: (r) => r.rate ?? '—' },
+                { key: 'amount', label: 'Amount', render: (r) => r.amount ?? '—' },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                {
+                  key: 'review',
+                  label: 'Review',
+                  render: (r) => (
+                    <span style={{ display: 'flex', gap: 8 }}>
+                      <button type="button" className="approve-btn" disabled={reviewBoq.isPending} onClick={() => reviewBoq.mutate({ id: r._id ?? r.id, body: { status: 'Submitted' } })}>
+                        Submit
+                      </button>
+                      <button type="button" className="approve-btn" disabled={reviewBoq.isPending} onClick={() => reviewBoq.mutate({ id: r._id ?? r.id, body: { status: 'Approved' } })}>
+                        Approve
+                      </button>
+                    </span>
+                  ),
+                },
+              ]}
+              rows={boqRows}
+              emptyText="No BOQ items yet."
             />
           </Panel>
           <Panel title="Team work log (derived: entries on QS-scope projects)">

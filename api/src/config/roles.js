@@ -65,7 +65,7 @@ export const VIEWS = {
   'bim-head': { path: '/bim', label: 'BIM', sub: 'BIM overview and approvals', phase: 4 },
   'gbs-head': { path: '/gbs', label: 'GBS', sub: 'Green-building overview and approvals', phase: 4 },
   'peer-review-head': { path: '/peer-review', label: 'Peer Review', sub: 'Peer review overview and approvals', phase: 4 },
-  'qs-head': { path: '/qs', label: 'QS', sub: 'QS overview and approvals', phase: 4 },
+  'qs-head': { path: '/qs', label: 'QS / BOQ', sub: 'QS overview and approvals', phase: 4 },
   'structural': { path: '/departments/structural', label: 'Structural', sub: 'Company-wide Structural dashboard', phase: 4, boardOnly: true },
   'mechanical': { path: '/departments/mechanical', label: 'Mechanical', sub: 'Company-wide Mechanical dashboard', phase: 4, boardOnly: true },
   'electrical': { path: '/departments/electrical', label: 'Electrical', sub: 'Company-wide Electrical dashboard', phase: 4, boardOnly: true },
@@ -285,6 +285,8 @@ export const NAV_BY_ROLE = {
     { view: 'employee-support' },
   ],
   design_mgmt_head: [
+    { view: 'dashboard', label: 'Dashboard' },
+    { view: 'dashboard', label: 'Projects' },
     { view: 'design-mgmt' },
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
