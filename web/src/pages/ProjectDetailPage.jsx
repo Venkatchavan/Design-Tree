@@ -109,6 +109,18 @@ function OwnerDatesModal({ project, mode, onClose }) {
   );
 }
 
+// Contacts arrive as objects ({name, company, email, ...}) from the API
+// or as plain strings from the New Project form — render either safely.
+// (Raw objects used to crash this page: objects are not valid React children.)
+function contactText(c) {
+  if (!c) return c;
+  if (typeof c === 'string') return c;
+  if (typeof c === 'object') {
+    return [c.name, c.company, c.email, c.phone].filter(Boolean).join(' · ') || '—';
+  }
+  return String(c);
+}
+
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -212,10 +224,10 @@ export default function ProjectDetailPage() {
 
       <Panel title="Contacts">
         <div className="field-grid">
-          <Field label="Client" value={contacts.client} />
-          <Field label="Architect" value={contacts.architect} />
-          <Field label="PMC" value={contacts.pmc} />
-          <Field label="Peer review" value={contacts.peerReview} />
+          <Field label="Client" value={contactText(contacts.client)} />
+          <Field label="Architect" value={contactText(contacts.architect)} />
+          <Field label="PMC" value={contactText(contacts.pmc)} />
+          <Field label="Peer review" value={contactText(contacts.peerReview)} />
           <Field label="Billing contact" value={billing.name} />
           <Field label="Billing salutation" value={billing.salutation} />
           <Field label="Billing designation" value={billing.designation} />

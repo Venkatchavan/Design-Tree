@@ -8,6 +8,7 @@ export const teamSchema = z
     service: z.string().trim().min(1),
     branch: z.string().trim().optional(),
     lead: objectId.optional(),
+    projects: z.array(objectId).optional(),
     members: z
       .array(
         z

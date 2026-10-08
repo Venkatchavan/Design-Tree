@@ -12,6 +12,26 @@ export const billUpload = uploadSingle('bill', 'bills');
 export const briefPhotosUpload = uploadMany('photos', 'marketing', 10);
 export const employeeDocUpload = uploadSingle('file', 'employees');
 export const drawingProofUpload = uploadSingle('proof', 'drawings');
+export const financeOccUpload = uploadMany('files', 'finance-occ', 10, 20 * 1024 * 1024);
+
+export async function addFinanceOccDocs(req, res, next) {
+  try {
+    if (!req.files?.length) {
+      return res.status(400).json({ message: 'No files uploaded.' });
+    }
+    const { FinanceOccEntry } = await import('../models/FinanceOccEntry.js');
+    const doc = await FinanceOccEntry.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Not found.' });
+    doc.docs.push(
+      ...req.files.map((f) => ({ name: f.originalname, file: `finance-occ/${f.filename}` })),
+    );
+    doc.history.push({ by: req.user.id, action: `${req.files.length} document(s) attached` });
+    await doc.save();
+    return res.status(200).json({ item: doc });
+  } catch (err) {
+    return next(err);
+  }
+}
 
 export async function addVisitPhotos(req, res, next) {
   try {

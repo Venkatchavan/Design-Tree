@@ -8,12 +8,14 @@ import {
 import {
   addBriefPhotos,
   addEmployeeDoc,
+  addFinanceOccDocs,
   addVisitPhotos,
   billUpload,
   briefPhotosUpload,
   downloadStored,
   drawingProofUpload,
   employeeDocUpload,
+  financeOccUpload,
   setAllowanceBill,
   setDrawingProof,
   visitPhotosUpload,
@@ -72,6 +74,16 @@ router.post(
   (req, res, next) =>
     drawingProofUpload(req, res, (err) =>
       err ? next(err) : setDrawingProof(req, res, next),
+    ),
+);
+
+// Finance OCC bill / PO documents (PDF or image, up to 20 MB each).
+router.post(
+  '/finance-occ/:id/files',
+  requireInternal(),
+  (req, res, next) =>
+    financeOccUpload(req, res, (err) =>
+      err ? next(err) : addFinanceOccDocs(req, res, next),
     ),
 );
 

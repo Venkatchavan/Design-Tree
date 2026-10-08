@@ -20,6 +20,7 @@ import registerRoutes from './routes/register.routes.js';
 import metaRoutes from './routes/meta.routes.js';
 import projectsRoutes from './routes/projects.routes.js';
 import functionsRoutes from './routes/functions.routes.js';
+import financeOccRoutes from './routes/financeOcc.routes.js';
 import transmittalsRoutes from './routes/transmittals.routes.js';
 import spocRoutes from './routes/spoc.routes.js';
 import teamsRoutes from './routes/teams.routes.js';
@@ -55,6 +56,7 @@ export function createApp() {
   app.use('/api/transmittals', transmittalsRoutes);
   app.use('/api/transmittal-register', registerRoutes);
   app.use('/api/billing', billingRoutes);
+  app.use('/api/finance-occ', financeOccRoutes);
   app.use('/api/certificates', certificatesRoutes);
   app.use('/api/travel-bookings', bookingsRoutes);
   app.use('/api/design', designmgmtRoutes);

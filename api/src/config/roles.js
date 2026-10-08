@@ -209,7 +209,6 @@ export const NAV_BY_ROLE = {
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
-    { view: 'settings' },
   ],
   hr: [
     { view: 'dashboard', label: 'Dashboard' },

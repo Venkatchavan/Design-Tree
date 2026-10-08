@@ -87,6 +87,24 @@ export const bookingsApi = {
   setStatus: (id, status) => request(`/api/travel-bookings/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
 };
 
+export const financeOccApi = {
+  summary: () => request('/api/finance-occ/summary'),
+  list: (params = {}) => request(`/api/finance-occ${toQuery(params)}`),
+  create: (body) => request('/api/finance-occ', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) => request(`/api/finance-occ/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  decide: (id, body) => request(`/api/finance-occ/${id}/decision`, { method: 'PATCH', body: JSON.stringify(body) }),
+  remove: (id) => request(`/api/finance-occ/${id}`, { method: 'DELETE' }),
+  uploadDocs: async (id, files) => {
+    const form = new FormData();
+    for (const f of files) form.append('files', f);
+    const res = await fetch(`${API_BASE}/api/documents/finance-occ/${id}/files`, { method: 'POST', credentials: 'include', body: form });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message ?? 'Upload failed.');
+    return data;
+  },
+  downloadUrl: (stored) => `${API_BASE}/api/documents/files/${stored}`,
+};
+
 export const workApi = {
   entries: (params = {}) => request(`/api/work-entries${toQuery(params)}`),
 };
