@@ -75,13 +75,13 @@ export async function createEmployee(req, res, next) {
     const { login, ...body } = req.body ?? {};
     const parsed = employeeSchema.safeParse(body);
     if (!parsed.success) {
-      return res.status(400).json({ message: 'Invalid employee data.' });
+      return res.status(400).json({ message: 'Invalid employee data.', errors: parsed.error.issues });
     }
     let loginData = null;
     if (login != null) {
       const loginParsed = employeeLoginSchema.safeParse(login);
       if (!loginParsed.success) {
-        return res.status(400).json({ message: 'Invalid login data.' });
+        return res.status(400).json({ message: 'Invalid login data.', errors: loginParsed.error.issues });
       }
       if (!ROLE_KEYS.includes(loginParsed.data.role)) {
         return res.status(400).json({ message: 'Unknown role.' });
@@ -144,7 +144,7 @@ export async function updateEmployee(req, res, next) {
   try {
     const parsed = employeeUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: 'Invalid employee data.' });
+      return res.status(400).json({ message: 'Invalid employee data.', errors: parsed.error.issues });
     }
     const employee = await Employee.findByIdAndUpdate(
       req.params.id,

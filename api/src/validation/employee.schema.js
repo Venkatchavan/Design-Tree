@@ -78,10 +78,22 @@ export const employeeSchema = z
     director: strOpt,
     aadhar: strOpt,
     remarks: strOpt,
-    rejoinee: z.boolean().optional(),
+    rejoinee: z.preprocess((v) => (v === '' ? undefined : v), z.boolean().optional()),
     previousEmpId: strOpt,
     experience: strOpt,
-    status: z.enum(EMPLOYEE_STATUSES).optional(),
+    status: z.preprocess(
+      (v) => {
+        if (v === undefined || v === null) return undefined;
+        const s = String(v).trim();
+        if (s === '') return undefined;
+        const lower = s.toLowerCase();
+        if (lower === 'active') return 'Active';
+        if (lower === 'on leave' || lower === 'on-leave' || lower === 'onleave') return 'On Leave';
+        if (lower === 'exited') return 'Exited';
+        return s;
+      },
+      z.enum(EMPLOYEE_STATUSES).optional(),
+    ),
   })
   .strict();
 

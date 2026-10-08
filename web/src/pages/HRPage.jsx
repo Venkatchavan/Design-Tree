@@ -21,8 +21,8 @@ const EMP_BLANK = {
   designation: '', qualification: '', department: '', reportingManager: '',
   branch: '', division: '', salaryStructure: '', email: '', phone: '', mobile: '',
   stdCode: '', dateOfJoining: '', salaryFrom: '', leavingDate: '', leavingReason: '',
-  pan: '', wardCircle: '', director: '', aadhar: '', remarks: '', rejoinee: '',
-  previousEmpId: '', experience: '', status: 'active', empId: '',
+  pan: '', wardCircle: '', director: '', aadhar: '', remarks: '', rejoinee: false,
+  previousEmpId: '', experience: '', status: 'Active', empId: '',
   zeroPT: false, esiApplicable: false, esiNumber: '', esiDispensary: '',
   pfApplicable: false, pfNumber: '', pfFileNumber: '', pfUan: '', pfRestrictPF: false, pfZeroPension: false,
   bankAccount: '', bankName: '', bankIfsc: '',
@@ -409,9 +409,9 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
         <div className="form-row"><label className="form-label">Salary from</label>{I('salaryFrom', { type: 'date' })}</div>
         <div className="form-row"><label className="form-label">Leaving date</label>{I('leavingDate', { type: 'date' })}</div>
         <div className="form-row"><label className="form-label">Leaving reason</label>{I('leavingReason')}</div>
-        <div className="form-row"><label className="form-label">Status</label>{I('status')}</div>
+        <div className="form-row"><label className="form-label">Status</label><select className="form-input" value={f.status ?? 'Active'} onChange={(e) => set('status', e.target.value)}><option value="Active">Active</option><option value="On Leave">On Leave</option><option value="Exited">Exited</option></select></div>
         <div className="form-row"><label className="form-label">Experience</label>{I('experience')}</div>
-        <div className="form-row"><label className="form-label">Rejoinee</label>{I('rejoinee')}</div>
+        <div className="form-row"><label className="form-label" style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={!!f.rejoinee} onChange={(e) => set('rejoinee', e.target.checked)} /> Rejoinee</label></div>
         <div className="form-row"><label className="form-label">Previous emp ID</label>{I('previousEmpId')}</div>
       </div>
       <div className="section-label">Contact & address</div>
