@@ -29,6 +29,25 @@ export async function myPortal(req, res, next) {
         CertRequest.find({ project: { $in: ids } }).sort({ createdAt: -1 }),
       ]);
     const acked = new Set(acks.map((a) => a.drawing.toString()));
+    // Shared project-directory sections the SPOC maintains (read-only here).
+    let directory = [];
+    try {
+      const { ProjectDirectory } = await import('../models/ProjectDirectory.js');
+      const docs = await ProjectDirectory.find({ project: { $in: ids } })
+        .select('project sections updatedAt')
+        .lean();
+      directory = docs.map((d) => ({
+        project: d.project.toString(),
+        sections: (d.sections ?? []).map((s) => ({
+          key: s.key,
+          title: s.title,
+          body: s.body,
+        })),
+        updatedAt: d.updatedAt,
+      }));
+    } catch {
+      directory = [];
+    }
     return res.status(200).json({
       projects: projects.map((p) => ({
         id: p._id.toString(),
@@ -59,6 +78,7 @@ export async function myPortal(req, res, next) {
       })),
       certificates: certs,
       certRequests: requests,
+      directory,
     });
   } catch (err) {
     return next(err);

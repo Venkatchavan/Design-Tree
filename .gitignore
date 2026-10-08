@@ -3,7 +3,14 @@ dist
 .env
 uploads/
 # Production deployment secrets / host-local files (never commit).
+certs/
 certs/*.crt
 certs/*.key
+*.srl
+*.crl
+*.csr
+*.pem
 gateway/.htpasswd
+gateway/.httpasswd
+gateway/pki/
 backups/

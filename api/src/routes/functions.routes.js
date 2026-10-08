@@ -9,12 +9,14 @@ import {
   addComment,
   areaSettlements,
   bimWorkOrders,
+  boqItems,
   conveyances,
   createRfi,
   discrepancies,
   getGbsCert,
   peerReviews,
   reviewAreaSettlement,
+  reviewBoqItem,
   rfis,
   saveGbsSteps,
   setPeerFinal,
@@ -34,6 +36,12 @@ router.patch(
   requireRole('qs_head'),
   reviewAreaSettlement,
 );
+
+// QS/BOQ line items (QS logs Draft/Submitted, QS Head approves)
+router.get('/boq', requireInternal(), boqItems.list);
+router.post('/boq', requireRole('qs'), boqItems.create);
+router.put('/boq/:id', requireRole('qs'), boqItems.update);
+router.patch('/boq/:id/review', requireRole('qs_head'), reviewBoqItem);
 
 // QA/QC site visits + discrepancies + conveyance + RFIs
 router.get('/site-visits', requireInternal(), siteVisits.list);

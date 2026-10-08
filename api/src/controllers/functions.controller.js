@@ -1,5 +1,6 @@
 import { AreaSettlement } from '../models/AreaSettlement.js';
 import { BimWorkOrder } from '../models/BimWorkOrder.js';
+import { BoqItem } from '../models/BoqItem.js';
 import { Conveyance } from '../models/Conveyance.js';
 import { Discrepancy } from '../models/Discrepancy.js';
 import { GbsCert } from '../models/GbsCert.js';
@@ -12,6 +13,9 @@ import {
   areaSettlementSchema,
   bimWorkOrderSchema,
   bimWorkOrderUpdateSchema,
+  boqItemSchema,
+  boqItemUpdateSchema,
+  boqReviewSchema,
   conveyanceSchema,
   discrepancySchema,
   discrepancyUpdateSchema,
@@ -53,6 +57,36 @@ export async function reviewAreaSettlement(req, res, next) {
         status: parsed.data.status,
         reviewRemark: parsed.data.remark,
         reviewedBy: req.user.id,
+      },
+      { new: true, returnDocument: 'after', runValidators: true },
+    );
+    if (!doc) return res.status(404).json({ message: 'Not found.' });
+    return res.status(200).json({ item: doc });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+// QS/BOQ line items (QS logs, QS Head reviews) — feeds GFC readiness.
+export const boqItems = makeCrud(BoqItem, {
+  create: boqItemSchema,
+  update: boqItemUpdateSchema,
+  filters: byProject,
+  populate: [{ path: 'project', select: POP_PROJ }],
+  decorate: async (data, req) => ({ ...data, createdBy: req.user.id }),
+});
+
+export async function reviewBoqItem(req, res, next) {
+  const parsed = boqReviewSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Invalid data.' });
+  }
+  try {
+    const doc = await BoqItem.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: parsed.data.status,
+        remarks: parsed.data.remarks ?? undefined,
       },
       { new: true, returnDocument: 'after', runValidators: true },
     );

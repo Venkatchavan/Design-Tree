@@ -199,6 +199,26 @@ export default function ProjectDetailPage() {
             <Field label="Description" value={project.description} />
           </div>
         )}
+        {project.requirements && (
+          <div style={{ marginTop: 8 }}>
+            <Field label="Project requirements" value={project.requirements} />
+          </div>
+        )}
+        {project.complexity && (
+          <div style={{ marginTop: 8 }}>
+            <Field label="Complexity" value={project.complexity} />
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Activation & approvals">
+        <div className="field-grid">
+          <Field label="Activation" value={project.activation?.status} />
+          <Field label="Activated at" value={project.activation?.activatedAt ? fmtDate(project.activation.activatedAt) : null} />
+          <Field label="Team confirmation" value={project.teamConfirmation?.status} />
+          <Field label="Shared to Admin" value={project.teamConfirmation?.sharedToAdminAt ? fmtDate(project.teamConfirmation.sharedToAdminAt) : null} />
+          <Field label="Final approval" value={project.finalApproval?.status} />
+        </div>
       </Panel>
 
       <Panel title="Work order">

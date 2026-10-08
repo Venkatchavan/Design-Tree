@@ -5,8 +5,11 @@ import {
   STAGES,
 } from '../models/Project.js';
 import {
+  activateProjectSchema,
+  finalApprovalSchema,
   projectSchema,
   projectUpdateSchema,
+  teamConfirmationSchema,
 } from '../validation/project.schema.js';
 
 const CREATOR_ROLES = [
@@ -172,7 +175,35 @@ export async function createProject(req, res, next) {
     const project = await Project.create({
       ...parsed.data,
       code: parsed.data.code.toUpperCase(),
+      activation: {
+        ...(parsed.data.activation ?? {}),
+        status: parsed.data.activation?.status ?? 'Activated',
+        activatedBy: req.user.id,
+        activatedAt: new Date(),
+      },
     });
+    // Best-effort post-creation wiring: seed the 16-step design workflow
+    // so the Design Management Head has something to open, and notify the
+    // DMH + Technical Directors that a new project needs review.
+    try {
+      const { DesignWorkflow } = await import('../models/DesignWorkflow.js');
+      await DesignWorkflow.findOneAndUpdate(
+        { project: project._id },
+        { $setOnInsert: { project: project._id, steps: [], matrix: [] } },
+        { upsert: true },
+      );
+      const { notify } = await import('../models/Notification.js');
+      await notify({
+        roles: ['design_mgmt_head', 'technical_director'],
+        project: project._id,
+        link: { view: 'design-mgmt', id: project._id.toString() },
+        title: `New project: ${project.name} (${project.code})`,
+        detail: 'Review scope & requirements and identify required disciplines.',
+        type: 'project-created',
+      });
+    } catch {
+      /* creation itself succeeded — wiring is best-effort */
+    }
     return res.status(201).json({ project });
   } catch (err) {
     if (err?.code === 11000) {
@@ -204,6 +235,233 @@ export async function updateProject(req, res, next) {
         .status(409)
         .json({ message: 'A project with this code already exists.' });
     }
+    return next(err);
+  }
+}
+
+// POST /api/projects/:id/activate — Admin activates the project and assigns
+// the confirmed SPOC. Idempotent: re-activation re-confirms/assigns.
+export async function activateProject(req, res, next) {
+  try {
+    const parsed = activateProjectSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: 'Invalid activation data.' });
+    }
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ message: 'Project not found.' });
+
+    let allocation = null;
+    if (parsed.data.coordinator) {
+      const { Employee } = await import('../models/Employee.js');
+      const coordinator = await Employee.findById(parsed.data.coordinator);
+      if (!coordinator) {
+        return res.status(400).json({ message: 'Coordinator not found.' });
+      }
+      const { SpocAllocation } = await import('../models/SpocAllocation.js');
+      allocation = await SpocAllocation.findOneAndUpdate(
+        { project: project._id, coordinator: coordinator._id },
+        {
+          project: project._id,
+          coordinator: coordinator._id,
+          services: parsed.data.services ?? [],
+          status: 'Approved',
+          createdBy: req.user.id,
+        },
+        { upsert: true, new: true, returnDocument: 'after', runValidators: true },
+      );
+    }
+
+    project.status = 'Active';
+    project.activation = {
+      ...(project.activation?.toObject?.() ?? project.activation ?? {}),
+      status: 'Activated',
+      activatedBy: req.user.id,
+      activatedAt: new Date(),
+      spoc: parsed.data.coordinator ?? project.activation?.spoc,
+    };
+    await project.save();
+
+    try {
+      const { notify, userIdsForEmployees } = await import('../models/Notification.js');
+      const users = parsed.data.coordinator
+        ? await userIdsForEmployees([parsed.data.coordinator])
+        : [];
+      await notify({
+        roles: ['design_mgmt_head', 'coordinator'],
+        users,
+        project: project._id,
+        link: { view: 'my-coordination', id: project._id.toString() },
+        title: `Project activated: ${project.name} (${project.code})`,
+        detail: 'SPOC workspace is live.',
+        type: 'project-activated',
+      });
+    } catch {
+      /* best-effort */
+    }
+    return res.status(200).json({ project, allocation });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+// PUT /api/projects/:id/team-confirmation — DMH confirms discipline teams
+// and optionally shares the details back to Admin.
+export async function saveTeamConfirmation(req, res, next) {
+  try {
+    const parsed = teamConfirmationSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: 'Invalid team data.' });
+    }
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ message: 'Project not found.' });
+
+    const current = project.teamConfirmation?.toObject?.() ?? {};
+    const status = parsed.data.status ?? current.status ?? 'Pending';
+    project.teamConfirmation = {
+      ...current,
+      status,
+      disciplines: parsed.data.disciplines ?? current.disciplines ?? [],
+    };
+    if (status === 'Confirmed' && !current.confirmedAt) {
+      project.teamConfirmation.confirmedBy = req.user.id;
+      project.teamConfirmation.confirmedAt = new Date();
+    }
+    if (parsed.data.sharedToAdmin) {
+      project.teamConfirmation.sharedToAdminAt = new Date();
+    }
+    await project.save();
+
+    if (parsed.data.sharedToAdmin) {
+      try {
+        const { notify } = await import('../models/Notification.js');
+        await notify({
+          roles: ['admin_billing'],
+          project: project._id,
+          link: { view: 'dashboard', id: project._id.toString() },
+          title: `Team confirmed: ${project.name} (${project.code})`,
+          detail: 'Design Management Head shared the confirmed project team.',
+          type: 'team-confirmed',
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+    return res.status(200).json({ project });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+// POST /api/projects/:id/final-approval — director sign-off before GFC.
+export async function recordFinalApproval(req, res, next) {
+  try {
+    const parsed = finalApprovalSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: 'Invalid approval data.' });
+    }
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ message: 'Project not found.' });
+    project.finalApproval = {
+      ...(project.finalApproval?.toObject?.() ?? {}),
+      status: 'Approved',
+      approvedBy: req.user.id,
+      approvedAt: new Date(),
+      remarks: parsed.data.remarks,
+    };
+    await project.save();
+    try {
+      const { notify } = await import('../models/Notification.js');
+      await notify({
+        roles: ['admin_billing', 'design_mgmt_head'],
+        project: project._id,
+        link: { view: 'dashboard', id: project._id.toString() },
+        title: `Final approval: ${project.name} (${project.code})`,
+        detail: 'Approved for GFC submission.',
+        type: 'final-approval',
+      });
+    } catch {
+      /* best-effort */
+    }
+    return res.status(200).json({ project });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+// GET /api/projects/:id/gfc-readiness — checklist across deliverables,
+// revisions, peer reviews, RFIs, QS/BOQ before final approval + GFC issue.
+export async function gfcReadiness(req, res, next) {
+  try {
+    const project = await Project.findById(req.params.id).lean();
+    if (!project) return res.status(404).json({ message: 'Project not found.' });
+    const pid = project._id;
+    const [
+      { Deliverable },
+      { Revision },
+      { PeerReview },
+      { Rfi },
+      { AreaSettlement },
+      { BoqItem },
+      { Drawing },
+      { Transmittal },
+    ] = await Promise.all([
+      import('../models/Deliverable.js'),
+      import('../models/Revision.js'),
+      import('../models/PeerReview.js'),
+      import('../models/Rfi.js'),
+      import('../models/AreaSettlement.js'),
+      import('../models/BoqItem.js'),
+      import('../models/Drawing.js'),
+      import('../models/Transmittal.js'),
+    ]);
+    const gfcDrawingIds = await Drawing.find({ project: pid, stage: 'GFC' }).distinct('_id');
+    const [
+      deliverablesOpen,
+      revisionsOpen,
+      peerOpen,
+      peerCommentsOpen,
+      rfisOpen,
+      areaPending,
+      boqPending,
+      gfcTransmittals,
+    ] = await Promise.all([
+      Deliverable.countDocuments({ project: pid, status: { $ne: 'Approved' } }),
+      Revision.countDocuments({ project: pid, status: { $ne: 'Cleared' } }),
+      PeerReview.countDocuments({ project: pid, status: { $ne: 'Approved for Issue' } }),
+      PeerReview.aggregate([
+        { $match: { project: pid } },
+        { $unwind: '$comments' },
+        { $match: { 'comments.closureStatus': 'Open' } },
+        { $count: 'n' },
+      ]).then((r) => r[0]?.n ?? 0),
+      Rfi.countDocuments({ project: pid, status: 'Open' }),
+      AreaSettlement.countDocuments({ project: pid, status: 'Pending' }),
+      BoqItem.countDocuments({ project: pid, status: { $ne: 'Approved' } }),
+      // Transmittals reference drawings (no project field): count
+      // Sent/Acknowledged transmittals over this project's GFC drawings.
+      Transmittal.countDocuments({
+        drawing: { $in: gfcDrawingIds },
+        status: { $in: ['Sent', 'Acknowledged'] },
+      }),
+    ]);
+    const checks = [
+      { key: 'deliverables', label: 'Deliverables approved', open: deliverablesOpen, blocking: true },
+      { key: 'revisions', label: 'Revisions cleared', open: revisionsOpen, blocking: true },
+      { key: 'peer-review', label: 'Peer reviews approved for issue', open: peerOpen, blocking: true },
+      { key: 'peer-comments', label: 'Peer review comments closed', open: peerCommentsOpen, blocking: true },
+      { key: 'rfis', label: 'RFIs closed', open: rfisOpen, blocking: true },
+      { key: 'area-settlement', label: 'Area settlements reviewed', open: areaPending, blocking: true },
+      { key: 'boq', label: 'BOQ items approved', open: boqPending, blocking: true },
+      { key: 'gfc-transmittal', label: 'GFC transmittals sent', open: 0, count: gfcTransmittals, blocking: false },
+    ];
+    const ready = checks.filter((c) => c.blocking).every((c) => c.open === 0);
+    return res.status(200).json({
+      project: { _id: project._id, name: project.name, code: project.code },
+      finalApproval: project.finalApproval ?? { status: 'Pending' },
+      checks,
+      ready,
+    });
+  } catch (err) {
     return next(err);
   }
 }
