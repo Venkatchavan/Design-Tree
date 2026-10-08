@@ -26,6 +26,22 @@ function memberName(m) {
   return String(m.employee ?? '—');
 }
 
+// Team lead arrives populated ({firstName, lastName, ...}) or as a bare id.
+// Never render the raw object (React cannot render objects as children).
+function leadText(lead) {
+  if (!lead) return lead;
+  if (typeof lead === 'string') return lead;
+  if (typeof lead === 'object') {
+    return (
+      [lead.firstName, lead.lastName].filter(Boolean).join(' ') ||
+      lead.name ||
+      lead.empId ||
+      '—'
+    );
+  }
+  return String(lead);
+}
+
 function LogWorkModal({ teamId, onClose }) {
   const queryClient = useQueryClient();
   const [project, setProject] = useState('');
@@ -256,7 +272,7 @@ export default function TeamDetailPage({ bootstrap }) {
           <Field label="Name" value={team.name} />
           <Field label="Service" value={team.service} />
           <Field label="Branch" value={team.branch} />
-          <Field label="Lead" value={team.lead?.name ?? team.lead} />
+          <Field label="Lead" value={leadText(team.lead)} />
           <Field label="Members" value={team.memberCount ?? members.length} />
           <Field label="Week hours" value={team.weekHours} />
         </div>

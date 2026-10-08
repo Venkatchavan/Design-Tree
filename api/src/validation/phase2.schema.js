@@ -110,6 +110,27 @@ export const areaSettlementReviewSchema = z
   })
   .strict();
 
+export const boqItemSchema = z
+  .object({
+    project: objectId,
+    itemNo: z.string().trim().optional(),
+    description: z.string().trim().min(1),
+    unit: strOpt,
+    qty: z.number().min(0).optional(),
+    rate: z.number().min(0).optional(),
+    amount: z.number().min(0).optional(),
+    remarks: strOpt,
+    status: z.enum(['Draft', 'Submitted']).optional(),
+  })
+  .strict();
+export const boqItemUpdateSchema = boqItemSchema.partial();
+export const boqReviewSchema = z
+  .object({
+    status: z.enum(['Submitted', 'Approved']),
+    remarks: strOpt,
+  })
+  .strict();
+
 export const siteVisitSchema = z
   .object({
     project: objectId,

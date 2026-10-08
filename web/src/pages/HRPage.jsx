@@ -15,14 +15,16 @@ import KpiCard from '../components/KpiCard.jsx';
 
 const LOGIN_ROLES = new Set(['founding_director', 'hr', 'admin_billing']);
 
+const EMP_STATUSES = ['Active', 'On Leave', 'Exited'];
+
 const EMP_BLANK = {
   salutation: '', firstName: '', middleName: '', lastName: '', shortName: '',
   fatherName: '', motherName: '', dob: '', sex: '', maritalStatus: '', spouseName: '',
   designation: '', qualification: '', department: '', reportingManager: '',
   branch: '', division: '', salaryStructure: '', email: '', phone: '', mobile: '',
   stdCode: '', dateOfJoining: '', salaryFrom: '', leavingDate: '', leavingReason: '',
-  pan: '', wardCircle: '', director: '', aadhar: '', remarks: '', rejoinee: '',
-  previousEmpId: '', experience: '', status: 'active', empId: '',
+  pan: '', wardCircle: '', director: '', aadhar: '', remarks: '', rejoinee: false,
+  previousEmpId: '', experience: '', status: 'Active', empId: '',
   zeroPT: false, esiApplicable: false, esiNumber: '', esiDispensary: '',
   pfApplicable: false, pfNumber: '', pfFileNumber: '', pfUan: '', pfRestrictPF: false, pfZeroPension: false,
   bankAccount: '', bankName: '', bankIfsc: '',
@@ -247,6 +249,7 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
   const [f, setF] = useState(initial ?? { ...EMP_BLANK });
   const [err, setErr] = useState('');
   const canLogin = LOGIN_ROLES.has(bootstrap?.role?.key);
+  const isCreate = !f._id;
 
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
@@ -261,7 +264,17 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
       queryClient.invalidateQueries({ queryKey: ['employees-dir'] });
       onDone();
     },
-    onError: (e) => setErr(e.message),
+    onError: (e) => {
+      const details = e?.data?.errors;
+      const extra =
+        Array.isArray(details) && details.length > 0
+          ? ` (${details
+              .slice(0, 3)
+              .map((d) => `${(d.path ?? []).join('.') || 'field'}: ${d.message}`)
+              .join('; ')})`
+          : '';
+      setErr(`${e.message}${extra}`);
+    },
   });
 
   function handleSaralFile(e) {
@@ -308,12 +321,18 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
   function handleSubmit(e) {
     e.preventDefault();
     setErr('');
-    if (!f.dateOfJoining) {
-      setErr('Date of joining is required.');
+    if (isCreate && !String(f.firstName ?? '').trim()) {
+      setErr('First name is required.');
       return;
     }
     if ((f.loginEmail || f.loginPassword) && !canLogin) {
       setErr('You are not permitted to create logins.');
+      return;
+    }
+    // Mandatory-4 on create (permission-gated): firstName + attached login
+    // email/password/role. Update keeps everything optional.
+    if (isCreate && canLogin && (!String(f.loginEmail ?? '').trim() || !f.loginPassword || !f.loginRole)) {
+      setErr('Login email, password and role are required.');
       return;
     }
     const body = {
@@ -343,7 +362,7 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
       phone: f.phone || undefined,
       mobile: f.mobile || undefined,
       stdCode: f.stdCode || undefined,
-      dateOfJoining: f.dateOfJoining,
+      dateOfJoining: f.dateOfJoining || undefined,
       salaryFrom: f.salaryFrom || undefined,
       leavingDate: f.leavingDate || undefined,
       leavingReason: f.leavingReason || undefined,
@@ -360,7 +379,9 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
       experience: f.experience || undefined,
       status: f.status || undefined,
     };
-    if (canLogin && (f.loginEmail || f.loginPassword || f.loginRole)) {
+    // Login stays attached to this same form (create only — updates never
+    // provision logins, so everything stays optional there).
+    if (isCreate && canLogin && (f.loginEmail || f.loginPassword || f.loginRole)) {
       body.login = { email: f.loginEmail || undefined, password: f.loginPassword || undefined, role: f.loginRole || undefined };
     }
     save.mutate(body);
@@ -385,7 +406,7 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
       <div className="field-grid">
         <div className="form-row"><label className="form-label">Emp ID (blank = auto)</label>{I('empId')}</div>
         <div className="form-row"><label className="form-label">Salutation</label>{I('salutation')}</div>
-        <div className="form-row"><label className="form-label">First name</label>{I('firstName')}</div>
+        <div className="form-row"><label className="form-label">First name {isCreate ? '*' : ''}</label>{I('firstName', { required: isCreate })}</div>
         <div className="form-row"><label className="form-label">Middle name</label>{I('middleName')}</div>
         <div className="form-row"><label className="form-label">Last name</label>{I('lastName')}</div>
         <div className="form-row"><label className="form-label">Short name</label>{I('shortName')}</div>
@@ -405,13 +426,13 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
         <div className="form-row"><label className="form-label">Branch</label>{I('branch')}</div>
         <div className="form-row"><label className="form-label">Division</label>{I('division')}</div>
         <div className="form-row"><label className="form-label">Salary structure</label>{I('salaryStructure')}</div>
-        <div className="form-row"><label className="form-label">Date of joining *</label>{I('dateOfJoining', { type: 'date', required: true })}</div>
+        <div className="form-row"><label className="form-label">Date of joining</label>{I('dateOfJoining', { type: 'date' })}</div>
         <div className="form-row"><label className="form-label">Salary from</label>{I('salaryFrom', { type: 'date' })}</div>
         <div className="form-row"><label className="form-label">Leaving date</label>{I('leavingDate', { type: 'date' })}</div>
         <div className="form-row"><label className="form-label">Leaving reason</label>{I('leavingReason')}</div>
-        <div className="form-row"><label className="form-label">Status</label>{I('status')}</div>
+        <div className="form-row"><label className="form-label">Status</label><select className="form-input" value={f.status ?? 'Active'} onChange={(e) => set('status', e.target.value)}>{EMP_STATUSES.map((s) => (<option key={s} value={s}>{s}</option>))}</select></div>
         <div className="form-row"><label className="form-label">Experience</label>{I('experience')}</div>
-        <div className="form-row"><label className="form-label">Rejoinee</label>{I('rejoinee')}</div>
+        <div className="form-row"><label className="form-label" style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={!!f.rejoinee} onChange={(e) => set('rejoinee', e.target.checked)} /> Rejoinee</label></div>
         <div className="form-row"><label className="form-label">Previous emp ID</label>{I('previousEmpId')}</div>
       </div>
       <div className="section-label">Contact & address</div>
@@ -455,11 +476,11 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
         <>
           <div className="section-label">Login (restricted)</div>
           <div className="field-grid">
-            <div className="form-row"><label className="form-label">Login email</label>{I('loginEmail', { type: 'email' })}</div>
-            <div className="form-row"><label className="form-label">Password</label>{I('loginPassword', { type: 'password' })}</div>
+            <div className="form-row"><label className="form-label">Login email {isCreate ? '*' : ''}</label>{I('loginEmail', { type: 'email', required: isCreate })}</div>
+            <div className="form-row"><label className="form-label">Password {isCreate ? '*' : ''}</label>{I('loginPassword', { type: 'password', required: isCreate, minLength: 8 })}</div>
             <div className="form-row">
-              <label className="form-label">Role</label>
-              <select className="filter-select" style={{ width: '100%' }} value={f.loginRole ?? ''} onChange={(e) => set('loginRole', e.target.value)}>
+              <label className="form-label">Role {isCreate ? '*' : ''}</label>
+              <select className="filter-select" style={{ width: '100%' }} value={f.loginRole ?? ''} onChange={(e) => set('loginRole', e.target.value)} required={isCreate}>
                 <option value="">Select role</option>
                 {(bootstrap?.roles ?? []).map((r) => (
                   <option key={r.key ?? r.value ?? r} value={r.key ?? r.value ?? r}>
@@ -562,9 +583,7 @@ function ManageTab({ bootstrap }) {
         </select>
         <select className="filter-select" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="on-leave">On leave</option>
-          <option value="exited">Exited</option>
+          {EMP_STATUSES.map((s) => (<option key={s} value={s}>{s}</option>))}
         </select>
         <button type="button" className="btn-primary" onClick={() => setAddOpen(true)}>Add employee</button>
       </div>

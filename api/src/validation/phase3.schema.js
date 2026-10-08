@@ -8,6 +8,13 @@ import { BILLING_READINESS } from '../models/StageStatus.js';
 import { BOOKING_STATUSES } from '../models/TravelBooking.js';
 import { CERT_STATUSES } from '../models/Certificate.js';
 import { CLAIM_STATUSES } from '../models/Claim.js';
+import {
+  FIN_OCC_APPROVALS,
+  FIN_OCC_KINDS,
+  FIN_OCC_PAYMENTS,
+  FIN_OCC_SETTLEMENTS,
+  FIN_OCC_STATUSES,
+} from '../models/FinanceOccEntry.js';
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
 const strOpt = z.string().trim().optional();
@@ -158,6 +165,55 @@ export const bookingSchema = z
 export const bookingUpdateSchema = bookingSchema.partial();
 export const bookingStatusSchema = z
   .object({ status: z.enum(BOOKING_STATUSES) })
+  .strict();
+
+export const financeOccSchema = z
+  .object({
+    kind: z.enum(FIN_OCC_KINDS),
+    employee: objectId,
+    project: objectId.optional(),
+    amount: z.number().min(0).optional(),
+    purpose: strOpt,
+    remarks: strOpt,
+    poNo: strOpt,
+    vendor: strOpt,
+    dept: strOpt,
+    approval: z.enum(FIN_OCC_APPROVALS).optional(),
+    payment: z.enum(FIN_OCC_PAYMENTS).optional(),
+    requestedBy: strOpt,
+    location: strOpt,
+    fromDate: dateOpt,
+    toDate: dateOpt,
+    settlement: z.enum(FIN_OCC_SETTLEMENTS).optional(),
+    client: strOpt,
+    linkedTravel: objectId.optional(),
+    verification: z
+      .object({
+        checks: z.record(z.string(), z.boolean()).optional(),
+        missing: strOpt,
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export const financeOccUpdateSchema = financeOccSchema
+  .omit({ kind: true, employee: true })
+  .partial();
+export const financeOccStatusSchema = z
+  .object({
+    status: z.enum(FIN_OCC_STATUSES),
+    approval: z.enum(FIN_OCC_APPROVALS).optional(),
+    payment: z.enum(FIN_OCC_PAYMENTS).optional(),
+    settlement: z.enum(FIN_OCC_SETTLEMENTS).optional(),
+    verification: z
+      .object({
+        checks: z.record(z.string(), z.boolean()).optional(),
+        missing: strOpt,
+      })
+      .strict()
+      .optional(),
+    remark: strOpt,
+  })
   .strict();
 
 export const quoteSchema = z

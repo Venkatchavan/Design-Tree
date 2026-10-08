@@ -3,7 +3,7 @@ import XLSX from 'xlsx';
 import { nextNumber } from '../models/Counter.js';
 import { Drawing } from '../models/Drawing.js';
 import { ImportBatch } from '../models/ImportBatch.js';
-import { notifyRoles } from '../models/Notification.js';
+import { notify } from '../models/Notification.js';
 import { Project } from '../models/Project.js';
 import { isSuperRole } from '../config/roles.js';
 import { scopedProjectIds } from './register.controller.js';
@@ -236,11 +236,14 @@ export async function setTransmittalStatus(req, res, next) {
     });
     await doc.save();
     if (status === 'Sent' || status === 'Acknowledged') {
-      await notifyRoles(['team_lead'], {
+      notify({
+        roles: ['team_lead'],
+        project: doc.drawing?.project?._id ?? doc.drawing?.project,
+        link: { view: 'transmittal', id: String(doc._id) },
         title: `Transmittal ${doc.trNo} ${status.toLowerCase()}`,
         detail: `${doc.drawing?.drawingNo ?? ''} · ${doc.drawing?.project?.name ?? ''}`,
         type: 'transmittal',
-      });
+      }).catch(() => {});
     }
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -337,11 +340,13 @@ export async function createFromDrawings(req, res, next) {
         created.push(doc);
       }
     }
-    await notifyRoles(['team_lead'], {
+    notify({
+      roles: ['team_lead'],
+      link: { view: 'transmittal' },
       title: `${created.length} transmittal entries created`,
       detail: `From TL drawing lists (${parsed.data.issuedTo})`,
       type: 'transmittal',
-    });
+    }).catch(() => {});
     return res.status(201).json({ created, skipped });
   } catch (err) {
     return next(err);

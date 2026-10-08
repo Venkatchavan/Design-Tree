@@ -1,4 +1,5 @@
 import { AllowanceRequest } from '../models/AllowanceRequest.js';
+import { notify, userIdsForEmployees } from '../models/Notification.js';
 import { Employee } from '../models/Employee.js';
 import { Holiday } from '../models/Holiday.js';
 import { LeaveRequest } from '../models/LeaveRequest.js';
@@ -25,6 +26,21 @@ async function resolveEmployee(req, explicitId) {
   const me = await User.findById(req.user.id);
   if (!me?.employee) return null;
   return Employee.findById(me.employee);
+}
+
+// Requester's login for decision notifications (requester-only relevance).
+async function requesterUserIds(doc) {
+  try {
+    if (!doc?.employee) return [];
+    return await userIdsForEmployees([doc.employee]);
+  } catch {
+    return [];
+  }
+}
+
+function empShort(e) {
+  if (!e || typeof e !== 'object') return '';
+  return [e.firstName, e.lastName].filter(Boolean).join(' ');
 }
 
 async function teamMemberIds(userId) {
@@ -67,6 +83,13 @@ export async function createLeave(req, res, next) {
       employee: employee._id,
       createdBy: req.user.id,
     });
+    notify({
+      roles: ['hr', 'admin_billing'],
+      link: { view: 'leave', id: String(doc._id) },
+      title: `Leave request: ${empShort(employee) || 'team member'}`,
+      detail: `${String(parsed.data.from ?? '').slice(0, 10)} → ${String(parsed.data.to ?? '').slice(0, 10)} · ${parsed.data.leaveType ?? ''}`,
+      type: 'leave',
+    }).catch(() => {});
     return res.status(201).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -142,6 +165,20 @@ export async function decideLeave(req, res, next) {
       { new: true, returnDocument: 'after', runValidators: true },
     );
     if (!doc) return res.status(404).json({ message: 'Not found.' });
+    try {
+      const recipients = (await requesterUserIds(doc)).filter((u) => u !== String(req.user.id));
+      if (recipients.length > 0) {
+        await notify({
+          users: recipients,
+          link: { view: 'leave', id: String(doc._id) },
+          title: `Leave ${String(parsed.data.status ?? '').toLowerCase()}`,
+          detail: (parsed.data.remarks ?? '').slice(0, 140),
+          type: 'leave',
+        });
+      }
+    } catch {
+      /* bell/push best-effort only */
+    }
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -177,6 +214,13 @@ export async function createTravel(req, res, next) {
       employee: employee._id,
       createdBy: req.user.id,
     });
+    notify({
+      roles: ['hr', 'admin_billing'],
+      link: { view: 'travel', id: String(doc._id) },
+      title: `Travel request: ${empShort(employee) || 'team member'}`,
+      detail: `${parsed.data.fromCity ?? ''} → ${parsed.data.toCity ?? ''} · ${parsed.data.purpose ?? ''}`.slice(0, 140),
+      type: 'travel',
+    }).catch(() => {});
     return res.status(201).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -214,6 +258,20 @@ export async function decideTravel(req, res, next) {
       { new: true, returnDocument: 'after', runValidators: true },
     );
     if (!doc) return res.status(404).json({ message: 'Not found.' });
+    try {
+      const recipients = (await requesterUserIds(doc)).filter((u) => u !== String(req.user.id));
+      if (recipients.length > 0) {
+        await notify({
+          users: recipients,
+          link: { view: 'travel', id: String(doc._id) },
+          title: `Travel ${String(parsed.data.status ?? '').toLowerCase()}`,
+          detail: (parsed.data.remarks ?? '').slice(0, 140),
+          type: 'travel',
+        });
+      }
+    } catch {
+      /* bell/push best-effort only */
+    }
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -280,6 +338,13 @@ export async function createAllowance(req, res, next) {
       employee: employee._id,
       createdBy: req.user.id,
     });
+    notify({
+      roles: ['hr', 'admin_billing'],
+      link: { view: 'allowance', id: String(doc._id) },
+      title: `Allowance request: ${empShort(employee) || 'team member'}`,
+      detail: `${parsed.data.reqType ?? ''} · ${parsed.data.purpose ?? ''}`.slice(0, 140),
+      type: 'allowance',
+    }).catch(() => {});
     return res.status(201).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -317,6 +382,20 @@ export async function decideAllowance(req, res, next) {
       { new: true, returnDocument: 'after', runValidators: true },
     );
     if (!doc) return res.status(404).json({ message: 'Not found.' });
+    try {
+      const recipients = (await requesterUserIds(doc)).filter((u) => u !== String(req.user.id));
+      if (recipients.length > 0) {
+        await notify({
+          users: recipients,
+          link: { view: 'allowance', id: String(doc._id) },
+          title: `Allowance ${String(parsed.data.status ?? '').toLowerCase()}`,
+          detail: (parsed.data.remarks ?? '').slice(0, 140),
+          type: 'allowance',
+        });
+      }
+    } catch {
+      /* bell/push best-effort only */
+    }
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);

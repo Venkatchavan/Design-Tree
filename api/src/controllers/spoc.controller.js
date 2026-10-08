@@ -135,6 +135,76 @@ export async function myAllocations(req, res, next) {
   }
 }
 
+// Admin/DMH visibility into allocations (Project Team → Admin sharing).
+export async function listAllocations(req, res, next) {
+  try {
+    const { SpocAllocation } = await import('../models/SpocAllocation.js');
+    const filter = {};
+    if (req.query.project) filter.project = req.query.project;
+    if (req.query.status) filter.status = req.query.status;
+    const items = await SpocAllocation.find(filter)
+      .populate('project', 'name code branch currentStage status')
+      .populate('coordinator', 'firstName lastName empId designation')
+      .sort({ createdAt: -1 })
+      .limit(200);
+    return res.status(200).json({ items, total: items.length });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+// Proposed → Approved gate for the Admin-assigns-SPOC flow. The SPOC
+// self-record path (recordAllocation) stays force-Approved so the
+// initiation walkthrough expectation is unchanged.
+export async function setAllocationStatus(req, res, next) {
+  try {
+    const { SpocAllocation } = await import('../models/SpocAllocation.js');
+    const { status } = req.body ?? {};
+    if (!['Proposed', 'Approved'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status.' });
+    }
+    const doc = await SpocAllocation.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true, returnDocument: 'after', runValidators: true },
+    );
+    if (!doc) return res.status(404).json({ message: 'Allocation not found.' });
+    return res.status(200).json({ item: doc });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+// Team-proposed allocation (lands as Proposed for DMH/Admin approval).
+export async function proposeAllocation(req, res, next) {
+  try {
+    const { SpocAllocation } = await import('../models/SpocAllocation.js');
+    const { project, coordinator, services } = req.body ?? {};
+    if (!project || !coordinator) {
+      return res
+        .status(400)
+        .json({ message: 'project and coordinator are required.' });
+    }
+    const doc = await SpocAllocation.findOneAndUpdate(
+      { project, coordinator },
+      {
+        project,
+        coordinator,
+        services: services ?? [],
+        status: 'Proposed',
+        createdBy: req.user.id,
+      },
+      { upsert: true, new: true, returnDocument: 'after', runValidators: true },
+    );
+    return res.status(200).json({ item: doc });
+  } catch (err) {
+    if (err?.code === 11000) {
+      return res.status(409).json({ message: 'Allocation already recorded.' });
+    }
+    return next(err);
+  }
+}
+
 export async function recordAllocation(req, res, next) {
   try {
     const { SpocAllocation } = await import('../models/SpocAllocation.js');

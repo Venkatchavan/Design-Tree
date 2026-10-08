@@ -1,7 +1,9 @@
+import http from 'node:http';
 import { createApp } from './src/app.js';
 import { config, requireJwtSecret } from './src/config/config.js';
 import { connectDb } from './src/config/db.js';
 import { Transmittal } from './src/models/Transmittal.js';
+import { initRealtime } from './src/realtime/io.js';
 
 requireJwtSecret();
 
@@ -17,6 +19,10 @@ try {
 await Transmittal.createIndexes();
 
 const app = createApp();
-app.listen(config.port, () => {
+// Plain http server (TLS terminates at nginx in production) doubling as
+// the socket.io transport for live bell pushes (see src/realtime/io.js).
+const httpServer = http.createServer(app);
+initRealtime(httpServer);
+httpServer.listen(config.port, () => {
   console.log(`API listening on http://localhost:${config.port}`);
 });

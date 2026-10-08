@@ -76,6 +76,33 @@ export const projectsApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+  activate: (id, body = {}) =>
+    request(`/api/projects/${id}/activate`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  saveTeam: (id, body) =>
+    request(`/api/projects/${id}/team-confirmation`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  directory: (id) => request(`/api/projects/${id}/directory`),
+  saveDirectory: (id, body) =>
+    request(`/api/projects/${id}/directory`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  setPortalUsers: (id, userIds) =>
+    request(`/api/projects/${id}/portal-users`, {
+      method: 'PATCH',
+      body: JSON.stringify({ userIds }),
+    }),
+  gfcReadiness: (id) => request(`/api/projects/${id}/gfc-readiness`),
+  finalApproval: (id, body = {}) =>
+    request(`/api/projects/${id}/final-approval`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   importFile: (file) => requestMultipart('/api/projects/import', file, 'file'),
 };
 

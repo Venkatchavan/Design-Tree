@@ -21,6 +21,8 @@ const BLANK = {
   expectedCompletion: '',
   actualCompletion: '',
   description: '',
+  requirements: '',
+  complexity: '',
   status: '',
   completion: '',
   currentStage: '',
@@ -60,6 +62,8 @@ function buildPayload(f) {
     expectedCompletion: f.expectedCompletion || undefined,
     actualCompletion: f.actualCompletion || undefined,
     description: f.description || undefined,
+    requirements: f.requirements || undefined,
+    complexity: f.complexity || undefined,
     status: f.status || undefined,
     completion: numOrUndef(f.completion),
     currentStage: f.currentStage || undefined,
@@ -80,10 +84,12 @@ function buildPayload(f) {
       .filter((r) => r.service || r.name)
       .map((r) => ({ service: r.service, name: r.name })),
     contacts: {
-      client: f.contacts.client || undefined,
-      architect: f.contacts.architect || undefined,
-      pmc: f.contacts.pmc || undefined,
-      peerReview: f.contacts.peerReview || undefined,
+      // Backend contact schema is a strict object; plain-text entries are
+      // sent as the company name so validation passes.
+      client: f.contacts.client ? { company: f.contacts.client } : undefined,
+      architect: f.contacts.architect ? { company: f.contacts.architect } : undefined,
+      pmc: f.contacts.pmc ? { company: f.contacts.pmc } : undefined,
+      peerReview: f.contacts.peerReview ? { company: f.contacts.peerReview } : undefined,
       billing: f.billing,
     },
     related: f.related,
@@ -131,7 +137,7 @@ export default function NewProjectPage() {
 
   const save = useMutation({
     mutationFn: (body) => projectsApi.create(body),
-    onSuccess: (data, body) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['projects-stats'] });
       if (saveMode === 'new') {
@@ -233,6 +239,15 @@ export default function NewProjectPage() {
             <F label="Current stage"><input className="form-input" value={form.currentStage} onChange={(e) => set('currentStage', e.target.value)} /></F>
           </div>
           <F label="Description"><textarea className="form-input" value={form.description} onChange={(e) => set('description', e.target.value)} /></F>
+          <F label="Project requirements"><textarea className="form-input" value={form.requirements} onChange={(e) => set('requirements', e.target.value)} /></F>
+          <F label="Complexity">
+            <select className="form-input" value={form.complexity} onChange={(e) => set('complexity', e.target.value)}>
+              <option value="">—</option>
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+            </select>
+          </F>
           <div className="field-grid">
             <F label="Location label"><input className="form-input" value={form.location.label} onChange={(e) => setLoc('label', e.target.value)} /></F>
             <F label="Address line 1"><input className="form-input" value={form.location.address1} onChange={(e) => setLoc('address1', e.target.value)} /></F>

@@ -5,6 +5,7 @@ import { TASK_STATUSES } from '../models/Task.js';
 const zTaskStatus = z
   .object({ status: z.enum(TASK_STATUSES) })
   .strict();
+import { notify, userIdsForEmployees } from '../models/Notification.js';
 import { Drawing } from '../models/Drawing.js';
 import { Recruitment } from '../models/Recruitment.js';
 import { Revision } from '../models/Revision.js';
@@ -158,6 +159,21 @@ export async function createRevision(req, res, next) {
       emailLog,
       createdBy: req.user.id,
     });
+    try {
+      const assignees = parsed.data.assignedTo ? await userIdsForEmployees([parsed.data.assignedTo]) : [];
+      const recipients = [...new Set([...assignees])].filter((u) => u !== String(req.user.id));
+      await notify({
+        roles: ['team_lead'],
+        users: recipients,
+        project: parsed.data.project,
+        link: { view: 'revision', id: String(doc._id) },
+        title: `Revision logged: ${doc.drawing ?? doc.refNo ?? ''}`.trim(),
+        detail: `${parsed.data.details ?? ''}`.slice(0, 120),
+        type: 'revision',
+      });
+    } catch {
+      /* bell/push best-effort only */
+    }
     return res.status(201).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -180,6 +196,25 @@ export async function setRevisionStatus(req, res, next) {
       runValidators: true,
     });
     if (!doc) return res.status(404).json({ message: 'Not found.' });
+    try {
+      const assignees = doc.assignedTo ? await userIdsForEmployees([doc.assignedTo]).catch(() => []) : [];
+      const creator = doc.createdBy ? String(doc.createdBy?._id ?? doc.createdBy) : null;
+      const recipients = [...new Set([...assignees, ...(creator ? [creator] : [])])].filter(
+        (u) => /^[0-9a-fA-F]{24}$/.test(u) && u !== String(req.user.id),
+      );
+      if (recipients.length > 0) {
+        await notify({
+          users: recipients,
+          project: doc.project,
+          link: { view: 'revision', id: String(doc._id) },
+          title: `Revision ${parsed.data.status?.toLowerCase() ?? 'updated'}: ${doc.drawing ?? doc.refNo ?? ''}`.trim(),
+          detail: '',
+          type: 'revision',
+        });
+      }
+    } catch {
+      /* bell/push best-effort only */
+    }
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);

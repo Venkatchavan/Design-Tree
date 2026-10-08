@@ -6,9 +6,18 @@ export const SERVICES = [
   'Electrical',
   'Plumbing',
   'Fire',
+  'BIM',
+  'QA/QC',
+  'Peer Review',
+  'QS/BOQ',
+  'Other',
 ];
 export const STAGES = ['CD', 'SD', 'DD', 'TD', 'GFC'];
 export const PROJECT_STATUSES = ['Active', 'On Hold', 'Completed', 'Other'];
+export const PROJECT_COMPLEXITIES = ['Low', 'Medium', 'High'];
+export const ACTIVATION_STATUSES = ['Pending', 'Activated'];
+export const TEAM_CONFIRMATION_STATUSES = ['Pending', 'Confirmed'];
+export const FINAL_APPROVAL_STATUSES = ['Pending', 'Approved'];
 
 const contactSchema = new mongoose.Schema(
   {
@@ -86,6 +95,57 @@ const projectSchema = new mongoose.Schema(
     expectedCompletion: { type: Date },
     actualCompletion: { type: Date },
     description: { type: String, trim: true },
+    requirements: { type: String, trim: true },
+    complexity: { type: String, enum: PROJECT_COMPLEXITIES, trim: true },
+    // Project activation: Admin activates the project and assigns the
+    // confirmed SPOC. New projects default to Pending; Admin confirms via
+    // POST /api/projects/:id/activate which assigns the SPOC.
+    activation: {
+      status: {
+        type: String,
+        enum: ACTIVATION_STATUSES,
+        default: 'Pending',
+        index: true,
+      },
+      activatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      activatedAt: { type: Date },
+      spoc: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+    },
+    // Team finalisation: Design Management Head confirms the discipline
+    // teams (SPOC/PTL/TL/designers/engineers/drafting-BIM/QAQC/peer/QS)
+    // and shares the details back to Admin.
+    teamConfirmation: {
+      status: {
+        type: String,
+        enum: TEAM_CONFIRMATION_STATUSES,
+        default: 'Pending',
+        index: true,
+      },
+      disciplines: [
+        {
+          discipline: { type: String, trim: true },
+          spoc: { type: String, trim: true },
+          ptlTl: { type: String, trim: true },
+          detail: { type: String, trim: true },
+          _id: false,
+        },
+      ],
+      confirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      confirmedAt: { type: Date },
+      sharedToAdminAt: { type: Date },
+    },
+    // Final approval before GFC submission (directors sign-off).
+    finalApproval: {
+      status: {
+        type: String,
+        enum: FINAL_APPROVAL_STATUSES,
+        default: 'Pending',
+        index: true,
+      },
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      approvedAt: { type: Date },
+      remarks: { type: String, trim: true },
+    },
     status: {
       type: String,
       enum: PROJECT_STATUSES,

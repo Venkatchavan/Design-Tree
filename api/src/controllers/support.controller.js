@@ -1,5 +1,20 @@
+import { notify, userIdsForEmployees } from '../models/Notification.js';
 import { SupportTicket } from '../models/SupportTicket.js';
 import { User } from '../models/User.js';
+
+async function requesterUsers(doc) {
+  const ids = new Set();
+  if (doc.createdBy) ids.add(String(doc.createdBy?._id ?? doc.createdBy));
+  if (doc.employee) {
+    try {
+      const found = await userIdsForEmployees([doc.employee]);
+      for (const u of found) ids.add(String(u));
+    } catch {
+      /* best-effort */
+    }
+  }
+  return [...ids];
+}
 import { makeCrud } from '../utils/crud.js';
 import {
   supportSchema,
@@ -46,6 +61,13 @@ export async function createTicket(req, res, next) {
       employee: employee._id,
       createdBy: req.user.id,
     });
+    notify({
+      roles: ['hr', 'admin_billing'],
+      link: { view: 'support', id: String(doc._id) },
+      title: `Support ticket: ${parsed.data.kind ?? 'request'}`,
+      detail: `${parsed.data.subject ?? ''}`.slice(0, 120),
+      type: 'support',
+    }).catch(() => {});
     return res.status(201).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -83,6 +105,20 @@ export async function updateTicket(req, res, next) {
       doc.remarks.push({ by: req.user.id, text: parsed.data.remark });
     }
     await doc.save();
+    try {
+      const recipients = (await requesterUsers(doc)).filter((u) => u !== String(req.user.id));
+      if (recipients.length > 0) {
+        await notify({
+          users: recipients,
+          link: { view: 'support', id: String(doc._id) },
+          title: `Support update: ${doc.kind ?? 'ticket'} ${doc.status ?? ''}`.trim(),
+          detail: (parsed.data.remark ?? '').slice(0, 140),
+          type: 'support',
+        });
+      }
+    } catch {
+      /* bell/push best-effort only */
+    }
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);

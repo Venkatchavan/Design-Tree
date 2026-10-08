@@ -1,5 +1,13 @@
 import { z } from 'zod';
-import { PROJECT_STATUSES, SERVICES, STAGES } from '../models/Project.js';
+import {
+  ACTIVATION_STATUSES,
+  FINAL_APPROVAL_STATUSES,
+  PROJECT_COMPLEXITIES,
+  PROJECT_STATUSES,
+  SERVICES,
+  STAGES,
+  TEAM_CONFIRMATION_STATUSES,
+} from '../models/Project.js';
 
 const contact = z
   .object({
@@ -85,9 +93,120 @@ export const projectSchema = z.object({
   expectedCompletion: z.coerce.date().optional(),
   actualCompletion: z.coerce.date().optional(),
   description: z.string().trim().optional(),
+  requirements: z.string().trim().optional(),
+  complexity: z.enum(PROJECT_COMPLEXITIES).optional(),
+  activation: z
+    .object({
+      status: z.enum(ACTIVATION_STATUSES).optional(),
+      activatedBy: z
+        .string()
+        .regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
+        .optional(),
+      activatedAt: z.coerce.date().optional(),
+      spoc: z
+        .string()
+        .regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
+        .optional(),
+    })
+    .strict()
+    .optional(),
+  teamConfirmation: z
+    .object({
+      status: z.enum(TEAM_CONFIRMATION_STATUSES).optional(),
+      disciplines: z
+        .array(
+          z
+            .object({
+              discipline: z.string().trim().optional(),
+              spoc: z.string().trim().optional(),
+              ptlTl: z.string().trim().optional(),
+              detail: z.string().trim().optional(),
+            })
+            .strict(),
+        )
+        .optional(),
+      sharedToAdmin: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
+  finalApproval: z
+    .object({
+      remarks: z.string().trim().optional(),
+    })
+    .strict()
+    .optional(),
   status: z.enum(PROJECT_STATUSES).optional(),
   completion: z.number().min(0).max(100).optional(),
   currentStage: z.enum(STAGES).optional(),
 });
 
 export const projectUpdateSchema = projectSchema.partial();
+
+const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
+
+// POST /api/projects/:id/activate — Admin activates the project and
+// assigns the confirmed SPOC (idempotent confirmation for Active ones).
+export const activateProjectSchema = z
+  .object({
+    coordinator: objectId.optional(),
+    services: z.array(z.string().trim()).optional(),
+  })
+  .strict();
+
+// PUT /api/projects/:id/team-confirmation — DMH confirms discipline teams
+// and optionally shares the details back to Admin.
+export const teamConfirmationSchema = z
+  .object({
+    status: z.enum(TEAM_CONFIRMATION_STATUSES).optional(),
+    disciplines: z
+      .array(
+        z
+          .object({
+            discipline: z.string().trim().min(1),
+            spoc: z.string().trim().optional(),
+            ptlTl: z.string().trim().optional(),
+            detail: z.string().trim().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    sharedToAdmin: z.boolean().optional(),
+  })
+  .strict();
+
+// POST /api/projects/:id/final-approval — director sign-off before GFC.
+export const finalApprovalSchema = z
+  .object({
+    remarks: z.string().trim().optional(),
+  })
+  .strict();
+
+export const DIRECTORY_KEYS = [
+  'project-information',
+  'client-details',
+  'architect-details',
+  'pmc-details',
+  'work-order',
+  'bim-work-order',
+  'project-team',
+  'scope-services',
+  'project-documents',
+  'communication-records',
+];
+
+// PUT /api/projects/:id/directory — SPOC-owned project directory sections.
+export const projectDirectorySchema = z
+  .object({
+    sections: z
+      .array(
+        z
+          .object({
+            key: z.enum(DIRECTORY_KEYS),
+            title: z.string().trim().optional(),
+            body: z.string().trim().optional(),
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict();

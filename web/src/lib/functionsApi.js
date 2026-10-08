@@ -14,6 +14,25 @@ export const areaApi = {
     }),
 };
 
+export const boqApi = {
+  list: (params = {}) => request(`/api/functions/boq${toQuery(params)}`),
+  create: (body) =>
+    request('/api/functions/boq', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  update: (id, body) =>
+    request(`/api/functions/boq/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  review: (id, body) =>
+    request(`/api/functions/boq/${id}/review`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+};
+
 export const visitsApi = {
   list: (params = {}) => request(`/api/functions/site-visits${toQuery(params)}`),
   create: (body) =>
