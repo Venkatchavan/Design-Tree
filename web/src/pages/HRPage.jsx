@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
-import { employeesApi, request, teamsApi, workEntriesApi } from '../lib/api.js';
+import { employeesApi, meApi, request, teamsApi, usersApi, workEntriesApi } from '../lib/api.js';
 import { leaveApi, travelApi } from '../lib/phase4bApi.js';
 import { docsApi, fileUrl } from '../lib/docsApi.js';
 import Panel from '../components/Panel.jsx';
@@ -32,6 +32,80 @@ const EMP_BLANK = {
 
 function empFullName(e) {
   return [e.salutation, e.firstName, e.middleName, e.lastName].filter(Boolean).join(' ') || e.empId || '—';
+}
+
+function dateOnly(v) {
+  if (!v) return '';
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+}
+
+// Flatten an employee document into the EmployeeForm field shape for editing.
+function empToForm(emp = {}) {
+  return {
+    ...EMP_BLANK,
+    _id: emp._id ?? emp.id ?? '',
+    salutation: emp.salutation ?? '',
+    firstName: emp.firstName ?? '',
+    middleName: emp.middleName ?? '',
+    lastName: emp.lastName ?? '',
+    shortName: emp.shortName ?? '',
+    fatherName: emp.fatherName ?? '',
+    motherName: emp.motherName ?? '',
+    dob: dateOnly(emp.dob),
+    sex: emp.sex ?? '',
+    maritalStatus: emp.maritalStatus ?? '',
+    spouseName: emp.spouseName ?? '',
+    designation: emp.designation ?? '',
+    qualification: emp.qualification ?? '',
+    department: emp.department ?? '',
+    reportingManager: emp.reportingManager ?? '',
+    branch: emp.branch ?? '',
+    division: emp.division ?? '',
+    salaryStructure: emp.salaryStructure ?? '',
+    email: emp.email ?? '',
+    phone: emp.phone ?? '',
+    mobile: emp.mobile ?? '',
+    stdCode: emp.stdCode ?? '',
+    dateOfJoining: dateOnly(emp.dateOfJoining),
+    salaryFrom: dateOnly(emp.salaryFrom),
+    leavingDate: dateOnly(emp.leavingDate),
+    leavingReason: emp.leavingReason ?? '',
+    pan: emp.pan ?? '',
+    wardCircle: emp.wardCircle ?? '',
+    director: emp.director ?? '',
+    aadhar: emp.aadhar ?? '',
+    remarks: emp.remarks ?? '',
+    rejoinee: !!emp.rejoinee,
+    previousEmpId: emp.previousEmpId ?? '',
+    experience: emp.experience ?? '',
+    status: emp.status ?? 'Active',
+    empId: emp.empId ?? '',
+    zeroPT: !!emp.zeroPT,
+    esiApplicable: !!emp.esi?.applicable,
+    esiNumber: emp.esi?.number ?? '',
+    esiDispensary: emp.esi?.dispensary ?? '',
+    pfApplicable: !!emp.pf?.applicable,
+    pfNumber: emp.pf?.number ?? '',
+    pfFileNumber: emp.pf?.fileNumber ?? '',
+    pfUan: emp.pf?.uan ?? '',
+    pfRestrictPF: !!emp.pf?.restrictPF,
+    pfZeroPension: !!emp.pf?.zeroPension,
+    bankAccount: emp.bank?.account ?? '',
+    bankName: emp.bank?.name ?? '',
+    bankIfsc: emp.bank?.ifsc ?? '',
+    addrLine1: emp.address?.line1 ?? '',
+    addrLine2: emp.address?.line2 ?? '',
+    addrCity: emp.address?.city ?? '',
+    addrState: emp.address?.state ?? '',
+    addrZip: emp.address?.zip ?? '',
+    loginEmail: '',
+    loginPassword: '',
+    loginRole: '',
+  };
 }
 
 function OverviewTab() {
@@ -168,7 +242,7 @@ function TravelPanel() {
   );
 }
 
-function EmployeeForm({ bootstrap, initial, onDone, heading }) {
+function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
   const queryClient = useQueryClient();
   const [f, setF] = useState(initial ?? { ...EMP_BLANK });
   const [err, setErr] = useState('');
@@ -177,8 +251,11 @@ function EmployeeForm({ bootstrap, initial, onDone, heading }) {
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
   const save = useMutation({
-    mutationFn: (body) =>
-      body._id ? employeesApi.update(body._id, body) : employeesApi.create(body),
+    mutationFn: (body) => {
+      if (!body._id) return employeesApi.create(body);
+      const { _id, ...payload } = body;
+      return employeesApi.update(_id, payload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['employees-dir'] });
@@ -296,10 +373,14 @@ function EmployeeForm({ bootstrap, initial, onDone, heading }) {
   return (
     <form onSubmit={handleSubmit}>
       <h4 style={{ fontSize: 13, margin: '6px 0 12px' }}>{heading}</h4>
-      <div className="section-label">Saral import (fills this form, client-side only)</div>
-      <div className="form-row">
-        <input type="file" accept=".xlsx,.csv" onChange={handleSaralFile} aria-label="Saral import file" />
-      </div>
+      {!hideImport && (
+        <>
+          <div className="section-label">Saral import (fills this form, client-side only)</div>
+          <div className="form-row">
+            <input type="file" accept=".xlsx,.csv" onChange={handleSaralFile} aria-label="Saral import file" />
+          </div>
+        </>
+      )}
       <div className="section-label">Identity</div>
       <div className="field-grid">
         <div className="form-row"><label className="form-label">Emp ID (blank = auto)</label>{I('empId')}</div>
@@ -407,6 +488,14 @@ function ManageTab({ bootstrap }) {
   const [status, setStatus] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [profileId, setProfileId] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [confirmMode, setConfirmMode] = useState(null);
+  const [leavingDate, setLeavingDate] = useState(new Date().toISOString().slice(0, 10));
+  const [leavingReason, setLeavingReason] = useState('');
+  const [toggleErr, setToggleErr] = useState('');
+
+  const meQ = useQuery({ queryKey: ['me'], queryFn: meApi });
+  const me = meQ.data?.user ?? null;
 
   const dir = useQuery({
     queryKey: ['employees', { search, branch, department, status }],
@@ -420,6 +509,44 @@ function ManageTab({ bootstrap }) {
   });
 
   const items = dir.data?.items ?? [];
+
+  // Coupled activate/deactivate: employee status + linked login isActive
+  // move together so an exited employee cannot still sign in.
+  const toggle = useMutation({
+    mutationFn: async ({ emp, loginId, activate, leavingDate: ld, leavingReason: lr }) => {
+      const updated = await employeesApi.update(emp._id ?? emp.id, {
+        status: activate ? 'Active' : 'Exited',
+        ...(activate ? {} : { leavingDate: ld || undefined, leavingReason: lr || undefined }),
+      });
+      if (loginId) {
+        try {
+          await usersApi.update(loginId, { isActive: activate });
+        } catch (loginErr) {
+          const err = new Error(
+            activate
+              ? `Employee activated, but re-enabling the login failed: ${loginErr.message}`
+              : `Employee marked exited, but disabling the login failed: ${loginErr.message}`,
+          );
+          err.employeeUpdated = updated;
+          throw err;
+        }
+      }
+      return updated;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['employee', profileId] });
+      queryClient.invalidateQueries({ queryKey: ['employees-dir'] });
+      setConfirmMode(null);
+      setLeavingReason('');
+      setToggleErr('');
+    },
+    onError: (e) => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['employee', profileId] });
+      setToggleErr(e.message);
+    },
+  });
 
   return (
     <>
@@ -473,7 +600,7 @@ function ManageTab({ bootstrap }) {
         </Modal>
       )}
       {profileId && (
-        <Modal title="Employee profile" wide onClose={() => setProfileId(null)}>
+        <Modal title="Employee profile" wide onClose={() => { setProfileId(null); setToggleErr(''); }}>
           {profile.isLoading ? (
             <EmptyState text="Loading…" />
           ) : profile.isError ? (
@@ -482,8 +609,33 @@ function ManageTab({ bootstrap }) {
             (() => {
               const emp = profile.data?.employee ?? {};
               const login = emp.user ?? null;
+              const loginId = login?._id ?? login?.id ?? (typeof login === 'string' ? login : null);
+              const isExited = String(emp.status ?? '').toLowerCase() === 'exited';
+              const isSelf =
+                (me?.id && loginId && String(me.id) === String(loginId)) ||
+                (me?.employee && (emp._id ?? emp.id) && String(me.employee) === String(emp._id ?? emp.id));
               return (
                 <>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                    <button type="button" className="approve-btn" onClick={() => setEditOpen(true)}>Edit details</button>
+                    <button
+                      type="button"
+                      className="approve-btn"
+                      disabled={toggle.isPending || !!isSelf}
+                      title={isSelf ? 'You cannot deactivate your own login.' : undefined}
+                      onClick={() => {
+                        setToggleErr('');
+                        setLeavingDate(new Date().toISOString().slice(0, 10));
+                        setLeavingReason('');
+                        setConfirmMode(isExited ? 'activate' : 'deactivate');
+                      }}
+                    >
+                      {isExited ? 'Activate' : 'Deactivate'}
+                    </button>
+                  </div>
+                  {isSelf && (
+                    <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>This is your own account — activation cannot be changed here.</p>
+                  )}
                   <div className="field-grid">
                     <Field label="Name" value={empFullName(emp)} />
                     <Field label="Emp ID" value={emp.empId} mono />
@@ -506,10 +658,83 @@ function ManageTab({ bootstrap }) {
                       <Field label="Active" value={String(login.isActive)} />
                     </div>
                   )}
+                  {toggleErr && <div className="login-error" role="alert" style={{ display: 'block' }}>{toggleErr}</div>}
                 </>
               );
             })()
           )}
+        </Modal>
+      )}
+      {editOpen && profileId && !profile.isLoading && !profile.isError && (
+        <Modal title="Edit employee" wide onClose={() => setEditOpen(false)}>
+          <EmployeeForm
+            key={String(profileId)}
+            bootstrap={bootstrap}
+            heading="Edit all sections"
+            hideImport
+            initial={empToForm(profile.data?.employee ?? {})}
+            onDone={() => {
+              setEditOpen(false);
+              queryClient.invalidateQueries({ queryKey: ['employees'] });
+              queryClient.invalidateQueries({ queryKey: ['employee', profileId] });
+              queryClient.invalidateQueries({ queryKey: ['employees-dir'] });
+            }}
+          />
+        </Modal>
+      )}
+      {confirmMode && profileId && !profile.isLoading && !profile.isError && (
+        <Modal
+          title={confirmMode === 'deactivate' ? 'Deactivate employee' : 'Activate employee'}
+          onClose={() => { setConfirmMode(null); setToggleErr(''); }}
+        >
+          {(() => {
+            const emp = profile.data?.employee ?? {};
+            const login = emp.user ?? null;
+            const loginId = login?._id ?? login?.id ?? (typeof login === 'string' ? login : null);
+            const name = empFullName(emp);
+            return (
+              <>
+                <p style={{ fontSize: 13 }}>
+                  {confirmMode === 'deactivate'
+                    ? `Deactivate ${name}? HR status becomes Exited and their login will be disabled — they cannot sign in.`
+                    : `Activate ${name}? HR status becomes Active and their login will be re-enabled.`}
+                </p>
+                {!loginId && (
+                  <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No login linked — HR status only.</p>
+                )}
+                {confirmMode === 'deactivate' && (
+                  <>
+                    <div className="form-row">
+                      <label className="form-label">Leaving date</label>
+                      <input className="form-input" type="date" value={leavingDate} onChange={(e) => setLeavingDate(e.target.value)} />
+                    </div>
+                    <div className="form-row">
+                      <label className="form-label">Leaving reason *</label>
+                      <input className="form-input" value={leavingReason} onChange={(e) => setLeavingReason(e.target.value)} placeholder="e.g. Resigned" />
+                    </div>
+                  </>
+                )}
+                {toggleErr && <div className="login-error" role="alert" style={{ display: 'block' }}>{toggleErr}</div>}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+                  <button type="button" className="approve-btn" onClick={() => { setConfirmMode(null); setToggleErr(''); }}>Cancel</button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={toggle.isPending || (confirmMode === 'deactivate' && !leavingReason.trim())}
+                    onClick={() => toggle.mutate({
+                      emp,
+                      loginId,
+                      activate: confirmMode === 'activate',
+                      leavingDate,
+                      leavingReason: leavingReason.trim(),
+                    })}
+                  >
+                    {toggle.isPending ? 'Saving…' : confirmMode === 'deactivate' ? 'Deactivate' : 'Activate'}
+                  </button>
+                </div>
+              </>
+            );
+          })()}
         </Modal>
       )}
     </>
