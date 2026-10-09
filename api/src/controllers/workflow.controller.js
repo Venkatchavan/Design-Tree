@@ -236,6 +236,13 @@ export const drawings = makeCrud(Drawing, {
 export const recruitments = makeCrud(Recruitment, {
   create: recruitmentSchema,
   update: recruitmentUpdateSchema,
+  decorate: async (data) => {
+    if (data.branch) {
+      const { requireActiveBranch } = await import('../utils/branches.js');
+      return { ...data, branch: await requireActiveBranch(data.branch) };
+    }
+    return data;
+  },
   filters: (req) => {
     const f = {};
     if (req.query.status) f.status = req.query.status;
@@ -248,6 +255,14 @@ export async function createRecruitment(req, res, next) {
   const parsed = recruitmentSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: 'Invalid data.' });
+  }
+  if (parsed.data.branch) {
+    try {
+      const { requireActiveBranch } = await import('../utils/branches.js');
+      parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+    } catch (err) {
+      return res.status(err.status ?? 400).json({ message: err.message });
+    }
   }
   try {
     const doc = await Recruitment.create({

@@ -2,6 +2,7 @@ import multer from 'multer';
 import XLSX from 'xlsx';
 import { PROJECT_STATUSES, STAGES } from '../models/Project.js';
 import { Project } from '../models/Project.js';
+import { requireActiveBranch } from '../utils/branches.js';
 import { projectSchema } from '../validation/project.schema.js';
 
 export const uploadSpreadsheet = multer({
@@ -72,18 +73,25 @@ export async function importProjects(req, res, next) {
     });
     const docs = [];
     const errors = [];
-    rows.forEach((raw, i) => {
+    for (let i = 0; i < rows.length; i += 1) {
+      const raw = rows[i];
       const parsed = projectSchema.safeParse(mapRow(raw));
       if (!parsed.success) {
         errors.push({ row: i + 2, reason: 'Missing or invalid required fields.' });
-        return;
+        continue;
+      }
+      try {
+        parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+      } catch (err) {
+        errors.push({ row: i + 2, reason: err.message });
+        continue;
       }
       docs.push({
         ...parsed.data,
         code: parsed.data.code.toUpperCase(),
         _importRow: i + 2,
       });
-    });
+    }
     let created = 0;
     if (docs.length > 0) {
       try {

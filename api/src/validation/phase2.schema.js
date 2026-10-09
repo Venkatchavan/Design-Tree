@@ -76,6 +76,7 @@ export const recruitmentSchema = z
     department: z.string().trim().min(1),
     position: z.string().trim().min(1),
     headcount: z.number().min(1),
+    branch: strOpt,
     fresherExperienced: strOpt,
     experience: strOpt,
     timeline: strOpt,

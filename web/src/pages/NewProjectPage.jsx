@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { projectsApi } from '../lib/api.js';
+import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
 import Panel from '../components/Panel.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 
@@ -135,6 +136,9 @@ export default function NewProjectPage() {
       [list]: f[list].map((r, j) => (j === i ? { ...r, [key]: value } : r)),
     }));
 
+  const branchOptionsQ = useBranchOptions();
+  const branchOptions = branchOptionItems(branchOptionsQ.data);
+
   const save = useMutation({
     mutationFn: (body) => projectsApi.create(body),
     onSuccess: (data) => {
@@ -225,7 +229,26 @@ export default function NewProjectPage() {
             <F label="Code"><input className="form-input" value={form.code} onChange={(e) => set('code', e.target.value)} /></F>
             <F label="State"><input className="form-input" value={form.state} onChange={(e) => set('state', e.target.value)} /></F>
             <F label="Project type"><input className="form-input" value={form.projectType} onChange={(e) => set('projectType', e.target.value)} /></F>
-            <F label="Branch *"><input className="form-input" value={form.branch} onChange={(e) => set('branch', e.target.value)} required /></F>
+            <F label="Branch *">
+              <select
+                className="form-input"
+                value={form.branch}
+                onChange={(e) => set('branch', e.target.value)}
+                required
+              >
+                <option value="">
+                  {branchOptionsQ.isLoading ? 'Loading branches…' : 'Select branch'}
+                </option>
+                {branchOptions.map((b) => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+              {!branchOptionsQ.isLoading && branchOptions.length === 0 && (
+                <span style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
+                  No branches yet — ask HR or Admin to add one on the Branches page.
+                </span>
+              )}
+            </F>
             <F label="Used for"><input className="form-input" value={form.usedFor} onChange={(e) => set('usedFor', e.target.value)} /></F>
             <F label="Entity name"><input className="form-input" value={form.entityName} onChange={(e) => set('entityName', e.target.value)} /></F>
             <F label="Job number"><input className="form-input" value={form.jobNumber} onChange={(e) => set('jobNumber', e.target.value)} /></F>

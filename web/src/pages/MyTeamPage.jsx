@@ -17,6 +17,7 @@ import {
   teamsMineApi,
 } from '../lib/workApi.js';
 import { transmittalsApi } from '../lib/phase3Api.js';
+import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
 import { SUPER_ROLES } from '../lib/session.js';
 import { docsApi, fileUrl } from '../lib/docsApi.js';
 import Panel from '../components/Panel.jsx';
@@ -1496,6 +1497,8 @@ function RecruitmentPanel({ rows, canSetStatus }) {
   const [branch, setBranch] = useState('');
   const [justification, setJustification] = useState('');
   const [err, setErr] = useState('');
+  const branchOptionsQ = useBranchOptions();
+  const branchOptions = branchOptionItems(branchOptionsQ.data);
   const create = useMutation({
     mutationFn: (body) => recruitmentApi.create(body),
     onSuccess: () => {
@@ -1563,7 +1566,12 @@ function RecruitmentPanel({ rows, canSetStatus }) {
           </div>
           <div className="form-row">
             <label className="form-label">Branch</label>
-            <input className="form-input" value={branch} onChange={(e) => setBranch(e.target.value)} />
+            <select className="form-input" value={branch} onChange={(e) => setBranch(e.target.value)}>
+              <option value="">—</option>
+              {branchOptions.map((b) => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
           </div>
         </div>
         <div className="form-row">

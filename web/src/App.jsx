@@ -34,6 +34,7 @@ import ClientPortalPage from './pages/ClientPortalPage.jsx'
 import LeaveTravelPage from './pages/LeaveTravelPage.jsx'
 import EmployeeSupportPage from './pages/EmployeeSupportPage.jsx'
 import OrgStructurePage from './pages/OrgStructurePage.jsx'
+import BranchesPage from './pages/BranchesPage.jsx'
 
 const VIEW_COMPONENTS = {
   dashboard: DashboardPage,
@@ -74,6 +75,7 @@ const VIEW_COMPONENTS = {
   'leave-travel': LeaveTravelPage,
   'employee-support': EmployeeSupportPage,
   'org-structure': OrgStructurePage,
+  branches: BranchesPage,
 }
 
 // Non-nav views and the nav view whose presence grants their route.

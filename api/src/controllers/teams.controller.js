@@ -1,5 +1,6 @@
 import { Team } from '../models/Team.js';
 import { WorkEntry } from '../models/WorkEntry.js';
+import { requireActiveBranch } from '../utils/branches.js';
 import {
   teamMembersSchema,
   teamSchema,
@@ -99,6 +100,13 @@ export async function createTeam(req, res, next) {
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid team data.' });
     }
+    if (parsed.data.branch) {
+      try {
+        parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+      } catch (err) {
+        return res.status(err.status ?? 400).json({ message: err.message });
+      }
+    }
     const team = await Team.create(parsed.data);
     return res.status(201).json({ team });
   } catch (err) {
@@ -111,6 +119,13 @@ export async function updateTeam(req, res, next) {
     const parsed = teamUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid team data.' });
+    }
+    if (parsed.data.branch) {
+      try {
+        parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+      } catch (err) {
+        return res.status(err.status ?? 400).json({ message: err.message });
+      }
     }
     const team = await Team.findByIdAndUpdate(req.params.id, parsed.data, {
       new: true,

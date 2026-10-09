@@ -54,7 +54,9 @@ export function makeCrud(Model, opts = {}) {
           if (!parsed.success) {
             return res.status(400).json({ message: 'Invalid data.' });
           }
-          req.body = parsed.data;
+          req.body = opts.decorate
+            ? await opts.decorate(parsed.data, req)
+            : parsed.data;
         }
         const doc = await Model.findByIdAndUpdate(req.params.id, req.body, {
           new: true,

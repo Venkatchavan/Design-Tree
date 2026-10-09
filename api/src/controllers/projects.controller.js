@@ -11,6 +11,7 @@ import {
   projectUpdateSchema,
   teamConfirmationSchema,
 } from '../validation/project.schema.js';
+import { requireActiveBranch } from '../utils/branches.js';
 
 const CREATOR_ROLES = [
   'admin_billing',
@@ -111,8 +112,9 @@ export async function projectFilters(_req, res, next) {
       Project.distinct('branch'),
       Project.distinct('status'),
     ]);
+    const { branchOptionsWithLegacy } = await import('../utils/branches.js');
     return res.status(200).json({
-      branches: branches.filter(Boolean).sort(),
+      branches: await branchOptionsWithLegacy(branches),
       services: SERVICES,
       stages: STAGES,
       statuses: statuses.length > 0 ? statuses.sort() : PROJECT_STATUSES,
@@ -172,6 +174,11 @@ export async function createProject(req, res, next) {
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid project data.' });
     }
+    try {
+      parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+    } catch (err) {
+      return res.status(err.status ?? 400).json({ message: err.message });
+    }
     const activationStatus = parsed.data.activation?.status ?? 'Pending';
     const project = await Project.create({
       ...parsed.data,
@@ -222,6 +229,13 @@ export async function updateProject(req, res, next) {
     const parsed = projectUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid project data.' });
+    }
+    if (parsed.data.branch !== undefined) {
+      try {
+        parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+      } catch (err) {
+        return res.status(err.status ?? 400).json({ message: err.message });
+      }
     }
     if (parsed.data.code) parsed.data.code = parsed.data.code.toUpperCase();
     const project = await Project.findByIdAndUpdate(req.params.id, parsed.data, {

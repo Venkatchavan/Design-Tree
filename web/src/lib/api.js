@@ -130,6 +130,18 @@ export const usersApi = {
     }),
 };
 
+export const branchesApi = {
+  options: () => request('/api/branches/options'),
+  list: (all = false) => request(`/api/branches${all ? '?all=1' : ''}`),
+  create: (body) =>
+    request('/api/branches', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) =>
+    request(`/api/branches/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+};
+
 export const teamsApi = {
   list: () => request('/api/teams'),
   get: (id) => request(`/api/teams/${id}`),

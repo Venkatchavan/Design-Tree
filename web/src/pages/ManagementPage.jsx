@@ -147,6 +147,13 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
 
   // GBS phase counts across the first 10 active projects (derived).
   const projectRows = arr(projects.data);
+  const branchFilterOptions = useMemo(
+    () => [...new Set(projectRows.map((p) => p.branch).filter(Boolean))].sort((a, b) =>
+      String(a).localeCompare(String(b)),
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects.data],
+  );
   const gbsTargets = useMemo(
     () =>
       projectRows
@@ -265,7 +272,12 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
         <div className="field-grid">
           <div className="form-row">
             <label className="form-label">Branch</label>
-            <input className="form-input" value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="e.g. Mumbai" />
+            <select className="filter-select" style={{ width: '100%' }} value={branch} onChange={(e) => setBranch(e.target.value)}>
+              <option value="">All branches</option>
+              {branchFilterOptions.map((b) => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
           </div>
           <div className="form-row">
             <label className="form-label">Service</label>

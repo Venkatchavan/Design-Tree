@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { employeesApi, meApi, request, teamsApi, usersApi, workEntriesApi } from '../lib/api.js';
+import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
 import { leaveApi, travelApi } from '../lib/phase4bApi.js';
 import { docsApi, fileUrl } from '../lib/docsApi.js';
 import Panel from '../components/Panel.jsx';
@@ -250,6 +251,14 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
   const [err, setErr] = useState('');
   const canLogin = LOGIN_ROLES.has(bootstrap?.role?.key);
   const isCreate = !f._id;
+  const branchOptionsQ = useBranchOptions();
+  const branchOptions = branchOptionItems(branchOptionsQ.data);
+  // Legacy values predate the branch master — keep displaying them, but any
+  // change must pick from the master (unchanged values are not re-sent).
+  const branchChoices =
+    f.branch && !branchOptions.includes(f.branch)
+      ? [f.branch, ...branchOptions]
+      : branchOptions;
 
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
@@ -353,7 +362,8 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
       qualification: f.qualification || undefined,
       department: f.department || undefined,
       reportingManager: f.reportingManager || undefined,
-      branch: f.branch || undefined,
+      // Unchanged legacy branches predate the master — don't re-send them.
+      branch: (f.branch ?? '') === (initial?.branch ?? '') ? undefined : (f.branch || undefined),
       division: f.division || undefined,
       salaryStructure: f.salaryStructure || undefined,
       bank: { account: f.bankAccount || undefined, name: f.bankName || undefined, ifsc: f.bankIfsc || undefined },
@@ -423,7 +433,14 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
         <div className="form-row"><label className="form-label">Qualification</label>{I('qualification')}</div>
         <div className="form-row"><label className="form-label">Department</label>{I('department')}</div>
         <div className="form-row"><label className="form-label">Reporting manager</label>{I('reportingManager')}</div>
-        <div className="form-row"><label className="form-label">Branch</label>{I('branch')}</div>
+        <div className="form-row"><label className="form-label">Branch</label>
+          <select className="form-input" value={f.branch ?? ''} onChange={(e) => set('branch', e.target.value)}>
+            <option value="">—</option>
+            {branchChoices.map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+        </div>
         <div className="form-row"><label className="form-label">Division</label>{I('division')}</div>
         <div className="form-row"><label className="form-label">Salary structure</label>{I('salaryStructure')}</div>
         <div className="form-row"><label className="form-label">Date of joining</label>{I('dateOfJoining', { type: 'date' })}</div>
