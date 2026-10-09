@@ -3,6 +3,23 @@ import { logoutApi } from './api.js';
 export const PENDING_LOGOUT_KEY = 'datum-pending-logout';
 export const SUPER_ROLES = ['founding_director', 'working_director'];
 
+// Directive roles (founding director → assoc technical director): no own
+// man-hour entry required, sign out directly, view-only for others' hours.
+export const DIRECTIVE_ROLES = [
+  'founding_director',
+  'working_director',
+  'admin_billing',
+  'hr',
+  'executive_director',
+  'associate_director',
+  'technical_director',
+  'assoc_technical_director',
+];
+
+export function isDirectiveRole(role) {
+  return DIRECTIVE_ROLES.includes(role);
+}
+
 // Set when sign-out is deferred until today's man-hours are recorded (§2.6).
 export function setPendingLogout() {
   try {

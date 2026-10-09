@@ -3,8 +3,7 @@ import { SpocEntry } from '../models/SpocEntry.js';
 import { User } from '../models/User.js';
 import { WorkEntry } from '../models/WorkEntry.js';
 import { spocEntrySchema } from '../validation/phase2.schema.js';
-
-const EXTERNAL_ROLES = ['client', 'architect'];
+import { MAN_HOUR_EXEMPT_ROLES } from '../config/roles.js';
 
 function todayRange() {
   const start = new Date();
@@ -81,10 +80,12 @@ export async function listSpocEntries(req, res, next) {
 }
 
 // Sign-out gate data (§2.6): has this user recorded man-hours today?
+// Directive roles (founding → assoc technical) + externals are exempt:
+// no own entry required, view-only for others' hours.
 export async function manHourStatus(req, res, next) {
   try {
     const role = req.user.role;
-    if (EXTERNAL_ROLES.includes(role)) {
+    if (MAN_HOUR_EXEMPT_ROLES.includes(role)) {
       return res
         .status(200)
         .json({ required: false, logged: true, hours: 0 });

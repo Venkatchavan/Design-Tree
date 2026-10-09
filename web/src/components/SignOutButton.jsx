@@ -6,6 +6,7 @@ import { spocApi } from '../lib/spocApi.js';
 import {
   SUPER_ROLES,
   entryPathForRole,
+  isDirectiveRole,
   performLogout,
   setPendingLogout,
 } from '../lib/session.js';
@@ -26,6 +27,11 @@ export default function SignOutButton({ user, roleKey }) {
   }
 
   async function handleClick() {
+    // Directive roles: no own man-hour entry, sign out directly.
+    if (isDirectiveRole(roleKey)) {
+      await doLogout();
+      return;
+    }
     setErr('');
     setChecking(true);
     try {

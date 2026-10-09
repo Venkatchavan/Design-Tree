@@ -5,6 +5,22 @@
 
 export const SUPER_ROLES = ['founding_director', 'working_director'];
 
+// Directive roles (founding director → assoc technical director): exempt from
+// own man-hour entry + sign-out gate, view-only for others' hours.
+export const DIRECTIVE_ROLES = [
+  'founding_director',
+  'working_director',
+  'admin_billing',
+  'hr',
+  'executive_director',
+  'associate_director',
+  'technical_director',
+  'assoc_technical_director',
+];
+
+// Roles exempt from the man-hour sign-out gate (directive + external).
+export const MAN_HOUR_EXEMPT_ROLES = [...DIRECTIVE_ROLES, 'client', 'architect'];
+
 export const ROLES = [
   { key: 'founding_director', label: 'Founding Director', designation: 'Founding Director', home: 'dashboard' },
   { key: 'working_director', label: 'Working Director', designation: 'Working Director', home: 'dashboard' },
@@ -93,6 +109,8 @@ const BOARD_ROLES = [
 ];
 
 // Navigation per role, in Appendix A order. Entries may relabel a view.
+// Directive roles (FD → assoc TD) are view-only for hours: no
+// update-work-progress entry, but work-progress + management stay.
 const FULL_LEADERSHIP_NAV = [
   { view: 'dashboard', label: 'Dashboard' },
   { view: 'dashboard', label: 'Projects' },
@@ -119,7 +137,6 @@ const FULL_LEADERSHIP_NAV = [
   { view: 'electrical' },
   { view: 'phe' },
   { view: 'fire' },
-  { view: 'update-work-progress' },
   { view: 'leave-travel' },
   { view: 'employee-support' },
   { view: 'management' },
@@ -149,7 +166,6 @@ export const NAV_BY_ROLE = {
     { view: 'electrical' },
     { view: 'phe' },
     { view: 'fire' },
-    { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'management' },
@@ -174,7 +190,6 @@ export const NAV_BY_ROLE = {
     { view: 'electrical' },
     { view: 'phe' },
     { view: 'fire' },
-    { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'management' },
@@ -194,10 +209,10 @@ export const NAV_BY_ROLE = {
     { view: 'gbs-head', label: 'GBS Head' },
     { view: 'peer-review-head', label: 'Peer Review Head' },
     { view: 'qs-head', label: 'QS Head' },
-    { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'my-team' },
+    { view: 'management' },
   ],
   admin_billing: [
     { view: 'dashboard', label: 'Dashboard' },
@@ -206,9 +221,10 @@ export const NAV_BY_ROLE = {
     { view: 'certificates' },
     { view: 'teams' },
     { view: 'transmittal' },
-    { view: 'update-work-progress' },
+    { view: 'work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
+    { view: 'management' },
   ],
   hr: [
     { view: 'dashboard', label: 'Dashboard' },
@@ -217,9 +233,10 @@ export const NAV_BY_ROLE = {
     { view: 'teams' },
     { view: 'hr' },
     { view: 'transmittal-log' },
-    { view: 'update-work-progress' },
+    { view: 'work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
+    { view: 'management' },
   ],
   team_lead: [
     { view: 'dashboard', label: 'Dashboard' },
