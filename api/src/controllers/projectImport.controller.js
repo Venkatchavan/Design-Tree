@@ -77,7 +77,17 @@ export async function importProjects(req, res, next) {
       const raw = rows[i];
       const parsed = projectSchema.safeParse(mapRow(raw));
       if (!parsed.success) {
-        errors.push({ row: i + 2, reason: 'Missing or invalid required fields.' });
+        const fields = (parsed.error?.issues ?? [])
+          .map((iss) => (Array.isArray(iss.path) ? iss.path.join('.') : ''))
+          .filter(Boolean)
+          .slice(0, 4)
+          .join(', ');
+        errors.push({
+          row: i + 2,
+          reason: fields
+            ? `Missing or invalid required fields: ${fields}.`
+            : 'Missing or invalid required fields.',
+        });
         continue;
       }
       try {

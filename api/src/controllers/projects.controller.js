@@ -164,11 +164,21 @@ export async function getProjectTeam(req, res, next) {
   }
 }
 
+function validationIssues(error) {
+  return (error?.issues ?? []).map((i) => ({
+    path: Array.isArray(i.path) ? i.path.join('.') : String(i.path ?? ''),
+    message: i.message,
+    code: i.code,
+  }));
+}
+
 export async function createProject(req, res, next) {
   try {
     const parsed = projectSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: 'Invalid project data.' });
+      return res
+        .status(400)
+        .json({ message: 'Invalid project data.', issues: validationIssues(parsed.error) });
     }
     try {
       parsed.data.branch = await requireActiveBranch(parsed.data.branch);
@@ -224,7 +234,9 @@ export async function updateProject(req, res, next) {
   try {
     const parsed = projectUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: 'Invalid project data.' });
+      return res
+        .status(400)
+        .json({ message: 'Invalid project data.', issues: validationIssues(parsed.error) });
     }
     if (parsed.data.branch !== undefined) {
       try {

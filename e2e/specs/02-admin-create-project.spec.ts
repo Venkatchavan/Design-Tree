@@ -24,8 +24,9 @@ test.describe.serial('02 admin create project', () => {
     else await page.locator('input.form-input').nth(1).fill(PROJECT.code);
     await page.getByLabel(/^state/i).first().fill(PROJECT.state).catch(async () => {});
     await page.getByLabel(/project type/i).first().fill(PROJECT.projectType).catch(async () => {});
-    await page.getByLabel(/branch \*/i).first().fill(PROJECT.branch).catch(async () => {
-      await page.locator('input.form-input').nth(4).fill(PROJECT.branch);
+    // Branch is a <select> populated from the branch master.
+    await page.getByLabel(/branch \*/i).first().selectOption(PROJECT.branch).catch(async () => {
+      await page.getByLabel(/branch \*/i).first().fill(PROJECT.branch).catch(async () => {});
     });
     await page.getByLabel(/used for/i).first().fill(PROJECT.usedFor).catch(async () => {});
     await page.getByLabel(/entity name/i).first().fill(PROJECT.entityName).catch(async () => {});
@@ -41,10 +42,13 @@ test.describe.serial('02 admin create project', () => {
     }
     const scopePanels = page.locator('text=Scope of work & fee');
     await expect(scopePanels.first()).toBeVisible();
-    // Fill each service row by index (Service N / Fee / Scope).
+    // Fill each service row by index (Service N dropdown / Fee / Scope).
     for (let i = 0; i < PROJECT.scope.length; i++) {
       const row = PROJECT.scope[i];
-      await page.getByLabel(`Service ${i + 1}`).first().fill(row.service).catch(async () => {});
+      // Service is now a strict <select> matching backend SERVICES enum.
+      await page.getByLabel(`Service ${i + 1}`).first().selectOption(row.service).catch(async () => {
+        await page.getByLabel(`Service ${i + 1}`).first().fill(row.service).catch(async () => {});
+      });
       // Fee inputs are type=number near each service row.
       const fees = page.locator('input[type="number"]').first();
       void fees;

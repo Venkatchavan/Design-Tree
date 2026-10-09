@@ -1,11 +1,28 @@
 import { useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { projectsApi } from '../lib/api.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
 import Panel from '../components/Panel.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+
+// Must stay in sync with api/src/models/Project.js (SERVICES / PROJECT_STATUSES / STAGES).
+// Used as fallback when GET /api/projects/filters is unavailable.
+const FALLBACK_SERVICES = [
+  'Structural',
+  'Mechanical',
+  'Electrical',
+  'Plumbing',
+  'Fire',
+  'BIM',
+  'QA/QC',
+  'Peer Review',
+  'QS/BOQ',
+  'Other',
+];
+const FALLBACK_STATUSES = ['Active', 'On Hold', 'Completed', 'Other'];
+const FALLBACK_STAGES = ['CD', 'SD', 'DD', 'TD', 'GFC'];
 
 const BLANK = {
   name: '',
@@ -139,6 +156,19 @@ export default function NewProjectPage() {
   const branchOptionsQ = useBranchOptions();
   const branchOptions = branchOptionItems(branchOptionsQ.data);
 
+  const filtersQ = useQuery({
+    queryKey: ['projects-filters'],
+    queryFn: projectsApi.filters,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  const serviceOptions =
+    filtersQ.data?.services?.length > 0 ? filtersQ.data.services : FALLBACK_SERVICES;
+  const statusOptions =
+    filtersQ.data?.statuses?.length > 0 ? filtersQ.data.statuses : FALLBACK_STATUSES;
+  const stageOptions =
+    filtersQ.data?.stages?.length > 0 ? filtersQ.data.stages : FALLBACK_STAGES;
+
   const save = useMutation({
     mutationFn: (body) => projectsApi.create(body),
     onSuccess: (data) => {
@@ -152,7 +182,19 @@ export default function NewProjectPage() {
         navigate(id ? `/projects/${id}` : '/');
       }
     },
-    onError: (e) => setFormError(e.message),
+    onError: (e) => {
+      const issues = e.data?.issues ?? e.data?.errors ?? [];
+      if (Array.isArray(issues) && issues.length > 0) {
+        const fields = issues
+          .map((i) => (Array.isArray(i.path) ? i.path.join('.') : i.path ?? ''))
+          .filter(Boolean)
+          .slice(0, 5)
+          .join(', ');
+        setFormError(fields ? `${e.message} Check: ${fields}.` : e.message);
+      } else {
+        setFormError(e.message);
+      }
+    },
   });
 
   const doImport = useMutation({
@@ -169,8 +211,27 @@ export default function NewProjectPage() {
     e.preventDefault();
     setFormError('');
     setSaveMode(mode);
-    if (!form.name.trim() || !form.branch.trim()) {
-      setFormError('Project name and branch are required.');
+    const missing = [];
+    if (!form.name.trim()) missing.push('Project name');
+    if (!form.code.trim()) missing.push('Code');
+    if (!form.state.trim()) missing.push('State');
+    if (!form.projectType.trim()) missing.push('Project type');
+    if (!form.branch.trim()) missing.push('Branch');
+    if (!form.usedFor.trim()) missing.push('Used for');
+    if (!form.entityName.trim()) missing.push('Entity name');
+    if (!form.location.label.trim()) missing.push('Location label');
+    if (!form.related.projectDirector.trim()) missing.push('Project director');
+    if (missing.length > 0) {
+      setFormError(`Missing required: ${missing.join(', ')}.`);
+      return;
+    }
+    const badScopeRow = (form.scope ?? []).findIndex(
+      (r) => (r.scope?.trim() || String(r.fee ?? '') !== '') && !r.service,
+    );
+    if (badScopeRow !== -1) {
+      setFormError(
+        `Scope row ${badScopeRow + 1} needs a Service from the dropdown.`,
+      );
       return;
     }
     save.mutate(buildPayload(form));
@@ -226,9 +287,9 @@ export default function NewProjectPage() {
         <Panel title="Information">
           <div className="field-grid">
             <F label="Project name *"><input id="np-name" className="form-input" value={form.name} onChange={(e) => set('name', e.target.value)} required /></F>
-            <F label="Code"><input className="form-input" value={form.code} onChange={(e) => set('code', e.target.value)} /></F>
-            <F label="State"><input className="form-input" value={form.state} onChange={(e) => set('state', e.target.value)} /></F>
-            <F label="Project type"><input className="form-input" value={form.projectType} onChange={(e) => set('projectType', e.target.value)} /></F>
+            <F label="Code *"><input className="form-input" value={form.code} onChange={(e) => set('code', e.target.value)} required /></F>
+            <F label="State *"><input className="form-input" value={form.state} onChange={(e) => set('state', e.target.value)} required /></F>
+            <F label="Project type *"><input className="form-input" value={form.projectType} onChange={(e) => set('projectType', e.target.value)} required /></F>
             <F label="Branch *">
               <select
                 className="form-input"
@@ -249,17 +310,31 @@ export default function NewProjectPage() {
                 </span>
               )}
             </F>
-            <F label="Used for"><input className="form-input" value={form.usedFor} onChange={(e) => set('usedFor', e.target.value)} /></F>
-            <F label="Entity name"><input className="form-input" value={form.entityName} onChange={(e) => set('entityName', e.target.value)} /></F>
+            <F label="Used for *"><input className="form-input" value={form.usedFor} onChange={(e) => set('usedFor', e.target.value)} required /></F>
+            <F label="Entity name *"><input className="form-input" value={form.entityName} onChange={(e) => set('entityName', e.target.value)} required /></F>
             <F label="Job number"><input className="form-input" value={form.jobNumber} onChange={(e) => set('jobNumber', e.target.value)} /></F>
             <F label="Client name"><input className="form-input" value={form.clientName} onChange={(e) => set('clientName', e.target.value)} /></F>
             <F label="Owner"><input className="form-input" value={form.owner} onChange={(e) => set('owner', e.target.value)} /></F>
             <F label="Start date"><input type="date" className="form-input" value={form.startDate} onChange={(e) => set('startDate', e.target.value)} /></F>
             <F label="Expected completion"><input type="date" className="form-input" value={form.expectedCompletion} onChange={(e) => set('expectedCompletion', e.target.value)} /></F>
             <F label="Actual completion"><input type="date" className="form-input" value={form.actualCompletion} onChange={(e) => set('actualCompletion', e.target.value)} /></F>
-            <F label="Status"><input className="form-input" value={form.status} onChange={(e) => set('status', e.target.value)} /></F>
+            <F label="Status">
+              <select className="form-input" value={form.status} onChange={(e) => set('status', e.target.value)}>
+                <option value="">—</option>
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </F>
             <F label="Completion %"><input type="number" min="0" max="100" className="form-input" value={form.completion} onChange={(e) => set('completion', e.target.value)} /></F>
-            <F label="Current stage"><input className="form-input" value={form.currentStage} onChange={(e) => set('currentStage', e.target.value)} /></F>
+            <F label="Current stage">
+              <select className="form-input" value={form.currentStage} onChange={(e) => set('currentStage', e.target.value)}>
+                <option value="">—</option>
+                {stageOptions.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </F>
           </div>
           <F label="Description"><textarea className="form-input" value={form.description} onChange={(e) => set('description', e.target.value)} /></F>
           <F label="Project requirements"><textarea className="form-input" value={form.requirements} onChange={(e) => set('requirements', e.target.value)} /></F>
@@ -272,7 +347,7 @@ export default function NewProjectPage() {
             </select>
           </F>
           <div className="field-grid">
-            <F label="Location label"><input className="form-input" value={form.location.label} onChange={(e) => setLoc('label', e.target.value)} /></F>
+            <F label="Location label *"><input className="form-input" value={form.location.label} onChange={(e) => setLoc('label', e.target.value)} required /></F>
             <F label="Address line 1"><input className="form-input" value={form.location.address1} onChange={(e) => setLoc('address1', e.target.value)} /></F>
             <F label="Address line 2"><input className="form-input" value={form.location.address2} onChange={(e) => setLoc('address2', e.target.value)} /></F>
             <F label="City"><input className="form-input" value={form.location.city} onChange={(e) => setLoc('city', e.target.value)} /></F>
@@ -289,7 +364,18 @@ export default function NewProjectPage() {
         <Panel title="Scope of work & fee">
           {form.scope.map((r, i) => (
             <div className="field-grid" key={i}>
-              <F label={`Service ${i + 1}`}><input className="form-input" value={r.service} onChange={(e) => setRow('scope', i, 'service', e.target.value)} /></F>
+              <F label={`Service ${i + 1} *`}>
+                <select
+                  className="form-input"
+                  value={r.service}
+                  onChange={(e) => setRow('scope', i, 'service', e.target.value)}
+                >
+                  <option value="">Select service</option>
+                  {serviceOptions.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </F>
               <F label="Fee"><input type="number" className="form-input" value={r.fee} onChange={(e) => setRow('scope', i, 'fee', e.target.value)} /></F>
               <div className="form-row" style={{ gridColumn: '1 / -1' }}>
                 <label className="form-label">Scope</label>
@@ -382,7 +468,7 @@ export default function NewProjectPage() {
 
         <Panel title="Related user">
           <div className="field-grid">
-            <F label="Project director"><input className="form-input" value={form.related.projectDirector} onChange={(e) => setRelated('projectDirector', e.target.value)} /></F>
+            <F label="Project director *"><input className="form-input" value={form.related.projectDirector} onChange={(e) => setRelated('projectDirector', e.target.value)} required /></F>
             <F label="Director designation"><input className="form-input" value={form.related.projectDirectorDesignation} onChange={(e) => setRelated('projectDirectorDesignation', e.target.value)} /></F>
             <F label="Project head"><input className="form-input" value={form.related.projectHead} onChange={(e) => setRelated('projectHead', e.target.value)} /></F>
             <F label="Head designation"><input className="form-input" value={form.related.projectHeadDesignation} onChange={(e) => setRelated('projectHeadDesignation', e.target.value)} /></F>
