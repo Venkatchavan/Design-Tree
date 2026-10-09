@@ -14,7 +14,10 @@ await connectDb(config.mongoUri);
 try {
   await Transmittal.collection.dropIndex('trNo_1');
 } catch (err) {
-  if (err?.codeName !== 'IndexNotFound' && err?.code !== 27) throw err;
+  const okToIgnore =
+    ['IndexNotFound', 'NamespaceNotFound'].includes(err?.codeName) ||
+    [27, 26].includes(err?.code);
+  if (!okToIgnore) throw err;
 }
 await Transmittal.createIndexes();
 

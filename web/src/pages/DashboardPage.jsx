@@ -37,33 +37,6 @@ const STATUS_KPIS = [
   { key: 'other', label: 'Other', accent: 'rust' },
 ];
 
-const DEPARTMENTS = [
-  { name: 'Design Management', serviceMatch: null },
-  { name: 'HR', serviceMatch: null },
-  { name: 'QA/QC Specifications', serviceMatch: null },
-  { name: 'QS', serviceMatch: ['qs', 'quantity'] },
-  { name: 'BIM', serviceMatch: ['bim'] },
-  { name: 'GBS', serviceMatch: null },
-  { name: 'Peer Review', serviceMatch: null },
-  { name: 'Finance', serviceMatch: null },
-  { name: 'Marketing', serviceMatch: null },
-  { name: 'Structural', serviceMatch: ['structural'] },
-  { name: 'Mechanical', serviceMatch: ['mechanical', 'hvac'] },
-  { name: 'Electrical', serviceMatch: ['electrical'] },
-  { name: 'PHE', serviceMatch: ['phe', 'plumbing', 'phe/plumbing'] },
-  { name: 'Fire', serviceMatch: ['fire', 'firefighting'] },
-];
-
-function findNavPath(nav, deptName) {
-  const needle = deptName.toLowerCase();
-  const hit = (nav ?? []).find(
-    (n) =>
-      String(n.label ?? '').toLowerCase().includes(needle) ||
-      String(n.view ?? '').toLowerCase().includes(needle.replace(/[^a-z]/g, '')),
-  );
-  return hit ? hit.path : null;
-}
-
 export default function DashboardPage({ bootstrap }) {
   const navigate = useNavigate();
   const roleKey = bootstrap?.role?.key;
@@ -89,21 +62,6 @@ export default function DashboardPage({ bootstrap }) {
 
   const active = counts.active ?? 0;
   const branchCount = totals.branches ?? branches.length ?? 0;
-
-  const serviceCountFor = useMemo(() => {
-    const map = new Map(
-      (services ?? []).map((s) => [String(s.service ?? '').toLowerCase(), s.projects]),
-    );
-    return (matchers) => {
-      if (!matchers) return null;
-      for (const m of matchers) {
-        for (const [svc, count] of map) {
-          if (svc.includes(m)) return count;
-        }
-      }
-      return null;
-    };
-  }, [services]);
 
   const stageChart = useMemo(
     () => ({
@@ -160,44 +118,7 @@ export default function DashboardPage({ bootstrap }) {
         ))}
       </div>
 
-      <Panel title="Department overview">
-        {statsQuery.isLoading ? (
-          <EmptyState text="Loading…" />
-        ) : (
-          <div className="dept-overview-grid">
-            {DEPARTMENTS.map((d) => {
-              const svcCount = serviceCountFor(d.serviceMatch);
-              const count = svcCount ?? totals.projects ?? 0;
-              const countLabel = svcCount != null ? 'Projects (live)' : 'Org projects — no dept split yet';
-              const navPath = findNavPath(bootstrap?.nav, d.name);
-              return (
-                <div className="dept-overview-card" key={d.name}>
-                  <div className="dept-overview-name">{d.name}</div>
-                  <div className="dept-overview-stats">
-                    <div className="dept-overview-stat">
-                      <b>{count}</b>
-                      <span>{countLabel}</span>
-                    </div>
-                    <div className="dept-overview-stat">
-                      <b>—</b>
-                      <span>No data source yet</span>
-                    </div>
-                  </div>
-                  {navPath && (
-                    <button
-                      type="button"
-                      className="dept-overview-link"
-                      onClick={() => navigate(navPath)}
-                    >
-                      Open {d.name}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Panel>
+
 
       <Panel title="Branches">
         {branches.length === 0 ? (

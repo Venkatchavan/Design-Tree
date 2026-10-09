@@ -5,6 +5,7 @@ import { projectsApi, employeesApi, usersApi } from '../lib/api.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
+import ProjectDepartments from '../components/ProjectDepartments.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import Modal from '../components/Modal.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -226,6 +227,7 @@ export default function ProjectDetailPage({ bootstrap }) {
   const queryClient = useQueryClient();
   const [modal, setModal] = useState(null);
   const [spocId, setSpocId] = useState('');
+  const [activeTab, setActiveTab] = useState('overview');
 
   const q = useQuery({ queryKey: ['project', id], queryFn: () => projectsApi.get(id) });
   const role = bootstrap?.role?.key ?? '';
@@ -270,6 +272,18 @@ export default function ProjectDetailPage({ bootstrap }) {
   const ptls = project.principalTeamLeads ?? [];
   const loc = project.location ?? {};
   const related = project.related ?? {};
+  const scopeServices = scope.map((s) => String(s.service ?? '')).filter(Boolean);
+  const normalizeService = (s) => {
+    const v = String(s ?? '').toLowerCase();
+    if (v.includes('plumb') || v === 'phe') return 'PHE';
+    if (v.includes('struct')) return 'Structural';
+    if (v.includes('mech') || v.includes('hvac')) return 'Mechanical';
+    if (v.includes('elec')) return 'Electrical';
+    if (v.includes('fire')) return 'Fire';
+    return null;
+  };
+  const defaultService =
+    scopeServices.map(normalizeService).find(Boolean) ?? 'Structural';
 
   return (
     <>
@@ -289,8 +303,21 @@ export default function ProjectDetailPage({ bootstrap }) {
         </div>
       </div>
 
-      <Tabs tabs={[{ key: 'overview', label: 'Overview' }]} active="overview" onChange={() => {}} />
+      <Tabs
+        tabs={[
+          { key: 'overview', label: 'Overview' },
+          { key: 'departments', label: 'Departments' },
+        ]}
+        active={activeTab}
+        onChange={setActiveTab}
+      />
 
+      {activeTab === 'departments' && (
+        <ProjectDepartments projectId={id} defaultService={defaultService} />
+      )}
+
+      {activeTab === 'overview' && (
+      <>
       <Panel title="Status">
         <div className="field-grid">
           <Field label="Status" value={project.status} />
@@ -506,6 +533,8 @@ export default function ProjectDetailPage({ bootstrap }) {
           />
         )}
       </Panel>
+      </>
+      )}
 
       {modal && (
         <OwnerDatesModal project={project} mode={modal} onClose={() => setModal(null)} />

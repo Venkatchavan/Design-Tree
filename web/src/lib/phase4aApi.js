@@ -45,6 +45,6 @@ export const marketingApi = {
 export const reportsApi = {
   management: (params = {}) =>
     request(`/api/reports/management${toQuery(params)}`),
-  department: (service) =>
-    request(`/api/reports/departments/${encodeURIComponent(service)}`),
+  department: (service, params = {}) =>
+    request(`/api/reports/departments/${encodeURIComponent(service)}${toQuery(params)}`),
 };
