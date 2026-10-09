@@ -20,13 +20,11 @@ import EmptyState from '../components/EmptyState.jsx';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
+// Only Admin may create projects (FD/WD included to match backend superuser bypass §3.4).
 const CREATOR_ROLES = new Set([
+  'admin_billing',
   'founding_director',
   'working_director',
-  'admin_billing',
-  'executive_director',
-  'associate_director',
-  'technical_director',
 ]);
 
 const STATUS_KPIS = [

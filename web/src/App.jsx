@@ -140,9 +140,18 @@ function ShellRoutes({ user }) {
     })
   const homePath = bootstrap.views[bootstrap.home].path
 
+  // Only Admin may open the new-project view (matches Dashboard button + API guard).
+  const PROJECT_CREATORS = new Set([
+    'admin_billing',
+    'founding_director',
+    'working_director',
+  ])
   const extraRoutes = EXTRA_ROUTES.filter(
     ({ key, when }) =>
-      bootstrap.views[key] && allowedViews.includes(when) && !seen.has(key),
+      bootstrap.views[key] &&
+      allowedViews.includes(when) &&
+      !seen.has(key) &&
+      (key !== 'new-project' || PROJECT_CREATORS.has(user?.role)),
   )
 
   return (

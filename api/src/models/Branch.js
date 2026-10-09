@@ -20,11 +20,11 @@ const branchSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-branchSchema.pre('validate', function setKey(next) {
+branchSchema.pre('validate', function setKey() {
   if (this.name != null) {
     this.key = String(this.name).trim().toLowerCase();
   }
-  next();
+  return;
 });
 
 export const Branch =

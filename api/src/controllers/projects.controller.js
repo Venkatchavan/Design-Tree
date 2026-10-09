@@ -13,12 +13,8 @@ import {
 } from '../validation/project.schema.js';
 import { requireActiveBranch } from '../utils/branches.js';
 
-const CREATOR_ROLES = [
-  'admin_billing',
-  'executive_director',
-  'associate_director',
-  'technical_director',
-];
+// Only Admin/Billing may create/import projects (FD/WD superusers bypass via requireRole §3.4).
+const CREATOR_ROLES = ['admin_billing'];
 
 export { CREATOR_ROLES };
 
