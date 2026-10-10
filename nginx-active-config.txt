@@ -1,0 +1,266 @@
+﻿docker : nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+At line:3 char:1
++ docker compose exec gateway nginx -T 2>&1 |
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (nginx: the conf...nf syntax is ok:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+# configuration file /etc/nginx/nginx.conf:
+
+user  nginx;
+worker_processes  auto;
+
+error_log  /var/log/nginx/error.log notice;
+pid        /run/nginx.pid;
+
+
+events {
+    worker_connections  1024;
+}
+
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    #tcp_nopush     on;
+
+    keepalive_timeout  65;
+
+    #gzip  on;
+
+    include /etc/nginx/conf.d/*.conf;
+}
+
+# configuration file /etc/nginx/mime.types:
+
+types {
+    text/html                                        html htm shtml;
+    text/css                                         css;
+    text/xml                                         xml;
+    image/gif                                        gif;
+    image/jpeg                                       jpeg jpg;
+    application/javascript                           js;
+    application/atom+xml                             atom;
+    application/rss+xml                              rss;
+
+    text/mathml                                      mml;
+    text/plain                                       txt;
+    text/vnd.sun.j2me.app-descriptor                 jad;
+    text/vnd.wap.wml                                 wml;
+    text/x-component                                 htc;
+
+    image/avif                                       avif;
+    image/png                                        png;
+    image/svg+xml                                    svg svgz;
+    image/tiff                                       tif tiff;
+    image/vnd.wap.wbmp                               wbmp;
+    image/webp                                       webp;
+    image/x-icon                                     ico;
+    image/x-jng                                      jng;
+    image/x-ms-bmp                                   bmp;
+
+    font/woff                                        woff;
+    font/woff2                                       woff2;
+
+    application/java-archive                         jar war ear;
+    application/json                                 json;
+    application/mac-binhex40                         hqx;
+    application/msword                               doc;
+    application/pdf                                  pdf;
+    application/postscript                           ps eps ai;
+    application/rtf                                  rtf;
+    application/vnd.apple.mpegurl                    m3u8;
+    application/vnd.google-earth.kml+xml             kml;
+    application/vnd.google-earth.kmz                 kmz;
+    application/vnd.ms-excel                         xls;
+    application/vnd.ms-fontobject                    eot;
+    application/vnd.ms-powerpoint                    ppt;
+    application/vnd.oasis.opendocument.graphics      odg;
+    application/vnd.oasis.opendocument.presentation  odp;
+    application/vnd.oasis.opendocument.spreadsheet   ods;
+    application/vnd.oasis.opendocument.text          odt;
+    application/vnd.openxmlformats-officedocument.presentationml.presentation
+                                                     pptx;
+    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+                                                     xlsx;
+    application/vnd.openxmlformats-officedocument.wordprocessingml.document
+                                                     docx;
+    application/vnd.wap.wmlc                         wmlc;
+    application/wasm                                 wasm;
+    application/x-7z-compressed                      7z;
+    application/x-cocoa                              cco;
+    application/x-java-archive-diff                  jardiff;
+    application/x-java-jnlp-file                     jnlp;
+    application/x-makeself                           run;
+    application/x-perl                               pl pm;
+    application/x-pilot                              prc pdb;
+    application/x-rar-compressed                     rar;
+    application/x-redhat-package-manager             rpm;
+    application/x-sea                                sea;
+    application/x-shockwave-flash                    swf;
+    application/x-stuffit                            sit;
+    application/x-tcl                                tcl tk;
+    application/x-x509-ca-cert                       der pem crt;
+    application/x-xpinstall                          xpi;
+    application/xhtml+xml                            xhtml;
+    application/xspf+xml                             xspf;
+    application/zip                                  zip;
+
+    application/octet-stream                         bin exe dll;
+    application/octet-stream                         deb;
+    application/octet-stream                         dmg;
+    application/octet-stream                         iso img;
+    application/octet-stream                         msi msp msm;
+
+    audio/midi                                       mid midi kar;
+    audio/mpeg                                       mp3;
+    audio/ogg                                        ogg;
+    audio/x-m4a                                      m4a;
+    audio/x-realaudio                                ra;
+
+    video/3gpp                                       3gpp 3gp;
+    video/mp2t                                       ts;
+    video/mp4                                        mp4;
+    video/mpeg                                       mpeg mpg;
+    video/quicktime                                  mov;
+    video/webm                                       webm;
+    video/x-flv                                      flv;
+    video/x-m4v                                      m4v;
+    video/x-mng                                      mng;
+    video/x-ms-asf                                   asx asf;
+    video/x-ms-wmv                                   wmv;
+    video/x-msvideo                                  avi;
+}
+
+# configuration file /etc/nginx/conf.d/default.conf:
+# DesignTree gateway ΓÇö nginx reverse proxy + SPA host.
+# Baked into the gateway image (gateway/Dockerfile).
+#
+#   /          ΓåÆ SPA static files (React build output)
+#   /api/      ΓåÆ api:5000 (cookie auth passes through untouched)
+#   /dbadmin/  ΓåÆ mongo-express (Founding Director only: basic-auth + IP allowlist)
+#
+# >>> EDIT-ME BEFORE DEPLOY: search this file for EDIT-ME (server_name,
+# >>> ssl paths if renamed, and the dbadmin `allow` line).
+
+upstream api_backend {
+    server api:5000;
+}
+
+upstream dbadmin_backend {
+    server mongo-express:8081;
+}
+
+# Login brute-force guard: max ~10 login attempts/minute per IP,
+# bursts of 20 allowed, excess rejected with 503.
+limit_req_zone $binary_remote_addr zone=login:10m rate=10r/m;
+
+server {
+    listen 80;
+    server_name _;
+    # Plain HTTP exists only to bounce browsers to HTTPS.
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    # EDIT-ME: the LAN hostname/IP users type, e.g. "designtree.local".
+    # Must match the mkcert certificate (see docs/DEPLOYMENT.md).
+    server_name designtree.local;
+
+    ssl_certificate     /etc/nginx/certs/server.crt;
+    ssl_certificate_key /etc/nginx/certs/server.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    # Multipart uploads are capped at 10 MB by the API; 20m leaves
+    # headroom for form overhead without opening abuse floodgates.
+    client_max_body_size 20m;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy no-referrer always;
+
+    # --- Live bell pushes (socket.io). Single server, so no sticky-session
+    # handling is needed; the Upgrade headers are the critical part.
+    location /socket.io/ {
+        proxy_pass http://api_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    # --- API: cookie JWT passes through; nothing is stripped. ---
+    location /api/ {
+        proxy_pass http://api_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    # Slow down password guessing on the sign-in endpoint only.
+    location = /api/auth/login {
+        limit_req zone=login burst=20 nodelay;
+        proxy_pass http://api_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # --- DB admin (mongo-express), Founding Director only. ---
+    # Lock 1: IP allowlist. EDIT-ME: replace with the FD office PC's
+    # LAN address (and the server itself reaches this as 127.0.0.1
+    # only via host browser ΓÇö that path needs no allowlist entry).
+    # Lock 2: HTTP basic-auth user, whose hash lives in the mounted
+    # gateway/.htpasswd file (never committed).
+    # Lock 3: mongo-express's own login screen (ME_CONFIG_BASICAUTH).
+    location /dbadmin/ {
+        allow 127.0.0.1;
+        allow 192.168.1.50;   # EDIT-ME: FD office PC address
+        deny  all;
+
+        auth_basic "DesignTree DB admin";
+        auth_basic_user_file /etc/nginx/.htpasswd;
+
+        # No trailing URI on proxy_pass: the /dbadmin/ prefix is kept,
+        # matching ME_CONFIG_SITE_BASEURL=/dbadmin in compose.
+        proxy_pass http://dbadmin_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location = /dbadmin {
+        return 301 /dbadmin/;
+    }
+
+    # --- SPA: static files, client-side routing fallback. ---
+    location / {
+        root /usr/share/nginx/html;
+        try_files $uri $uri/ /index.html;
+    }
+}
+
