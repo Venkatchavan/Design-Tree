@@ -9,7 +9,9 @@ import {
   finalApprovalSchema,
   projectSchema,
   projectUpdateSchema,
+  spocContactsSchema,
   teamConfirmationSchema,
+  teamLeadsSchema,
 } from '../validation/project.schema.js';
 import { requireActiveBranch } from '../utils/branches.js';
 
@@ -291,6 +293,74 @@ export async function updateProject(req, res, next) {
         .status(409)
         .json({ message: 'A project with this code already exists.' });
     }
+    return next(err);
+  }
+}
+
+// PUT /api/projects/:id/spoc-contacts — SPOC-owned PMC / Peer Review
+// contacts (admin does not know these; no link with directory sections).
+export async function saveSpocContacts(req, res, next) {
+  try {
+    const parsed = spocContactsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .json({ message: 'Invalid contacts data.', issues: validationIssues(parsed.error) });
+    }
+    if (parsed.data.pmc === undefined && parsed.data.peerReview === undefined) {
+      return res.status(400).json({ message: 'Provide pmc and/or peerReview.' });
+    }
+    const set = {};
+    if (parsed.data.pmc !== undefined) set['contacts.pmc'] = parsed.data.pmc;
+    if (parsed.data.peerReview !== undefined) set['contacts.peerReview'] = parsed.data.peerReview;
+    const project = await Project.findByIdAndUpdate(req.params.id, { $set: set }, {
+      new: true,
+      returnDocument: 'after',
+      runValidators: true,
+    });
+    if (!project) return res.status(404).json({ message: 'Project not found.' });
+    return res.status(200).json({ project });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+// PUT /api/projects/:id/team-leads — SPOC-owned principal team leads
+// (+ optional related director/head). Admin side is display-only.
+export async function saveTeamLeads(req, res, next) {
+  try {
+    const parsed = teamLeadsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .json({ message: 'Invalid team leads data.', issues: validationIssues(parsed.error) });
+    }
+    const set = {};
+    if (parsed.data.principalTeamLeads !== undefined) {
+      set.principalTeamLeads = parsed.data.principalTeamLeads
+        .filter((t) => (t.service ?? '').trim() || (t.name ?? '').trim())
+        .map((t) => ({ service: (t.service ?? '').trim(), name: (t.name ?? '').trim() }));
+    }
+    for (const k of [
+      'projectDirector',
+      'projectDirectorDesignation',
+      'projectHead',
+      'projectHeadDesignation',
+    ]) {
+      const v = parsed.data.related?.[k];
+      if (v !== undefined) set[`related.${k}`] = v;
+    }
+    if (Object.keys(set).length === 0) {
+      return res.status(400).json({ message: 'Provide principalTeamLeads and/or related.' });
+    }
+    const project = await Project.findByIdAndUpdate(req.params.id, { $set: set }, {
+      new: true,
+      returnDocument: 'after',
+      runValidators: true,
+    });
+    if (!project) return res.status(404).json({ message: 'Project not found.' });
+    return res.status(200).json({ project });
+  } catch (err) {
     return next(err);
   }
 }

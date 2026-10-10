@@ -47,6 +47,19 @@ function fmtStamp(v) {
   return `${day}-${mon}-${String(d.getFullYear()).slice(2)}`;
 }
 
+function fmtDateTime(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  const day = String(d.getDate()).padStart(2, '0');
+  const mon = d.toLocaleString('en-GB', { month: 'short' });
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ap = h >= 12 ? 'pm' : 'am';
+  h = h % 12 || 12;
+  return `${day}-${mon}-${String(d.getFullYear()).slice(2)}, ${String(h).padStart(2, '0')}:${m} ${ap}`;
+}
+
 const inr = (v) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 
 export default function TravelBookingPage({ bootstrap }) {
@@ -54,7 +67,7 @@ export default function TravelBookingPage({ bootstrap }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({
     employee: '', project: '', department: '', fromCity: '', toCity: '', departureDate: '',
-    returnDate: '', mode: '', checkIn: '', checkOut: '', hotel: '', location: '', nights: '',
+    returnDate: '', mode: '', preferredSeat: '', checkIn: '', checkOut: '', hotel: '', location: '', nights: '',
     reason: '', extraCharges: '',
   });
   const [editingId, setEditingId] = useState('');
@@ -105,7 +118,7 @@ export default function TravelBookingPage({ bootstrap }) {
 
   const blankForm = {
     employee: '', project: '', department: '', fromCity: '', toCity: '', departureDate: '',
-    returnDate: '', mode: '', checkIn: '', checkOut: '', hotel: '', location: '', nights: '',
+    returnDate: '', mode: '', preferredSeat: '', checkIn: '', checkOut: '', hotel: '', location: '', nights: '',
     reason: '', extraCharges: '',
   };
 
@@ -123,7 +136,7 @@ export default function TravelBookingPage({ bootstrap }) {
       fromCity: r.fromCity ?? '', toCity: r.toCity ?? '',
       departureDate: r.departureDate ? String(r.departureDate).slice(0, 10) : '',
       returnDate: r.returnDate ? String(r.returnDate).slice(0, 10) : '',
-      mode: r.mode ?? '', checkIn: r.checkIn ?? '', checkOut: r.checkOut ?? '',
+      mode: r.mode ?? '', preferredSeat: r.preferredSeat ?? '', checkIn: r.checkIn ?? '', checkOut: r.checkOut ?? '',
       hotel: r.hotel ?? '', location: r.location ?? '',
       nights: r.nights ?? '', reason: r.reason ?? '',
       extraCharges: r.extraCharges ?? '',
@@ -138,6 +151,7 @@ export default function TravelBookingPage({ bootstrap }) {
       ...form,
       project: form.project || undefined,
       department: form.department || undefined,
+      preferredSeat: form.preferredSeat || undefined,
       checkIn: form.checkIn || undefined,
       checkOut: form.checkOut || undefined,
       nights: Number(form.nights) || 0,
@@ -187,7 +201,9 @@ export default function TravelBookingPage({ bootstrap }) {
               { key: 'department', label: 'Department', render: (r) => r.department ?? r.employee?.department ?? '—' },
               { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
               { key: 'dates', label: 'Dates', render: (r) => fmtRange(r.departureDate, r.returnDate) },
+              { key: 'requestedOn', label: 'Requested on', render: (r) => fmtDateTime(r.createdAt) },
               { key: 'mode', label: 'Mode', render: (r) => r.mode ?? '—' },
+              { key: 'preferredSeat', label: 'Preferred seat', render: (r) => r.preferredSeat ?? '—' },
               { key: 'checkIn', label: 'Check-in', render: (r) => r.checkIn ?? '—' },
               { key: 'checkOut', label: 'Check-out', render: (r) => r.checkOut ?? '—' },
               { key: 'hotel', label: 'Hotel', render: (r) => r.hotel ?? '—' },
@@ -220,7 +236,9 @@ export default function TravelBookingPage({ bootstrap }) {
               { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
               { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
               { key: 'dates', label: 'Dates', render: (r) => `${r.departureDate ? new Date(r.departureDate).toLocaleDateString() : '—'} → ${r.returnDate ? new Date(r.returnDate).toLocaleDateString() : '—'}` },
+              { key: 'requestedOn', label: 'Requested on', render: (r) => fmtDateTime(r.createdAt) },
               { key: 'mode', label: 'Mode' },
+              { key: 'preferredSeat', label: 'Preferred seat', render: (r) => r.preferredSeat ?? '—' },
               { key: 'hotel', label: 'Hotel', render: (r) => r.hotel ? `${r.hotel} (${r.location ?? '—'})` : '—' },
               { key: 'nights', label: 'Nights' },
               { key: 'status', label: 'Booking status', render: (r) => canWrite
@@ -242,6 +260,7 @@ export default function TravelBookingPage({ bootstrap }) {
                 <div className="form-row"><label className="form-label">Departure date</label><input type="date" className="form-input" value={form.departureDate} onChange={(e) => setForm({ ...form, departureDate: e.target.value })} /></div>
                 <div className="form-row"><label className="form-label">Return date</label><input type="date" className="form-input" value={form.returnDate} onChange={(e) => setForm({ ...form, returnDate: e.target.value })} /></div>
                 <div className="form-row"><label className="form-label">Mode</label><input className="form-input" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })} /></div>
+                <div className="form-row"><label className="form-label">Preferred seat (flight)</label><input className="form-input" placeholder="e.g. 14A, window" value={form.preferredSeat} onChange={(e) => setForm({ ...form, preferredSeat: e.target.value })} /></div>
                 <div className="form-row"><label className="form-label">Check-in</label><input className="form-input" placeholder="18 Aug, 03:00 pm" value={form.checkIn} onChange={(e) => setForm({ ...form, checkIn: e.target.value })} /></div>
                 <div className="form-row"><label className="form-label">Check-out</label><input className="form-input" placeholder="19 Aug, 11:00 am" value={form.checkOut} onChange={(e) => setForm({ ...form, checkOut: e.target.value })} /></div>
                 <div className="form-row"><label className="form-label">Hotel</label><input className="form-input" value={form.hotel} onChange={(e) => setForm({ ...form, hotel: e.target.value })} /></div>

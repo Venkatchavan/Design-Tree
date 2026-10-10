@@ -153,6 +153,7 @@ export const bookingSchema = z
     departureDate: dateOpt,
     returnDate: dateOpt,
     mode: strOpt,
+    preferredSeat: strOpt,
     checkIn: strOpt,
     checkOut: strOpt,
     hotel: strOpt,

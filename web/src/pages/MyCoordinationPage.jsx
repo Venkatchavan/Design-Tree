@@ -66,6 +66,333 @@ const DIRECTORY_KEYS = [
   'communication-records',
 ];
 
+const PTL_SERVICES = ['Structural', 'Mechanical', 'Electrical', 'Plumbing', 'Fire'];
+
+const CONTACT_FIELDS = ['name', 'designation', 'company', 'phone', 'email'];
+const CONTACT_LABELS = {
+  name: 'Name',
+  designation: 'Designation',
+  company: 'Company',
+  phone: 'Phone',
+  email: 'Email',
+};
+
+function blankContact() {
+  return { name: '', designation: '', company: '', phone: '', email: '' };
+}
+
+function compactContact(c) {
+  const out = {};
+  for (const k of CONTACT_FIELDS) {
+    const v = (c?.[k] ?? '').trim();
+    if (v) out[k] = v;
+  }
+  return out;
+}
+
+function contactInputs(value, setValue, prefix) {
+  return (
+    <div className="field-grid">
+      {CONTACT_FIELDS.map((k) => (
+        <div className="form-row" key={k}>
+          <label className="form-label" htmlFor={`${prefix}-${k}`}>
+            {CONTACT_LABELS[k]}
+          </label>
+          <input
+            id={`${prefix}-${k}`}
+            className="form-input"
+            value={value[k] ?? ''}
+            onChange={(e) => setValue({ ...value, [k]: e.target.value })}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// SPOC-owned PMC / Peer Review contacts. Deliberately NOT part of the
+// 10-section directory: admin staff do not know these details. Saved to the
+// canonical project contacts, so the project-detail Contacts panel and the
+// directory pmc-details seed pick them up automatically.
+function SpocContactsEditor() {
+  const queryClient = useQueryClient();
+  const [projectId, setProjectId] = useState('');
+  const [pmc, setPmc] = useState(blankContact());
+  const [peer, setPeer] = useState(blankContact());
+  const [loadedFor, setLoadedFor] = useState('');
+
+  const projQ = useQuery({
+    queryKey: ['projects', 'active-spoc-contacts'],
+    queryFn: () => projectsApi.list({ status: 'Active' }),
+  });
+  const projects = projQ.data?.items ?? [];
+  const effectiveId = projectId || projects[0]?._id || projects[0]?.id || '';
+
+  const detailQ = useQuery({
+    queryKey: ['project', effectiveId],
+    queryFn: () => projectsApi.get(effectiveId),
+    enabled: !!effectiveId,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!detailQ.data || loadedFor === effectiveId) return;
+    const p = detailQ.data?.project ?? detailQ.data ?? {};
+    setPmc({ ...blankContact(), ...(p.contacts?.pmc ?? {}) });
+    setPeer({ ...blankContact(), ...(p.contacts?.peerReview ?? {}) });
+    setLoadedFor(effectiveId);
+  }, [detailQ.data, effectiveId, loadedFor]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      projectsApi.saveSpocContacts(effectiveId, {
+        pmc: compactContact(pmc),
+        peerReview: compactContact(peer),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', effectiveId] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['directory', effectiveId] });
+      setLoadedFor('');
+    },
+  });
+
+  return (
+    <Panel
+      title="PMC & Peer Review contacts (SPOC owned)"
+      sub="Admin staff do not enter these — they appear on the project detail Contacts panel once saved here."
+    >
+      <div className="form-row" style={{ maxWidth: 420 }}>
+        <label className="form-label">Project</label>
+        <select
+          className="filter-select"
+          style={{ width: '100%' }}
+          value={effectiveId}
+          onChange={(e) => {
+            setProjectId(e.target.value);
+            setLoadedFor('');
+          }}
+        >
+          {projects.map((p) => (
+            <option key={p._id ?? p.id} value={p._id ?? p.id}>
+              {p.name ?? p.code ?? '—'}
+            </option>
+          ))}
+        </select>
+      </div>
+      {detailQ.isLoading ? (
+        <EmptyState text="Loading contacts…" />
+      ) : detailQ.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>
+          {detailQ.error.message}
+        </div>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate();
+          }}
+        >
+          <div className="section-label" style={{ marginTop: 12 }}>
+            PMC contact
+          </div>
+          {contactInputs(pmc, setPmc, 'spoc-pmc')}
+          <div className="section-label" style={{ marginTop: 12 }}>
+            Peer Review contact
+          </div>
+          {contactInputs(peer, setPeer, 'spoc-peer')}
+          {save.isError && (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>
+              {save.error.message}
+            </div>
+          )}
+          <button type="submit" className="btn-primary" disabled={save.isPending || !effectiveId} style={{ marginTop: 12 }}>
+            {save.isPending ? 'Saving…' : 'Save contacts'}
+          </button>
+        </form>
+      )}
+    </Panel>
+  );
+}
+
+// SPOC-owned principal team leads (+ optional related director/head).
+// Saved to the canonical project, so the admin dashboard column and the
+// project-detail team panel reflect them; the directory project-team
+// section re-seeds from the same data on its next load.
+function SpocTeamLeadsEditor() {
+  const queryClient = useQueryClient();
+  const [projectId, setProjectId] = useState('');
+  const [leads, setLeads] = useState({});
+  const [related, setRelated] = useState({
+    projectDirector: '',
+    projectDirectorDesignation: '',
+    projectHead: '',
+    projectHeadDesignation: '',
+  });
+  const [loadedFor, setLoadedFor] = useState('');
+
+  const projQ = useQuery({
+    queryKey: ['projects', 'active-spoc-leads'],
+    queryFn: () => projectsApi.list({ status: 'Active' }),
+  });
+  const projects = projQ.data?.items ?? [];
+  const effectiveId = projectId || projects[0]?._id || projects[0]?.id || '';
+  const empQ = useQuery({
+    queryKey: ['employees-dir'],
+    queryFn: () => employeesApi.list({}),
+  });
+  const employees = empQ.data?.items ?? [];
+
+  const detailQ = useQuery({
+    queryKey: ['project', effectiveId],
+    queryFn: () => projectsApi.get(effectiveId),
+    enabled: !!effectiveId,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!detailQ.data || loadedFor === effectiveId) return;
+    const p = detailQ.data?.project ?? detailQ.data ?? {};
+    const map = {};
+    for (const t of p.principalTeamLeads ?? []) {
+      if (t?.service) map[t.service] = t.name ?? '';
+    }
+    setLeads(map);
+    setRelated({
+      projectDirector: p.related?.projectDirector ?? '',
+      projectDirectorDesignation: p.related?.projectDirectorDesignation ?? '',
+      projectHead: p.related?.projectHead ?? '',
+      projectHeadDesignation: p.related?.projectHeadDesignation ?? '',
+    });
+    setLoadedFor(effectiveId);
+  }, [detailQ.data, effectiveId, loadedFor]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      projectsApi.saveTeamLeads(effectiveId, {
+        principalTeamLeads: PTL_SERVICES.map((service) => ({
+          service,
+          name: (leads[service] ?? '').trim(),
+        })),
+        related,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', effectiveId] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['directory', effectiveId] });
+      setLoadedFor('');
+    },
+  });
+
+  return (
+    <Panel
+      title="Project team leads (SPOC owned)"
+      sub="Entered here by the SPOC — shown read-only on the admin dashboard and project detail."
+    >
+      <div className="form-row" style={{ maxWidth: 420 }}>
+        <label className="form-label">Project</label>
+        <select
+          className="filter-select"
+          style={{ width: '100%' }}
+          value={effectiveId}
+          onChange={(e) => {
+            setProjectId(e.target.value);
+            setLoadedFor('');
+          }}
+        >
+          {projects.map((p) => (
+            <option key={p._id ?? p.id} value={p._id ?? p.id}>
+              {p.name ?? p.code ?? '—'}
+            </option>
+          ))}
+        </select>
+      </div>
+      {detailQ.isLoading ? (
+        <EmptyState text="Loading team…" />
+      ) : detailQ.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>
+          {detailQ.error.message}
+        </div>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate();
+          }}
+        >
+          <div className="field-grid" style={{ marginTop: 12 }}>
+            {PTL_SERVICES.map((service) => (
+              <div className="form-row" key={service}>
+                <label className="form-label" htmlFor={`spoc-lead-${service}`}>
+                  {service} lead
+                </label>
+                <input
+                  id={`spoc-lead-${service}`}
+                  className="form-input"
+                  list="spoc-lead-emps"
+                  value={leads[service] ?? ''}
+                  onChange={(e) => setLeads((prev) => ({ ...prev, [service]: e.target.value }))}
+                  placeholder="Team lead name"
+                />
+              </div>
+            ))}
+          </div>
+          <datalist id="spoc-lead-emps">
+            {employees.map((e) => (
+              <option key={e._id ?? e.id} value={`${e.firstName ?? ''} ${e.lastName ?? ''}`.trim()} />
+            ))}
+          </datalist>
+          <div className="section-label" style={{ marginTop: 12 }}>
+            Related (optional override)
+          </div>
+          <div className="field-grid">
+            <div className="form-row">
+              <label className="form-label">Project Director</label>
+              <input
+                className="form-input"
+                value={related.projectDirector}
+                onChange={(e) => setRelated({ ...related, projectDirector: e.target.value })}
+              />
+            </div>
+            <div className="form-row">
+              <label className="form-label">Director designation</label>
+              <input
+                className="form-input"
+                value={related.projectDirectorDesignation}
+                onChange={(e) => setRelated({ ...related, projectDirectorDesignation: e.target.value })}
+              />
+            </div>
+            <div className="form-row">
+              <label className="form-label">Project Head</label>
+              <input
+                className="form-input"
+                value={related.projectHead}
+                onChange={(e) => setRelated({ ...related, projectHead: e.target.value })}
+              />
+            </div>
+            <div className="form-row">
+              <label className="form-label">Head designation</label>
+              <input
+                className="form-input"
+                value={related.projectHeadDesignation}
+                onChange={(e) => setRelated({ ...related, projectHeadDesignation: e.target.value })}
+              />
+            </div>
+          </div>
+          {save.isError && (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>
+              {save.error.message}
+            </div>
+          )}
+          <button type="submit" className="btn-primary" disabled={save.isPending || !effectiveId} style={{ marginTop: 12 }}>
+            {save.isPending ? 'Saving…' : 'Save team'}
+          </button>
+        </form>
+      )}
+    </Panel>
+  );
+}
+
 function DirectorySectionsEditor() {
   const queryClient = useQueryClient();
   const [projectId, setProjectId] = useState('');
@@ -581,6 +908,8 @@ function DirectoryTab() {
         </form>
       </Panel>
       <DirectorySectionsEditor />
+      <SpocContactsEditor />
+      <SpocTeamLeadsEditor />
     </>
   );
 }

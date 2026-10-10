@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import * as XLSX from 'xlsx';
 import { employeesApi, metaApi, projectsApi } from '../lib/api.js';
 import { marketingApi } from '../lib/phase4aApi.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
@@ -25,21 +24,13 @@ const BASE_USED_FOR = [
   'Residential apartments', 'Commercial office', 'Retail mall', 'Hospital',
   'Hotel', 'School / campus', 'Industrial plant', 'IT park', 'Villa layout',
 ];
-const PTL_DISCIPLINES = ['Structural', 'Mechanical', 'Electrical', 'Plumbing', 'Fire'];
-const PTL_PLACEHOLDERS = {
-  Structural: 'e.g. Meera Krishnan',
-  Mechanical: 'e.g. Sneha Kulkarni',
-  Electrical: 'e.g. Divya Shenoy',
-  Plumbing: 'e.g. Lakshmi Iyer',
-  Fire: 'e.g. Anjali Pillai',
-};
 const CONTACT_KINDS = [
   { key: 'client', label: 'Client Contact', contactType: 'Client' },
   { key: 'architect', label: 'Architect Contact', contactType: 'Architect' },
-  { key: 'pmc', label: 'PMC Contact', contactType: 'PMC' },
-  { key: 'peerReview', label: 'Peer Review Contact', contactType: 'Peer Review' },
   { key: 'billing', label: 'Contact Person for Billing', contactType: 'Client' },
 ];
+// NOTE: PMC and Peer Review contacts are entered by the SPOC after allocation
+// (My coordination → PMC & Peer Review contacts), not here.
 
 const BLANK = {
   name: '',
@@ -53,8 +44,7 @@ const BLANK = {
   fee: '',
   hospitality: '',
   bimWorkOrder: { scope: '', fee: '', description: '' },
-  principalTeamLeads: { Structural: '', Mechanical: '', Electrical: '', Plumbing: '', Fire: '' },
-  contacts: { client: null, architect: null, pmc: null, peerReview: null, billing: null },
+  contacts: { client: null, architect: null, billing: null },
   related: { projectDirector: '', projectDirectorDesignation: '', projectHead: '', projectHeadDesignation: '' },
 };
 
@@ -308,8 +298,6 @@ export default function NewProjectPage() {
     setForm((f) => ({ ...f, [key]: value }));
   };
   const setLoc = (key, value) => setForm((f) => ({ ...f, location: { ...f.location, [key]: value } }));
-  const setPtl = (discipline, value) =>
-    setForm((f) => ({ ...f, principalTeamLeads: { ...f.principalTeamLeads, [discipline]: value } }));
   const setContactPicked = (kind, value) =>
     setForm((f) => ({ ...f, contacts: { ...f.contacts, [kind]: value } }));
   const setRelated = (key, value) =>
@@ -409,15 +397,9 @@ export default function NewProjectPage() {
               description: form.bimWorkOrder.description.trim() || undefined,
             }
           : undefined,
-      principalTeamLeads: PTL_DISCIPLINES.filter((d) => form.principalTeamLeads[d]?.trim()).map((d) => ({
-        service: d,
-        name: form.principalTeamLeads[d].trim(),
-      })),
       contacts: {
         client: form.contacts.client ?? undefined,
         architect: form.contacts.architect ?? undefined,
-        pmc: form.contacts.pmc ?? undefined,
-        peerReview: form.contacts.peerReview ?? undefined,
         billing: form.contacts.billing ?? undefined,
       },
       related: {
@@ -449,39 +431,6 @@ export default function NewProjectPage() {
       return;
     }
     save.mutate(buildPayload());
-  }
-
-  async function handleTeamFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-      const byDisc = {};
-      let matched = 0;
-      for (const r of rows) {
-        const lower = {};
-        for (const [k, v] of Object.entries(r)) lower[String(k).toLowerCase().trim()] = v;
-        const service = String(lower.service ?? lower.discipline ?? '').trim();
-        const name = String(lower.name ?? lower.member ?? lower.lead ?? '').trim();
-        const key = PTL_DISCIPLINES.find((d) => d.toLowerCase() === service.toLowerCase());
-        if (key && name) {
-          byDisc[key] = name;
-          matched += 1;
-        }
-      }
-      if (matched === 0) {
-        setFormError('Team file parsed, but no rows matched the five disciplines (Structural, Mechanical, Electrical, Plumbing, Fire) with a name.');
-      } else {
-        setForm((f) => ({ ...f, principalTeamLeads: { ...f.principalTeamLeads, ...byDisc } }));
-      }
-    } catch {
-      setFormError('Could not parse the team file. Use .xlsx or .csv with service and name columns.');
-    } finally {
-      e.target.value = '';
-    }
   }
 
   return (
@@ -606,27 +555,8 @@ export default function NewProjectPage() {
           </div>
         </Panel>
 
-        <Panel title="Principal team leads" sub="Assigning a lead here adds the project to their workload, and makes it searchable by their name">
-          <div className="form-row" style={{ marginBottom: 10 }}>
-            <label className="form-label">Import team from Excel</label>
-            <input type="file" accept=".xlsx,.xls,.csv" onChange={handleTeamFile} />
-          </div>
-          <datalist id="np-ptl-emps">
-            {employeeRows.map((x) => <option key={x._id} value={empDisplayName(x)} />)}
-          </datalist>
-          <div className="field-grid">
-            {PTL_DISCIPLINES.map((d) => (
-              <F key={d} label={d}>
-                <input
-                  className="form-input"
-                  list="np-ptl-emps"
-                  placeholder={PTL_PLACEHOLDERS[d]}
-                  value={form.principalTeamLeads[d]}
-                  onChange={(e) => setPtl(d, e.target.value)}
-                />
-              </F>
-            ))}
-          </div>
+        <Panel title="Principal team leads" sub="Entered by the SPOC after allocation (My coordination → Project team leads) — shown here once saved">
+          <EmptyState text="No team leads yet. The SPOC enters them after project allocation; they then appear on the dashboard and project detail." />
         </Panel>
 
         <Panel title="BIM Work Order (optional)" sub="Set up a separate BIM work order for this project, kept apart from its regular work order">
@@ -637,7 +567,7 @@ export default function NewProjectPage() {
           <F label="Scope description"><textarea className="form-input" placeholder="Describe the BIM deliverable and scope covered" value={form.bimWorkOrder.description} onChange={(e) => setBim('description', e.target.value)} /></F>
         </Panel>
 
-        <Panel title="Contact Details" sub="Client, architect, PMC and peer review points of contact for this project, and who to reach for billing">
+        <Panel title="Contact Details" sub="Client and architect points of contact for this project, and who to reach for billing. PMC and Peer Review contacts are entered by the SPOC.">
           {CONTACT_KINDS.map((c) => (
             <ContactPicker
               key={c.key}

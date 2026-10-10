@@ -105,6 +105,16 @@ export const projectsApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+  saveSpocContacts: (id, body) =>
+    request(`/api/projects/${id}/spoc-contacts`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  saveTeamLeads: (id, body) =>
+    request(`/api/projects/${id}/team-leads`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
   setPortalUsers: (id, userIds) =>
     request(`/api/projects/${id}/portal-users`, {
       method: 'PATCH',

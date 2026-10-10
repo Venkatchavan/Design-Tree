@@ -19,7 +19,9 @@ import {
   projectFilters,
   projectStats,
   recordFinalApproval,
+  saveSpocContacts,
   saveTeamConfirmation,
+  saveTeamLeads,
   updateProject,
 } from '../controllers/projects.controller.js';
 import {
@@ -50,6 +52,17 @@ router.put(
   '/:id/directory',
   requireRole('coordinator', 'design_mgmt_head', 'admin_billing'),
   saveDirectory,
+);
+// SPOC-owned contacts + team leads (admin is read-only on these).
+router.put(
+  '/:id/spoc-contacts',
+  requireRole('coordinator', 'design_mgmt_head'),
+  saveSpocContacts,
+);
+router.put(
+  '/:id/team-leads',
+  requireRole('coordinator', 'design_mgmt_head'),
+  saveTeamLeads,
 );
 router.post('/:id/activate', requireRole('admin_billing'), activateProject);
 router.put(

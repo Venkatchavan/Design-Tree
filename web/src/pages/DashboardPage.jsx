@@ -228,6 +228,14 @@ export default function DashboardPage({ bootstrap }) {
               { key: 'branch', label: 'Branch' },
               { key: 'clientName', label: 'Client' },
               {
+                key: 'teamLeads',
+                label: 'Team leads',
+                render: (r) => (r.principalTeamLeads ?? [])
+                  .map((t) => t?.name)
+                  .filter(Boolean)
+                  .join(', ') || '—',
+              },
+              {
                 key: 'status',
                 label: 'Status',
                 render: (r) => (

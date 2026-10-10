@@ -211,3 +211,38 @@ export const projectDirectorySchema = z
       .min(1),
   })
   .strict();
+
+// PUT /api/projects/:id/team-leads — SPOC-owned principal team leads
+// (+ optional related director/head override). Admin is read-only here.
+export const teamLeadsSchema = z
+  .object({
+    principalTeamLeads: z
+      .array(
+        z
+          .object({
+            service: z.string().trim().optional(),
+            name: z.string().trim().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    related: z
+      .object({
+        projectDirector: z.string().trim().optional(),
+        projectDirectorDesignation: z.string().trim().optional(),
+        projectHead: z.string().trim().optional(),
+        projectHeadDesignation: z.string().trim().optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+// PUT /api/projects/:id/spoc-contacts — SPOC-owned PMC / Peer Review contacts.
+// Separate from the 10-section directory: canonical project contacts.
+export const spocContactsSchema = z
+  .object({
+    pmc: contact,
+    peerReview: contact,
+  })
+  .strict();
