@@ -5,6 +5,7 @@ import { employeesApi, meApi, request, teamsApi, usersApi, workEntriesApi } from
 import { attendanceApi } from '../lib/api.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
 import { leaveApi, travelApi, holidaysApi, meetingsApi, supportApi } from '../lib/phase4bApi.js';
+import { marketingApi } from '../lib/phase4aApi.js';
 import { docsApi, fileUrl } from '../lib/docsApi.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -1744,14 +1745,219 @@ function HrReportsTab() {
   );
 }
 
+function ExternalAccessTab() {
+  // Client / Architect portal logins. Externals are outside Datum, not
+  // employees: these logins never create employee records and never appear
+  // in headcount, attendance, or leave. Project assignment stays Admin-only
+  // per project (Project Detail → Directory access).
+  const qc = useQueryClient();
+  const [f, setF] = useState({ name: '', email: '', password: '', role: 'client' });
+  const [q, setQ] = useState('');
+  const [err, setErr] = useState('');
+  const [resetFor, setResetFor] = useState(null);
+  const [newPass, setNewPass] = useState('');
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+  const usersQ = useQuery({ queryKey: ['users-external'], queryFn: () => usersApi.list({}) });
+  const rows = (usersQ.data?.items ?? []).filter((u) => u.role === 'client' || u.role === 'architect');
+
+  const contactsQ = useQuery({
+    queryKey: ['external-contact-search', q],
+    queryFn: () => marketingApi.contacts.list({ search: q }),
+    enabled: q.trim().length >= 2,
+  });
+  const hits = contactsQ.data?.items ?? [];
+
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: ['users-external'] });
+  }
+
+  const create = useMutation({
+    mutationFn: (body) => usersApi.createPortal(body),
+    onSuccess: () => {
+      invalidate();
+      setF({ name: '', email: '', password: '', role: 'client' });
+      setQ('');
+      setErr('');
+    },
+    onError: (e) => setErr(e.message),
+  });
+
+  const save = useMutation({
+    mutationFn: ({ id, body }) => usersApi.update(id, body),
+    onSuccess: () => {
+      invalidate();
+      setResetFor(null);
+      setNewPass('');
+      setErr('');
+    },
+    onError: (e) => setErr(e.message),
+  });
+
+  function submit(e) {
+    e.preventDefault();
+    setErr('');
+    if (!f.name.trim() || !f.email.trim() || !f.password) {
+      setErr('Name, email and password are required.');
+      return;
+    }
+    if (f.password.length < 8) {
+      setErr('Password must be at least 8 characters.');
+      return;
+    }
+    create.mutate({ name: f.name.trim(), email: f.email.trim(), password: f.password, role: f.role });
+  }
+
+  function pickContact(c) {
+    if (c?.name && !f.name.trim()) setF((prev) => ({ ...prev, name: c.name }));
+    if (c?.email) setF((prev) => ({ ...prev, email: c.email }));
+    setQ('');
+  }
+
+  return (
+    <>
+      <Panel title="New external login" sub="Client / Architect portal access. No employee record is created.">
+        <form onSubmit={submit}>
+          <div className="field-grid">
+            <div className="form-row">
+              <label className="form-label">Role</label>
+              <select className="filter-select" style={{ width: '100%' }} value={f.role} onChange={set('role')}>
+                <option value="client">Client</option>
+                <option value="architect">Architect</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <label className="form-label">From contacts directory (optional)</label>
+              <input
+                className="form-input"
+                placeholder="Search contacts to prefill…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+          </div>
+          {q.trim().length >= 2 && (
+            <div className="location-results" style={{ marginBottom: 12 }}>
+              {contactsQ.isLoading ? <div className="location-result-row">Searching…</div>
+                : hits.length === 0 ? <div className="location-result-row">No matches.</div>
+                  : hits.slice(0, 8).map((c) => (
+                    <div
+                      key={String(c._id ?? c.id ?? c.email)}
+                      className="location-result-row"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => pickContact(c)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') pickContact(c); }}
+                    >
+                      <b>{c.name}</b>{c.organization ? ` · ${c.organization}` : ''}{c.email ? ` · ${c.email}` : ''}
+                    </div>
+                  ))}
+            </div>
+          )}
+          <div className="field-grid">
+            <div className="form-row"><label className="form-label">Name *</label><input className="form-input" value={f.name} onChange={set('name')} /></div>
+            <div className="form-row"><label className="form-label">Email *</label><input className="form-input" type="email" value={f.email} onChange={set('email')} /></div>
+          </div>
+          <div className="form-row" style={{ maxWidth: 320 }}>
+            <label className="form-label">Password * (min 8 characters)</label>
+            <input className="form-input" type="password" value={f.password} onChange={set('password')} />
+          </div>
+          {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
+          <button type="submit" className="btn-primary" disabled={create.isPending}>
+            {create.isPending ? 'Creating…' : 'Create external login'}
+          </button>
+        </form>
+      </Panel>
+      <Panel title="External logins">
+        {usersQ.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : usersQ.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{usersQ.error.message}</div>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'name', label: 'Name', render: (r) => r.name ?? '—' },
+              { key: 'email', label: 'Email', render: (r) => r.email ?? '—' },
+              { key: 'role', label: 'Role', render: (r) => <StatusPill status={r.role}>{r.role}</StatusPill> },
+              { key: 'status', label: 'Status', render: (r) => (r.isActive === false ? 'Disabled' : 'Active') },
+              {
+                key: 'employee', label: 'Employee link', render: (r) => r.employee ? (
+                  <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <StatusPill status="Needs Attention">Linked — unlink</StatusPill>
+                    <button
+                      type="button"
+                      className="approve-btn"
+                      disabled={save.isPending}
+                      onClick={() => save.mutate({ id: String(r._id ?? r.id), body: { employeeId: null } })}
+                    >
+                      Unlink
+                    </button>
+                  </span>
+                ) : '—',
+              },
+              {
+                key: 'actions', label: 'Actions', render: (r) => {
+                  const id = String(r._id ?? r.id);
+                  return (
+                    <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="approve-btn"
+                        disabled={save.isPending}
+                        onClick={() => save.mutate({ id, body: { isActive: r.isActive === false } })}
+                      >
+                        {r.isActive === false ? 'Enable' : 'Disable'}
+                      </button>
+                      <button type="button" className="approve-btn" onClick={() => { setResetFor(id); setNewPass(''); }}>
+                        Reset password
+                      </button>
+                    </span>
+                  );
+                },
+              },
+            ]}
+            rows={rows}
+            emptyText="No client / architect logins yet."
+          />
+        )}
+        {resetFor && (
+          <form
+            style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'end' }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (newPass.length < 8) {
+                setErr('Password must be at least 8 characters.');
+                return;
+              }
+              save.mutate({ id: resetFor, body: { password: newPass } });
+            }}
+          >
+            <div className="form-row" style={{ maxWidth: 280, marginBottom: 0 }}>
+              <label className="form-label">New password (min 8 characters)</label>
+              <input className="form-input" type="password" value={newPass} onChange={(e) => setNewPass(e.target.value)} />
+            </div>
+            <button type="submit" className="btn-primary" disabled={save.isPending}>Save password</button>
+            <button type="button" className="approve-btn" onClick={() => { setResetFor(null); setNewPass(''); }}>Cancel</button>
+          </form>
+        )}
+      </Panel>
+    </>
+  );
+}
+
 export default function HRPage({ bootstrap }) {
   const roleKey = bootstrap?.role?.key ?? '';
   const isSuperuser = roleKey === 'superuser';
   const [tab, setTab] = useState(isSuperuser ? 'manage' : 'overview');
   const isDirector = DIRECTOR_ROLES.has(roleKey);
   const isHr = roleKey === 'hr';
+  // External portal logins are provisioned by login-admin roles only.
+  const canExternal = !isDirector && (isHr || isSuperuser || roleKey === 'admin_billing');
   const tabs = isSuperuser
-    ? [{ key: 'manage', label: 'Employee management' }]
+    ? [
+        { key: 'manage', label: 'Employee management' },
+        { key: 'external', label: 'External access' },
+      ]
     : isDirector
     ? [
         { key: 'overview', label: 'Overview' },
@@ -1763,6 +1969,7 @@ export default function HRPage({ bootstrap }) {
     ? [
         { key: 'overview', label: 'Overview' },
         { key: 'manage', label: 'Employee management' },
+        { key: 'external', label: 'External access' },
         { key: 'track', label: 'Track record' },
         { key: 'attendance', label: 'Attendance and leave' },
         { key: 'loginhours', label: 'Login Hours' },
@@ -1776,6 +1983,7 @@ export default function HRPage({ bootstrap }) {
     : [
         { key: 'overview', label: 'Overview' },
         { key: 'manage', label: 'Employee management' },
+        { key: 'external', label: 'External access' },
         { key: 'track', label: 'Track record' },
         { key: 'recruitment', label: 'Recruitment' },
       ];
@@ -1792,6 +2000,7 @@ export default function HRPage({ bootstrap }) {
       />
       {tab === 'overview' && (isDirector ? <DirectorOverviewTab /> : <OverviewTab />)}
       {!isDirector && tab === 'manage' && <ManageTab bootstrap={bootstrap} />}
+      {canExternal && tab === 'external' && <ExternalAccessTab />}
       {!isDirector && tab === 'track' && <TrackTab />}
       {!isDirector && tab === 'recruitment' && <RecruitmentTab bootstrap={bootstrap} />}
       {isDirector && tab === 'loginhours' && <DirectorLoginHoursTab />}

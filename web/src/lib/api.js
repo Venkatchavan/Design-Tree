@@ -142,6 +142,9 @@ export const usersApi = {
   list: (params = {}) => request(`/api/users${toQuery(params)}`),
   create: (body) =>
     request('/api/users', { method: 'POST', body: JSON.stringify(body) }),
+  // External portal identity (client / architect) — never linked to employees.
+  createPortal: (body) =>
+    request('/api/users/portal', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) =>
     request(`/api/users/${id}`, {
       method: 'PATCH',

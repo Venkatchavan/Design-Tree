@@ -109,6 +109,11 @@ export async function createEmployee(req, res, next) {
       if (!ROLE_KEYS.includes(loginParsed.data.role)) {
         return res.status(400).json({ message: 'Unknown role.' });
       }
+      if (['client', 'architect'].includes(loginParsed.data.role)) {
+        return res.status(400).json({
+          message: 'External roles don\u2019t get employee records \u2014 create them under HR \u2192 External access.',
+        });
+      }
       const clash = await User.findOne({ email: loginParsed.data.email });
       if (clash) {
         return res

@@ -188,7 +188,7 @@ function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
           {usersQ.error.message}
         </div>
       ) : external.length === 0 ? (
-        <EmptyState text="No client / architect logins yet — create them in HR / Users first." />
+        <EmptyState text="No client / architect logins yet — create them in HR → External access, then assign projects here." />
       ) : (
         <>
           {external.map((u) => {
