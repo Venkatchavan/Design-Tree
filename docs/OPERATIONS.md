@@ -10,7 +10,7 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
 | Status | `docker compose ps` (want: 4 services, healthy/running) |
 | Logs | `docker compose logs -f api`, `docker compose logs --tail=100 gateway` |
 | Update to a new build | backup first → `git pull` → `docker compose up -d --build` → smoke-test |
-| Re-seed FD login | `docker compose run --rm api npm run seed` (upsert — safe to re-run) |
+| Re-seed superuser login | `docker compose run --rm api npm run seed` (upsert — safe to re-run) |
 | Rotate app secret | set new `JWT_SECRET` in `.env` → `up -d` (logs everyone out, by design) |
 | Change dbadmin password | regenerate `gateway/.htpasswd` line → `docker compose restart gateway` |
 

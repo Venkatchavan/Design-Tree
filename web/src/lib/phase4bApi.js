@@ -56,6 +56,7 @@ export const holidaysApi = {
   list: (params = {}) => request(`/api/leave-travel/holidays${toQuery(params)}`),
   create: (body) =>
     request('/api/leave-travel/holidays', { method: 'POST', body: JSON.stringify(body) }),
+  remove: (id) => request(`/api/leave-travel/holidays/${id}`, { method: 'DELETE' }),
 };
 
 export const supportApi = {
@@ -156,6 +157,10 @@ export const portalApi = {
   mine: () => request('/api/portal/mine'),
   acknowledge: (body) =>
     request('/api/portal/acknowledge', { method: 'POST', body: JSON.stringify(body) }),
+  respond: (id, body) =>
+    request(`/api/portal/rfis/${id}/respond`, { method: 'POST', body: JSON.stringify(body ?? {}) }),
+  acknowledgeStage: (id, body) =>
+    request(`/api/portal/stages/${id}/acknowledge`, { method: 'POST', body: JSON.stringify(body ?? {}) }),
   uploadRequest: async (requestId, file) => {
     const form = new FormData();
     form.append('file', file);

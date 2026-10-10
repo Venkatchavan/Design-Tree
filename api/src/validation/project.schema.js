@@ -35,6 +35,7 @@ export const projectSchema = z.object({
       address1: z.string().trim().optional(),
       address2: z.string().trim().optional(),
       city: z.string().trim().optional(),
+      state: z.string().trim().optional(),
       zip: z.string().trim().optional(),
     })
     .strict(),
@@ -43,7 +44,7 @@ export const projectSchema = z.object({
     .array(
       z
         .object({
-          service: z.enum(SERVICES),
+          service: z.enum(SERVICES).optional(),
           scope: z.string().trim().optional(),
           fee: z.number().min(0).optional(),
         })

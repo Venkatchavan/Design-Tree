@@ -128,6 +128,7 @@ export const certificateSchema = z
   .object({
     project: objectId,
     certType: z.string().trim().min(1),
+    certNo: strOpt,
     stage: strOpt,
     status: z.enum(CERT_STATUSES).optional(),
     issuedDate: dateOpt,

@@ -16,7 +16,7 @@ This folder lives at repo root `e2e/` after the elevated copy step below.
 
 ```powershell
 cd e2e
-Copy-Item .env.example .env   # then set E2E_FD_PASSWORD to api SEED_PASSWORD
+Copy-Item .env.example .env   # then set E2E_SU_PASSWORD to api SEED_PASSWORD
 npm install
 npx playwright install chromium
 ```
@@ -38,7 +38,7 @@ cd ../e2e
 npm run test
 ```
 
-Seed once before the first run (FD only, empty DB):
+Seed once before the first run (superuser only, empty DB):
 
 ```powershell
 cd ../api

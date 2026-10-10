@@ -3,7 +3,7 @@ import { config } from '../config/config.js';
 import { connectDb } from '../config/db.js';
 import { User } from '../models/User.js';
 
-// Seeds ONLY the founding director login. Nothing else.
+// Seeds ONLY the superuser login (employee + login provisioning). Nothing else.
 const { seedName, seedEmail, seedPassword } = config;
 
 if (!seedName || !seedEmail || !seedPassword) {
@@ -21,12 +21,12 @@ const user = await User.findOneAndUpdate(
     $set: {
       name: seedName,
       passwordHash,
-      role: 'founding_director',
+      role: 'superuser',
       isActive: true,
     },
   },
   { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
 );
 
-console.log(`Seeded founding director: ${user.email}`);
+console.log(`Seeded superuser: ${user.email}`);
 process.exit(0);

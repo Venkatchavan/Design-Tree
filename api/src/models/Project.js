@@ -52,6 +52,7 @@ const projectSchema = new mongoose.Schema(
       address1: { type: String, trim: true },
       address2: { type: String, trim: true },
       city: { type: String, trim: true },
+      state: { type: String, trim: true },
       zip: { type: String, trim: true },
     },
     jobNumber: { type: String, trim: true },

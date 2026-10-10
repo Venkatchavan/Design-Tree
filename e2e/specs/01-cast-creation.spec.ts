@@ -1,22 +1,22 @@
 import { test, expect } from '@playwright/test';
-import { CAST, FD, TEST_PASSWORD } from '../fixtures/roles';
+import { CAST, SUPERUSER, TEST_PASSWORD } from '../fixtures/roles';
 import { signIn, signOut, gotoNav } from '../helpers/auth-ui';
 
 /**
- * §1 CAST CREATION — FD creates all logins (HR -> Employee management).
+ * §1 CAST CREATION — superuser creates all logins (HR -> Employee management).
  * Scorecard #1 (11 rows; all sign in), #2 (Employee profile modal).
  *
- * Precondition: api seeded with FD only (npm run seed), empty DB.
- * FD password comes from api/.env SEED_PASSWORD — pass via E2E_FD_PASSWORD
+ * Precondition: api seeded with superuser only (npm run seed), empty DB.
+ * Superuser password comes from api/.env SEED_PASSWORD — pass via E2E_SU_PASSWORD
  * env or login will fail with a clear message.
  */
 
-const FD_PASSWORD = process.env.E2E_FD_PASSWORD ?? '';
+const SU_PASSWORD = process.env.E2E_SU_PASSWORD ?? '';
 
 test.describe.serial('01 cast creation', () => {
   test('S1.1-S1.4 create 11 employees via Add employee', async ({ page }) => {
-    test.skip(!FD_PASSWORD, 'Set E2E_FD_PASSWORD to the api SEED_PASSWORD to run §1.');
-    await signIn(page, FD.email, FD_PASSWORD);
+    test.skip(!SU_PASSWORD, 'Set E2E_SU_PASSWORD to the api SEED_PASSWORD to run §1.');
+    await signIn(page, SUPERUSER.email, SU_PASSWORD);
 
     await gotoNav(page, 'HR');
     await page.getByRole('tab', { name: /employee management/i }).click().catch(async () => {
@@ -68,8 +68,8 @@ test.describe.serial('01 cast creation', () => {
   });
 
   test('S1.4b employee profile modal shows linked login', async ({ page }) => {
-    test.skip(!FD_PASSWORD, 'Set E2E_FD_PASSWORD to run §1.');
-    await signIn(page, FD.email, FD_PASSWORD);
+    test.skip(!SU_PASSWORD, 'Set E2E_SU_PASSWORD to run §1.');
+    await signIn(page, SUPERUSER.email, SU_PASSWORD);
     await gotoNav(page, 'HR');
     await page.getByRole('row', { name: /Vikram Rao/ }).first().click();
     await expect(page.getByText('Employee profile')).toBeVisible();

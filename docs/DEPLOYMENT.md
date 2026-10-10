@@ -39,13 +39,13 @@ Reboot, then reconnect with a fresh UltraViewer session (keep ID/password handy)
 cd C:\DesignTree
 docker compose up -d --build
 docker compose ps                       # all four: healthy/running
-docker compose run --rm api npm run seed  # one-shot FD login (upsert, safe to re-run)
+docker compose run --rm api npm run seed  # one-shot superuser login (upsert, safe to re-run)
 ```
 
 ## Phase 4 — verification checklist (do not skip)
 
 - [ ] `https://<server>/api/health` → `{"ok":true}` (accept the cert trust on first hit).
-- [ ] Sign in as founding-director → change the seed password immediately.
+- [ ] Sign in as superuser → change the seed password immediately.
 - [ ] Upload a file (e.g. meeting reference doc), then
       `docker compose down` → `docker compose up -d` → file still downloadable
       (proves the HDD bind mount works).

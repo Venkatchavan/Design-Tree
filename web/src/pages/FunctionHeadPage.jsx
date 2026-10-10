@@ -44,7 +44,8 @@ function useTeamLog(projectIds, serviceLabel, enabled) {
 
 export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
   void user;
-  void bootstrap;
+  const role = bootstrap?.role?.key ?? '';
+  const isDirector = new Set(['founding_director', 'working_director', 'executive_director']).has(role);
   const qc = useQueryClient();
   // viewKey selects the function; fall back to local tabs when absent/unknown.
   const known = HEAD_TABS.some((t) => t.key === viewKey);
@@ -250,6 +251,20 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     reviewArea.error?.message ??
     reviewBoq.error?.message ??
     decideLeave.error?.message;
+
+  if (isDirector && active === 'qaqc-specs') {
+    return (
+      <div id={`view-${active}`}>
+        <DirectorQaqcView
+          visits={arr(visits.data)}
+          discs={arr(discs.data)}
+          projects={projectRows}
+          loading={visits.isLoading || discs.isLoading}
+          loadError={visits.error?.message ?? discs.error?.message}
+        />
+      </div>
+    );
+  }
 
   return (
     <div id={`view-${active}`}>
@@ -598,5 +613,90 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
         </>
       )}
     </div>
+  );
+}
+
+function DirectorQaqcView({ visits, discs, projects, loading, loadError }) {
+  const [fProject, setFProject] = useState('');
+  const pidOf = (p) => String(p?._id ?? p ?? '');
+  const pnameOf = (p) => {
+    const id = pidOf(p);
+    return projects.find((x) => String(x._id) === id)?.name ?? (p?.name ?? '—');
+  };
+  const isOpenDisc = (d) => String(d.status ?? 'Open').toLowerCase() !== 'closed';
+  const fVisits = visits.filter((v) => !fProject || pidOf(v.project) === fProject);
+  const fDiscs = discs.filter((d) => !fProject || pidOf(d.project) === fProject);
+  const openDiscs = fDiscs.filter(isOpenDisc);
+  const pending = fVisits.filter((v) => v.status !== 'Approved');
+  const additional = fVisits.filter((v) => v.additionalVisit);
+  const structural = openDiscs.filter(
+    (d) => String(d.discipline ?? '').toLowerCase() === 'structural',
+  );
+
+  return (
+    <>
+      <div className="page-head">
+        <div className="page-title">QA/QC Specifications</div>
+        <div className="page-sub">Overview and approval of site visits and weekly reports submitted by the QA/QC team</div>
+      </div>
+      <div className="kpi-grid cols-4">
+        <KpiCard label="Total site visits" value={fVisits.length} accent="blueprint" />
+        <KpiCard label="Pending report approval" value={pending.length} accent="amber" />
+        <KpiCard label="Drawing issues flagged" value={openDiscs.length} accent="rust" />
+        <KpiCard label="Additional visits" value={additional.length} accent="teal" />
+      </div>
+      {loadError && (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{loadError}</div>
+      )}
+      <Panel
+        title="Project-wise QA/QC summary"
+        sub="Weekly reports and the full visit/discrepancy log are available in the Specification Head's own workspace"
+      >
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+          <select className="filter-select" value={fProject} onChange={(e) => setFProject(e.target.value)}>
+            <option value="">All projects</option>
+            {projects.map((p) => <option key={p._id} value={String(p._id)}>{p.name}</option>)}
+          </select>
+        </div>
+        <div className="kpi-grid cols-3">
+          <KpiCard label="Site visits" value={fVisits.length} accent="blueprint" />
+          <KpiCard label="Discrepancies during construction" value={openDiscs.length} accent="rust" />
+          <KpiCard label="Drawing discrepancies — Structural" value={structural.length} accent="amber" />
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
+          Drawing discrepancy tracking applies to the Structural department only — Mechanical,
+          Electrical, PHE and Fire are not tracked here.
+        </p>
+        {loading ? <EmptyState text="Loading…" /> : (
+          <>
+            <div className="section-label">Site visits</div>
+            <DataTable
+              columns={[
+                { key: 'project', label: 'Project', render: (r) => pnameOf(r.project) },
+                { key: 'date', label: 'Date', render: (r) => fmtDate(r.visitDate ?? r.date ?? r.createdAt) },
+                { key: 'visitType', label: 'Visit type', render: (r) => r.visitType ?? '—' },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                { key: 'additional', label: 'Additional', render: (r) => (r.additionalVisit ? 'Yes' : '—') },
+                { key: 'discrepancy', label: 'Discrepancy found', render: (r) => (r.discrepancyFound ? 'Yes' : '—') },
+              ]}
+              rows={fVisits}
+              emptyText="No site visits yet."
+            />
+            <div className="section-label" style={{ marginTop: 14 }}>Discrepancy log</div>
+            <DataTable
+              columns={[
+                { key: 'issue', label: 'Issue', render: (r) => r.issue ?? '—' },
+                { key: 'project', label: 'Project', render: (r) => pnameOf(r.project) },
+                { key: 'discipline', label: 'Discipline', render: (r) => r.discipline ?? '—' },
+                { key: 'severity', label: 'Severity', render: (r) => r.severity ?? '—' },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+              ]}
+              rows={fDiscs}
+              emptyText="No discrepancies logged."
+            />
+          </>
+        )}
+      </Panel>
+    </>
   );
 }

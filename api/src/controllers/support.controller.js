@@ -1,6 +1,7 @@
 import { notify, userIdsForEmployees } from '../models/Notification.js';
 import { SupportTicket } from '../models/SupportTicket.js';
 import { User } from '../models/User.js';
+import { isSuperRole } from '../config/roles.js';
 
 async function requesterUsers(doc) {
   const ids = new Set();
@@ -53,12 +54,12 @@ export async function createTicket(req, res, next) {
   }
   try {
     const employee = await resolveEmployee(req, parsed.data.employee);
-    if (!employee) {
+    if (!employee && !isSuperRole(req.user?.role)) {
       return res.status(400).json({ message: 'No linked employee record.' });
     }
     const doc = await SupportTicket.create({
       ...parsed.data,
-      employee: employee._id,
+      ...(employee ? { employee: employee._id } : {}),
       createdBy: req.user.id,
     });
     notify({
@@ -77,8 +78,8 @@ export async function createTicket(req, res, next) {
 export async function myTickets(req, res, next) {
   try {
     const me = await User.findById(req.user.id);
-    if (!me?.employee) return res.status(200).json({ items: [], total: 0 });
-    const items = await SupportTicket.find({ employee: me.employee })
+    const filter = me?.employee ? { employee: me.employee } : { createdBy: me?._id ?? req.user.id };
+    const items = await SupportTicket.find(filter)
       .sort({ createdAt: -1 })
       .limit(100);
     return res.status(200).json({ items, total: items.length });

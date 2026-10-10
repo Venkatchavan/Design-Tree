@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, request, toQuery } from '../lib/api.js';
 import { designApi } from '../lib/phase4aApi.js';
-import { deliverablesApi } from '../lib/workApi.js';
+import { deliverablesApi, revisionsApi } from '../lib/workApi.js';
 import { rfiApi } from '../lib/functionsApi.js';
 import { spocApi } from '../lib/spocApi.js';
 import Panel from '../components/Panel.jsx';
@@ -27,6 +27,155 @@ const TEAM_SERVICES = [
   'Other',
 ];
 const TEAM_STATUSES = ['Pending', 'Confirmed'];
+
+const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director']);
+const STAGE_ORDER = { CD: 0, SD: 1, DD: 2, TD: 3, GFC: 4 };
+const ON_TRACK_STATUSES = ['in progress', 'submitted', 'approved'];
+
+function normStatus(v) {
+  return String(v ?? '').toLowerCase();
+}
+
+function DirectorDesignView() {
+  const [fProject, setFProject] = useState('');
+  const [fService, setFService] = useState('');
+  const [fStage, setFStage] = useState('');
+
+  const projectsQ = useQuery({ queryKey: ['design-dir-projects'], queryFn: () => projectsApi.list({}) });
+  const delsQ = useQuery({ queryKey: ['design-dir-deliverables'], queryFn: () => deliverablesApi.list({}) });
+  const rfisQ = useQuery({ queryKey: ['design-dir-rfis'], queryFn: () => rfiApi.list({}) });
+  const revsQ = useQuery({ queryKey: ['design-dir-revisions'], queryFn: () => revisionsApi.list({}) });
+  const meetsQ = useQuery({ queryKey: ['design-dir-meetings'], queryFn: () => request('/api/meetings'), retry: false });
+
+  const projectRows = arr(projectsQ.data);
+  const delRows = useMemo(() => arr(delsQ.data), [delsQ.data]);
+  const rfiRows = useMemo(() => arr(rfisQ.data), [rfisQ.data]);
+  const revRows = useMemo(() => arr(revsQ.data), [revsQ.data]);
+  const meetRows = useMemo(() => arr(meetsQ.data), [meetsQ.data]);
+
+  const projIdOf = (p) => String(p?._id ?? p ?? '');
+  const projectStageOf = useMemo(() => {
+    const m = new Map();
+    for (const p of projectRows) m.set(String(p._id), p.currentStage ?? '');
+    return m;
+  }, [projectsQ.data]);
+
+  // ---- Function-wide KPIs (unfiltered) ----
+  const onTrackDels = delRows.filter((d) => ON_TRACK_STATUSES.includes(normStatus(d.status)));
+  const openRfis = rfiRows.filter((r) => normStatus(r.status) === 'open');
+  const closedRfis = rfiRows.filter((r) => normStatus(r.status) === 'closed');
+  const submittedDels = delRows.filter((d) => normStatus(d.status) === 'submitted');
+  const pendingTd = submittedDels.length + openRfis.length;
+  const periodStart = new Date(new Date().toISOString().slice(0, 10));
+  periodStart.setDate(periodStart.getDate() - 30);
+  const inPeriod = (v) => {
+    if (!v) return false;
+    const d = new Date(v);
+    return !Number.isNaN(d.getTime()) && d >= periodStart;
+  };
+  const closedPeriod =
+    rfiRows.filter((r) => normStatus(r.status) === 'closed' && inPeriod(r.updatedAt)).length +
+    revRows.filter((r) => normStatus(r.status) === 'cleared' && inPeriod(r.clearedAt ?? r.updatedAt)).length +
+    delRows.filter((d) => normStatus(d.status) === 'approved' && inPeriod(d.updatedAt)).length;
+
+  const delPct = delRows.length > 0 ? Math.round((onTrackDels.length / delRows.length) * 100) : 0;
+  const rfiPct = rfiRows.length > 0 ? Math.round((closedRfis.length / rfiRows.length) * 100) : 0;
+
+  // ---- Coordinators panel (filters apply where fields exist) ----
+  const matchProject = (pid) => !fProject || pid === fProject;
+  const rfiF = rfiRows.filter((r) => matchProject(projIdOf(r.project)));
+  const meetF = meetRows.filter(
+    (m) => matchProject(projIdOf(m.project)) && (!fService || (m.service ?? '') === fService),
+  );
+  const revF = revRows.filter(
+    (r) => matchProject(projIdOf(r.project)) && (!fStage || String(r.stage ?? '').trim().toUpperCase() === fStage),
+  );
+
+  const pendingItems = meetF.reduce((s, m) => {
+    const actions = Array.isArray(m.actions) ? m.actions : [];
+    return s + actions.filter((a) => !['completed', 'closed'].includes(normStatus(a.status))).length;
+  }, 0);
+  const rfiOpenF = rfiF.filter((r) => normStatus(r.status) === 'open').length;
+  const rfiClosedF = rfiF.filter((r) => normStatus(r.status) === 'closed').length;
+  const meetOnlineF = meetF.filter((m) => normStatus(m.mode) === 'online').length;
+  const meetOfflineF = meetF.length - meetOnlineF;
+  const stageIdx = (s) => STAGE_ORDER[String(s ?? '').trim().toUpperCase()];
+  const revWithinF = revF.filter((r) => {
+    const ri = stageIdx(r.stage);
+    const pi = stageIdx(projectStageOf.get(projIdOf(r.project)));
+    if (ri == null || pi == null) return true;
+    return ri <= pi;
+  }).length;
+  const revAfterF = revF.length - revWithinF;
+
+  const loadError = delsQ.error?.message ?? rfisQ.error?.message ?? revsQ.error?.message ?? meetsQ.error?.message ?? projectsQ.error?.message;
+
+  return (
+    <div id="view-design-mgmt">
+      <div className="page-head">
+        <div className="page-title">Design Management</div>
+        <div className="page-sub">Design Management Coordinator Head (SPOC Head) workflow — coordination, deliverables and RFI tracking across disciplines</div>
+      </div>
+      <Panel title="About this workflow">
+        <p style={{ fontSize: 13.5, color: 'var(--ink-muted)', margin: 0 }}>
+          Coordinators (SPOCs) work under Design Management and report into this workflow through the
+          Technical Director – Design Management, Suresh Iyengar. Deliverable submissions, RFIs, queries
+          and escalations raised by a SPOC are reviewed and actioned by the Technical Director before
+          they can be closed.
+        </p>
+      </Panel>
+      <div className="kpi-grid cols-5">
+        <KpiCard label="Deliverables tracked" value={delRows.length} accent="blueprint" />
+        <KpiCard label="On track / submitted" value={onTrackDels.length} accent="forest" />
+        <KpiCard label="RFIs / queries open" value={openRfis.length} accent="amber" />
+        <KpiCard label="Pending Technical Director action" value={pendingTd} accent="rust" />
+        <KpiCard label="Closed this period" value={closedPeriod} accent="teal" />
+      </div>
+      {loadError && (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{loadError}</div>
+      )}
+      <Panel title="Performance overview" sub="Summary for the entire Design Management function — full workflow, RFI and deliverable detail is available in the Design Management Head's workspace">
+        <div className="perf-row">
+          <span className="perf-label">{onTrackDels.length} of {delRows.length} deliverables on track ({delPct}%)</span>
+          <div className="perf-track"><div className="perf-fill forest" style={{ width: `${delPct}%` }} /></div>
+        </div>
+        <div className="perf-row">
+          <span className="perf-label">{closedRfis.length} of {rfiRows.length} RFIs closed ({rfiPct}%)</span>
+          <div className="perf-track"><div className="perf-fill teal" style={{ width: `${rfiPct}%` }} /></div>
+        </div>
+      </Panel>
+      <Panel title="Coordinators' work — Project / Service / Stage-wise" sub="Overview of every coordinator's pending items, RFIs, meetings and revisions">
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+          <select className="filter-select" value={fProject} onChange={(e) => setFProject(e.target.value)}>
+            <option value="">All projects</option>
+            {projectRows.map((p) => <option key={p._id} value={String(p._id)}>{p.name} ({p.code})</option>)}
+          </select>
+          <select className="filter-select" value={fService} onChange={(e) => setFService(e.target.value)}>
+            <option value="">All services</option>
+            {TEAM_SERVICES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select className="filter-select" value={fStage} onChange={(e) => setFStage(e.target.value)}>
+            <option value="">All stages</option>
+            {Object.keys(STAGE_ORDER).map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div className="kpi-grid">
+          <KpiCard label="Pending items & follow-ups" value={pendingItems} accent="rust" />
+          <KpiCard label="RFIs open" value={rfiOpenF} accent="amber" />
+          <KpiCard label="RFIs closed" value={rfiClosedF} accent="forest" />
+          <KpiCard label="Meetings — online" value={meetOnlineF} accent="teal" />
+          <KpiCard label="Meetings — offline" value={meetOfflineF} accent="blueprint" />
+          <KpiCard label="Revisions — within stage" value={revWithinF} accent="forest" />
+          <KpiCard label="Revisions — after stage completion" value={revAfterF} accent="rust" />
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
+          Filters apply where records carry that field: deliverables carry project and stage only;
+          RFIs carry project only; meetings carry project and service; revisions carry project and stage.
+        </p>
+      </Panel>
+    </div>
+  );
+}
 
 const TABS = [
   { key: 'workflow', label: 'Workflow' },
@@ -219,6 +368,10 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
   const saveError = save.error?.message;
   const loadError =
     design.error?.message ?? meta.error?.message ?? projects.error?.message;
+
+  if (DIRECTOR_ROLES.has(role)) {
+    return <DirectorDesignView />;
+  }
 
   return (
     <div id="view-design-mgmt">

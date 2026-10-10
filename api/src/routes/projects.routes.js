@@ -4,6 +4,7 @@ import {
   requireInternal,
   requireRole,
   requireView,
+  denyRoles,
 } from '../middlewares/requireRole.js';
 import {
   CREATOR_ROLES,
@@ -13,6 +14,8 @@ import {
   getProjectTeam,
   gfcReadiness,
   listProjects,
+  nextJobNumber,
+  nextProjectCode,
   projectFilters,
   projectStats,
   recordFinalApproval,
@@ -32,9 +35,14 @@ import { setPortalUsers } from '../controllers/portal.controller.js';
 const router = Router();
 
 router.use(requireAuth);
+// Directors are read-only on projects: deny create/update/import even
+// though FD/WD would otherwise pass requireRole via the superuser bypass.
+const NO_PROJECT_WRITES = ['founding_director', 'working_director', 'executive_director'];
 router.get('/', requireView('dashboard'), listProjects);
 router.get('/stats', requireView('dashboard'), projectStats);
 router.get('/filters', requireView('dashboard'), projectFilters);
+router.get('/next-code', denyRoles(...NO_PROJECT_WRITES), requireRole('admin_billing'), nextProjectCode);
+router.get('/next-job-number', denyRoles(...NO_PROJECT_WRITES), requireRole('admin_billing'), nextJobNumber);
 router.get('/:id/team', requireAuth, getProjectTeam);
 router.get('/:id/gfc-readiness', requireInternal(), gfcReadiness);
 router.get('/:id/directory', requireAuth, getDirectory);
@@ -55,8 +63,8 @@ router.post(
   recordFinalApproval,
 );
 router.get('/:id', requireView('dashboard'), getProject);
-router.post('/', requireRole(...CREATOR_ROLES), createProject);
-router.put('/:id', requireRole(...CREATOR_ROLES), updateProject);
+router.post('/', denyRoles(...NO_PROJECT_WRITES), requireRole(...CREATOR_ROLES), createProject);
+router.put('/:id', denyRoles(...NO_PROJECT_WRITES), requireRole(...CREATOR_ROLES), updateProject);
 router.patch(
   '/:id/portal-users',
   requireRole('admin_billing'),
@@ -64,6 +72,7 @@ router.patch(
 );
 router.post(
   '/import',
+  denyRoles(...NO_PROJECT_WRITES),
   requireRole(...CREATOR_ROLES),
   (req, res, next) =>
     uploadSpreadsheet(req, res, (err) =>

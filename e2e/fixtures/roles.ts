@@ -1,12 +1,12 @@
 /**
- * Cast of 11 workflow logins (§1.3-§1.4) + Founding Director (§0.4).
+ * Cast of 11 workflow logins (§1.3-§1.4) + Superuser seed (§0.4).
  * Password for all 11 test logins: Test@1234 (§0.5).
  */
 
 export const TEST_PASSWORD = process.env.E2E_TEST_PASSWORD ?? 'Test@1234';
 
-export const FD = {
-  email: process.env.E2E_FD_EMAIL ?? 'founding.director@designtree.com',
+export const SUPERUSER = {
+  email: process.env.E2E_SU_EMAIL ?? 'superuser@designtree.com',
 };
 
 export interface CastMember {

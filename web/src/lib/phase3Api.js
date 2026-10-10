@@ -85,6 +85,7 @@ export const bookingsApi = {
   create: (body) => request('/api/travel-bookings', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) => request(`/api/travel-bookings/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   setStatus: (id, status) => request(`/api/travel-bookings/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  remove: (id) => request(`/api/travel-bookings/${id}`, { method: 'DELETE' }),
 };
 
 export const financeOccApi = {

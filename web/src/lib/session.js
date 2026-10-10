@@ -50,6 +50,7 @@ export function takePendingLogout() {
 export function entryPathForRole(role) {
   if (role === 'engineer_drafter') return '/my-work';
   if (role === 'coordinator') return '/my-coordination';
+  if (role === 'superuser') return '/hr';
   return '/work/update';
 }
 

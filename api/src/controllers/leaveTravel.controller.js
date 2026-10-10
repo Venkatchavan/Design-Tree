@@ -435,3 +435,13 @@ export async function listHolidays(req, res, next) {
     return next(err);
   }
 }
+
+export async function deleteHoliday(req, res, next) {
+  try {
+    const doc = await Holiday.findByIdAndDelete(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Holiday not found.' });
+    return res.status(200).json({ removed: doc._id });
+  } catch (err) {
+    return next(err);
+  }
+}

@@ -22,6 +22,50 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Admin-only sequential identifiers for the New Project form, initialized
+// above the highest existing value for the year so collisions are avoided.
+async function nextSequence(name, usedCodes) {
+  let max = 0;
+  for (const code of usedCodes) {
+    const m = /-(\d+)$/.exec(String(code ?? ''));
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  const { Counter } = await import('../models/Counter.js');
+  await Counter.findOneAndUpdate(
+    { name },
+    { $max: { seq: max } },
+    { upsert: true },
+  );
+  const doc = await Counter.findOneAndUpdate(
+    { name },
+    { $inc: { seq: 1 } },
+    { new: true, returnDocument: 'after' },
+  );
+  return doc.seq;
+}
+
+export async function nextProjectCode(_req, res, next) {
+  try {
+    const year = new Date().getFullYear();
+    const existing = await Project.find({ code: new RegExp(`^PRJ-${year}-\\d+$`) }).select('code').lean();
+    const seq = await nextSequence(`project-code-${year}`, existing.map((p) => p.code));
+    return res.status(200).json({ code: `PRJ-${year}-${String(seq).padStart(3, '0')}` });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+export async function nextJobNumber(_req, res, next) {
+  try {
+    const year = new Date().getFullYear();
+    const existing = await Project.find({ jobNumber: new RegExp(`^WO/${year}/\\d+$`) }).select('jobNumber').lean();
+    const seq = await nextSequence(`job-number-${year}`, existing.map((p) => p.jobNumber));
+    return res.status(200).json({ jobNumber: `WO/${year}/${String(seq).padStart(4, '0')}` });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 export async function listProjects(req, res, next) {
   try {
     const { branch, service, stage, status, search } = req.query;
@@ -44,32 +88,20 @@ export async function listProjects(req, res, next) {
   }
 }
 
-function paceOnTrack(p) {
-  if (!p.startDate || !p.expectedCompletion) return true;
-  const total = p.expectedCompletion - p.startDate;
-  if (total <= 0) return true;
-  const elapsed = Date.now() - p.startDate;
-  const expected = Math.min(100, Math.max(0, (elapsed / total) * 100));
-  return (p.completion ?? 0) >= expected - 5;
-}
-
 export async function projectStats(_req, res, next) {
   try {
     const projects = await Project.find(
       {},
-      { status: 1, completion: 1, branch: 1, currentStage: 1, scope: 1, startDate: 1, expectedCompletion: 1 },
+      { status: 1, completion: 1, branch: 1, currentStage: 1, scope: 1 },
     );
-    const counts = { active: 0, onTrack: 0, completed: 0, onHold: 0, other: 0 };
+    const counts = { active: 0, completed: 0, onHold: 0 };
     const byBranch = new Map();
     const byStage = new Map();
     const byService = new Map();
     for (const p of projects) {
-      if (p.status === 'Active') {
-        counts.active += 1;
-        if (paceOnTrack(p)) counts.onTrack += 1;
-      } else if (p.status === 'Completed') counts.completed += 1;
+      if (p.status === 'Active') counts.active += 1;
+      else if (p.status === 'Completed') counts.completed += 1;
       else if (p.status === 'On Hold') counts.onHold += 1;
-      else counts.other += 1;
       const b = byBranch.get(p.branch) ?? { projects: 0, completionSum: 0 };
       b.projects += 1;
       b.completionSum += p.completion ?? 0;

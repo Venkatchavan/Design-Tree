@@ -11,6 +11,7 @@ const certificateSchema = new mongoose.Schema(
       index: true,
     },
     certType: { type: String, required: true, trim: true },
+    certNo: { type: String, trim: true },
     stage: { type: String, trim: true },
     status: {
       type: String,

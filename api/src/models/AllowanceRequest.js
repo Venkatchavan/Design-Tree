@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 export const ALLOWANCE_TYPES = ['LA', 'Cab', 'Other'];
-export const ALLOWANCE_STATUSES = ['Pending', 'Approved', 'Rejected'];
+export const ALLOWANCE_STATUSES = ['Pending', 'Approved', 'Rejected', 'Completed', 'Returned for clarification'];
 
 const allowanceRequestSchema = new mongoose.Schema(
   {

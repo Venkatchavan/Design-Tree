@@ -49,7 +49,7 @@ Short version (on the server, repo root):
 Copy-Item .env.example .env   # then fill in secrets
 # ... place certs/server.crt + server.key in certs/, gateway/.htpasswd per docs ...
 docker compose up -d --build
-docker compose run --rm api npm run seed   # one-shot founding-director login
+docker compose run --rm api npm run seed   # one-shot superuser login
 ```
 
 ## Data safety rules (read before touching docker)

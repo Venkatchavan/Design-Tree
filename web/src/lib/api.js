@@ -104,6 +104,12 @@ export const projectsApi = {
       body: JSON.stringify(body),
     }),
   importFile: (file) => requestMultipart('/api/projects/import', file, 'file'),
+  nextCode: () => request('/api/projects/next-code'),
+  nextJobNumber: () => request('/api/projects/next-job-number'),
+};
+
+export const metaApi = {
+  geocode: (q) => request(`/api/meta/geocode${toQuery({ q })}`),
 };
 
 export const employeesApi = {

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { employeesApi, meApi, request, teamsApi, usersApi, workEntriesApi } from '../lib/api.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
-import { leaveApi, travelApi } from '../lib/phase4bApi.js';
+import { leaveApi, travelApi, holidaysApi } from '../lib/phase4bApi.js';
 import { docsApi, fileUrl } from '../lib/docsApi.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -14,7 +14,7 @@ import EmptyState from '../components/EmptyState.jsx';
 import Field from '../components/Field.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 
-const LOGIN_ROLES = new Set(['founding_director', 'hr', 'admin_billing']);
+const LOGIN_ROLES = new Set(['founding_director', 'hr', 'admin_billing', 'superuser']);
 
 const EMP_STATUSES = ['Active', 'On Leave', 'Exited'];
 
@@ -242,6 +242,383 @@ function TravelPanel() {
         />
       )}
     </Panel>
+  );
+}
+
+const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director']);
+
+function DirectorOverviewTab() {
+  const dir = useQuery({ queryKey: ['employees-dir'], queryFn: () => employeesApi.list({}) });
+  const leaves = useQuery({ queryKey: ['hr-leaves'], queryFn: () => leaveApi.list({}) });
+  const travels = useQuery({ queryKey: ['hr-travels'], queryFn: () => travelApi.list({}) });
+  const today = new Date().toISOString().slice(0, 10);
+  const weekEnd = new Date(new Date(`${today}T00:00:00Z`).getTime() + 7 * 86400000).toISOString().slice(0, 10);
+  const items = dir.data?.items ?? [];
+  const total = dir.data?.total ?? items.length;
+  const onLeave = (leaves.data?.items ?? []).filter((r) => {
+    if (r.status !== 'Approved') return false;
+    const from = String(r.from ?? '').slice(0, 10);
+    const to = String(r.to ?? '').slice(0, 10);
+    return from <= today && today <= to;
+  });
+  const present = Math.max(0, total - onLeave.length);
+  const pct = total > 0 ? Math.round((present / total) * 100) : 0;
+  const travelWeek = (travels.data?.items ?? []).filter((r) => {
+    if (r.status !== 'Approved') return false;
+    const dep = String(r.departureDate ?? '').slice(0, 10);
+    return dep >= today && dep <= weekEnd;
+  });
+  if (dir.isError) {
+    return <div className="login-error" role="alert" style={{ display: 'block' }}>{dir.error.message}</div>;
+  }
+  return (
+    <>
+      <div className="kpi-grid cols-4">
+        <KpiCard label="Total employees" value={total} accent="blueprint" />
+        <KpiCard label="Present today" value={present} accent="forest" />
+        <KpiCard label="On leave today" value={onLeave.length} accent="amber" />
+        <KpiCard label="Travel this week" value={travelWeek.length} accent="violet" />
+      </div>
+      <Panel title="Attendance today" sub={`${present} of ${total} present (${pct}%)`}>
+        <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
+          <span>On leave <b className="mono">{onLeave.length}</b></span>
+        </div>
+        {leaves.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+              { key: 'branch', label: 'Branch', render: (r) => r.employee?.branch ?? '—' },
+              { key: 'service', label: 'Service', render: (r) => r.employee?.department ?? '—' },
+              { key: 'status', label: "Today's status", render: () => <StatusPill status="On leave">On leave</StatusPill> },
+            ]}
+            rows={onLeave}
+            emptyText="Nobody on approved leave today."
+          />
+        )}
+      </Panel>
+      <Panel title="Upcoming travel">
+        {travels.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'dates', label: 'Dates', render: (r) => `${r.departureDate ? String(r.departureDate).slice(0, 10) : '—'} → ${r.returnDate ? String(r.returnDate).slice(0, 10) : '—'}` },
+              { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+              { key: 'purpose', label: 'Purpose', render: (r) => [r.purpose, r.project?.name ?? r.project].filter(Boolean).join(' — ') || '—' },
+            ]}
+            rows={(travels.data?.items ?? []).filter(
+              (r) => r.status === 'Approved' && String(r.returnDate ?? r.departureDate ?? '') >= today,
+            )}
+            emptyText="No upcoming approved travel."
+          />
+        )}
+      </Panel>
+    </>
+  );
+}
+
+function DirectorLoginHoursTab() {
+  const q = useQuery({ queryKey: ['hr-work-entries'], queryFn: () => workEntriesApi.list({}) });
+  const groups = useMemo(() => {
+    const m = new Map();
+    for (const e of q.data?.items ?? []) {
+      const pid = String(e.project?._id ?? e.project ?? '');
+      const key = `${pid}|${e.stage ?? '—'}`;
+      let g = m.get(key);
+      if (!g) {
+        g = { key, project: e.project?.name ?? e.project ?? '—', stage: e.stage ?? '—', empIds: new Set(), total: 0 };
+        m.set(key, g);
+      }
+      g.empIds.add(String(e.employee?._id ?? e.employee ?? ''));
+      g.total += Number(e.hours ?? 0);
+    }
+    return [...m.values()].map((g) => ({
+      key: g.key,
+      project: g.project,
+      stage: g.stage,
+      employees: g.empIds.size,
+      total: g.total,
+      avg: g.empIds.size > 0 ? g.total / g.empIds.size : 0,
+    }));
+  }, [q.data]);
+  const grandTotal = groups.reduce((s, g) => s + g.total, 0);
+  const projectCount = new Set(groups.map((g) => g.project)).size;
+  const avgPerStage = groups.length > 0 ? grandTotal / groups.length : 0;
+  const f1 = (n) => Number(n ?? 0).toFixed(1);
+  return (
+    <>
+      <div className="kpi-grid cols-4">
+        <KpiCard label="Total hours logged today" value={f1(grandTotal)} accent="blueprint" />
+        <KpiCard label="Projects with activity" value={projectCount} accent="forest" />
+        <KpiCard label="Stages in progress" value={groups.length} accent="teal" />
+        <KpiCard label="Avg. hours / stage" value={f1(avgPerStage)} accent="violet" />
+      </div>
+      <Panel title="Login hours by project and stage" sub="Total hours logged across all employees, grouped by project and design stage — feeds Finance's cost & performance tracking.">
+        {q.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : q.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'project', label: 'Project' },
+              { key: 'stage', label: 'Stage' },
+              { key: 'employees', label: 'Employees logged in' },
+              { key: 'total', label: 'Total hours', render: (r) => f1(r.total) },
+              { key: 'avg', label: 'Avg. hours / employee', render: (r) => f1(r.avg) },
+            ]}
+            rows={groups}
+            emptyText="No work entries logged yet."
+          />
+        )}
+      </Panel>
+    </>
+  );
+}
+
+function quarterBounds(todayStr) {
+  const [y, m] = todayStr.split('-').map(Number);
+  const qStartMonth = Math.floor((m - 1) / 3) * 3;
+  const pad = (n) => String(n).padStart(2, '0');
+  return { startYm: `${y}-${pad(qStartMonth + 1)}`, endYm: `${y}-${pad(qStartMonth + 3)}` };
+}
+
+function spendOf(r) {
+  const actual = Number(r.actualExpense ?? 0);
+  if (actual > 0) return actual;
+  return Number(r.estExpense ?? 0);
+}
+
+function fmtSpend(v) {
+  const n = Number(v ?? 0);
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
+  return `₹${Math.round(n).toLocaleString('en-IN')}`;
+}
+
+function fmtTripDate(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v).slice(0, 10);
+  const mon = d.toLocaleString('en-GB', { month: 'short' });
+  return `${String(d.getDate()).padStart(2, '0')}-${mon}-${String(d.getFullYear()).slice(2)}`;
+}
+
+function tripStatus(r, today) {
+  const ret = String(r.returnDate ?? '').slice(0, 10);
+  const dep = String(r.departureDate ?? '').slice(0, 10);
+  if (ret && ret < today) return 'Completed';
+  if (dep && dep > today) return 'Upcoming';
+  return 'In progress';
+}
+
+function purposeBucket(purpose) {
+  const p = String(purpose ?? '').toLowerCase();
+  if (p.includes('site')) return 'Site visits';
+  if (p.includes('client') || p.includes('meeting')) return 'Client meetings';
+  return 'Internal / training';
+}
+
+function DirectorTravelLogTab() {
+  const q = useQuery({ queryKey: ['hr-travels'], queryFn: () => travelApi.list({}) });
+  const today = new Date().toISOString().slice(0, 10);
+  const { startYm: qStartYm, endYm: qEndYm } = quarterBounds(today);
+  const items = q.data?.items ?? [];
+  const quarterTrips = items.filter((r) => {
+    const ym = String(r.departureDate ?? '').slice(0, 7);
+    return ym >= qStartYm && ym <= qEndYm;
+  });
+  const upcoming = items.filter((r) => r.status === 'Approved' && String(r.returnDate ?? r.departureDate ?? '') >= today);
+  const spendQtr = quarterTrips.reduce((s, r) => s + spendOf(r), 0);
+  const avgCost = quarterTrips.length > 0 ? spendQtr / quarterTrips.length : 0;
+  const purposeCounts = (() => {
+    const c = { 'Site visits': 0, 'Client meetings': 0, 'Internal / training': 0 };
+    for (const r of quarterTrips) c[purposeBucket(r.purpose)] += 1;
+    return c;
+  })();
+  const topTravelers = (() => {
+    const m = new Map();
+    for (const r of quarterTrips) {
+      const id = String(r.employee?._id ?? r.employee ?? '');
+      let g = m.get(id);
+      if (!g) {
+        g = {
+          id,
+          name: r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—',
+          branch: r.employee?.branch ?? '—',
+          trips: 0,
+          spend: 0,
+        };
+        m.set(id, g);
+      }
+      g.trips += 1;
+      g.spend += spendOf(r);
+    }
+    return [...m.values()].sort((a, b) => b.trips - a.trips || b.spend - a.spend).slice(0, 5);
+  })();
+  return (
+    <>
+      <div className="kpi-grid cols-4">
+        <KpiCard label="Trips this quarter" value={quarterTrips.length} accent="blueprint" />
+        <KpiCard label="Upcoming" value={upcoming.length} accent="teal" />
+        <KpiCard label="Travel spend (qtr)" value={fmtSpend(spendQtr)} accent="copper" />
+        <KpiCard label="Avg. cost / trip" value={fmtSpend(avgCost)} accent="violet" />
+      </div>
+      <Panel title="Travel log">
+        {q.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : q.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+              { key: 'purpose', label: 'Purpose', render: (r) => r.purpose ?? '—' },
+              { key: 'location', label: 'Location', render: (r) => [r.project?.name ?? r.project, r.toCity].filter(Boolean).join(', ') || '—' },
+              { key: 'departureDate', label: 'Travel date', render: (r) => fmtTripDate(r.departureDate) },
+              { key: 'returnDate', label: 'Return date', render: (r) => fmtTripDate(r.returnDate) },
+              { key: 'status', label: 'Status', render: (r) => <StatusPill status={tripStatus(r, today)}>{tripStatus(r, today)}</StatusPill> },
+            ]}
+            rows={items}
+            emptyText="No travel requests yet."
+          />
+        )}
+      </Panel>
+      <div className="two-col">
+        <Panel title="By purpose, this quarter">
+          {q.isLoading ? (
+            <EmptyState text="Loading…" />
+          ) : (
+            <table className="data">
+              <tbody>
+                {Object.entries(purposeCounts).map(([k, n]) => (<tr key={k}><td>{k}</td><td className="mono">{n}</td></tr>))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+        <Panel title="Top travelers, this quarter">
+          {q.isLoading ? (
+            <EmptyState text="Loading…" />
+          ) : (
+            <DataTable
+              columns={[
+                { key: 'name', label: 'Employee' },
+                { key: 'branch', label: 'Branch' },
+                { key: 'trips', label: 'Trips' },
+                { key: 'spend', label: 'Total spend', render: (r) => fmtSpend(r.spend) },
+              ]}
+              rows={topTravelers}
+              emptyText="No trips this quarter."
+            />
+          )}
+        </Panel>
+      </div>
+    </>
+  );
+}
+
+const HOLIDAY_TYPES = ['Public holiday', 'Restricted holiday'];
+
+function DirectorHolidaysTab() {
+  const year = new Date().getFullYear();
+  const qc = useQueryClient();
+  const [form, setForm] = useState({ date: '', name: '', type: 'Public holiday' });
+  const q = useQuery({ queryKey: ['hr-holidays', year], queryFn: () => holidaysApi.list({ year }) });
+  const items = q.data?.items ?? [];
+  const holidayDates = (() => {
+    const s = new Set();
+    for (const h of items) {
+      if (h.date) s.add(String(h.date).slice(0, 10));
+    }
+    return s;
+  })();
+  const createMut = useMutation({
+    mutationFn: (body) => holidaysApi.create(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['hr-holidays', year] });
+      setForm({ date: '', name: '', type: 'Public holiday' });
+    },
+  });
+  const removeMut = useMutation({
+    mutationFn: (id) => holidaysApi.remove(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['hr-holidays', year] }),
+  });
+  const months = useMemo(() => {
+    const out = [];
+    for (let m = 0; m < 12; m++) {
+      const firstWeekday = new Date(year, m, 1).getDay();
+      const days = new Date(year, m + 1, 0).getDate();
+      const cells = [];
+      for (let i = 0; i < firstWeekday; i++) cells.push(null);
+      for (let d = 1; d <= days; d++) cells.push(d);
+      out.push({ m, cells });
+    }
+    return out;
+  }, [year]);
+  const monthName = (m) => new Date(year, m, 1).toLocaleString('en-GB', { month: 'long' });
+  const isoOf = (m, d) => `${year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const err = createMut.error?.message ?? removeMut.error?.message;
+  return (
+    <>
+      <Panel title="Add a holiday" sub="Appears on every employee's calendar and is excluded from working-day counts.">
+        <form
+          className="field-grid"
+          onSubmit={(e) => {
+            e.preventDefault();
+            createMut.mutate({ date: form.date, name: form.name.trim(), type: form.type });
+          }}
+        >
+          <div className="form-row"><label className="form-label">Date</label><input required type="date" className="form-input" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
+          <div className="form-row"><label className="form-label">Holiday name</label><input required className="form-input" placeholder="e.g. Republic Day" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+          <div className="form-row"><label className="form-label">Type</label><select className="filter-select" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>{HOLIDAY_TYPES.map((t) => <option key={t}>{t}</option>)}</select></div>
+          <button type="submit" className="btn-primary" disabled={createMut.isPending}>{createMut.isPending ? 'Adding…' : 'Add holiday'}</button>
+        </form>
+        {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
+      </Panel>
+      <Panel title="Holiday calendar" sub={`${year}`}>
+        {q.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : q.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
+        ) : (
+          <div className="cal-year">
+            {months.map(({ m, cells }) => (
+              <div key={m} className="cal-month">
+                <div className="cal-month-name">{monthName(m)}</div>
+                <div className="cal-grid">
+                  {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <span key={i} className="cal-dow">{d}</span>)}
+                  {cells.map((d, i) => d == null ? (
+                    <span key={i} className="cal-day empty" />
+                  ) : (
+                    <span key={i} className={`cal-day${holidayDates.has(isoOf(m, d)) ? ' holiday' : ''}`}>{d}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+      <Panel title="Holidays this year">
+        {q.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : items.length === 0 ? (
+          <EmptyState text="No holidays published for this year." />
+        ) : (
+          <table className="data">
+            <tbody>
+              {items.map((h) => (
+                <tr key={h._id ?? h.id}>
+                  <td>{h.date ? new Date(h.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'} — {h.name}</td>
+                  <td>{h.type ?? 'Public holiday'}</td>
+                  <td><button type="button" className="approve-btn" disabled={removeMut.isPending} onClick={() => removeMut.mutate(h._id ?? h.id)}>Remove</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+    </>
   );
 }
 
@@ -1093,7 +1470,25 @@ function RecruitmentTab({ bootstrap }) {
 }
 
 export default function HRPage({ bootstrap }) {
-  const [tab, setTab] = useState('overview');
+  const roleKey = bootstrap?.role?.key ?? '';
+  const isSuperuser = roleKey === 'superuser';
+  const [tab, setTab] = useState(isSuperuser ? 'manage' : 'overview');
+  const isDirector = DIRECTOR_ROLES.has(roleKey);
+  const tabs = isSuperuser
+    ? [{ key: 'manage', label: 'Employee management' }]
+    : isDirector
+    ? [
+        { key: 'overview', label: 'Overview' },
+        { key: 'loginhours', label: 'Login Hours' },
+        { key: 'travellog', label: 'Travel log' },
+        { key: 'holidays', label: 'Holiday calendar' },
+      ]
+    : [
+        { key: 'overview', label: 'Overview' },
+        { key: 'manage', label: 'Employee management' },
+        { key: 'track', label: 'Track record' },
+        { key: 'recruitment', label: 'Recruitment' },
+      ];
   return (
     <>
       <div className="page-head">
@@ -1101,19 +1496,17 @@ export default function HRPage({ bootstrap }) {
         <div className="page-sub">Directory, headcount and track records — live from the employee API.</div>
       </div>
       <Tabs
-        tabs={[
-          { key: 'overview', label: 'Overview' },
-          { key: 'manage', label: 'Employee management' },
-          { key: 'track', label: 'Track record' },
-          { key: 'recruitment', label: 'Recruitment' },
-        ]}
+        tabs={tabs}
         active={tab}
         onChange={setTab}
       />
-      {tab === 'overview' && <OverviewTab />}
-      {tab === 'manage' && <ManageTab bootstrap={bootstrap} />}
-      {tab === 'track' && <TrackTab />}
-      {tab === 'recruitment' && <RecruitmentTab bootstrap={bootstrap} />}
+      {tab === 'overview' && (isDirector ? <DirectorOverviewTab /> : <OverviewTab />)}
+      {!isDirector && tab === 'manage' && <ManageTab bootstrap={bootstrap} />}
+      {!isDirector && tab === 'track' && <TrackTab />}
+      {!isDirector && tab === 'recruitment' && <RecruitmentTab bootstrap={bootstrap} />}
+      {isDirector && tab === 'loginhours' && <DirectorLoginHoursTab />}
+      {isDirector && tab === 'travellog' && <DirectorTravelLogTab />}
+      {isDirector && tab === 'holidays' && <DirectorHolidaysTab />}
     </>
   );
 }

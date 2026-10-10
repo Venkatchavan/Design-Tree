@@ -20,19 +20,14 @@ import EmptyState from '../components/EmptyState.jsx';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-// Only Admin may create projects (FD/WD included to match backend superuser bypass §3.4).
-const CREATOR_ROLES = new Set([
-  'admin_billing',
-  'founding_director',
-  'working_director',
-]);
+// Only Admin may create projects. Directors are read-only (also enforced
+// server-side: denyRoles blocks FD/WD/ED on project writes).
+const CREATOR_ROLES = new Set(['admin_billing']);
 
 const STATUS_KPIS = [
   { key: 'active', label: 'Active', accent: 'forest' },
-  { key: 'onTrack', label: 'On track', accent: 'blueprint' },
-  { key: 'completed', label: 'Completed', accent: 'violet' },
   { key: 'onHold', label: 'On hold', accent: 'amber' },
-  { key: 'other', label: 'Other', accent: 'rust' },
+  { key: 'completed', label: 'Completed', accent: 'violet' },
 ];
 
 export default function DashboardPage({ bootstrap }) {
@@ -98,7 +93,7 @@ export default function DashboardPage({ bootstrap }) {
         </div>
       )}
 
-      <div className="kpi-grid cols-5">
+      <div className="kpi-grid cols-3">
         {STATUS_KPIS.map((k) => (
           <KpiCard
             key={k.key}

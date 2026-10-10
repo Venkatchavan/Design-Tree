@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 export const BOOKING_STATUSES = [
   'Pending',
   'Approved',
+  'Confirmed',
   'Rejected',
   'Rescheduled',
   'Cancelled',

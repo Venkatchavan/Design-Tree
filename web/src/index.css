@@ -436,9 +436,12 @@ background:var(--surface-page);
 .page-sub{font-size:13.5px;color:var(--ink-muted);}
 
 .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:26px;}
+.kpi-grid.cols-2{grid-template-columns:repeat(2,1fr);}
+.kpi-grid.cols-3{grid-template-columns:repeat(3,1fr);}
+.kpi-grid.cols-4{grid-template-columns:repeat(4,1fr);}
 .kpi-grid.cols-5{grid-template-columns:repeat(5,1fr);}
 .kpi-grid.cols-6{grid-template-columns:repeat(6,1fr);}
-@media(max-width:1180px){.kpi-grid.cols-5{grid-template-columns:repeat(3,1fr);}.kpi-grid.cols-6{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:1180px){.kpi-grid.cols-2{grid-template-columns:repeat(2,1fr);}.kpi-grid.cols-3{grid-template-columns:repeat(3,1fr);}.kpi-grid.cols-4{grid-template-columns:repeat(2,1fr);}.kpi-grid.cols-5{grid-template-columns:repeat(3,1fr);}.kpi-grid.cols-6{grid-template-columns:repeat(3,1fr);}}
 .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:17px 20px;}
 .kpi-label{font-size:12px;color:var(--ink-muted);margin-bottom:8px;}
 .kpi-value{font-family:var(--font-mono);font-size:23px;font-weight:500;color:var(--copper);}
@@ -710,6 +713,8 @@ table.data tr.row-click:hover{background:var(--surface-alt);}
   .teams-grid{grid-template-columns:1fr;}
   .sidebar{display:none;}
   .kpi-grid{grid-template-columns:repeat(2,1fr);}
+  .kpi-grid.cols-2{grid-template-columns:1fr;}
+  .kpi-grid.cols-3{grid-template-columns:1fr;}
   .two-col{grid-template-columns:1fr;}
   .field-grid{grid-template-columns:1fr;}
   .tb-row.top,.tb-row.bottom{grid-template-columns:1fr;}
@@ -721,3 +726,33 @@ table.data tr.row-click:hover{background:var(--surface-alt);}
 .type-badge.Regular{ background:rgba(59,130,246,0.16); color:#2563eb; }
 .type-badge.Revision{ background:rgba(217,119,6,0.18); color:#b45309; }
 .type-badge.Rework{ background:rgba(220,38,38,0.16); color:#b91c1c; }
+.cal-year{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+.cal-month{border:1px solid var(--border);border-radius:var(--radius-lg);padding:12px 14px;background:var(--surface);}
+.cal-month-name{font-size:13px;font-weight:600;margin-bottom:8px;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:11.5px;}
+.cal-dow{color:var(--ink-faint);font-weight:600;padding:2px 0;}
+.cal-day{padding:3px 0;border-radius:6px;color:var(--ink);}
+.cal-day.empty{background:transparent;}
+.cal-day.holiday{background:rgba(168,59,50,.14);color:var(--rust);font-weight:700;}
+.perf-row{margin-bottom:14px;}
+.perf-row:last-child{margin-bottom:0;}
+.perf-label{display:block;font-size:13px;margin-bottom:6px;}
+.perf-track{height:10px;border-radius:6px;background:var(--border);overflow:hidden;}
+.perf-fill{height:100%;border-radius:6px;}
+.perf-fill.forest{background:var(--forest);}
+.perf-fill.teal{background:var(--teal);}
+.occ-flow{margin-bottom:26px;display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;}
+.occ-stage{padding:10px;position:relative;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:3px;min-width:0;}
+.occ-stage:last-child{border-right:0;}
+.occ-sn{font-size:10.5px;color:var(--ink-faint);font-weight:600;letter-spacing:.04em;text-transform:uppercase;}
+.occ-st{font-size:12.5px;font-weight:600;line-height:1.2;}
+.occ-sc{font-family:var(--font-mono);font-size:20px;font-weight:600;}
+.occ-stage.hot .occ-sc{color:var(--amber-dark);}
+.occ-stage.done .occ-sc{color:var(--forest-dark);}
+.occ-bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--border);}
+.occ-stage.hot .occ-bar{background:var(--amber);}
+.occ-stage.done .occ-bar{background:var(--forest);}
+@media(max-width:1180px){.occ-flow{grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media(max-width:920px){.occ-flow{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:1180px){.cal-year{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:920px){.cal-year{grid-template-columns:1fr;}}

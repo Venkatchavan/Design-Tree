@@ -99,7 +99,51 @@ export async function upsertStage(req, res, next) {
       { ...parsed.data, updatedBy: req.user.id },
       { upsert: true, new: true, returnDocument: 'after', runValidators: true },
     );
-    return res.status(200).json({ item: doc });
+    // A completed stage that hasn't been billed yet is flagged Ready and
+    // the billing team is notified automatically.
+    let finalDoc = doc;
+    const isCompleted = String(doc.currentStatus ?? '').trim().toLowerCase() === 'completed';
+    if (isCompleted && doc.billingReadiness !== 'Billed' && doc.billingReadiness !== 'Ready for billing') {
+      finalDoc = await StageStatus.findByIdAndUpdate(
+        doc._id,
+        { billingReadiness: 'Ready for billing' },
+        { new: true, returnDocument: 'after', runValidators: true },
+      );
+      try {
+        const { notify } = await import('../models/Notification.js');
+        const proj = await Project.findById(doc.project).select('name code').lean();
+        const projLabel = proj ? `${proj.name} (${proj.code})` : 'a project';
+        await notify({
+          roles: ['admin_billing', 'executive_director'],
+          project: doc.project,
+          link: { view: 'billing' },
+          title: `Stage ready for billing: ${finalDoc.stage || 'stage'} — ${projLabel}`,
+          detail: `${finalDoc.service || 'Service'} stage completed and flagged ready for billing.`,
+          type: 'stage-ready',
+        });
+      } catch {
+        /* readiness flip itself succeeded — notification is best-effort */
+      }
+    }
+    // A service running past its planned date notifies its team automatically.
+    if (Number(finalDoc.delayDays ?? 0) > 0) {
+      try {
+        const { notify } = await import('../models/Notification.js');
+        const proj = await Project.findById(finalDoc.project).select('name code').lean();
+        const projLabel = proj ? `${proj.name} (${proj.code})` : 'a project';
+        await notify({
+          roles: ['admin_billing', 'design_mgmt_head'],
+          project: finalDoc.project,
+          link: { view: 'billing' },
+          title: `Stage delay: ${finalDoc.stage || 'stage'} — ${projLabel}`,
+          detail: `${finalDoc.service || 'Service'} is ${finalDoc.delayDays} day(s) past planned completion.${finalDoc.reason ? ` Reason: ${finalDoc.reason}` : ''}`,
+          type: 'stage-delay',
+        });
+      } catch {
+        /* stage save itself succeeded — notification is best-effort */
+      }
+    }
+    return res.status(200).json({ item: finalDoc });
   } catch (err) {
     return next(err);
   }
@@ -273,6 +317,7 @@ export async function revenueByProject(_req, res, next) {
         received,
         pct: invoiced > 0 ? Math.round((received / invoiced) * 100) : 0,
         outstanding: invoiced - received,
+        services: [...new Set((p.scope ?? []).map((x) => x.service).filter(Boolean))],
       };
     });
     return res.status(200).json({ items: rows, total: rows.length });

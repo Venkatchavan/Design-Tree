@@ -48,15 +48,39 @@ function projKey(p) {
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
+function workText(e) {
+  return e?.notes ?? e?.taskActivity ?? e?.deliverable ?? e?.drawing ?? '—';
+}
+function fmtDayLong(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v).slice(0, 10);
+  const wd = d.toLocaleString('en-GB', { weekday: 'short' });
+  const day = String(d.getDate()).padStart(2, '0');
+  const mon = d.toLocaleString('en-GB', { month: 'short' });
+  return `${wd}, ${day}-${mon}-${String(d.getFullYear()).slice(2)}`;
+}
+function fmtShortHoliday(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v).slice(0, 10);
+  const day = String(d.getDate()).padStart(2, '0');
+  const mon = d.toLocaleString('en-GB', { month: 'short' });
+  return `${day}-${mon}-${String(d.getFullYear()).slice(2)}`;
+}
 function useBootstrapProp(prop) {
   const q = useQuery({ queryKey: ['bootstrap'], queryFn: bootstrapApi, enabled: !prop });
   return prop ?? q.data ?? null;
 }
 
 export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
-  useBootstrapProp(bootstrapProp);
+  const bootstrap = useBootstrapProp(bootstrapProp);
+  const isDirector = new Set(['founding_director', 'working_director', 'executive_director']).has(bootstrap?.role?.key ?? '');
   const [date, setDate] = useState(todayISO());
   const [tab, setTab] = useState('wise');
+  const [fDept, setFDept] = useState('');
+  const [fProject, setFProject] = useState('');
+  const [fStage, setFStage] = useState('');
 
   const entriesQ = useQuery({
     queryKey: ['work-entries-day', date],
@@ -117,20 +141,73 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
       const cur = m.get(k) ?? {
         key: k,
         employee: empName(e.employee),
+        department: deptOf(e),
         date: String(e.date ?? '').slice(0, 10) || '—',
         hours: 0,
         notes: [],
+        byProject: new Map(),
       };
       cur.hours += Number(e.hours ?? 0);
       if (e.notes) cur.notes.push(e.notes);
+      const pk = projKey(e.project);
+      const ph = cur.byProject.get(pk) ?? { label: projLabel(e.project), hours: 0 };
+      ph.hours += Number(e.hours ?? 0);
+      cur.byProject.set(pk, ph);
       m.set(k, cur);
     }
-    return [...m.values()].filter((d) => d.hours > 8);
+    return [...m.values()]
+      .filter((d) => d.hours > 8)
+      .map((d) => ({
+        ...d,
+        project: [...d.byProject.values()].sort((a, b) => b.hours - a.hours)[0]?.label ?? '—',
+      }));
   }, [entries]);
 
   const sundayEntries = useMemo(
     () => entries.filter((e) => e.date && new Date(e.date).getDay() === 0),
     [entries],
+  );
+
+  const year = String(date).slice(0, 4);
+  const directorYearQ = useQuery({
+    queryKey: ['work-entries-year', year, date],
+    queryFn: () => workEntriesApi.list({ from: `${year}-01-01`, to: date }),
+    enabled: isDirector,
+  });
+  const directorSundayRows = (directorYearQ.data?.items ?? []).filter(
+    (e) => e.date && new Date(e.date).getDay() === 0,
+  );
+
+  const deptOptions = useMemo(() => {
+    const s = new Set();
+    for (const e of entries) {
+      const d = deptOf(e);
+      if (d && d !== '—') s.add(d);
+    }
+    return [...s].sort();
+  }, [entries]);
+  const projectOptions = useMemo(() => {
+    const m = new Map();
+    for (const e of entries) m.set(projKey(e.project), projLabel(e.project));
+    return [...m.entries()].map(([key, label]) => ({ key, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [entries]);
+  const stageOptions = useMemo(() => {
+    const s = new Set();
+    for (const e of entries) {
+      const st = e.stage ?? '—';
+      if (st && st !== '—') s.add(st);
+    }
+    return [...s].sort();
+  }, [entries]);
+  const wiseFiltered = useMemo(
+    () =>
+      entries.filter(
+        (e) =>
+          (!fDept || deptOf(e) === fDept) &&
+          (!fProject || projKey(e.project) === fProject) &&
+          (!fStage || (e.stage ?? '—') === fStage),
+      ),
+    [entries, fDept, fProject, fStage],
   );
 
   const loggedEmpNames = useMemo(() => {
@@ -184,6 +261,44 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
       />
 
       {tab === 'wise' && (
+        isDirector ? (
+          <Panel title="Work logged today" sub="Filter by department, project or stage — any combination">
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              <select className="filter-select" value={fDept} onChange={(e) => setFDept(e.target.value)}>
+                <option value="">All departments</option>
+                {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+              <select className="filter-select" value={fProject} onChange={(e) => setFProject(e.target.value)}>
+                <option value="">All projects</option>
+                {projectOptions.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+              </select>
+              <select className="filter-select" value={fStage} onChange={(e) => setFStage(e.target.value)}>
+                <option value="">All stages</option>
+                {stageOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            {entriesQ.isLoading ? (
+              <EmptyState text="Loading…" />
+            ) : entriesQ.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>
+                {entriesQ.error.message}
+              </div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'employee', label: 'Employee', render: (e) => empName(e.employee) },
+                  { key: 'department', label: 'Department', render: (e) => deptOf(e) },
+                  { key: 'project', label: 'Project', render: (e) => projLabel(e.project) },
+                  { key: 'stage', label: 'Stage', render: (e) => e.stage ?? '—' },
+                  { key: 'work', label: 'Work logged today', render: (e) => workText(e) },
+                  { key: 'hours', label: 'Hours', render: (e) => (e.hours == null ? '—' : Number(e.hours).toFixed(1)) },
+                ]}
+                rows={wiseFiltered}
+                emptyText="No work logged for this date."
+              />
+            )}
+          </Panel>
+        ) : (
         <>
           <Panel title={`By department — ${date}`}>
             {entriesQ.isLoading ? (
@@ -237,9 +352,23 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
             )}
           </Panel>
         </>
-      )}
+        ))}
 
       {tab === 'extra' && (
+        isDirector ? (
+          <Panel title="Extra hours worked" sub="Employees logging beyond 8 hours today">
+            <DataTable
+              columns={[
+                { key: 'employee', label: 'Employee' },
+                { key: 'department', label: 'Department' },
+                { key: 'project', label: 'Project' },
+                { key: 'hours', label: 'Hours', render: (d) => Number(d.hours).toFixed(1) },
+              ]}
+              rows={extraDays}
+              emptyText="No extra-hours days."
+            />
+          </Panel>
+        ) : (
         <Panel title={`Extra hours — employee-day sums over 8h (${date})`}>
           <DataTable
             columns={[
@@ -252,9 +381,34 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
             emptyText="No extra-hours days."
           />
         </Panel>
+        )
       )}
 
       {tab === 'sunday' && (
+        isDirector ? (
+          <Panel title="Sunday work record">
+            {directorYearQ.isLoading ? (
+              <EmptyState text="Loading…" />
+            ) : directorYearQ.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>
+                {directorYearQ.error.message}
+              </div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'employee', label: 'Employee', render: (e) => empName(e.employee) },
+                  { key: 'department', label: 'Department', render: (e) => deptOf(e) },
+                  { key: 'project', label: 'Project', render: (e) => projLabel(e.project) },
+                  { key: 'date', label: 'Date', render: (e) => fmtDayLong(e.date) },
+                  { key: 'hours', label: 'Hours', render: (e) => (e.hours == null ? '—' : Number(e.hours).toFixed(1)) },
+                  { key: 'reason', label: 'Reason', render: (e) => workText(e) },
+                ]}
+                rows={directorSundayRows}
+                emptyText="No Sunday work in this period."
+              />
+            )}
+          </Panel>
+        ) : (
         <Panel title="Sunday work (entries whose date is a Sunday)">
           <DataTable
             columns={[
@@ -268,12 +422,68 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
             emptyText="No Sunday work in this filter."
           />
         </Panel>
+        )
       )}
 
       {tab === 'holiday' && (
-        <HolidayWork date={date} />
+        isDirector ? <DirectorHolidayWork date={date} /> : <HolidayWork date={date} />
       )}
     </>
+  );
+}
+
+function DirectorHolidayWork({ date }) {
+  const year = String(date).slice(0, 4);
+  const holidaysQ = useQuery({
+    queryKey: ['holidays', year],
+    queryFn: () => holidaysApi.list({ year }),
+  });
+  const yearQ = useQuery({
+    queryKey: ['work-entries-year', year, date],
+    queryFn: () => workEntriesApi.list({ from: `${year}-01-01`, to: date }),
+  });
+  const holidays = holidaysQ.data?.items ?? [];
+  const holidayNames = new Map(
+    holidays.map((h) => [String(h.date ?? '').slice(0, 10), h.name ?? '']),
+  );
+  const rows = (yearQ.data?.items ?? []).filter((e) =>
+    holidayNames.has(String(e.date ?? '').slice(0, 10)),
+  );
+  return (
+    <Panel title="Other holiday work record">
+      {holidaysQ.isLoading || yearQ.isLoading ? (
+        <EmptyState text="Loading…" />
+      ) : holidaysQ.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>
+          {holidaysQ.error.message}
+        </div>
+      ) : yearQ.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>
+          {yearQ.error.message}
+        </div>
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'employee', label: 'Employee', render: (e) => empName(e.employee) },
+            { key: 'department', label: 'Department', render: (e) => deptOf(e) },
+            { key: 'project', label: 'Project', render: (e) => projLabel(e.project) },
+            {
+              key: 'date',
+              label: 'Date',
+              render: (e) => {
+                const iso = String(e.date ?? '').slice(0, 10);
+                const name = holidayNames.get(iso);
+                return `${fmtShortHoliday(e.date)}${name ? ` (${name})` : ''}`;
+              },
+            },
+            { key: 'hours', label: 'Hours', render: (e) => (e.hours == null ? '—' : Number(e.hours).toFixed(1)) },
+            { key: 'reason', label: 'Reason', render: (e) => workText(e) },
+          ]}
+          rows={rows}
+          emptyText="No work logged on holidays in this period."
+        />
+      )}
+    </Panel>
   );
 }
 

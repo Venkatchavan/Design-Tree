@@ -14,7 +14,9 @@ import MyTeamPage from './pages/MyTeamPage.jsx'
 import MyWorkPage from './pages/MyWorkPage.jsx'
 import WorkProgressPage from './pages/WorkProgressPage.jsx'
 import UpdateWorkProgressPage from './pages/UpdateWorkProgressPage.jsx'
+import AdminWorkUpdatePage from './pages/AdminWorkUpdatePage.jsx'
 import MyCoordinationPage from './pages/MyCoordinationPage.jsx'
+import MyMeetingsPage from './pages/MyMeetingsPage.jsx'
 import WorkTrackingPage from './pages/WorkTrackingPage.jsx'
 import TransmittalLogPage from './pages/TransmittalLogPage.jsx'
 import AdminTransmittalPage from './pages/AdminTransmittalPage.jsx'
@@ -33,7 +35,6 @@ import DeptDashboardPage from './pages/DeptDashboardPage.jsx'
 import ClientPortalPage from './pages/ClientPortalPage.jsx'
 import LeaveTravelPage from './pages/LeaveTravelPage.jsx'
 import EmployeeSupportPage from './pages/EmployeeSupportPage.jsx'
-import OrgStructurePage from './pages/OrgStructurePage.jsx'
 import BranchesPage from './pages/BranchesPage.jsx'
 
 const VIEW_COMPONENTS = {
@@ -47,7 +48,9 @@ const VIEW_COMPONENTS = {
   'my-work': MyWorkPage,
   'work-progress': WorkProgressPage,
   'update-work-progress': UpdateWorkProgressPage,
+  'admin-work-update': AdminWorkUpdatePage,
   'my-coordination': MyCoordinationPage,
+  'my-meetings': MyMeetingsPage,
   'work-tracking': WorkTrackingPage,
   'transmittal-log': TransmittalLogPage,
   transmittal: AdminTransmittalPage,
@@ -74,7 +77,6 @@ const VIEW_COMPONENTS = {
   'project-portal': ClientPortalPage,
   'leave-travel': LeaveTravelPage,
   'employee-support': EmployeeSupportPage,
-  'org-structure': OrgStructurePage,
   branches: BranchesPage,
 }
 
@@ -143,8 +145,6 @@ function ShellRoutes({ user }) {
   // Only Admin may open the new-project view (matches Dashboard button + API guard).
   const PROJECT_CREATORS = new Set([
     'admin_billing',
-    'founding_director',
-    'working_director',
   ])
   const extraRoutes = EXTRA_ROUTES.filter(
     ({ key, when }) =>

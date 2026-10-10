@@ -3,7 +3,6 @@ import { requireAuth } from '../middlewares/auth.js';
 import {
   requireInternal,
   requireRole,
-  requireUserAdmin,
 } from '../middlewares/requireRole.js';
 import {
   allowances,
@@ -14,6 +13,7 @@ import {
   decideAllowance,
   decideLeave,
   decideTravel,
+  deleteHoliday,
   holidays,
   leaves,
   listHolidays,
@@ -51,11 +51,11 @@ router.post('/travel', requireInternal(), createTravel);
 router.patch('/travel/:id/decision', requireRole(...TRAVEL_APPROVERS), decideTravel);
 router.patch('/travel/:id/settle', requireInternal(), settleTravel);
 
-// LA / Cab / Other
+// LA / Cab / Other — directors decide alongside Finance.
 router.get('/allowances/mine', requireInternal(), myAllowances);
 router.get('/allowances', requireInternal(), allowances.list);
 router.post('/allowances', requireInternal(), createAllowance);
-router.patch('/allowances/:id/decision', requireRole('finance'), decideAllowance);
+router.patch('/allowances/:id/decision', requireRole('finance', 'executive_director'), decideAllowance);
 
 // Review scope helper + pending queue for approvers
 router.get('/scope', requireInternal(), teamScopeIds);
@@ -65,8 +65,10 @@ router.get(
   approvalQueue,
 );
 
-// Holidays
+// Holidays — directors (FD/WD/ED) manage the company calendar alongside HR/Admin.
+const HOLIDAY_WRITERS = ['hr', 'admin_billing', 'executive_director'];
 router.get('/holidays', requireInternal(), listHolidays);
-router.post('/holidays', requireUserAdmin(), holidays.create);
+router.post('/holidays', requireRole(...HOLIDAY_WRITERS), holidays.create);
+router.delete('/holidays/:id', requireRole(...HOLIDAY_WRITERS), deleteHoliday);
 
 export default router;

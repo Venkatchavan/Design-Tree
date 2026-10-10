@@ -25,13 +25,28 @@ export async function createWorkEntry(req, res, next) {
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid work entry data.' });
     }
-    const employee = await resolveEmployee(req, parsed.data.employee);
+    let employee = await resolveEmployee(req, parsed.data.employee);
+    if (!employee && req.user?.role === 'admin_billing' && !parsed.data.employee) {
+      // Admins often have no linked employee record: fall back to matching
+      // an employee by the login email so the simple admin update form works.
+      const me = await User.findById(req.user.id);
+      if (me?.email) {
+        employee = await Employee.findOne({ email: me.email });
+      }
+    }
     if (!employee) {
       return res.status(400).json({
         message: 'No linked employee record. Pass an employee id.',
       });
     }
-    const project = await Project.findById(parsed.data.project);
+    let projectId = parsed.data.project;
+    if (!projectId && req.user?.role === 'admin_billing') {
+      // The admin update form carries no project: log against the
+      // Internal / non-billable project when one exists.
+      const fallback = await Project.findOne({ name: /internal \/ non-billable/i });
+      if (fallback) projectId = fallback._id;
+    }
+    const project = projectId ? await Project.findById(projectId) : null;
     if (!project) return res.status(404).json({ message: 'Project not found.' });
     const entry = await WorkEntry.create({
       employee: employee._id,

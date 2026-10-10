@@ -187,7 +187,11 @@ export const supportUpdateSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: 'Nothing to update.' });
 
 export const holidaySchema = z
-  .object({ date: z.coerce.date(), name: z.string().trim().min(1) })
+  .object({
+    date: z.coerce.date(),
+    name: z.string().trim().min(1),
+    type: z.enum(['Public holiday', 'Restricted holiday']).optional(),
+  })
   .strict();
 
 export const meetingSchema = z
@@ -318,6 +322,14 @@ export const inviteResponseSchema = z
 
 export const ackSchema = z
   .object({ drawing: objectId, remarks: strOpt })
+  .strict();
+
+export const portalRespondSchema = z
+  .object({ remarks: strOpt })
+  .strict();
+
+export const stageAckSchema = z
+  .object({ stageStatus: objectId, remarks: strOpt })
   .strict();
 
 export const portalUsersSchema = z

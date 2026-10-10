@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { employeesApi, projectsApi } from '../lib/api.js';
+import { projectsApi } from '../lib/api.js';
 import { SUPER_ROLES } from '../lib/session.js';
 import { allowanceApi, holidaysApi, leaveApi, travelApi } from '../lib/phase4bApi.js';
 import { docsApi, fileUrl } from '../lib/docsApi.js';
@@ -18,11 +18,6 @@ function fmtDate(v) {
   if (Number.isNaN(d.getTime())) return String(v);
   return d.toISOString().slice(0, 10);
 }
-function empName(e) {
-  if (!e) return '—';
-  if (typeof e === 'string') return e;
-  return [e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || e.email || '—';
-}
 function empIdOf(v) {
   if (v == null) return '';
   if (typeof v === 'object') return String(v._id ?? v.id ?? '');
@@ -30,10 +25,6 @@ function empIdOf(v) {
 }
 function isPending(s) {
   return String(s ?? '').toLowerCase() === 'pending';
-}
-function isDecided(s) {
-  const t = String(s ?? '').toLowerCase();
-  return ['approved', 'rejected', 'cancelled', 'canceled'].includes(t);
 }
 function quarterStart() {
   const now = new Date();
@@ -46,6 +37,8 @@ const TRAVEL_MODES = ['Train', 'Flight', 'Bus', 'Car', 'Other'];
 const REQ_TYPES = ['LA', 'Cab', 'Other'];
 
 export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
+  void user;
+  void viewKey;
   const queryClient = useQueryClient();
   const [tab, setTab] = useState('leave');
   const roleKey = bootstrap?.role?.key ?? '';
@@ -56,9 +49,6 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
   const allowMineQ = useQuery({ queryKey: ['allowance-mine'], queryFn: allowanceApi.mine });
   const queueQ = useQuery({ queryKey: ['lt-queue'], queryFn: leaveApi.queue });
   const scopeQ = useQuery({ queryKey: ['lt-scope'], queryFn: leaveApi.scopeIds });
-  const leaveListQ = useQuery({ queryKey: ['leave-list'], queryFn: () => leaveApi.list({}) });
-  const travelListQ = useQuery({ queryKey: ['travel-list'], queryFn: () => travelApi.list({}) });
-  const allowListQ = useQuery({ queryKey: ['allowance-list'], queryFn: () => allowanceApi.list({}) });
   const holidaysQ = useQuery({ queryKey: ['holidays'], queryFn: () => holidaysApi.list({}) });
   const projectsQ = useQuery({ queryKey: ['projects', 'lt'], queryFn: () => projectsApi.list({ status: 'Active' }) });
 
@@ -121,23 +111,11 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
     }).length;
   }, [travelMine]);
 
-  const recentDecisions = useMemo(() => {
-    const all = [
-      ...(leaveListQ.data?.items ?? []).filter((r) => isDecided(r.status)).map((r) => ({ kind: 'Leave', ...r })),
-      ...(travelListQ.data?.items ?? []).filter((r) => isDecided(r.status)).map((r) => ({ kind: 'Travel', ...r })),
-      ...(allowListQ.data?.items ?? []).filter((r) => isDecided(r.status)).map((r) => ({ kind: 'LA/Cab', ...r })),
-    ];
-    return all.slice(0, 20);
-  }, [leaveListQ.data, travelListQ.data, allowListQ.data]);
-
   function invalidateAll() {
     queryClient.invalidateQueries({ queryKey: ['leave-mine'] });
     queryClient.invalidateQueries({ queryKey: ['travel-mine'] });
     queryClient.invalidateQueries({ queryKey: ['allowance-mine'] });
     queryClient.invalidateQueries({ queryKey: ['lt-queue'] });
-    queryClient.invalidateQueries({ queryKey: ['leave-list'] });
-    queryClient.invalidateQueries({ queryKey: ['travel-list'] });
-    queryClient.invalidateQueries({ queryKey: ['allowance-list'] });
   }
 
   return (
@@ -150,18 +128,12 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
         <KpiCard label="My pending leave" value={leaveMineQ.isLoading ? '…' : myPending} accent="amber" />
         <KpiCard label="Awaiting my approval" value={queueQ.isLoading ? '…' : awaitingCount} accent="rust" />
         <KpiCard label="Travel this quarter" value={travelMineQ.isLoading ? '…' : travelQuarter} accent="blueprint" />
-        <KpiCard label="Leave balance" value="Per request" accent="neutral">
-        </KpiCard>
       </div>
-      <p style={{ fontSize: 12.5, color: 'var(--ink-muted)', margin: '0 0 12px' }}>
-        Leave balance is tracked per request — no repository balance is maintained; each request shows auto-computed days.
-      </p>
       <Tabs
         tabs={[
           { key: 'leave', label: 'Leave request' },
           { key: 'travel', label: 'Travel request' },
           { key: 'allowance', label: 'LA / Cab / Other' },
-          { key: 'approvals', label: 'Approvals' },
         ]}
         active={tab}
         onChange={setTab}
@@ -180,15 +152,6 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
       )}
       {tab === 'allowance' && (
         <AllowanceTab mine={allowMine} loading={allowMineQ.isLoading} error={allowMineQ.error} projects={projects} onDone={invalidateAll} />
-      )}
-      {tab === 'approvals' && (
-        <ApprovalsTab
-          queue={filteredQueue}
-          queueError={queueQ.error}
-          queueLoading={queueQ.isLoading}
-          recent={recentDecisions}
-          onDone={invalidateAll}
-        />
       )}
     </>
   );
@@ -607,156 +570,6 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
           />
         )}
       </Panel>
-    </>
-  );
-}
-
-function ApprovalsTab({ queue, queueLoading, queueError, recent, onDone }) {
-  const queryClient = useQueryClient();
-  const [remarks, setRemarks] = useState({});
-
-  const decideLeave = useMutation({
-    mutationFn: ({ id, body }) => leaveApi.decide(id, body),
-    onSuccess: () => { onDone(); queryClient.invalidateQueries({ queryKey: ['lt-queue'] }); },
-  });
-  const decideTravel = useMutation({
-    mutationFn: ({ id, body }) => travelApi.decide(id, body),
-    onSuccess: () => { onDone(); queryClient.invalidateQueries({ queryKey: ['lt-queue'] }); },
-  });
-  const decideAllow = useMutation({
-    mutationFn: ({ id, body }) => allowanceApi.decide(id, body),
-    onSuccess: () => { onDone(); queryClient.invalidateQueries({ queryKey: ['lt-queue'] }); },
-  });
-
-  function remarkFor(id) {
-    return remarks[id] ?? '';
-  }
-
-  function decideRow(kind, id, status) {
-    const body = { status, remarks: remarkFor(id) || undefined };
-    if (kind === 'leave') decideLeave.mutate({ id, body });
-    else if (kind === 'travel') decideTravel.mutate({ id, body });
-    else decideAllow.mutate({ id, body });
-  }
-
-  function approvalTable(kind, rows, labelCols) {
-    if (rows.length === 0) return <EmptyState text={`No pending ${labelCols} approvals.`} />;
-    return (
-      <DataTable
-        columns={[
-          { key: 'employee', label: 'Employee', render: (r) => empName(r.employee) },
-          ...labelCols,
-          { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
-          {
-            key: 'remarks',
-            label: 'Remarks',
-            render: (r) => {
-              const id = String(r._id ?? r.id);
-              return (
-                <input
-                  className="form-input"
-                  placeholder="Remarks"
-                  value={remarkFor(id)}
-                  onChange={(e) => setRemarks((p) => ({ ...p, [id]: e.target.value }))}
-                />
-              );
-            },
-          },
-          {
-            key: 'actions',
-            label: 'Decision',
-            render: (r) => {
-              const id = String(r._id ?? r.id);
-              return (
-                <span style={{ display: 'flex', gap: 6 }}>
-                  <button type="button" className="approve-btn" onClick={() => decideRow(kind, id, 'Approved')}>Approve</button>
-                  <button type="button" className="approve-btn" onClick={() => decideRow(kind, id, 'Rejected')}>Reject</button>
-                </span>
-              );
-            },
-          },
-        ]}
-        rows={rows}
-        emptyText="No pending approvals."
-      />
-    );
-  }
-
-  return (
-    <>
-      <Panel title="Pending approvals (scope-filtered)">
-        {queueLoading ? <EmptyState text="Loading…" /> : queueError ? (
-          <div className="login-error" role="alert" style={{ display: 'block' }}>{queueError.message}</div>
-        ) : (
-          <>
-            <div className="section-label">Leave ({queue.leave.length})</div>
-            {approvalTable('leave', queue.leave, [
-              { key: 'leaveType', label: 'Type' },
-              { key: 'dates', label: 'Dates', render: (r) => `${fmtDate(r.from)} → ${fmtDate(r.to)}${r.days != null ? ` (${r.days}d)` : ''}` },
-            ])}
-            <div className="section-label" style={{ marginTop: 16 }}>Travel ({queue.travel.length})</div>
-            {approvalTable('travel', queue.travel, [
-              { key: 'route', label: 'Route', render: (r) => `${r.fromCity ?? ''} → ${r.toCity ?? ''}` },
-              { key: 'estExpense', label: 'Est.' },
-            ])}
-            <div className="section-label" style={{ marginTop: 16 }}>LA / Cab / Other ({queue.allowance.length})</div>
-            {approvalTable('allowance', queue.allowance, [
-              { key: 'reqType', label: 'Type' },
-              { key: 'amount', label: 'Amount' },
-            ])}
-            {(decideLeave.isError || decideTravel.isError || decideAllow.isError) && (
-              <div className="login-error" role="alert" style={{ display: 'block' }}>
-                {(decideLeave.error ?? decideTravel.error ?? decideAllow.error)?.message}
-              </div>
-            )}
-          </>
-        )}
-      </Panel>
-      <Panel title="Recent decisions">
-        <DataTable
-          columns={[
-            { key: 'kind', label: 'Kind' },
-            { key: 'employee', label: 'Employee', render: (r) => empName(r.employee) },
-            { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
-            { key: 'remarks', label: 'Remarks', render: (r) => r.remarks ?? r.decisionRemarks ?? '—' },
-          ]}
-          rows={recent}
-          emptyText="No recent decisions."
-        />
-      </Panel>
-      <Panel title="Team browser (approver scope)">
-        <ScopeBrowser />
-      </Panel>
-    </>
-  );
-}
-
-function ScopeBrowser() {
-  const [search, setSearch] = useState('');
-  const empQ = useQuery({
-    queryKey: ['employees-scope', search],
-    queryFn: () => employeesApi.list({ search }),
-    enabled: search.trim().length > 0,
-  });
-  return (
-    <>
-      <div className="form-row" style={{ maxWidth: 360 }}>
-        <label className="form-label">Search employees</label>
-        <input className="form-input" placeholder="Type a name" value={search} onChange={(e) => setSearch(e.target.value)} />
-      </div>
-      {(empQ.data?.items ?? []).length > 0 ? (
-        <DataTable
-          columns={[
-            { key: 'name', label: 'Employee', render: empName },
-            { key: 'empId', label: 'Emp ID' },
-            { key: 'designation', label: 'Designation' },
-          ]}
-          rows={empQ.data.items}
-          emptyText="No matches."
-        />
-      ) : (
-        <EmptyState text={search ? 'No matches.' : 'Type to search the directory for scope reference.'} />
-      )}
     </>
   );
 }

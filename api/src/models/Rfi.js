@@ -19,6 +19,12 @@ const rfiSchema = new mongoose.Schema(
       default: 'Open',
       index: true,
     },
+    clientResponse: {
+      text: { type: String, trim: true },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      at: { type: Date },
+      _id: false,
+    },
   },
   { timestamps: true },
 );

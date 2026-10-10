@@ -9,7 +9,7 @@ const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
 export const workEntrySchema = z
   .object({
     employee: objectId.optional(),
-    project: objectId,
+    project: objectId.optional(),
     stage: z.string().trim().optional(),
     date: z.coerce.date().optional(),
     hours: z.number().min(0).max(24),

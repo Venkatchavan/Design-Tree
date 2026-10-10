@@ -27,6 +27,19 @@ export function requireInternal() {
   return requireRole(...INTERNAL_ROLES);
 }
 
+// Explicit deny-list evaluated before any allow (including the
+// FD/WD superuser bypass): denied roles always get 403.
+export function denyRoles(...denied) {
+  return (req, res, next) => {
+    if (denied.includes(req.user?.role)) {
+      return res
+        .status(403)
+        .json({ message: 'You do not have access to this area.' });
+    }
+    return next();
+  };
+}
+
 // Users who may provision logins: HR + Admin/Billing (+ superusers).
 export function requireUserAdmin() {
   return requireRole(...USER_ADMIN_ROLES);

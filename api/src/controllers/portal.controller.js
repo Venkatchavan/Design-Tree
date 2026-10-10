@@ -4,8 +4,9 @@ import { DrawingAck } from '../models/DrawingAck.js';
 import { Project } from '../models/Project.js';
 import { Rfi } from '../models/Rfi.js';
 import { Revision } from '../models/Revision.js';
+import { StageAck } from '../models/StageAck.js';
 import { StageStatus } from '../models/StageStatus.js';
-import { ackSchema, portalUsersSchema } from '../validation/phase4.schema.js';
+import { ackSchema, portalRespondSchema, portalUsersSchema, stageAckSchema } from '../validation/phase4.schema.js';
 
 async function portalProjects(userId) {
   return Project.find({ portalUsers: userId });
@@ -16,19 +17,22 @@ export async function myPortal(req, res, next) {
   try {
     const projects = await portalProjects(req.user.id);
     const ids = projects.map((p) => p._id);
-    const [stages, revisions, rfis, drawings, acks, certs, requests] =
+    const [stages, revisions, rfis, drawings, acks, certs, requests, stageAcks] =
       await Promise.all([
         StageStatus.find({ project: { $in: ids } }),
         Revision.find({ project: { $in: ids } }).sort({ createdAt: -1 }).limit(100),
         Rfi.find({ project: { $in: ids }, status: 'Open' })
           .sort({ createdAt: -1 })
-          .limit(100),
+          .limit(100)
+          .populate('raisedBy', 'name email'),
         Drawing.find({ project: { $in: ids } }).sort({ createdAt: -1 }).limit(200),
         DrawingAck.find({ by: req.user.id }),
         Certificate.find({ project: { $in: ids } }).sort({ createdAt: -1 }),
         CertRequest.find({ project: { $in: ids } }).sort({ createdAt: -1 }),
+        StageAck.find({ by: req.user.id }),
       ]);
-    const acked = new Set(acks.map((a) => a.drawing.toString()));
+    const acked = new Map(acks.map((a) => [a.drawing.toString(), a]));
+    const stageAcked = new Set(stageAcks.map((a) => a.stageStatus.toString()));
     // Shared project-directory sections the SPOC maintains (read-only here).
     let directory = [];
     try {
@@ -62,20 +66,28 @@ export async function myPortal(req, res, next) {
         completion: p.completion,
         currentStage: p.currentStage,
       })),
-      stages,
+      stages: stages.map((s) => ({
+        ...(s.toObject?.() ?? s),
+        acknowledged: stageAcked.has(s._id.toString()),
+      })),
       revisions,
       pendingRequests: rfis,
-      drawings: drawings.map((d) => ({
-        id: d._id.toString(),
-        drawingNo: d.drawingNo,
-        title: d.title,
-        service: d.service,
-        stage: d.stage,
-        rev: d.rev,
-        date: d.date,
-        method: d.method,
-        acknowledged: acked.has(d._id.toString()),
-      })),
+      drawings: drawings.map((d) => {
+        const ack = acked.get(d._id.toString());
+        return {
+          id: d._id.toString(),
+          drawingNo: d.drawingNo,
+          title: d.title,
+          service: d.service,
+          stage: d.stage,
+          rev: d.rev,
+          date: d.date,
+          method: d.method,
+          acknowledged: !!ack,
+          ackAt: ack?.at ?? null,
+          ackRemarks: ack?.remarks ?? null,
+        };
+      }),
       certificates: certs,
       certRequests: requests,
       directory,
@@ -102,6 +114,58 @@ export async function acknowledge(req, res, next) {
     const ack = await DrawingAck.findOneAndUpdate(
       { drawing: drawing._id, by: req.user.id },
       { drawing: drawing._id, by: req.user.id, remarks: parsed.data.remarks },
+      { upsert: true, new: true, returnDocument: 'after' },
+    );
+    return res.status(200).json({ item: ack });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+export async function respondRfi(req, res, next) {
+  const parsed = portalRespondSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Invalid data.' });
+  }
+  try {
+    const projects = await portalProjects(req.user.id);
+    const ids = new Set(projects.map((p) => p._id.toString()));
+    const rfi = await Rfi.findById(req.params.id);
+    if (!rfi || !ids.has(rfi.project?.toString())) {
+      return res
+        .status(403)
+        .json({ message: 'This request is not in your project.' });
+    }
+    rfi.status = 'Responded';
+    rfi.clientResponse = {
+      text: parsed.data.remarks ?? '',
+      by: req.user.id,
+      at: new Date(),
+    };
+    await rfi.save();
+    return res.status(200).json({ item: rfi });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+export async function acknowledgeStage(req, res, next) {
+  const parsed = stageAckSchema.safeParse({ ...(req.body ?? {}), stageStatus: req.params.id });
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Invalid data.' });
+  }
+  try {
+    const projects = await portalProjects(req.user.id);
+    const ids = new Set(projects.map((p) => p._id.toString()));
+    const stage = await StageStatus.findById(req.params.id);
+    if (!stage || !ids.has(stage.project?.toString())) {
+      return res
+        .status(403)
+        .json({ message: 'This stage is not in your project.' });
+    }
+    const ack = await StageAck.findOneAndUpdate(
+      { stageStatus: stage._id, by: req.user.id },
+      { stageStatus: stage._id, by: req.user.id, remarks: parsed.data.remarks },
       { upsert: true, new: true, returnDocument: 'after' },
     );
     return res.status(200).json({ item: ack });
