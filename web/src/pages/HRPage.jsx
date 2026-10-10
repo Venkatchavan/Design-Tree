@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { employeesApi, meApi, request, teamsApi, usersApi, workEntriesApi } from '../lib/api.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
-import { leaveApi, travelApi, holidaysApi } from '../lib/phase4bApi.js';
+import { leaveApi, travelApi, holidaysApi, meetingsApi, supportApi } from '../lib/phase4bApi.js';
 import { docsApi, fileUrl } from '../lib/docsApi.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -1469,11 +1469,230 @@ function RecruitmentTab({ bootstrap }) {
   );
 }
 
+function HrAttendanceLeaveTab() {
+  const q = useQuery({ queryKey: ['hr-leaves-all'], queryFn: () => leaveApi.list({}) });
+  const rows = q.data?.items ?? [];
+  return (
+    <>
+      <AttendancePanel />
+      <Panel title="Leave requests">
+        {q.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : q.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+              { key: 'leaveType', label: 'Type', render: (r) => r.leaveType ?? '—' },
+              { key: 'from', label: 'From', render: (r) => r.from ? String(r.from).slice(0, 10) : '—' },
+              { key: 'to', label: 'To', render: (r) => r.to ? String(r.to).slice(0, 10) : '—' },
+              { key: 'days', label: 'Days', render: (r) => r.days ?? '—' },
+              { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+            ]}
+            rows={rows}
+            emptyText="No leave requests yet."
+          />
+        )}
+      </Panel>
+    </>
+  );
+}
+
+function HrMeetingLogTab() {
+  const q = useQuery({ queryKey: ['hr-meetings'], queryFn: () => meetingsApi.list({}) });
+  const rows = q.data?.items ?? [];
+  return (
+    <Panel title="Meeting log">
+      {q.isLoading ? (
+        <EmptyState text="Loading…" />
+      ) : q.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'title', label: 'Meeting', render: (r) => r.title ?? '—' },
+            { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+            { key: 'date', label: 'Date', render: (r) => r.date ? String(r.date).slice(0, 10) : '—' },
+            { key: 'mode', label: 'Mode', render: (r) => r.mode ?? '—' },
+            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+          ]}
+          rows={rows}
+          emptyText="No meetings yet."
+        />
+      )}
+    </Panel>
+  );
+}
+
+function HrSupportTab() {
+  const qc = useQueryClient();
+  const [kind, setKind] = useState('');
+  const [status, setStatus] = useState('');
+  const [edits, setEdits] = useState({});
+  const q = useQuery({
+    queryKey: ['hr-support', kind, status],
+    queryFn: () => supportApi.list({ ...(kind ? { kind } : {}), ...(status ? { status } : {}) }),
+  });
+  const save = useMutation({
+    mutationFn: ({ id, body }) => supportApi.update(id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['hr-support'] });
+      setEdits({});
+    },
+  });
+  const rows = q.data?.items ?? [];
+  const editFor = (id) => edits[id] ?? {};
+  const setEdit = (id, patch) => setEdits((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...patch } }));
+  return (
+    <Panel title="Employee support tickets">
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <select className="filter-select" value={kind} onChange={(e) => setKind(e.target.value)}>
+          <option value="">All kinds</option>
+          <option value="salary-slip">Salary slip</option>
+          <option value="complaint">Complaint</option>
+          <option value="suggestion">Suggestion</option>
+          <option value="query">Query</option>
+        </select>
+        <select className="filter-select" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">All statuses</option>
+          <option>Open</option>
+          <option>In Progress</option>
+          <option>Resolved</option>
+          <option>Issued</option>
+        </select>
+      </div>
+      {q.isLoading ? (
+        <EmptyState text="Loading…" />
+      ) : q.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'subject', label: 'Subject', render: (r) => r.subject ?? r.title ?? '—' },
+            { key: 'kind', label: 'Kind', render: (r) => r.kind ?? '—' },
+            { key: 'date', label: 'Raised', render: (r) => r.createdAt ? String(r.createdAt).slice(0, 10) : '—' },
+            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+            {
+              key: 'handle', label: 'Handle', render: (r) => {
+                const id = String(r._id ?? r.id);
+                const ed = editFor(id);
+                return (
+                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <select
+                      className="filter-select"
+                      value={ed.status ?? r.status ?? ''}
+                      onChange={(e) => setEdit(id, { status: e.target.value })}
+                    >
+                      {['Open', 'In Progress', 'Resolved', 'Issued'].map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <input
+                      className="form-input"
+                      style={{ maxWidth: 140 }}
+                      placeholder="Assignee"
+                      value={ed.assignedTo ?? r.assignedTo ?? ''}
+                      onChange={(e) => setEdit(id, { assignedTo: e.target.value })}
+                    />
+                    <input
+                      className="form-input"
+                      style={{ maxWidth: 160 }}
+                      placeholder="Remark"
+                      value={ed.remark ?? ''}
+                      onChange={(e) => setEdit(id, { remark: e.target.value })}
+                    />
+                    <button
+                      type="button"
+                      className="approve-btn"
+                      disabled={save.isPending || Object.keys(ed).length === 0}
+                      onClick={() => save.mutate({ id, body: { status: ed.status, assignedTo: ed.assignedTo, remark: ed.remark || undefined } })}
+                    >
+                      Save
+                    </button>
+                  </span>
+                );
+              },
+            },
+          ]}
+          rows={rows}
+          emptyText="No support tickets yet."
+        />
+      )}
+      {save.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{save.error.message}</div>}
+    </Panel>
+  );
+}
+
+function HrReportsTab() {
+  const dir = useQuery({ queryKey: ['employees-dir'], queryFn: () => employeesApi.list({}) });
+  const leaves = useQuery({ queryKey: ['hr-leaves'], queryFn: () => leaveApi.list({}) });
+  const travels = useQuery({ queryKey: ['hr-travels'], queryFn: () => travelApi.list({}) });
+  const entries = useQuery({ queryKey: ['hr-work-entries'], queryFn: () => workEntriesApi.list({}) });
+  const meetings = useQuery({ queryKey: ['hr-meetings'], queryFn: () => meetingsApi.list({}) });
+  const today = new Date().toISOString().slice(0, 10);
+  const items = dir.data?.items ?? [];
+  const total = dir.data?.total ?? items.length;
+  const onLeave = (leaves.data?.items ?? []).filter((r) => {
+    if (r.status !== 'Approved') return false;
+    const from = String(r.from ?? '').slice(0, 10);
+    const to = String(r.to ?? '').slice(0, 10);
+    return from <= today && today <= to;
+  });
+  const present = Math.max(0, total - onLeave.length);
+  const leaveRows = leaves.data?.items ?? [];
+  const leaveByStatus = ['Pending', 'Approved', 'Rejected'].map((s) => ({
+    status: s,
+    count: leaveRows.filter((r) => r.status === s).length,
+  }));
+  const travelRows = (travels.data?.items ?? []).filter((r) => r.status === 'Approved');
+  const travelSpend = travelRows.reduce((s, r) => {
+    const actual = Number(r.actualExpense ?? 0);
+    return s + (actual > 0 ? actual : Number(r.estExpense ?? 0));
+  }, 0);
+  const hoursLogged = (entries.data?.items ?? []).reduce((s, e) => s + Number(e.hours ?? 0), 0);
+  if (dir.isError) {
+    return <div className="login-error" role="alert" style={{ display: 'block' }}>{dir.error.message}</div>;
+  }
+  return (
+    <>
+      <div className="kpi-grid cols-4">
+        <KpiCard label="Total employees" value={total} accent="blueprint" />
+        <KpiCard label="Present today" value={present} accent="forest" />
+        <KpiCard label="On leave today" value={onLeave.length} accent="amber" />
+        <KpiCard label="Hours logged" value={Number(hoursLogged.toFixed(1))} accent="violet" />
+      </div>
+      <div className="two-col">
+        <Panel title="Leave by status">
+          {leaves.isLoading ? <EmptyState text="Loading…" /> : (
+            <table className="data">
+              <thead><tr><th>Status</th><th>Requests</th></tr></thead>
+              <tbody>
+                {leaveByStatus.map((r) => (<tr key={r.status}><td>{r.status}</td><td className="mono">{r.count}</td></tr>))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+        <Panel title="Travel summary">
+          {travels.isLoading ? <EmptyState text="Loading…" /> : (
+            <table className="data">
+              <tbody>
+                <tr><td>Approved trips</td><td className="mono">{travelRows.length}</td></tr>
+                <tr><td>Travel spend</td><td className="mono">{fmtSpend(travelSpend)}</td></tr>
+                <tr><td>Meetings tracked</td><td className="mono">{(meetings.data?.items ?? []).length}</td></tr>
+              </tbody>
+            </table>
+          )}
+        </Panel>
+      </div>
+    </>
+  );
+}
+
 export default function HRPage({ bootstrap }) {
   const roleKey = bootstrap?.role?.key ?? '';
   const isSuperuser = roleKey === 'superuser';
   const [tab, setTab] = useState(isSuperuser ? 'manage' : 'overview');
   const isDirector = DIRECTOR_ROLES.has(roleKey);
+  const isHr = roleKey === 'hr';
   const tabs = isSuperuser
     ? [{ key: 'manage', label: 'Employee management' }]
     : isDirector
@@ -1482,6 +1701,20 @@ export default function HRPage({ bootstrap }) {
         { key: 'loginhours', label: 'Login Hours' },
         { key: 'travellog', label: 'Travel log' },
         { key: 'holidays', label: 'Holiday calendar' },
+      ]
+    : isHr
+    ? [
+        { key: 'overview', label: 'Overview' },
+        { key: 'manage', label: 'Employee management' },
+        { key: 'track', label: 'Track record' },
+        { key: 'attendance', label: 'Attendance and leave' },
+        { key: 'loginhours', label: 'Login Hours' },
+        { key: 'travellog', label: 'Travel log' },
+        { key: 'meetings', label: 'Meeting log' },
+        { key: 'holidays', label: 'Holiday calendar' },
+        { key: 'support', label: 'Employee support' },
+        { key: 'recruitment', label: 'Recruitment requests' },
+        { key: 'reports', label: 'Reports and analytics' },
       ]
     : [
         { key: 'overview', label: 'Overview' },
@@ -1493,7 +1726,7 @@ export default function HRPage({ bootstrap }) {
     <>
       <div className="page-head">
         <div className="page-title">HR</div>
-        <div className="page-sub">Directory, headcount and track records — live from the employee API.</div>
+        <div className="page-sub">Employee records and workforce administration, company-wide</div>
       </div>
       <Tabs
         tabs={tabs}
@@ -1505,8 +1738,13 @@ export default function HRPage({ bootstrap }) {
       {!isDirector && tab === 'track' && <TrackTab />}
       {!isDirector && tab === 'recruitment' && <RecruitmentTab bootstrap={bootstrap} />}
       {isDirector && tab === 'loginhours' && <DirectorLoginHoursTab />}
-      {isDirector && tab === 'travellog' && <DirectorTravelLogTab />}
-      {isDirector && tab === 'holidays' && <DirectorHolidaysTab />}
+      {(isDirector || isHr) && tab === 'travellog' && <DirectorTravelLogTab />}
+      {(isDirector || isHr) && tab === 'holidays' && <DirectorHolidaysTab />}
+      {isHr && tab === 'attendance' && <HrAttendanceLeaveTab />}
+      {isHr && tab === 'loginhours' && <DirectorLoginHoursTab />}
+      {isHr && tab === 'meetings' && <HrMeetingLogTab />}
+      {isHr && tab === 'support' && <HrSupportTab />}
+      {isHr && tab === 'reports' && <HrReportsTab />}
     </>
   );
 }

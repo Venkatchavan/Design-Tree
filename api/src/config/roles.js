@@ -217,8 +217,7 @@ export const NAV_BY_ROLE = {
   { view: 'my-meetings' },
   ],
   // Superuser: employee + login provisioning only (HR employee management).
-  superuser: [{ view: 'hr' },
-    { view: 'my-meetings' }],
+  superuser: [{ view: 'hr' }],
   hr: [
     { view: 'dashboard', label: 'Dashboard' },
     { view: 'dashboard', label: 'Projects' },
@@ -227,10 +226,9 @@ export const NAV_BY_ROLE = {
     { view: 'hr' },
     { view: 'branches' },
     { view: 'transmittal-log' },
-    { view: 'work-progress' },
+    { view: 'admin-work-update' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
-  { view: 'my-meetings' },
   ],
   team_lead: [
     { view: 'dashboard', label: 'Dashboard' },
