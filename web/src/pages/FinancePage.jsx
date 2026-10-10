@@ -35,9 +35,28 @@ export default function FinancePage({ bootstrap }) {
   const employees = useQuery({ queryKey: ['employees-finance'], queryFn: () => employeesApi.list({}) });
   const leaves = useQuery({ queryKey: ['finance-leaves'], queryFn: () => leaveApi.list({}) });
   const decideLeave = useMutation({
-    mutationFn: ({ id, status }) => leaveApi.decide(id, { status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['finance-leaves'] }),
+    mutationFn: ({ id, status, remarks }) => leaveApi.decide(id, { status, remarks: remarks || undefined }),
+    onSuccess: () => {
+      setLeaveDecisionError('');
+      qc.invalidateQueries({ queryKey: ['finance-leaves'] });
+    },
   });
+  const [leaveRemarks, setLeaveRemarks] = useState('');
+  const [leaveDecisionError, setLeaveDecisionError] = useState('');
+
+  function approveLeave(id) {
+    setLeaveDecisionError('');
+    decideLeave.mutate({ id, status: 'Approved', remarks: leaveRemarks.trim() || undefined });
+  }
+
+  function rejectLeave(id) {
+    if (!leaveRemarks.trim()) {
+      setLeaveDecisionError('A reason is required when rejecting leave.');
+      return;
+    }
+    setLeaveDecisionError('');
+    decideLeave.mutate({ id, status: 'Rejected', remarks: leaveRemarks.trim() });
+  }
   const financeEmpIds = new Set(
     (employees.data?.items ?? []).filter((e) => e.department === 'Finance').map((e) => String(e._id)),
   );
@@ -174,6 +193,15 @@ export default function FinancePage({ bootstrap }) {
       )}
       {tab === 'leave' && (
         <Panel title="Finance leave approvals">
+          <div className="form-row" style={{ marginBottom: 12 }}>
+            <label className="form-label">Decision remarks (required to reject)</label>
+            <input
+              className="form-input"
+              value={leaveRemarks}
+              onChange={(e) => setLeaveRemarks(e.target.value)}
+              placeholder="Reason for approval or rejection"
+            />
+          </div>
           <DataTable
             columns={[
               { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
@@ -184,10 +212,10 @@ export default function FinancePage({ bootstrap }) {
               { key: 'reason', label: 'Reason' },
               { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
               {
-                key: 'actions', label: 'Action', render: (r) => canDecideLeave && r.status === 'Pending' ? (
+                key: 'actions', label: 'Action',                 render: (r) => canDecideLeave && r.status === 'Pending' ? (
                   <span style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => decideLeave.mutate({ id: r._id, status: 'Approved' })}>Approve</button>
-                    <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => decideLeave.mutate({ id: r._id, status: 'Rejected' })}>Reject</button>
+                    <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => approveLeave(r._id)}>Approve</button>
+                    <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => rejectLeave(r._id)}>Reject</button>
                   </span>
                 ) : '—',
               },
@@ -195,7 +223,7 @@ export default function FinancePage({ bootstrap }) {
             rows={financeLeaves}
             emptyText="No finance team leave requests. Other departments are actioned in Leave & Travel → Approvals."
           />
-          {decideLeave.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{decideLeave.error.message}</div>}
+          {(leaveDecisionError || decideLeave.isError) && <div className="login-error" role="alert" style={{ display: 'block' }}>{leaveDecisionError || decideLeave.error.message}</div>}
         </Panel>
       )}
     </div>

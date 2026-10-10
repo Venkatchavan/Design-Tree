@@ -3,6 +3,7 @@ import { Employee } from '../models/Employee.js';
 import { Project } from '../models/Project.js';
 import { Team } from '../models/Team.js';
 import { WorkEntry } from '../models/WorkEntry.js';
+import { EXTRA_HOURS_THRESHOLD, isAttendanceExemptRole } from '../config/attendance.js';
 import {
   workEntryDecisionSchema,
   workEntrySchema,
@@ -48,6 +49,38 @@ export async function createWorkEntry(req, res, next) {
     }
     const project = projectId ? await Project.findById(projectId) : null;
     if (!project) return res.status(404).json({ message: 'Project not found.' });
+    // Extra-hours gate: the day's total (existing entries + this one) over
+    // the threshold needs a reason, so hours can't be split across entries
+    // to dodge the single-entry schema check.
+    if (!isAttendanceExemptRole(req.user?.role)) {
+      const entryDate = parsed.data.date ? new Date(parsed.data.date) : new Date();
+      const dayStart = new Date(entryDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(entryDate);
+      dayEnd.setHours(23, 59, 59, 999);
+      const existing = await WorkEntry.find({
+        employee: employee._id,
+        date: { $gte: dayStart, $lte: dayEnd },
+      }).select('hours otherHours');
+      const existingTotal = existing.reduce(
+        (s, e) =>
+          s +
+          (e.hours ?? 0) +
+          (e.otherHours ?? []).reduce((a, o) => a + (o.hours ?? 0), 0),
+        0,
+      );
+      const newTotal =
+        (parsed.data.hours ?? 0) +
+        (parsed.data.otherHours ?? []).reduce((s, o) => s + (o.hours ?? 0), 0);
+      if (
+        existingTotal + newTotal > EXTRA_HOURS_THRESHOLD &&
+        !parsed.data.extraHoursReason?.trim()
+      ) {
+        return res.status(400).json({
+          message: `A reason is required for extra hours (over ${EXTRA_HOURS_THRESHOLD}h in a day).`,
+        });
+      }
+    }
     const entry = await WorkEntry.create({
       employee: employee._id,
       project: project._id,
@@ -63,6 +96,7 @@ export async function createWorkEntry(req, res, next) {
       drawing: parsed.data.drawing,
       progressPct: parsed.data.progressPct,
       otherHours: parsed.data.otherHours,
+      extraHoursReason: parsed.data.extraHoursReason?.trim() || undefined,
     });
     return res.status(201).json({ entry });
   } catch (err) {

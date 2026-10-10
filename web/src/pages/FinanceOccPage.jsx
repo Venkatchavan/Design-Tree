@@ -564,9 +564,28 @@ function DirectorFinanceDashboard({ canDecideLeave }) {
   });
 
   const decideLeave = useMutation({
-    mutationFn: ({ id, status }) => leaveApi.decide(id, { status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['finance-leaves-all'] }),
+    mutationFn: ({ id, status, remarks }) => leaveApi.decide(id, { status, remarks: remarks || undefined }),
+    onSuccess: () => {
+      setLeaveDecisionError('');
+      qc.invalidateQueries({ queryKey: ['finance-leaves-all'] });
+    },
   });
+  const [leaveRemarks, setLeaveRemarks] = useState('');
+  const [leaveDecisionError, setLeaveDecisionError] = useState('');
+
+  function approveLeave(id) {
+    setLeaveDecisionError('');
+    decideLeave.mutate({ id, status: 'Approved', remarks: leaveRemarks.trim() || undefined });
+  }
+
+  function rejectLeave(id) {
+    if (!leaveRemarks.trim()) {
+      setLeaveDecisionError('A reason is required when rejecting leave.');
+      return;
+    }
+    setLeaveDecisionError('');
+    decideLeave.mutate({ id, status: 'Rejected', remarks: leaveRemarks.trim() });
+  }
 
   const o = overview.data ?? {};
   const revRows = revenue.data?.items ?? [];
@@ -841,6 +860,15 @@ function DirectorFinanceDashboard({ canDecideLeave }) {
           <KpiCard label="Pending settlement" value={pendingSettlement} accent="rust" />
         </div>
         <div className="section-label">Pending Finance team leave</div>
+        <div className="form-row" style={{ marginBottom: 12 }}>
+          <label className="form-label">Decision remarks (required to reject)</label>
+          <input
+            className="form-input"
+            value={leaveRemarks}
+            onChange={(e) => setLeaveRemarks(e.target.value)}
+            placeholder="Reason for approval or rejection"
+          />
+        </div>
         <DataTable
           columns={[
             { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
@@ -851,8 +879,8 @@ function DirectorFinanceDashboard({ canDecideLeave }) {
             {
               key: 'actions', label: 'Action', render: (r) => canDecideLeave && r.status === 'Pending' ? (
                 <span style={{ display: 'flex', gap: 8 }}>
-                  <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => decideLeave.mutate({ id: r._id, status: 'Approved' })}>Approve</button>
-                  <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => decideLeave.mutate({ id: r._id, status: 'Rejected' })}>Reject</button>
+                  <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => approveLeave(r._id)}>Approve</button>
+                  <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => rejectLeave(r._id)}>Reject</button>
                 </span>
               ) : '—',
             },
@@ -860,7 +888,7 @@ function DirectorFinanceDashboard({ canDecideLeave }) {
           rows={financeLeaves.filter((r) => r.status === 'Pending')}
           emptyText="No pending finance leave requests."
         />
-        {decideLeave.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{decideLeave.error.message}</div>}
+        {(leaveDecisionError || decideLeave.isError) && <div className="login-error" role="alert" style={{ display: 'block' }}>{leaveDecisionError || decideLeave.error.message}</div>}
       </Panel>
     </>
   );

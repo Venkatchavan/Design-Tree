@@ -23,8 +23,11 @@ export function loginApi({ email, password }) {
   });
 }
 
-export function logoutApi() {
-  return request('/api/auth/logout', { method: 'POST' });
+export function logoutApi(body) {
+  return request('/api/auth/logout', {
+    method: 'POST',
+    body: JSON.stringify(body ?? {}),
+  });
 }
 
 export function meApi() {
@@ -62,6 +65,16 @@ export async function requestMultipart(path, file, field = 'file') {
   }
   return data;
 }
+
+export const attendanceApi = {
+  status: () => request('/api/attendance/status'),
+  reason: (body) =>
+    request('/api/attendance/reason', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  list: (params = {}) => request(`/api/attendance${toQuery(params)}`),
+};
 
 export const projectsApi = {
   list: (params = {}) => request(`/api/projects${toQuery(params)}`),

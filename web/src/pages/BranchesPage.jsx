@@ -53,10 +53,11 @@ function RenameModal({ branch, onClose }) {
   );
 }
 
-export default function BranchesPage() {
+export default function BranchesPage({ bootstrap }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState(null);
+  const canManage = (bootstrap?.role?.key ?? '') === 'admin_billing';
 
   const q = useQuery({
     queryKey: ['branches'],
@@ -95,25 +96,27 @@ export default function BranchesPage() {
         </div>
       </div>
 
-      <Panel title="Add branch">
-        <form onSubmit={handleAdd} style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <input
-            className="form-input"
-            style={{ maxWidth: 320 }}
-            placeholder="e.g. Mumbai"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <button type="submit" className="btn-primary" disabled={create.isPending}>
-            {create.isPending ? 'Adding…' : 'Add branch'}
-          </button>
-        </form>
-        {create.isError && (
-          <div className="login-error" role="alert" style={{ display: 'block', marginTop: 10 }}>
-            {create.error.message}
-          </div>
-        )}
-      </Panel>
+      {canManage && (
+        <Panel title="Add branch">
+          <form onSubmit={handleAdd} style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <input
+              className="form-input"
+              style={{ maxWidth: 320 }}
+              placeholder="e.g. Mumbai"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <button type="submit" className="btn-primary" disabled={create.isPending}>
+              {create.isPending ? 'Adding…' : 'Add branch'}
+            </button>
+          </form>
+          {create.isError && (
+            <div className="login-error" role="alert" style={{ display: 'block', marginTop: 10 }}>
+              {create.error.message}
+            </div>
+          )}
+        </Panel>
+      )}
 
       <Panel title={`Branches (${items.length})`}>
         {q.isLoading ? (
@@ -154,6 +157,7 @@ export default function BranchesPage() {
                 key: 'actions',
                 label: 'Actions',
                 render: (r) => {
+                  if (!canManage) return '—';
                   const id = r._id ?? r.id;
                   return (
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -174,7 +178,7 @@ export default function BranchesPage() {
               },
             ]}
             rows={items}
-            emptyText="No branches yet — add the first one above."
+            emptyText={canManage ? 'No branches yet — add the first one above.' : 'No branches yet.'}
           />
         )}
         {toggle.isError && (
@@ -187,7 +191,7 @@ export default function BranchesPage() {
         </p>
       </Panel>
 
-      {renaming && (
+      {canManage && renaming && (
         <RenameModal branch={renaming} onClose={() => setRenaming(null)} />
       )}
     </>

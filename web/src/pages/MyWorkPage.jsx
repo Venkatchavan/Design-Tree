@@ -90,10 +90,18 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, compact }) {
   const [hours, setHours] = useState('');
   const [progressPct, setProgressPct] = useState('');
   const [notes, setNotes] = useState('');
+  const [extraHoursReason, setExtraHoursReason] = useState('');
   const [otherRows, setOtherRows] = useState([]);
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
   const pendingLogout = isPendingLogout();
+  // Day's extra-hours threshold (mirrors EXTRA_HOURS_THRESHOLD in
+  // api/src/config/attendance.js; the server enforces it as well).
+  const EXTRA_HOURS_AT = 8;
+  const totalHours =
+    (Number(hours) || 0) +
+    otherRows.reduce((s, r) => s + (Number(r.hours) || 0), 0);
+  const needsExtraReason = totalHours > EXTRA_HOURS_AT;
 
   const projectOptions = hasPtl ? ptlProjects : activeProjects;
   const projectLabel = hasPtl ? 'Projects under my PTL' : 'Active projects (no PTL projects found)';
@@ -105,6 +113,7 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, compact }) {
       queryClient.invalidateQueries({ queryKey: ['work-entries'] });
       setOk('Submitted for team lead action.');
       setErr('');
+      setExtraHoursReason('');
       if (takePendingLogout()) {
         performLogout(queryClient).finally(() => navigate('/'));
       }
@@ -133,11 +142,17 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, compact }) {
       setErr('Progress % must be between 0 and 100.');
       return;
     }
+    const total = h + otherRows.reduce((s, r) => s + (Number(r.hours) || 0), 0);
+    if (total > EXTRA_HOURS_AT && !extraHoursReason.trim()) {
+      setErr(`A reason is required for extra hours (over ${EXTRA_HOURS_AT}h in a day).`);
+      return;
+    }
     create.mutate({
       project,
       date: todayISO(),
       hours: h,
       notes: notes || undefined,
+      extraHoursReason: total > EXTRA_HOURS_AT ? extraHoursReason.trim() : undefined,
       category,
       deliverable: category === 'Assigned Daily Work' || category === 'Task' ? deliverable || undefined : undefined,
       taskActivity: category === 'Task' ? taskActivity || undefined : undefined,
@@ -215,6 +230,17 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, compact }) {
         <div className="form-row">
           <label className="form-label">Remarks</label>
           <textarea className="form-input" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </div>
+        <div className="form-row">
+          <label className="form-label">
+            Extra hours reason{needsExtraReason ? ' *' : ''}
+          </label>
+          <textarea
+            className="form-input"
+            value={extraHoursReason}
+            onChange={(e) => setExtraHoursReason(e.target.value)}
+            placeholder={needsExtraReason ? `Required — total ${totalHours.toFixed(1)}h exceeds ${EXTRA_HOURS_AT}h` : `Only needed when the day's total exceeds ${EXTRA_HOURS_AT}h`}
+          />
         </div>
         <div className="section-label">Other project hours</div>
         {otherRows.map((r, i) => (

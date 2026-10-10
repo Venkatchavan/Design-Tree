@@ -12,6 +12,14 @@ export async function signIn(page: Page, email: string, password: string) {
   await page.locator('#loginEmail').fill(email);
   await page.locator('#loginPassword').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
+  // Late sign-in (after 9:45 IST) prompts for a reason before entering.
+  // Best-effort: save a reason if the modal appears.
+  const lateTitle = page.getByText('You signed in after 9:45');
+  if (await lateTitle.isVisible({ timeout: 3_000 }).catch(() => false)) {
+    const reason = page.locator('textarea').first();
+    if (await reason.isVisible().catch(() => false)) await reason.fill('E2E late sign-in');
+    await page.getByRole('button', { name: /save reason & continue/i }).click();
+  }
   // Login button briefly reads "Signing in..." then sidebar appears.
   await expect(page.locator('aside.sidebar, nav.nav').first()).toBeVisible({ timeout: 20_000 });
 }
@@ -39,7 +47,24 @@ export async function signOut(page: Page) {
       }
     }
   }
+  await clearAttendanceGate(page);
   await expect(page.getByText('Sign in to DesignTree')).toBeVisible({ timeout: 20_000 });
+}
+
+async function clearAttendanceGate(page: Page) {
+  // Attendance gate: late sign-in (9:45 IST) / early sign-out (< 8 hours)
+  // needs a reason. Fill visible reason fields and confirm.
+  const gate = page.getByText('A reason is needed to sign out');
+  if (!(await gate.isVisible({ timeout: 3_000 }).catch(() => false))) return;
+  const lateBox = page.getByText('Reason for late sign-in');
+  if (await lateBox.isVisible().catch(() => false)) {
+    await page.locator('textarea').first().fill('E2E late sign-in');
+  }
+  const earlyBox = page.getByText('Reason for early sign-out');
+  if (await earlyBox.isVisible().catch(() => false)) {
+    await page.locator('textarea').last().fill('E2E early sign-out');
+  }
+  await page.getByRole('button', { name: /save reason & sign out/i }).click();
 }
 
 async function logMinimalHours(page: Page) {

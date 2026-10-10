@@ -80,7 +80,7 @@ export async function listSpocEntries(req, res, next) {
 }
 
 // Sign-out gate data (§2.6): has this user recorded man-hours today?
-// Directive roles (founding → assoc technical) + externals are exempt:
+// Directive roles (founding → assoc technical) + externals + superuser are exempt:
 // no own entry required, view-only for others' hours.
 export async function manHourStatus(req, res, next) {
   try {

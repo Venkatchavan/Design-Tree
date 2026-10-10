@@ -26,7 +26,7 @@ export async function requireActiveBranch(value) {
     const err = new Error(
       valid.length > 0
         ? `Unknown branch "${name}". Valid branches: ${valid.join(', ')}.`
-        : `Unknown branch "${name}". No branches exist yet — ask HR or Admin to add one.`,
+        : `Unknown branch "${name}". No branches exist yet — ask Admin to add one.`,
     );
     err.status = 400;
     throw err;

@@ -105,7 +105,12 @@ export const leaveDecisionSchema = z
     status: z.enum(LEAVE_STATUSES),
     remarks: strOpt,
   })
-  .strict();
+  .strict()
+  .superRefine((v, ctx) => {
+    if (v.status === 'Rejected' && !v.remarks?.trim()) {
+      ctx.addIssue({ code: 'custom', message: 'A reason is required when rejecting leave.' });
+    }
+  });
 
 export const travelSchema = z
   .object({

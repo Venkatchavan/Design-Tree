@@ -31,7 +31,14 @@ export default function AppShell({
         logoutPending={logout.isPending}
       />
       <div className="main">
-        <Topbar crumbs={crumbs} />
+        <Topbar
+          crumbs={crumbs}
+          user={user}
+          roleKey={bootstrap.role.key}
+          canSearch={(bootstrap.nav ?? []).some((n) => n.view === 'dashboard')}
+          onLogout={() => logout.mutate()}
+          logoutPending={logout.isPending}
+        />
         <div className="content">{children}</div>
       </div>
     </div>

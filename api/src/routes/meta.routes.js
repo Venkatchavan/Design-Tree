@@ -1,5 +1,12 @@
 import { Router } from 'express';
 import {
+  ATTENDANCE_LATE_CUTOFF,
+  ATTENDANCE_STANDARD_HOURS,
+  ATTENDANCE_TIMEZONE,
+  EXTRA_HOURS_THRESHOLD,
+  isAttendanceExemptRole,
+} from '../config/attendance.js';
+import {
   ROLES,
   VIEWS,
   homeView,
@@ -21,6 +28,15 @@ router.get('/bootstrap', requireAuth, (req, res) => {
     role: { key: role, label: roleLabel(role) },
     home: homeView(role),
     nav: navFor(role),
+    policy: {
+      attendance: {
+        lateCutoff: ATTENDANCE_LATE_CUTOFF,
+        standardHours: ATTENDANCE_STANDARD_HOURS,
+        timezone: ATTENDANCE_TIMEZONE,
+        extraHoursThreshold: EXTRA_HOURS_THRESHOLD,
+        exempt: isAttendanceExemptRole(role),
+      },
+    },
   });
 });
 

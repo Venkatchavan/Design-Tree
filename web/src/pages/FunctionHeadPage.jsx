@@ -184,13 +184,32 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['function-boq'] }),
   });
   const decideLeave = useMutation({
-    mutationFn: ({ id, status }) =>
+    mutationFn: ({ id, status, remarks }) =>
       request(`/api/leave-travel/leave/${id}/decision`, {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, remarks: remarks || undefined }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['function-qs-leave'] }),
+    onSuccess: () => {
+      setLeaveDecisionError('');
+      qc.invalidateQueries({ queryKey: ['function-qs-leave'] });
+    },
   });
+  const [leaveRemarks, setLeaveRemarks] = useState('');
+  const [leaveDecisionError, setLeaveDecisionError] = useState('');
+
+  function approveLeave(id) {
+    setLeaveDecisionError('');
+    decideLeave.mutate({ id, status: 'Approved', remarks: leaveRemarks.trim() || undefined });
+  }
+
+  function rejectLeave(id) {
+    if (!leaveRemarks.trim()) {
+      setLeaveDecisionError('A reason is required when rejecting leave.');
+      return;
+    }
+    setLeaveDecisionError('');
+    decideLeave.mutate({ id, status: 'Rejected', remarks: leaveRemarks.trim() });
+  }
 
   const visitRows = arr(visits.data);
   const discRows = arr(discs.data);
@@ -250,6 +269,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     approvePeer.error?.message ??
     reviewArea.error?.message ??
     reviewBoq.error?.message ??
+    leaveDecisionError ??
     decideLeave.error?.message;
 
   if (isDirector && active === 'qaqc-specs') {
@@ -575,6 +595,15 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
                 <option value="Rejected">Rejected</option>
               </select>
             </div>
+            <div className="form-row" style={{ marginBottom: 12 }}>
+              <label className="form-label">Decision remarks (required to reject)</label>
+              <input
+                className="form-input"
+                value={leaveRemarks}
+                onChange={(e) => setLeaveRemarks(e.target.value)}
+                placeholder="Reason for approval or rejection"
+              />
+            </div>
             {qsLeave.isLoading ? (
               <EmptyState text="Loading leave requests…" />
             ) : qsLeave.error && qsLeave.error.status === 403 ? (
@@ -592,10 +621,10 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
                     label: 'Decision',
                     render: (r) => (
                       <span style={{ display: 'flex', gap: 8 }}>
-                        <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => decideLeave.mutate({ id: r._id ?? r.id, status: 'Approved' })}>
+                        <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => approveLeave(r._id ?? r.id)}>
                           Approve
                         </button>
-                        <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => decideLeave.mutate({ id: r._id ?? r.id, status: 'Rejected' })}>
+                        <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => rejectLeave(r._id ?? r.id)}>
                           Reject
                         </button>
                       </span>

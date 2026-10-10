@@ -3,6 +3,7 @@ import {
   WORK_ENTRY_STATUSES,
   WORK_ENTRY_TYPES,
 } from '../models/WorkEntry.js';
+import { EXTRA_HOURS_THRESHOLD } from '../config/attendance.js';
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
 
@@ -15,6 +16,8 @@ export const workEntrySchema = z
     hours: z.number().min(0).max(24),
     type: z.enum(WORK_ENTRY_TYPES).optional(),
     notes: z.string().trim().optional(),
+    // Required when the day's total logged hours exceed the threshold.
+    extraHoursReason: z.string().trim().optional(),
     category: z
       .enum(['Assigned Daily Work', 'Hourly', 'Drawing', 'Task'])
       .optional(),
@@ -33,7 +36,18 @@ export const workEntrySchema = z
       )
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((v, ctx) => {
+    const total =
+      (v.hours ?? 0) +
+      (v.otherHours ?? []).reduce((s, o) => s + (o.hours ?? 0), 0);
+    if (total > EXTRA_HOURS_THRESHOLD && !v.extraHoursReason?.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `A reason is required for extra hours (over ${EXTRA_HOURS_THRESHOLD}h in a day).`,
+      });
+    }
+  });
 
 export const workEntryDecisionSchema = z
   .object({

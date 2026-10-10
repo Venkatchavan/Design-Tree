@@ -2,6 +2,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import { config } from './config/config.js';
+import attendanceRoutes from './routes/attendance.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import billingRoutes from './routes/billing.routes.js';
 import bookingsRoutes from './routes/bookings.routes.js';
@@ -45,6 +46,7 @@ export function createApp() {
     res.status(200).json({ ok: true });
   });
   app.use('/api/auth', authRoutes);
+  app.use('/api/attendance', attendanceRoutes);
   app.use('/api/meta', metaRoutes);
   app.use('/api/branches', branchesRoutes);
   app.use('/api/projects', projectsRoutes);

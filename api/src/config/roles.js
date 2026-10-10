@@ -18,8 +18,9 @@ export const DIRECTIVE_ROLES = [
   'assoc_technical_director',
 ];
 
-// Roles exempt from the man-hour sign-out gate (directive + external).
-export const MAN_HOUR_EXEMPT_ROLES = [...DIRECTIVE_ROLES, 'client', 'architect'];
+// Roles exempt from the man-hour sign-out gate (directive + external + superuser).
+// Superuser only provisions employees/logins (HR view) and has no own entry.
+export const MAN_HOUR_EXEMPT_ROLES = [...DIRECTIVE_ROLES, 'client', 'architect', 'superuser'];
 
 export const ROLES = [
   { key: 'founding_director', label: 'Founding Director', designation: 'Founding Director', home: 'dashboard' },

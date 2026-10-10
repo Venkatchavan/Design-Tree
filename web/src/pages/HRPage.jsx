@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { employeesApi, meApi, request, teamsApi, usersApi, workEntriesApi } from '../lib/api.js';
+import { attendanceApi } from '../lib/api.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
 import { leaveApi, travelApi, holidaysApi, meetingsApi, supportApi } from '../lib/phase4bApi.js';
 import { docsApi, fileUrl } from '../lib/docsApi.js';
@@ -213,6 +214,61 @@ function AttendancePanel() {
           ]}
           rows={onLeave}
           emptyText="Nobody on approved leave today."
+        />
+      )}
+    </Panel>
+  );
+}
+
+function fmtTime(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function SignInOutPanel() {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const q = useQuery({
+    queryKey: ['hr-attendance', date],
+    queryFn: () => attendanceApi.list({ date }),
+  });
+  const rows = q.data?.items ?? [];
+  const lateCount = rows.filter((r) => r.lateReason).length;
+  const earlyCount = rows.filter((r) => r.earlyLogoutReason).length;
+  return (
+    <Panel title="Sign-in / Sign-out" sub="Late sign-ins (after 9:45 IST) and early sign-outs (under 8 hours) with the reasons given. Sundays and holidays are exempt.">
+      <div className="kpi-grid cols-4" style={{ marginBottom: 12 }}>
+        <KpiCard label="Signed in" value={q.isLoading ? '…' : rows.length} accent="blueprint" />
+        <KpiCard label="Late with reason" value={q.isLoading ? '…' : lateCount} accent="amber" />
+        <KpiCard label="Early out with reason" value={q.isLoading ? '…' : earlyCount} accent="rust" />
+        <KpiCard label="Missing reasons" value={q.isLoading ? '…' : rows.filter((r) => r.workingDay && ((!r.lateReason && r.loginAt && new Date(r.loginAt).toLocaleTimeString('en-IN', { hour12: false, timeZone: 'Asia/Kolkata' }) > '09:45') || (!r.earlyLogoutReason && r.loginAt && r.logoutAt && (new Date(r.logoutAt) - new Date(r.loginAt)) / 3600000 < 8))).length} accent="violet" />
+      </div>
+      <div className="form-row" style={{ maxWidth: 260, marginBottom: 12 }}>
+        <label className="form-label">Date</label>
+        <input className="form-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </div>
+      {q.isLoading ? (
+        <EmptyState text="Loading…" />
+      ) : q.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+            { key: 'date', label: 'Date', render: (r) => r.date ?? '—' },
+            { key: 'loginAt', label: 'Sign-in', render: (r) => fmtTime(r.loginAt) },
+            { key: 'logoutAt', label: 'Sign-out', render: (r) => fmtTime(r.logoutAt) },
+            {
+              key: 'duration', label: 'Hours', render: (r) =>
+                r.loginAt && r.logoutAt ? Number(((new Date(r.logoutAt) - new Date(r.loginAt)) / 3600000).toFixed(1)) : '—',
+            },
+            { key: 'lateReason', label: 'Late reason', render: (r) => r.lateReason ?? '—' },
+            { key: 'earlyLogoutReason', label: 'Early-out reason', render: (r) => r.earlyLogoutReason ?? '—' },
+            { key: 'workingDay', label: 'Day', render: (r) => (r.workingDay === false ? 'Off' : 'Working') },
+          ]}
+          rows={rows}
+          emptyText="No sign-ins recorded for this date."
         />
       )}
     </Panel>
@@ -1475,6 +1531,7 @@ function HrAttendanceLeaveTab() {
   return (
     <>
       <AttendancePanel />
+      <SignInOutPanel />
       <Panel title="Leave requests">
         {q.isLoading ? (
           <EmptyState text="Loading…" />
