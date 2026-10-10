@@ -67,6 +67,19 @@ export async function saveDirectory(req, res, next) {
       },
       { upsert: true, new: true, returnDocument: 'after', runValidators: true },
     );
+    try {
+      const { notify } = await import('../models/Notification.js');
+      await notify({
+        roles: ['admin_billing', 'design_mgmt_head'],
+        project: project._id,
+        link: { view: 'dashboard', id: project._id.toString() },
+        title: `Directory updated: ${project.name} (${project.code})`,
+        detail: 'SPOC saved the project directory sections.',
+        type: 'directory-updated',
+      });
+    } catch {
+      /* best-effort */
+    }
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);

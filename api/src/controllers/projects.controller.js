@@ -319,6 +319,23 @@ export async function saveSpocContacts(req, res, next) {
       runValidators: true,
     });
     if (!project) return res.status(404).json({ message: 'Project not found.' });
+    try {
+      const { notify } = await import('../models/Notification.js');
+      const saved = [
+        parsed.data.pmc !== undefined ? 'PMC' : '',
+        parsed.data.peerReview !== undefined ? 'Peer Review' : '',
+      ].filter(Boolean).join(' + ');
+      await notify({
+        roles: ['admin_billing', 'design_mgmt_head'],
+        project: project._id,
+        link: { view: 'dashboard', id: project._id.toString() },
+        title: `Contacts updated: ${project.name} (${project.code})`,
+        detail: `SPOC saved ${saved} contact details.`,
+        type: 'spoc-contacts',
+      });
+    } catch {
+      /* best-effort */
+    }
     return res.status(200).json({ project });
   } catch (err) {
     return next(err);
@@ -359,6 +376,23 @@ export async function saveTeamLeads(req, res, next) {
       runValidators: true,
     });
     if (!project) return res.status(404).json({ message: 'Project not found.' });
+    try {
+      const { notify } = await import('../models/Notification.js');
+      const names = (project.principalTeamLeads ?? [])
+        .map((t) => t?.name)
+        .filter(Boolean)
+        .join(', ');
+      await notify({
+        roles: ['admin_billing', 'design_mgmt_head'],
+        project: project._id,
+        link: { view: 'dashboard', id: project._id.toString() },
+        title: `Team leads: ${project.name} (${project.code})`,
+        detail: names ? `SPOC set team leads: ${names}.` : 'SPOC updated the project team.',
+        type: 'team-leads',
+      });
+    } catch {
+      /* best-effort */
+    }
     return res.status(200).json({ project });
   } catch (err) {
     return next(err);
