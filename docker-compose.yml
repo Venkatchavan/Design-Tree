@@ -5,14 +5,14 @@
 #                             └─ /dbadmin/  mongo-express (FD only: IP + basic-auth + app login)
 #
 # Data survival:
-#   - mongo-data (named volume, lives on C:/SSD inside Docker's VM disk)
-#     survives container removal/rebuild. Deleted ONLY by explicit
-#     `down -v` / `volume prune` — see docs/BACKUP_RESTORE.md.
-#   - uploads (BIND to the 2 TB HDD) survive everything, including
+#   - mongo-data (BIND to C:/DesignTree/mongo-data on the host SSD)
+#     survives container removal/rebuild AND `down -v` / `volume prune`
+#     (compose never deletes bind-mounted host paths).
+#   - uploads (BIND to the live uploads dir) survive everything, including
 #     `down -v`, because the files live on the host filesystem.
 #
-# RUNBOOK RULE: tear down with `docker compose down` (keeps volumes).
-# NEVER run `down -v` or `volume prune` without a fresh backup first.
+# RUNBOOK RULE: backups still run before every upgrade (binds protect against
+# volume deletion, not against content damage) — see docs/BACKUP_RESTORE.md.
 #
 # First boot:  docker compose up -d --build
 #              docker compose run --rm api npm run seed   (one-shot FD login)
@@ -29,9 +29,12 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
       MONGO_INITDB_DATABASE: designtree
     volumes:
-      # Database files — named volume (correct on Windows; bind mounts
-      # cause MongoDB file-locking/performance problems).
-      - mongo-data:/data/db
+      # Database files — host bind (C:/DesignTree/mongo-data) so the data
+      # survives even `down -v` / `volume prune`. Folder must exist on the
+      # host before first boot (see docs/DEPLOYMENT.md).
+      - type: bind
+        source: ${HOST_MONGO_DIR}
+        target: /data/db
       # Dump landing dir for scripts/backup.ps1 (host HDD).
       - type: bind
         source: ${HOST_BACKUPS_DIR}
@@ -75,6 +78,19 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+    # Mirrors the HEALTHCHECK baked into api/Dockerfile (explicit here so
+    # `docker compose ps` expectations and gateway's service_healthy gate
+    # don't depend on image metadata alone).
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://localhost:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   gateway:
     build:
@@ -130,7 +146,3 @@ networks:
     driver: bridge
   backend:
     driver: bridge
-
-volumes:
-  mongo-data:
-    driver: local

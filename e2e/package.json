@@ -2,7 +2,7 @@
   "name": "designtree-e2e",
   "private": true,
   "version": "1.0.0",
-  "description": "Playwright e2e for DesignTree Project Initiation & Execution Workflow (Admin -> DMH -> SPOC -> Execution -> GFC)",
+  "description": "Playwright e2e for DesignTree delivery flow (Admin -> DMH -> SPOC -> Execution -> GFC)",
   "type": "module",
   "scripts": {
     "test": "playwright test",

@@ -2,30 +2,34 @@
 
 No scheduler runs backups. A person runs `backup.ps1` — weekly, and always
 **before** upgrades, `-v`/prune operations, or risky changes. Both scripts
-live in `scripts/` and read paths from the root `.env`.
+live in `scripts/` and read paths from the root `.env`. Both abort if
+`CLIENT_ORIGIN` looks like localhost (wrong `.env` — refill root `.env`
+from `.env.example` with production values).
 
 ## What a backup contains
 
 `.\scripts\backup.ps1` (repo root, PowerShell) produces one timestamped pair:
 
-- `D:\backups\mongo\<yyyyMMdd-HHmmss>.gz` — full `mongodump --gzip` archive,
+- `E:\DesignTree\backup\mongo\<yyyyMMdd-HHmmss>.gz` — full `mongodump --gzip` archive,
   written straight into the mongo container's `/backups` bind (no temp copies).
-- `D:\backups\uploads\<yyyyMMdd-HHmmss>\` — versioned `/MIR` copy of the live
+- `E:\DesignTree\backup\uploads\<yyyyMMdd-HHmmss>\` — versioned `/MIR` copy of the live
   uploads dir (`D:\designtree-uploads`).
 
 The script prints both locations, the dump size, and the file count. Keep the
-last ~8 weekly pairs on `D:\` plus a monthly copy off-machine (external disk);
-delete anything older to bound disk use.
+last ~8 weekly pairs in `E:\DesignTree\backup` plus a monthly copy off-machine
+(external disk); delete anything older to bound disk use. `robocopy` exits 0–7
+count as success; the script treats 8+ as failure.
 
 ## Why this shape
 
-- Uploads already live on the host HDD bind, so even `docker compose down -v`
+- Uploads already live on a host bind, so even `docker compose down -v`
   or `docker volume prune` cannot delete them. The versioned copy additionally
   protects against *content* damage (accidental delete/overwrite), which a
   bind mount alone does not.
-- The database lives in the `mongo-data` named volume (fast, stable on
-  Windows) — and a named volume **is** deleted by `down -v`/prune. The dump
-  archive is its only protection. Hence the runbook rule below.
+- The database likewise lives on a host bind (`C:\DesignTree\mongo-data`) —
+  `down -v`/prune cannot delete it (compose never removes bind-mounted host
+  paths; the stack keeps no named volumes). The dump archive protects against
+  *content* damage and host-disk failure. Hence the runbook rule below.
 
 ## Restore (interactive, cannot run by accident)
 
@@ -41,8 +45,9 @@ script itself — follow it.
 
 ## Runbook rules
 
-1. **Tear down with `docker compose down`. Never `-v`.** `down -v` and
-   `volume prune` delete the database volume; only a fresh backup makes that safe.
+1. **`down -v` and `volume prune` are safe for data** (binds only, no named
+   volumes) — but keep a fresh backup anyway before upgrades: binds protect
+   against volume deletion, not against content damage.
 2. **Restore drill quarterly:** pick the newest pair, restore to a scratch
    check (or off-hours), verify, note the result. An untested backup is not
    a backup.

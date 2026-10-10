@@ -1,6 +1,6 @@
 # DesignTree manual backup -- run from the repo root on the server:
 #     .\scripts\backup.ps1
-# Produces a timestamped pair under the host backup dir (default D:\backups):
+# Produces a timestamped pair under the host backup dir (default E:\DesignTree\backup):
 #   mongo\<timestamp>.gz      database archive (mongodump, gzip)
 #   uploads\<timestamp>\      versioned copy of D:\designtree-uploads
 # See docs/BACKUP_RESTORE.md for cadence, retention and restore steps.
@@ -28,7 +28,7 @@ Set-Location -LiteralPath $Root
 
 $env_map = Read-DotEnv (Join-Path $Root ".env")
 $backupsRoot = $env_map["HOST_BACKUPS_DIR"]
-if (-not $backupsRoot) { $backupsRoot = "D:/backups" }
+if (-not $backupsRoot) { $backupsRoot = "E:/DesignTree/backup" }
 $backupsRootWin = $backupsRoot -replace "/", "\"
 $uploadsDir = $env_map["HOST_UPLOADS_DIR"]
 if (-not $uploadsDir) { $uploadsDir = "D:/designtree-uploads" }

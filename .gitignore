@@ -14,3 +14,5 @@ gateway/.htpasswd
 gateway/.httpasswd
 gateway/pki/
 backups/
+# Live MongoDB bind dir on the server (never commit database files).
+mongo-data/
