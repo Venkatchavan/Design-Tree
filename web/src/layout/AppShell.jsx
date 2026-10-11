@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { logoutApi } from '../lib/api.js';
+import { disconnectSocket } from '../lib/realtime.js';
 import Sidebar from '../components/Sidebar.jsx';
 import Topbar from '../components/Topbar.jsx';
 
@@ -17,6 +18,7 @@ export default function AppShell({
   const logout = useMutation({
     mutationFn: logoutApi,
     onSuccess: () => {
+      disconnectSocket();
       queryClient.setQueryData(['me'], null);
       queryClient.removeQueries({ queryKey: ['bootstrap'] });
     },

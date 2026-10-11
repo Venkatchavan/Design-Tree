@@ -1,4 +1,5 @@
 import { logoutApi } from './api.js';
+import { disconnectSocket } from './realtime.js';
 
 export const PENDING_LOGOUT_KEY = 'datum-pending-logout';
 export const SUPER_ROLES = ['founding_director', 'working_director'];
@@ -86,6 +87,7 @@ export async function performLogout(queryClient, body) {
     // callers can prompt for a reason instead of dropping the session.
     return { ok: false, error: e };
   }
+  disconnectSocket();
   queryClient.setQueryData(['me'], null);
   queryClient.removeQueries({ queryKey: ['bootstrap'] });
   return { ok: true };

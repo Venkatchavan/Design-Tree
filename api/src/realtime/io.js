@@ -49,9 +49,20 @@ export function initRealtime(httpServer) {
     if (!u) return;
     socket.join(`user:${u.id}`);
     if (u.role) socket.join(`role:${u.role}`);
+    socket.on('disconnect', () => {
+      // Room membership is per-socket; leaving is automatic.
+      // Log at debug level only — high-volume in production.
+      if (config.nodeEnv !== 'production') {
+        console.log(`realtime: disconnect user:${u.id}`);
+      }
+    });
   });
 
   return io;
+}
+
+export function getRealtimeStats() {
+  return { clients: io?.engine?.clientsCount ?? 0 };
 }
 
 export function emitNotification(doc) {
