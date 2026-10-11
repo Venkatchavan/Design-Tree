@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Search } from 'lucide-react';
+import { LogOut, PanelLeft, Search } from 'lucide-react';
+import BrandLogo from './BrandLogo.jsx';
 import NotifBell from './NotifBell.jsx';
 import SignOutButton from './SignOutButton.jsx';
 import { projectsApi } from '../lib/api.js';
@@ -13,6 +14,9 @@ export default function Topbar({
   canSearch,
   onLogout,
   logoutPending,
+  onMenuClick,
+  sidebarCollapsed = false,
+  sidebarOpen = false,
 }) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
@@ -53,15 +57,31 @@ export default function Topbar({
     if (id) navigate(`/projects/${id}`);
   }
 
+  const menuExpanded = sidebarOpen || !sidebarCollapsed;
+  const menuLabel = sidebarOpen ? 'Close sidebar' : sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+
   return (
     <div className="topbar">
-      <div className="breadcrumb">
-        {crumbs.map((c, i) => (
-          <span key={i}>
-            {i > 0 && <span> / </span>}
-            {i === crumbs.length - 1 ? <b>{c}</b> : c}
-          </span>
-        ))}
+      <div className="topbar-left">
+        <button
+          type="button"
+          className="menu-btn"
+          title={menuLabel}
+          aria-label={menuLabel}
+          aria-expanded={menuExpanded}
+          onClick={onMenuClick}
+        >
+          <PanelLeft size={19} strokeWidth={1.9} aria-hidden="true" />
+        </button>
+        <BrandLogo className="topbar-brand" showName />
+        <div className="breadcrumb">
+          {crumbs.map((c, i) => (
+            <span key={i} className="breadcrumb-crumb">
+              {i > 0 && <span> / </span>}
+              {i === crumbs.length - 1 ? <b>{c}</b> : c}
+            </span>
+          ))}
+        </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         {canSearch && (

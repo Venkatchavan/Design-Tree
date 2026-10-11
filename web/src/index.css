@@ -65,8 +65,9 @@ button{font-family:inherit;cursor:pointer;}
 table{border-collapse:collapse;width:100%;}
 .icon{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;}
 
-.app{display:flex;min-height:100vh;}
-.app-watermark{position:fixed;top:0;right:0;bottom:0;left:230px;z-index:40;pointer-events:none;opacity:.10;background-repeat:no-repeat;background-size:640px auto;background-position:center center;background-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgMjIwIiB3aWR0aD0iNjQwIiBoZWlnaHQ9IjIyMCI+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOTAsNDApIj4KICA8IS0tIEdsb2JlLyJEIiBtYXJrIC0tPgogIDxnPgogICAgPHBhdGggZD0iTTE4IDE0IEMxOCAxNCAxMDAgMjIgMTIyIDY4IEMxMDAgMTE0IDE4IDEyMiAxOCAxMjIgWiIgZmlsbD0iI0VERUZGMiIgc3Ryb2tlPSIjMkU3QkM0IiBzdHJva2Utd2lkdGg9IjMuMiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogICAgPHBhdGggZD0iTTE4IDE0IEwxOCAxMjIiIHN0cm9rZT0iIzJFN0JDNCIgc3Ryb2tlLXdpZHRoPSIzLjIiLz4KICAgIDxwYXRoIGQ9Ik00MCAyMCBDNjQgNDAgNjQgOTYgNDAgMTE2IiBmaWxsPSJub25lIiBzdHJva2U9IiNBOUFGQjgiIHN0cm9rZS13aWR0aD0iMiIvPgogICAgPHBhdGggZD0iTTYyIDE3IEM5MCA0MiA5MCA5NCA2MiAxMTkiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0E5QUZCOCIgc3Ryb2tlLXdpZHRoPSIyIi8+CiAgICA8cGF0aCBkPSJNMjAgNjggTDEwOCA2OCIgc3Ryb2tlPSIjQTlBRkI4IiBzdHJva2Utd2lkdGg9IjIiLz4KICAgIDxwYXRoIGQ9Ik0yMiA0NiBMOTYgNDYiIHN0cm9rZT0iI0E5QUZCOCIgc3Ryb2tlLXdpZHRoPSIxLjYiLz4KICAgIDxwYXRoIGQ9Ik0yMiA5MCBMOTYgOTAiIHN0cm9rZT0iI0E5QUZCOCIgc3Ryb2tlLXdpZHRoPSIxLjYiLz4KICA8L2c+CiAgPCEtLSBXb3JkbWFyayAtLT4KICA8dGV4dCB4PSIxMzIiIHk9IjgwIiBmb250LWZhbWlseT0iQXJpYWwsIEhlbHZldGljYSwgc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjcwMCIgZm9udC1zaXplPSI1MiIgZmlsbD0iIzJFN0JDNCI+ZGVzaWduPC90ZXh0PgogIDwhLS0gdHJlZSB0cnVuayArIGNhbm9weSBmb3JtaW5nIHRoZSBUIC0tPgogIDxnPgogICAgPHJlY3QgeD0iMzMwIiB5PSI0NiIgd2lkdGg9IjkiIGhlaWdodD0iNDYiIGZpbGw9IiM2QjRBMkIiLz4KICAgIDxlbGxpcHNlIGN4PSIzMzQiIGN5PSIzMCIgcng9IjI2IiByeT0iMTUiIGZpbGw9IiM0Q0FGNTAiLz4KICAgIDxlbGxpcHNlIGN4PSIzMTIiIGN5PSI0MCIgcng9IjE1IiByeT0iMTAiIGZpbGw9IiM1Q0JGNUMiLz4KICAgIDxlbGxpcHNlIGN4PSIzNTYiIGN5PSI0MCIgcng9IjE1IiByeT0iMTAiIGZpbGw9IiM1Q0JGNUMiLz4KICA8L2c+CiAgPHRleHQgeD0iMzQ1IiB5PSI4MCIgZm9udC1mYW1pbHk9IkFyaWFsLCBIZWx2ZXRpY2EsIHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI3MDAiIGZvbnQtc2l6ZT0iNTIiIGZpbGw9IiMyRTdCQzQiPnJlZTwvdGV4dD4KICA8L2c+Cjwvc3ZnPgo=");}
+.app{display:flex;min-height:100vh;--sidebar-w:230px;--sidebar-collapsed-w:72px;}
+.app.sidebar-collapsed{--sidebar-w:var(--sidebar-collapsed-w);}
+.app-watermark{position:fixed;top:0;right:0;bottom:0;left:var(--sidebar-w);z-index:40;pointer-events:none;opacity:.10;background-repeat:no-repeat;background-size:min(640px,80vw) auto;background-position:center center;background-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgMjIwIiB3aWR0aD0iNjQwIiBoZWlnaHQ9IjIyMCI+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOTAsNDApIj4KICA8IS0tIEdsb2JlLyJEIiBtYXJrIC0tPgogIDxnPgogICAgPHBhdGggZD0iTTE4IDE0IEMxOCAxNCAxMDAgMjIgMTIyIDY4IEMxMDAgMTE0IDE4IDEyMiAxOCAxMjIgWiIgZmlsbD0iI0VERUZGMiIgc3Ryb2tlPSIjMkU3QkM0IiBzdHJva2Utd2lkdGg9IjMuMiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogICAgPHBhdGggZD0iTTE4IDE0IEwxOCAxMjIiIHN0cm9rZT0iIzJFN0JDNCIgc3Ryb2tlLXdpZHRoPSIzLjIiLz4KICAgIDxwYXRoIGQ9Ik00MCAyMCBDNjQgNDAgNjQgOTYgNDAgMTE2IiBmaWxsPSJub25lIiBzdHJva2U9IiNBOUFGQjgiIHN0cm9rZS13aWR0aD0iMiIvPgogICAgPHBhdGggZD0iTTYyIDE3IEM5MCA0MiA5MCA5NCA2MiAxMTkiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0E5QUZCOCIgc3Ryb2tlLXdpZHRoPSIyIi8+CiAgICA8cGF0aCBkPSJNMjAgNjggTDEwOCA2OCIgc3Ryb2tlPSIjQTlBRkI4IiBzdHJva2Utd2lkdGg9IjIiLz4KICAgIDxwYXRoIGQ9Ik0yMiA0NiBMOTYgNDYiIHN0cm9rZT0iI0E5QUZCOCIgc3Ryb2tlLXdpZHRoPSIxLjYiLz4KICAgIDxwYXRoIGQ9Ik0yMiA5MCBMOTYgOTAiIHN0cm9rZT0iI0E5QUZCOCIgc3Ryb2tlLXdpZHRoPSIxLjYiLz4KICA8L2c+CiAgPCEtLSBXb3JkbWFyayAtLT4KICA8dGV4dCB4PSIxMzIiIHk9IjgwIiBmb250LWZhbWlseT0iQXJpYWwsIEhlbHZldGljYSwgc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjcwMCIgZm9udC1zaXplPSI1MiIgZmlsbD0iIzJFN0JDNCI+ZGVzaWduPC90ZXh0PgogIDwhLS0gdHJlZSB0cnVuayArIGNhbm9weSBmb3JtaW5nIHRoZSBUIC0tPgogIDxnPgogICAgPHJlY3QgeD0iMzMwIiB5PSI0NiIgd2lkdGg9IjkiIGhlaWdodD0iNDYiIGZpbGw9IiM2QjRBMkIiLz4KICAgIDxlbGxpcHNlIGN4PSIzMzQiIGN5PSIzMCIgcng9IjI2IiByeT0iMTUiIGZpbGw9IiM0Q0FGNTAiLz4KICAgIDxlbGxpcHNlIGN4PSIzMTIiIGN5PSI0MCIgcng9IjE1IiByeT0iMTAiIGZpbGw9IiM1Q0JGNUMiLz4KICAgIDxlbGxpcHNlIGN4PSIzNTYiIGN5PSI0MCIgcng9IjE1IiByeT0iMTAiIGZpbGw9IiM1Q0JGNUMiLz4KICA8L2c+CiAgPHRleHQgeD0iMzQ1IiB5PSI4MCIgZm9udC1mYW1pbHk9IkFyaWFsLCBIZWx2ZXRpY2EsIHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI3MDAiIGZvbnQtc2l6ZT0iNTIiIGZpbGw9IiMyRTdCQzQiPnJlZTwvdGV4dD4KICA8L2c+Cjwvc3ZnPgo=");}
 .login-screen{position:fixed;inset:0;z-index:999;display:flex;align-items:center;justify-content:center;overflow-y:auto;overscroll-behavior:contain;background:linear-gradient(160deg,#0F1B33 0%,#1D2B63 45%,#2C3F82 100%);}
 .login-wrap{align-self:stretch;width:100%;min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"showcase form";background:var(--surface);}
 
@@ -517,14 +518,39 @@ background:var(--surface-page);
   .login-screen .login-button-spinner{animation:none;}
 }
 
-.sidebar{width:230px;flex-shrink:0;background:linear-gradient(170deg,#1D2B63 0%,#2A1B54 55%,#241246 100%);display:flex;flex-direction:column;padding:22px 14px;position:relative;}
-.brand{display:flex;align-items:center;gap:10px;padding:2px 8px 26px;}
-.brand-mark{width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,#5B9BF0 0%,#B794F6 100%);color:#1D2B63;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:13px;font-weight:700;}
-.brand-name{font-size:15.5px;font-weight:600;letter-spacing:-0.01em;color:#fff;}
+.sidebar{width:var(--sidebar-w);flex-shrink:0;background:linear-gradient(170deg,#1D2B63 0%,#2A1B54 55%,#241246 100%);display:flex;flex-direction:column;padding:22px 14px;position:sticky;top:0;height:100vh;max-height:100vh;z-index:60;transition:width .18s ease,transform .22s ease;}
+.brand{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 8px 26px;}
+.brand-mark{width:clamp(24px,5vw,26px);height:clamp(24px,5vw,26px);border-radius:6px;background:linear-gradient(135deg,#5B9BF0 0%,#B794F6 100%);color:#1D2B63;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:13px;font-weight:700;flex-shrink:0;}
+.brand-name{font-size:15.5px;font-weight:600;letter-spacing:-0.01em;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* Reusable DesignTree logo (sidebar / topbar / login share one component) */
+.dt-logo{display:inline-flex;align-items:center;gap:10px;min-width:0;}
+.dt-logo-mark{width:clamp(24px,5vw,28px);height:clamp(24px,5vw,28px);border-radius:7px;background:linear-gradient(135deg,#5B9BF0 0%,#B794F6 100%);color:#1D2B63;display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:clamp(12px,2.5vw,14px);font-weight:700;flex-shrink:0;}
+.dt-logo-name{font-size:clamp(14px,2.6vw,15.5px);font-weight:600;letter-spacing:-0.01em;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.topbar-brand .dt-logo-name{color:var(--ink);}
+.login-logo .dt-logo-mark{width:clamp(30px,6vw,38px);height:clamp(30px,6vw,38px);font-size:clamp(14px,3vw,17px);}
+.login-logo .dt-logo-name{font-size:clamp(17px,3.4vw,21px);}
+.brand-actions{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+.sidebar-collapse-btn,.sidebar-close-btn{background:none;border:none;color:rgba(255,255,255,.6);border-radius:6px;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;}
+.sidebar-collapse-btn:hover,.sidebar-close-btn:hover{background:rgba(255,255,255,.1);color:#fff;}
+.sidebar-close-btn{display:none;}
+.sidebar-overlay{display:none;}
+.menu-btn{background:none;border:1px solid var(--border);border-radius:7px;width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-muted);flex-shrink:0;}
+.menu-btn:hover{color:var(--blueprint);border-color:var(--blueprint);}
+.topbar-left{display:flex;align-items:center;gap:12px;min-width:0;flex:1;}
+.topbar-brand{display:none;}
 .sidebar .form-label{color:rgba(255,255,255,.55);}
 .nav{display:flex;flex-direction:column;gap:2px;}
 .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;color:rgba(255,255,255,.68);font-size:13.5px;background:none;border:none;width:100%;text-align:left;transition:background .12s,color .12s;}
-.nav-item .icon{width:17px;height:17px;}
+.nav-item .icon,.nav-item .nav-icon{width:18px;height:18px;flex-shrink:0;}
+.nav-label{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.nav{overflow-y:auto;scrollbar-width:thin;}
+/* Desktop icon rail (Claude/OpenAI collapsed state) */
+.app.sidebar-collapsed .sidebar{padding:22px 10px;}
+.app.sidebar-collapsed .brand{justify-content:center;padding:2px 0 22px;}
+.app.sidebar-collapsed .sidebar-collapse-btn{display:none;}
+.app.sidebar-collapsed .nav-item{justify-content:center;padding:10px 0;}
+.app.sidebar-collapsed .nav-label,.app.sidebar-collapsed .dt-logo-name,.app.sidebar-collapsed .sidebar-footer-text{display:none;}
+.app.sidebar-collapsed .sidebar-footer{justify-content:center;}
 .nav-item:hover{background:rgba(255,255,255,.08);color:#fff;}
 .nav-item{border-left:3px solid transparent;}
 .nav-item.active{background:rgba(255,255,255,.13);color:#fff;font-weight:500;border-left-color:#7FB2FF;}
@@ -534,8 +560,9 @@ background:var(--surface-page);
 .sidebar-footer-role{font-size:11.5px;color:rgba(255,255,255,.5);}
 
 .main{flex:1;min-width:0;}
-.topbar{height:58px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 32px;background:var(--surface);}
-.breadcrumb{font-size:13.5px;color:var(--ink-muted);display:flex;align-items:center;gap:6px;}
+.topbar{height:58px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 32px;background:var(--surface);}
+.breadcrumb{font-size:13.5px;color:var(--ink-muted);display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.breadcrumb-crumb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .breadcrumb b{color:var(--ink);font-weight:500;}
 .breadcrumb button{background:none;border:none;color:var(--ink-muted);font:inherit;font-size:13.5px;padding:0;}
 .breadcrumb button:hover{color:var(--blueprint);}
@@ -851,7 +878,17 @@ table.data tr.row-click:hover{background:var(--surface-alt);}
 @media(max-width:920px){
   .flag-grid{grid-template-columns:1fr;}
   .teams-grid{grid-template-columns:1fr;}
-  .sidebar{display:none;}
+  .app{--sidebar-w:0px;}
+  .sidebar{position:fixed;top:0;left:0;bottom:0;width:min(280px,84vw);transform:translateX(-105%);transition:transform .22s ease;box-shadow:0 12px 40px rgba(0,0,0,.28);}
+  .sidebar.open{transform:translateX(0);}
+  .sidebar .sidebar-close-btn{display:inline-flex;}
+  .sidebar .sidebar-collapse-btn{display:none;}
+  .app.sidebar-open .sidebar-overlay{display:block;position:fixed;inset:0;background:rgba(20,25,35,.5);z-index:55;}
+  .app-watermark{left:0;opacity:.06;}
+  .topbar{padding:0 14px;}
+  .topbar-brand{display:inline-flex;}
+  .topbar-brand .dt-logo-name{font-size:14px;}
+  .breadcrumb{font-size:12.5px;}
   .kpi-grid{grid-template-columns:repeat(2,1fr);}
   .kpi-grid.cols-2{grid-template-columns:1fr;}
   .kpi-grid.cols-3{grid-template-columns:1fr;}
@@ -861,6 +898,12 @@ table.data tr.row-click:hover{background:var(--surface-alt);}
   .tb-cell{border-left:none;border-top:1px solid var(--border);}
   .tb-cell:first-child{border-top:none;}
   .search{display:none;}
+  .content{padding:20px 14px 48px;}
+}
+@media(max-width:560px){
+  .breadcrumb-crumb:first-child{display:none;}
+  .topbar-brand .dt-logo-name{display:none;}
+  .login-logo .dt-logo-mark{width:30px;height:30px;}
 }
 .type-badge{ display:inline-flex; padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:600; white-space:nowrap; }
 .type-badge.Regular{ background:rgba(59,130,246,0.16); color:#2563eb; }

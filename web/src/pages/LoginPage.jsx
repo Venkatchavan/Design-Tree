@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { loginApi } from '../lib/api.js';
 import { attendanceApi } from '../lib/api.js';
 import Modal from '../components/Modal.jsx';
+import BrandLogo from '../components/BrandLogo.jsx';
 import LoginScene from './LoginScene.jsx';
 
 const SIDE_POINTS = [
@@ -175,8 +176,7 @@ export default function LoginPage() {
           <div className="login-cursor-glow" aria-hidden="true" />
 
           <div className="login-brand">
-            <div className="login-brand-mark" aria-hidden="true">D</div>
-            <div className="login-brand-name">DesignTree</div>
+            <BrandLogo className="login-logo" />
           </div>
 
           <div className="login-side-intro">
