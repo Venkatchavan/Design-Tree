@@ -32,7 +32,7 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
 |---|---|
 | Browser cert warning | mkcert CA not installed on that PC → `mkcert -install` (once per PC) |
 | Signed in, then immediately logged out / API 401 | `NODE_ENV=production` serves `secure` cookies → plain-HTTP access; always use `https://` |
-| API calls fail / CORS errors | `CLIENT_ORIGIN` doesn't match the URL in the address bar (scheme/host included) |
+| API calls fail / CORS errors | `CLIENT_ORIGIN` allowlist doesn't include the URL in the address bar (each entry needs scheme+host, comma-separated for dual LAN+public) |
 | File upload fails | `client_max_body_size` (nginx, 20m) or API 10 MB cap; check `docker compose logs api` |
 | Bell badge doesn't update live | Socket push down — check `wss`/`/socket.io/` reaches api (nginx `Upgrade` headers; ad-blockers/VPNs sometimes block WS). Bell still refreshes every 60s via REST fallback, so nothing is lost |
 | Late sign-in modal (`You signed in after 9:45`) | Working-day login after 09:45 IST requires a late reason (`PATCH /api/attendance/reason`); Sundays/holidays exempt — fill the reason and continue |
@@ -41,7 +41,7 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
 | `mongo` unhealthy | Wrong `MONGO_ROOT_*` (special chars must be URL-encoded); check `docker compose logs mongo` |
 | `/dbadmin` 403 on FD PC | PC address changed (DHCP) → update `allow` line in `gateway/nginx.conf`, rebuild gateway |
 | `/dbadmin` asks twice | Normal: nginx basic-auth first, express login second — three gates total |
-| `down -v` was run | Harmless for data (binds only, no named volumes) — just `up -d` again. Still keep the backup habit before upgrades |
+| `down -v` was run | Database volume DELETED (named volume, not a bind) — restore from the newest backup pair per `BACKUP_RESTORE.md`. Uploads (host bind) survive; the DB does not. Never run `down -v` / `volume prune` again without a verified backup |
 | Backup/restore aborts on `CLIENT_ORIGIN` | Root `.env` holds development (`localhost`) values — likely copied from `api/.env`; refill it from `.env.example` with production values |
 
 ## What NOT to do

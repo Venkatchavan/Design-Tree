@@ -26,10 +26,10 @@ count as success; the script treats 8+ as failure.
   or `docker volume prune` cannot delete them. The versioned copy additionally
   protects against *content* damage (accidental delete/overwrite), which a
   bind mount alone does not.
-- The database likewise lives on a host bind (`C:\DesignTree\mongo-data`) —
-  `down -v`/prune cannot delete it (compose never removes bind-mounted host
-  paths; the stack keeps no named volumes). The dump archive protects against
-  *content* damage and host-disk failure. Hence the runbook rule below.
+- The database lives in the NAMED VOLUME `designtree_mongo-data` — `down -v` /
+  `volume prune` WOULD delete it (compose removes named volumes). The dump
+  archive protects against content damage, host-disk failure, AND volume
+  deletion. Hence the runbook rule below.
 
 ## Restore (interactive, cannot run by accident)
 
@@ -45,9 +45,9 @@ script itself — follow it.
 
 ## Runbook rules
 
-1. **`down -v` and `volume prune` are safe for data** (binds only, no named
-   volumes) — but keep a fresh backup anyway before upgrades: binds protect
-   against volume deletion, not against content damage.
+1. **`down -v` and `volume prune` DELETE the database volume** (named volume,
+   not a bind) — never run either without a verified backup. Uploads (host
+   bind) survive them; the DB does not.
 2. **Restore drill quarterly:** pick the newest pair, restore to a scratch
    check (or off-hours), verify, note the result. An untested backup is not
    a backup.

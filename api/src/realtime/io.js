@@ -23,7 +23,7 @@ function parseCookies(header) {
 export function initRealtime(httpServer) {
   io = new Server(httpServer, {
     path: '/socket.io/',
-    cors: { origin: config.clientOrigin, credentials: true },
+    cors: { origin: config.clientOrigins, credentials: true },
   });
 
   io.use((socket, next) => {

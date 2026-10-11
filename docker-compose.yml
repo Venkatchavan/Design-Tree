@@ -5,14 +5,14 @@
 #                             └─ /dbadmin/  mongo-express (FD only: IP + basic-auth + app login)
 #
 # Data survival:
-#   - mongo-data (BIND to C:/DesignTree/mongo-data on the host SSD)
-#     survives container removal/rebuild AND `down -v` / `volume prune`
-#     (compose never deletes bind-mounted host paths).
+#   - mongo-data (NAMED VOLUME designtree_mongo-data — this is where the live
+#     database actually resides). Survives container removal/rebuild and plain
+#     `down`, but NOT `down -v` / `volume prune` — those delete it. Never run
+#     either without a verified backup (see docs/BACKUP_RESTORE.md).
 #   - uploads (BIND to the live uploads dir) survive everything, including
 #     `down -v`, because the files live on the host filesystem.
 #
-# RUNBOOK RULE: backups still run before every upgrade (binds protect against
-# volume deletion, not against content damage) — see docs/BACKUP_RESTORE.md.
+# RUNBOOK RULE: backups still run before every upgrade — see docs/BACKUP_RESTORE.md.
 #
 # First boot:  docker compose up -d --build
 #              docker compose run --rm api npm run seed   (one-shot FD login)
@@ -29,11 +29,11 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
       MONGO_INITDB_DATABASE: designtree
     volumes:
-      # Database files — host bind (C:/DesignTree/mongo-data) so the data
-      # survives even `down -v` / `volume prune`. Folder must exist on the
-      # host before first boot (see docs/DEPLOYMENT.md).
-      - type: bind
-        source: ${HOST_MONGO_DIR}
+      # Database files — NAMED VOLUME (see top-level `volumes:`). This must
+      # stay a named volume: the live data resides in designtree_mongo-data.
+      # Do NOT convert to a host bind without migrating data first.
+      - type: volume
+        source: mongo-data
         target: /data/db
       # Dump landing dir for scripts/backup.ps1 (host HDD).
       - type: bind
@@ -104,6 +104,10 @@ services:
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
+      # Public alt-port: the office WAN's 443 is taken by the mail server's
+      # webmail, so the router forwards WAN:8443 here. LAN keeps using 443
+      # directly. Two host ports → one container port is fine.
+      - "${HTTPS_PUBLIC_PORT:-8443}:443"
     volumes:
       # TLS cert + dbadmin password file. Read-only mounts; the real
       # files are created on the host during deployment (never committed).
@@ -146,3 +150,8 @@ networks:
     driver: bridge
   backend:
     driver: bridge
+
+volumes:
+  # Live database files (adopted: the pre-existing designtree_mongo-data
+  # volume). Compose manages it; `down -v` / `volume prune` would DELETE it.
+  mongo-data:

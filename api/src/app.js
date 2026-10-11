@@ -1,7 +1,7 @@
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
-import { config } from './config/config.js';
+import { isAllowedOrigin } from './config/config.js';
 import attendanceRoutes from './routes/attendance.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import billingRoutes from './routes/billing.routes.js';
@@ -35,7 +35,7 @@ export function createApp() {
 
   app.use(
     cors({
-      origin: config.clientOrigin,
+      origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
       credentials: true,
     }),
   );
