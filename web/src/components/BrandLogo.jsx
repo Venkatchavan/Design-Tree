@@ -1,10 +1,12 @@
-export default function BrandLogo({ showName = true, className = '', label = 'DesignTree' }) {
+export default function BrandLogo({ showName = true, className = '', label = 'DesignTree Service Consultants Pvt Ltd' }) {
   return (
-    <span className={`dt-logo ${className}`} aria-label={label} role="img">
-      <span className="dt-logo-mark" aria-hidden="true">
-        D
-      </span>
-      {showName && <span className="dt-logo-name">{label}</span>}
+    <span className={`dt-logo${showName ? '' : ' is-compact'} ${className}`} aria-label={label}>
+      <img
+        src="/logo.png"
+        alt={label}
+        className="dt-logo-img"
+        draggable="false"
+      />
     </span>
   );
 }

@@ -120,7 +120,7 @@ export default function LoginPage() {
                   className="form-input"
                   type="email"
                   id="loginEmail"
-                  placeholder="you@datum.com"
+                  placeholder="you@designtreeconsultants.com"
                   autoComplete="email"
                   required
                   value={email}

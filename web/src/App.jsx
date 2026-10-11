@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { bootstrapApi, meApi } from './lib/api.js'
 import AppShell from './layout/AppShell.jsx'
+import LoginSkeleton from './components/LoginSkeleton.jsx'
 import ComingSoon from './pages/ComingSoon.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
@@ -88,13 +89,7 @@ const EXTRA_ROUTES = [
 ]
 
 function Splash() {
-  return (
-    <div className="login-screen">
-      <div className="login-sub" style={{ color: '#fff' }}>
-        Loading…
-      </div>
-    </div>
-  )
+  return <LoginSkeleton />
 }
 
 function ShellPage({ bootstrap, user, viewKey, activeView }) {
