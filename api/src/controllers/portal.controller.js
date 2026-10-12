@@ -76,6 +76,7 @@ export async function myPortal(req, res, next) {
         const ack = acked.get(d._id.toString());
         return {
           id: d._id.toString(),
+          project: d.project?.toString?.() ?? d.project,
           drawingNo: d.drawingNo,
           title: d.title,
           service: d.service,

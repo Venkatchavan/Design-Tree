@@ -135,6 +135,12 @@ function ShellRoutes({ user }) {
       seen.add(v)
       return true
     })
+    // Belt-and-braces: Associate/Technical Directors never mount HR, even
+    // from a stale or forged bootstrap nav (server canAccess is already false).
+    .filter((v) => {
+      if (v !== 'hr') return true
+      return user?.role !== 'associate_director' && user?.role !== 'technical_director'
+    })
   const homePath = bootstrap.views[bootstrap.home].path
 
   // Only Admin may open the new-project view (matches Dashboard button + API guard).

@@ -16,6 +16,10 @@ const claimSchema = new mongoose.Schema(
       index: true,
     },
     stage: { type: String, trim: true },
+    // Optional service tag powering per-service financial splits in the
+    // Management dashboard. Legacy claims without it count toward
+    // project/branch totals only.
+    service: { type: String, trim: true, index: true },
     amount: { type: Number, required: true, min: 0 },
     submissionDate: { type: Date, default: Date.now },
     status: {

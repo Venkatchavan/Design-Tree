@@ -3820,6 +3820,13 @@ table {
 .topbar-search-wrap {
     position: relative;
 }
+/* Small-device search toggle + expandable row (hidden on desktop). */
+.topbar-search-toggle {
+    display: none;
+}
+.topbar-search-mobile {
+    display: none;
+}
 .topbar-search-input {
     flex: 1;
     min-width: 0;
@@ -5307,9 +5314,24 @@ table.data tr.row-click:hover {
         left: 0;
         bottom: 0;
         width: min(280px, 84vw);
+        /* 100vh counts the mobile browser chrome; dvh tracks the visible
+        viewport so the drawer footer is never cut off. */
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100dvh;
+        overflow-x: hidden;
         transform: translateX(-105%);
         transition: transform 0.22s ease;
         box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+    }
+    /* Long nav lists scroll inside the drawer; brand + footer stay pinned. */
+    .sidebar.open .nav {
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    .sidebar.open .brand,
+    .sidebar.open .sidebar-footer {
+        flex-shrink: 0;
     }
     .sidebar.open {
         transform: translateX(0);
@@ -5318,6 +5340,32 @@ table.data tr.row-click:hover {
         display: inline-flex;
     }
     .sidebar .sidebar-collapse-btn {
+        display: none;
+    }
+    /* Small devices: the open drawer always shows full labels. The desktop
+    icon-only rail (.app.sidebar-collapsed ...) must not leak into the drawer
+    when a persisted collapsed state carries over from a wider viewport. */
+    .app.sidebar-collapsed .sidebar.open {
+        padding: 22px 14px;
+    }
+    .app.sidebar-collapsed .sidebar.open .brand {
+        justify-content: space-between;
+        padding: 2px 8px 26px;
+    }
+    .app.sidebar-collapsed .sidebar.open .nav-item {
+        justify-content: flex-start;
+        padding: 9px 10px;
+    }
+    .app.sidebar-collapsed .sidebar.open .nav-label,
+    .app.sidebar-collapsed .sidebar.open .dt-logo-name,
+    .app.sidebar-collapsed .sidebar.open .sidebar-footer-text {
+        display: revert;
+    }
+    .app.sidebar-collapsed .sidebar.open .sidebar-footer {
+        justify-content: flex-start;
+    }
+    /* Sign-out lives in the topbar on small devices; the drawer is nav-only. */
+    .sidebar .sidebar-logout {
         display: none;
     }
     .app.sidebar-open .sidebar-overlay {
@@ -5371,6 +5419,49 @@ table.data tr.row-click:hover {
     }
     .search {
         display: none;
+    }
+    /* Small devices: inline search becomes an icon toggle; tapping it reveals
+    a full-width search row below the topbar. */
+    .topbar {
+        position: relative;
+    }
+    .topbar-search-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        width: 34px;
+        height: 34px;
+        color: var(--ink-muted);
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+    .topbar-search-toggle:hover {
+        color: var(--blueprint);
+        border-color: var(--blueprint);
+    }
+    .topbar-search-mobile {
+        display: block;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        box-shadow: 0 12px 28px rgba(20, 25, 35, 0.14);
+        padding: 10px 14px;
+        z-index: 59;
+    }
+    .topbar-search-mobile .search {
+        display: flex;
+        width: 100%;
+    }
+    .topbar-search-mobile .topbar-search-panel {
+        left: 0;
+        right: 0;
+        width: auto;
     }
     .content {
         padding: 20px 14px 48px;

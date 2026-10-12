@@ -146,6 +146,8 @@ export const NAV_BY_ROLE = {
   founding_director: FULL_LEADERSHIP_NAV,
   working_director: FULL_LEADERSHIP_NAV,
   executive_director: FULL_LEADERSHIP_NAV,
+  // Associate/Technical Directors intentionally have no `hr` entry:
+  // canAccess(role, 'hr') is false and the client never mounts /hr for them.
   associate_director: [
     { view: 'dashboard', label: 'Dashboard' },
     { view: 'dashboard', label: 'Projects' },
@@ -163,6 +165,7 @@ export const NAV_BY_ROLE = {
     { view: 'qs-head' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
+    { view: 'management' },
   { view: 'my-meetings' },
   ],
   technical_director: [
@@ -182,6 +185,7 @@ export const NAV_BY_ROLE = {
     { view: 'qs-head' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
+    { view: 'management' },
   { view: 'my-meetings' },
   ],
   assoc_technical_director: [

@@ -223,11 +223,11 @@ export default function Sidebar({
           <div className="sidebar-footer-role">{roleLabel}</div>
         </div>
         {roleKey ? (
-          <SignOutButton user={user} roleKey={roleKey} />
+          <SignOutButton user={user} roleKey={roleKey} className="nav-item sidebar-logout" />
         ) : (
           <button
             type="button"
-            className="nav-item"
+            className="nav-item sidebar-logout"
             style={{ width: 'auto', padding: 8 }}
             title="Sign out"
             onClick={onLogout}

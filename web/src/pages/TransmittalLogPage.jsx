@@ -7,13 +7,14 @@ import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import Modal from '../components/Modal.jsx';
 
 const REG_TABS = [
   { key: 'register', label: 'Transmittal register' },
   { key: 'variance', label: 'Area variance' },
 ];
 
-const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director']);
+const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director']);
 const DIR_DOC_TYPES = ['GFC', 'AMD', 'SAN', 'ADV', 'DD', 'SUB', 'TENDER', 'BOQ', 'STAB', 'CONCEPT', 'EXEC', 'APR', 'FEAS', 'FIRESAN', 'BWSSB', 'BESCOM', 'REF', 'WORK', 'INFO'];
 const DIR_PRINT_TYPES = ['Blue Prints', 'White Prints', 'Original Tracings', 'CD', 'Document', 'Others'];
 const DIR_SERVICES = ['Sanction', 'BOQ & DBR', 'GFC', 'PHE', 'Electrical', 'FIRE', 'HVAC', 'MEPF'];
@@ -41,43 +42,18 @@ function monthYearOf(items) {
 
 export default function TransmittalLogPage({ bootstrap }) {
   const isDirector = DIRECTOR_ROLES.has(bootstrap?.role?.key ?? '');
+  const isAssocTD = (bootstrap?.role?.key ?? '') === 'assoc_technical_director';
   const [tab, setTab] = useState('register');
   const [project, setProject] = useState('');
   const [search, setSearch] = useState('');
-  const [form, setForm] = useState({
-    project: '', date: new Date().toISOString().slice(0, 10), projectName: '',
-    dept: '', print: '', docType: '', service: '', team: '', trNo: '',
-    qty: '', sets: '', rev: '', reason: '',
-  });
-  const qc = useQueryClient();
-  const filters = useQuery({ queryKey: ['projects-filters'], queryFn: projectsApi.filters });
   const projects = useQuery({ queryKey: ['projects-register-pick'], queryFn: () => projectsApi.list({}) });
   const register = useQuery({
     queryKey: ['transmittal-register', project, search],
     queryFn: () => transmittalRegisterApi.list({ project, search }),
   });
-  const add = useMutation({
-    mutationFn: transmittalRegisterApi.create,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transmittal-register'] });
-      setForm((f) => ({ ...f, trNo: '', qty: '', sets: '', rev: '', reason: '' }));
-    },
-  });
   const items = register.data?.items ?? [];
   const summary = register.data?.summary ?? {};
-  const services = filters.data?.services ?? [];
   const rows = useMemo(() => items, [items]);
-
-  function submit(e) {
-    e.preventDefault();
-    const selected = (projects.data?.items ?? []).find((p) => p._id === form.project);
-    add.mutate({
-      ...form,
-      projectName: selected?.name ?? form.projectName,
-      qty: Number(form.qty) || 0,
-      sets: Number(form.sets) || 0,
-    });
-  }
 
   const columns = [
     { key: 'date', label: 'Date', render: (r) => r.date ? new Date(r.date).toLocaleDateString() : '—' },
@@ -99,6 +75,10 @@ export default function TransmittalLogPage({ bootstrap }) {
     return <DirectorRegisterView />;
   }
 
+  if (isAssocTD) {
+    return <DirectorRegisterView scoped />;
+  }
+
   return (
     <div id="view-transmittals">
       <div className="page-head">
@@ -115,28 +95,7 @@ export default function TransmittalLogPage({ bootstrap }) {
       {tab === 'register' ? (
         <>
           <Panel title="Log transmittal">
-            <form onSubmit={submit} className="field-grid">
-              <div className="form-row">
-                <label className="form-label">Project *</label>
-                <select className="filter-select" style={{ width: '100%' }} required value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })}>
-                  <option value="">Select project</option>
-                  {(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name} ({p.code})</option>)}
-                </select>
-              </div>
-              <div className="form-row"><label className="form-label">Date *</label><input className="form-input" type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
-              <div className="form-row"><label className="form-label">TR no. *</label><input className="form-input" required value={form.trNo} onChange={(e) => setForm({ ...form, trNo: e.target.value })} /></div>
-              <div className="form-row"><label className="form-label">Department *</label><input className="form-input" required value={form.dept} onChange={(e) => setForm({ ...form, dept: e.target.value })} /></div>
-              <div className="form-row"><label className="form-label">Team member</label><input className="form-input" value={form.team} onChange={(e) => setForm({ ...form, team: e.target.value })} /></div>
-              <div className="form-row"><label className="form-label">Type of print *</label><input className="form-input" required value={form.print} onChange={(e) => setForm({ ...form, print: e.target.value })} /></div>
-              <div className="form-row"><label className="form-label">Document type *</label><input className="form-input" required value={form.docType} onChange={(e) => setForm({ ...form, docType: e.target.value })} /></div>
-              <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={form.service} onChange={(e) => setForm({ ...form, service: e.target.value })}><option value="">Select service</option>{services.map((s) => <option key={s}>{s}</option>)}</select></div>
-              <div className="form-row"><label className="form-label">Qty (sheets) *</label><input className="form-input" type="number" min="0" required value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></div>
-              <div className="form-row"><label className="form-label">Sets *</label><input className="form-input" type="number" min="0" required value={form.sets} onChange={(e) => setForm({ ...form, sets: e.target.value })} /></div>
-              <div className="form-row"><label className="form-label">Revision</label><input className="form-input" value={form.rev} onChange={(e) => setForm({ ...form, rev: e.target.value })} /></div>
-              <div className="form-row"><label className="form-label">Reason for revision</label><input className="form-input" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></div>
-              {add.isError && <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>{add.error.message}</div>}
-              <div><button className="btn-primary" type="submit" disabled={add.isPending}>{add.isPending ? 'Saving…' : 'Log transmittal'}</button></div>
-            </form>
+            <LogTransmittalForm />
           </Panel>
           <Panel title="Company register">
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -161,11 +120,69 @@ export default function TransmittalLogPage({ bootstrap }) {
   );
 }
 
-function DirectorRegisterView() {
+function LogTransmittalForm({ onDone }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    project: '', date: new Date().toISOString().slice(0, 10), projectName: '',
+    dept: '', print: '', docType: '', service: '', team: '', trNo: '',
+    qty: '', sets: '', rev: '', reason: '',
+  });
+  const filters = useQuery({ queryKey: ['projects-filters'], queryFn: projectsApi.filters });
+  const projects = useQuery({ queryKey: ['projects-register-pick'], queryFn: () => projectsApi.list({}) });
+  const services = filters.data?.services ?? [];
+  const add = useMutation({
+    mutationFn: transmittalRegisterApi.create,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transmittal-register'] });
+      qc.invalidateQueries({ queryKey: ['transmittal-register-all'] });
+      setForm((f) => ({ ...f, trNo: '', qty: '', sets: '', rev: '', reason: '' }));
+      onDone?.();
+    },
+  });
+
+  function submit(e) {
+    e.preventDefault();
+    const selected = (projects.data?.items ?? []).find((p) => p._id === form.project);
+    add.mutate({
+      ...form,
+      projectName: selected?.name ?? form.projectName,
+      qty: Number(form.qty) || 0,
+      sets: Number(form.sets) || 0,
+    });
+  }
+
+  return (
+    <form onSubmit={submit} className="field-grid">
+      <div className="form-row">
+        <label className="form-label">Project *</label>
+        <select className="filter-select" style={{ width: '100%' }} required value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })}>
+          <option value="">Select project</option>
+          {(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name} ({p.code})</option>)}
+        </select>
+      </div>
+      <div className="form-row"><label className="form-label">Date *</label><input className="form-input" type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
+      <div className="form-row"><label className="form-label">TR no. *</label><input className="form-input" required value={form.trNo} onChange={(e) => setForm({ ...form, trNo: e.target.value })} /></div>
+      <div className="form-row"><label className="form-label">Department *</label><input className="form-input" required value={form.dept} onChange={(e) => setForm({ ...form, dept: e.target.value })} /></div>
+      <div className="form-row"><label className="form-label">Team member</label><input className="form-input" value={form.team} onChange={(e) => setForm({ ...form, team: e.target.value })} /></div>
+      <div className="form-row"><label className="form-label">Type of print *</label><input className="form-input" required value={form.print} onChange={(e) => setForm({ ...form, print: e.target.value })} /></div>
+      <div className="form-row"><label className="form-label">Document type *</label><input className="form-input" required value={form.docType} onChange={(e) => setForm({ ...form, docType: e.target.value })} /></div>
+      <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={form.service} onChange={(e) => setForm({ ...form, service: e.target.value })}><option value="">Select service</option>{services.map((s) => <option key={s}>{s}</option>)}</select></div>
+      <div className="form-row"><label className="form-label">Qty (sheets) *</label><input className="form-input" type="number" min="0" required value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></div>
+      <div className="form-row"><label className="form-label">Sets *</label><input className="form-input" type="number" min="0" required value={form.sets} onChange={(e) => setForm({ ...form, sets: e.target.value })} /></div>
+      <div className="form-row"><label className="form-label">Revision</label><input className="form-input" value={form.rev} onChange={(e) => setForm({ ...form, rev: e.target.value })} /></div>
+      <div className="form-row"><label className="form-label">Reason for revision</label><input className="form-input" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></div>
+      {add.isError && <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>{add.error.message}</div>}
+      <div><button className="btn-primary" type="submit" disabled={add.isPending}>{add.isPending ? 'Saving…' : 'Log transmittal'}</button></div>
+    </form>
+  );
+}
+
+function DirectorRegisterView({ scoped = false }) {
   const [search, setSearch] = useState('');
   const [docType, setDocType] = useState('');
   const [printType, setPrintType] = useState('');
   const [service, setService] = useState('');
+  const [logOpen, setLogOpen] = useState(false);
   const register = useQuery({
     queryKey: ['transmittal-register-all'],
     queryFn: () => transmittalRegisterApi.list({}),
@@ -207,12 +224,20 @@ function DirectorRegisterView() {
     { key: 'rev', label: 'Rev', render: (r) => r.rev ?? '—' },
     { key: 'reason', label: 'Reason for revision', render: (r) => r.reason ?? '—' },
   ];
+  const projectCount = scoped
+    ? new Set(items.map((r) => String(r.project?._id ?? r.project ?? r.projectName ?? '—'))).size
+    : new Set(items.map((r) => String(r.project?.name ?? r.projectName ?? '—'))).size;
   return (
     <div id="view-transmittals">
       <div className="page-head">
         <div className="page-title">Transmittal Log</div>
-        <div className="page-sub">Company-wide register · {registerLabel} · {items.length} transmittals across {new Set(items.map((r) => String(r.project?.name ?? r.projectName ?? '—'))).size} projects</div>
+        <div className="page-sub">{scoped ? `Your assigned projects · ${registerLabel} · ${projectCount} projects` : `Company-wide register · ${registerLabel} · ${items.length} transmittals across ${projectCount} projects`}</div>
       </div>
+      {scoped && (
+        <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
+          Showing transmittals for your assigned projects only. Founding/Working Directors, the Executive Director, Admin/Billing and Associate/Technical Directors can see the complete company register.
+        </p>
+      )}
       <div className="kpi-grid cols-4">
         <KpiCard label="Transmittals" value={rows.length} accent="blueprint" />
         <KpiCard label="Sheets issued" value={sheets} accent="copper" />
@@ -226,6 +251,7 @@ function DirectorRegisterView() {
           <select className="filter-select" value={docType} onChange={(e) => setDocType(e.target.value)}><option value="">All document types</option>{DIR_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           <select className="filter-select" value={printType} onChange={(e) => setPrintType(e.target.value)}><option value="">All print types</option>{DIR_PRINT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           <select className="filter-select" value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{DIR_SERVICES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+          {scoped && <button type="button" className="btn-primary" onClick={() => setLogOpen(true)}>Log transmittal</button>}
           <button type="button" className="approve-btn" onClick={() => downloadCsv(rows, columns.map((c) => ({ key: c.key, label: c.label, value: c.render ? (r) => {
             if (c.key === 'date') return fmtRegisterDate(r.date);
             if (c.key === 'project') return r.project?.name ?? r.projectName;
@@ -238,6 +264,11 @@ function DirectorRegisterView() {
           <DataTable columns={columns} rows={rows} emptyText="No transmittals match these filters." />
         )}
       </Panel>
+      {scoped && logOpen && (
+        <Modal title="Log transmittal" onClose={() => setLogOpen(false)} wide>
+          <LogTransmittalForm onDone={() => setLogOpen(false)} />
+        </Modal>
+      )}
     </div>
   );
 }

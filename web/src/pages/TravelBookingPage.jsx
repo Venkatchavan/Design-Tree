@@ -16,7 +16,7 @@ const TABS = [
   { key: 'requests', label: 'LA / Cab / Other requests' },
 ];
 const STATUSES = ['Pending', 'Approved', 'Confirmed', 'Rejected', 'Rescheduled', 'Cancelled', 'Completed'];
-const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director']);
+const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director']);
 
 function fmtDay(v) {
   if (!v) return '—';

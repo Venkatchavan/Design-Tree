@@ -83,6 +83,7 @@ export const deliverables = makeCrud(Deliverable, {
   populate: [
     { path: 'project', select: POP_PROJ },
     { path: 'assignedTo', select: POP_EMP },
+    { path: 'createdBy', select: 'name email' },
   ],
 });
 

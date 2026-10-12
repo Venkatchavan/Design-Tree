@@ -22,6 +22,9 @@ export default function Topbar({
   const [q, setQ] = useState('');
   const [debounced, setDebounced] = useState('');
   const [open, setOpen] = useState(false);
+  // Small devices: the inline search box is hidden (no room in the topbar),
+  // so a toggle button reveals it as a full-width row below the topbar.
+  const [searchOpen, setSearchOpen] = useState(false);
   const wrapRef = useRef(null);
 
   useEffect(() => {
@@ -52,9 +55,81 @@ export default function Topbar({
 
   function goToProject(id) {
     setOpen(false);
+    setSearchOpen(false);
     setQ('');
     setDebounced('');
     if (id) navigate(`/projects/${id}`);
+  }
+
+  // Project search box, rendered inline on desktop and in the expandable
+  // full-width row on small devices. Both instances share query state; CSS
+  // shows exactly one of them per viewport.
+  function searchBox(autoFocus) {
+    return (
+      <div className="topbar-search-wrap" ref={wrapRef}>
+        <div className="search">
+          <Search size={14} />
+          <input
+            className="topbar-search-input"
+            placeholder="Search projects"
+            aria-label="Search projects"
+            value={q}
+            autoFocus={autoFocus}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setOpen(false);
+                setSearchOpen(false);
+                e.currentTarget.blur();
+              }
+            }}
+          />
+        </div>
+        {showDropdown && (
+          <div className="topbar-search-panel" role="listbox" aria-label="Project results">
+            {searchQuery.isLoading ? (
+              <div className="topbar-search-empty">Searching…</div>
+            ) : searchQuery.isError ? (
+              <div className="topbar-search-empty">
+                {searchQuery.error?.status === 403
+                  ? 'No project access for your role.'
+                  : (searchQuery.error?.message ?? 'Search failed.')}
+              </div>
+            ) : items.length === 0 ? (
+              <div className="topbar-search-empty">No projects match “{debounced}”.</div>
+            ) : (
+              <>
+                {items.slice(0, 8).map((p) => (
+                  <div
+                    key={String(p._id ?? p.id)}
+                    className="topbar-search-row"
+                    role="option"
+                    aria-selected="false"
+                    tabIndex={0}
+                    onClick={() => goToProject(p._id ?? p.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') goToProject(p._id ?? p.id);
+                    }}
+                  >
+                    <div className="topbar-search-name">{p.name ?? '—'}</div>
+                    <div className="topbar-search-meta">
+                      {[p.code, p.branch, p.status].filter(Boolean).join(' · ')}
+                    </div>
+                  </div>
+                ))}
+                {total > 8 && (
+                  <div className="topbar-search-more">+{total - 8} more — refine your search</div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    );
   }
 
   const menuExpanded = sidebarOpen || !sidebarCollapsed;
@@ -84,68 +159,18 @@ export default function Topbar({
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {canSearch && searchBox(false)}
         {canSearch && (
-          <div className="topbar-search-wrap" ref={wrapRef}>
-            <div className="search">
-              <Search size={14} />
-              <input
-                className="topbar-search-input"
-                placeholder="Search projects"
-                aria-label="Search projects"
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setOpen(true);
-                }}
-                onFocus={() => setOpen(true)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    setOpen(false);
-                    e.currentTarget.blur();
-                  }
-                }}
-              />
-            </div>
-            {showDropdown && (
-              <div className="topbar-search-panel" role="listbox" aria-label="Project results">
-                {searchQuery.isLoading ? (
-                  <div className="topbar-search-empty">Searching…</div>
-                ) : searchQuery.isError ? (
-                  <div className="topbar-search-empty">
-                    {searchQuery.error?.status === 403
-                      ? 'No project access for your role.'
-                      : (searchQuery.error?.message ?? 'Search failed.')}
-                  </div>
-                ) : items.length === 0 ? (
-                  <div className="topbar-search-empty">No projects match “{debounced}”.</div>
-                ) : (
-                  <>
-                    {items.slice(0, 8).map((p) => (
-                      <div
-                        key={String(p._id ?? p.id)}
-                        className="topbar-search-row"
-                        role="option"
-                        aria-selected="false"
-                        tabIndex={0}
-                        onClick={() => goToProject(p._id ?? p.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') goToProject(p._id ?? p.id);
-                        }}
-                      >
-                        <div className="topbar-search-name">{p.name ?? '—'}</div>
-                        <div className="topbar-search-meta">
-                          {[p.code, p.branch, p.status].filter(Boolean).join(' · ')}
-                        </div>
-                      </div>
-                    ))}
-                    {total > 8 && (
-                      <div className="topbar-search-more">+{total - 8} more — refine your search</div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+          <button
+            type="button"
+            className="topbar-search-toggle"
+            title="Search projects"
+            aria-label="Search projects"
+            aria-expanded={searchOpen}
+            onClick={() => setSearchOpen((v) => !v)}
+          >
+            <Search size={16} />
+          </button>
         )}
         <NotifBell />
         {roleKey ? (
@@ -163,6 +188,9 @@ export default function Topbar({
           </button>
         )}
       </div>
+      {canSearch && searchOpen && (
+        <div className="topbar-search-mobile">{searchBox(true)}</div>
+      )}
     </div>
   );
 }

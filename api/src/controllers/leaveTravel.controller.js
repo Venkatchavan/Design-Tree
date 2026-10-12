@@ -65,7 +65,10 @@ export const leaves = makeCrud(LeaveRequest, {
     if (req.query.status) f.status = req.query.status;
     return f;
   },
-  populate: [{ path: 'employee', select: POP_EMP }],
+  populate: [
+    { path: 'employee', select: POP_EMP },
+    { path: 'decidedBy', select: 'name email' },
+  ],
 });
 
 export async function createLeave(req, res, next) {
@@ -101,6 +104,7 @@ export async function myLeaves(req, res, next) {
     const me = await User.findById(req.user.id);
     if (!me?.employee) return res.status(200).json({ items: [], total: 0 });
     const items = await LeaveRequest.find({ employee: me.employee })
+      .populate('decidedBy', 'name email')
       .sort({ createdAt: -1 })
       .limit(100);
     return res.status(200).json({ items, total: items.length });
@@ -286,19 +290,25 @@ export async function settleTravel(req, res, next) {
   try {
     const existing = await TravelRequest.findById(req.params.id);
     if (!existing) return res.status(404).json({ message: 'Not found.' });
-    // findByIdAndUpdate skips validate hooks: recompute totals explicitly.
+    // findByIdAndUpdate skips validate hooks: recompute totals explicitly
+    // (same formula as the model hook — client-arranged lines excluded).
     const merged = { ...existing.toObject(), ...parsed.data };
-    const actual =
-      (merged.fare ?? 0) +
-      (merged.foodPerDiem ?? 0) +
-      (merged.localConveyance ?? 0) +
-      (merged.misc ?? 0);
+    const ticked = new Set(merged.hospitalityLines ?? []);
+    const line = (k) => (k === 'lodging' ? (merged.lodgingAmount ?? 0) : (merged[k] ?? 0));
+    let actual = 0;
+    let hospitality = 0;
+    for (const k of ['fare', 'lodging', 'foodPerDiem', 'localConveyance', 'misc']) {
+      if (ticked.has(k)) hospitality += line(k);
+      else actual += line(k);
+    }
     const doc = await TravelRequest.findByIdAndUpdate(
       req.params.id,
       {
         ...parsed.data,
-        actualExpense: actual > 0 ? actual : (merged.actualExpense ?? 0),
-        balance: (merged.advanceReceived ?? 0) - (actual > 0 ? actual : 0),
+        hospitality: ticked.size > 0,
+        actualExpense: actual > 0 || hospitality > 0 ? actual : (merged.actualExpense ?? 0),
+        hospitalityAmount: actual > 0 || hospitality > 0 ? hospitality : (merged.hospitalityAmount ?? 0),
+        balance: (merged.advanceReceived ?? 0) - (actual > 0 || hospitality > 0 ? actual : 0),
         settlementDate: parsed.data.settlementDate ?? new Date(),
       },
       { new: true, returnDocument: 'after', runValidators: true },

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { bootstrapApi, teamsApi, workEntriesApi } from '../lib/api.js';
+import { bootstrapApi, employeesApi, teamsApi, workEntriesApi } from '../lib/api.js';
 import { holidaysApi } from '../lib/phase4bApi.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -76,6 +76,8 @@ function useBootstrapProp(prop) {
 export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
   const bootstrap = useBootstrapProp(bootstrapProp);
   const isDirector = new Set(['founding_director', 'working_director', 'executive_director']).has(bootstrap?.role?.key ?? '');
+  // Assoc Technical Director: organisation-wide today view (spec layout).
+  const isAssocTD = (bootstrap?.role?.key ?? '') === 'assoc_technical_director';
   const [date, setDate] = useState(todayISO());
   const [tab, setTab] = useState('wise');
   const [fDept, setFDept] = useState('');
@@ -95,6 +97,19 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
     if (Array.isArray(d)) return d;
     return d.items ?? d.teams ?? [];
   }, [teamsQ.data]);
+
+  // AssocTD org view: employee directory for the not-updated KPI (Exited out).
+  const employeesQ = useQuery({ queryKey: ['employees-progress'], queryFn: () => employeesApi.list({}), retry: false });
+  const activeEmployees = useMemo(
+    () => (employeesQ.data?.items ?? []).filter((e) => String(e.status ?? 'Active') !== 'Exited'),
+    [employeesQ.data],
+  );
+  const loggedIds = useMemo(() => new Set(entries.map(empKey)), [entries]);
+  const notUpdatedCount = activeEmployees.filter((e) => {
+    const id = String(e._id ?? e.id ?? '');
+    const name = empName(e).toLowerCase();
+    return !(id && loggedIds.has(id)) && ![...loggedIds].some((k) => k === name);
+  }).length;
 
   const totalHours = entries.reduce((s, e) => s + Number(e.hours ?? 0), 0);
   const empIds = useMemo(() => new Set(entries.map(empKey)), [entries]);
@@ -210,6 +225,12 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
     [entries, fDept, fProject, fStage],
   );
 
+  const assocRows = useMemo(() => wiseFiltered.map((e) => ({
+    ...e,
+    _role: e.employee?.designation ?? '—',
+    _status: e.hours != null && Number(e.hours) > 0 ? 'Logged' : 'Pending',
+  })), [wiseFiltered]);
+
   const loggedEmpNames = useMemo(() => {
     const s = new Set();
     for (const e of entries) s.add(empName(e.employee).toLowerCase());
@@ -230,6 +251,55 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
     }
     return out;
   }, [teams, loggedEmpNames]);
+
+  if (isAssocTD) {
+    return (
+      <>
+        <div className="page-head">
+          <div className="page-title">Work Progress</div>
+          <div className="page-sub">Organization-wide activity for today, across Admin, HR, Principal team leads and every DesignTree employee</div>
+        </div>
+        <div className="form-row" style={{ maxWidth: 240 }}>
+          <label className="form-label">Date</label>
+          <input type="date" className="form-input" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        <div className="kpi-grid cols-4">
+          <KpiCard label="Total hours logged today" value={totalHours.toFixed(1)} accent="blueprint" />
+          <KpiCard label="Employees logged in" value={empIds.size} accent="forest" />
+          <KpiCard label="Departments covered" value={departments.length} accent="amber" />
+          <KpiCard label="Not yet updated" value={employeesQ.isLoading ? '…' : notUpdatedCount} accent="rust" />
+        </div>
+        <Panel title="Today's activity, by department" sub="Admin and HR entries are administrative work, not billable project hours">
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <select className="filter-select" value={fDept} onChange={(e) => setFDept(e.target.value)}>
+              <option value="">All departments</option>
+              {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          {entriesQ.isLoading ? (
+            <EmptyState text="Loading…" />
+          ) : entriesQ.isError ? (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>
+              {entriesQ.error.message}
+            </div>
+          ) : (
+            <DataTable
+              columns={[
+                { key: 'employee', label: 'Employee', render: (e) => empName(e.employee) },
+                { key: 'role', label: 'Role', render: (e) => e._role },
+                { key: 'department', label: 'Department', render: (e) => deptOf(e) },
+                { key: 'work', label: 'Work logged today', render: (e) => workText(e) },
+                { key: 'hours', label: 'Hours', render: (e) => (e.hours == null ? '—' : Number(e.hours).toFixed(1)) },
+                { key: 'status', label: 'Status', render: (e) => <StatusPill tone={toneFor(e._status)}>{e._status}</StatusPill> },
+              ]}
+              rows={assocRows}
+              emptyText="No work logged for this date."
+            />
+          )}
+        </Panel>
+      </>
+    );
+  }
 
   return (
     <>

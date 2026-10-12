@@ -43,7 +43,8 @@ router.patch(
 );
 
 // Stage tracker + billing readiness (also powers Billing Status live).
-router.get('/stages', requireRole(...BILLING_READERS), stages.list);
+// Associate/Technical/Associate-TD Directors read the tracker for Billing Status.
+router.get('/stages', requireRole(...BILLING_READERS, 'associate_director', 'technical_director', 'assoc_technical_director'), stages.list);
 router.post('/stages', requireRole(...BILLING_WRITERS), upsertStage);
 router.put('/stages/:id', requireRole(...BILLING_WRITERS), stages.update);
 

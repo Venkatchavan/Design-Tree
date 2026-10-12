@@ -140,10 +140,12 @@ export const travelSettleSchema = z
       })
       .strict()
       .optional(),
+    lodgingAmount: z.number().min(0).optional(),
     foodPerDiem: z.number().min(0).optional(),
     localConveyance: z.number().min(0).optional(),
     misc: z.number().min(0).optional(),
     hospitality: z.boolean().optional(),
+    hospitalityLines: z.array(z.enum(['fare', 'lodging', 'foodPerDiem', 'localConveyance', 'misc'])).optional(),
     settlementStatus: strOpt,
     settlementDate: dateOpt,
   })

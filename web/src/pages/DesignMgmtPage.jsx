@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { projectsApi, request, toQuery } from '../lib/api.js';
+import { projectsApi, request, toQuery, workEntriesApi } from '../lib/api.js';
 import { designApi } from '../lib/phase4aApi.js';
 import { deliverablesApi, revisionsApi } from '../lib/workApi.js';
-import { rfiApi } from '../lib/functionsApi.js';
+import { rfiApi, visitsApi } from '../lib/functionsApi.js';
+import { allowanceApi } from '../lib/phase4bApi.js';
 import { spocApi } from '../lib/spocApi.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
@@ -28,7 +29,7 @@ const TEAM_SERVICES = [
 ];
 const TEAM_STATUSES = ['Pending', 'Confirmed'];
 
-const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director']);
+const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director']);
 const STAGE_ORDER = { CD: 0, SD: 1, DD: 2, TD: 3, GFC: 4 };
 const ON_TRACK_STATUSES = ['in progress', 'submitted', 'approved'];
 
@@ -185,6 +186,407 @@ const TABS = [
   { key: 'rfis', label: 'RFIs' },
   { key: 'updates', label: 'Team & client updates' },
 ];
+
+const ASSOC_TABS = [
+  { key: 'workflow', label: 'Workflow' },
+  { key: 'matrix', label: 'Responsibility & communication matrix' },
+  { key: 'deliverables', label: 'Deliverables tracker' },
+  { key: 'rfis', label: 'RFIs, queries & comments' },
+  { key: 'updates', label: 'Team & Client Updates' },
+];
+
+const OWNER_LABELS = {
+  Director: 'Founding / Working Director',
+  Coordinator: 'Coordinator (SPOC)',
+  'Technical Director': 'Technical Director',
+  TL: 'Principal Team Lead',
+};
+
+const RAISED_BY_TEAM = {
+  qaqc: 'QA/QC',
+  bim: 'BIM',
+  coordinator: 'Coordinator',
+  client: 'Client',
+  architect: 'Architect',
+};
+
+function fmtAssocDate(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v).slice(0, 10);
+  const day = String(d.getDate()).padStart(2, '0');
+  const mon = d.toLocaleString('en-GB', { month: 'short' });
+  return `${day}-${mon}-${String(d.getFullYear()).slice(2)}`;
+}
+
+// Assoc Technical Director workspace: director KPIs + full tabbed workflow,
+// read-only (step updates stay with TD/FD/WD/design_mgmt_head).
+function AssocTDDesignView() {
+  const [tab, setTab] = useState('workflow');
+  const [project, setProject] = useState('');
+
+  const projectsQ = useQuery({ queryKey: ['design-atd-projects'], queryFn: () => projectsApi.list({}) });
+  const delsQ = useQuery({ queryKey: ['design-atd-deliverables'], queryFn: () => deliverablesApi.list({}) });
+  const rfisQ = useQuery({ queryKey: ['design-atd-rfis'], queryFn: () => rfiApi.list({}) });
+  const revsQ = useQuery({ queryKey: ['design-atd-revisions'], queryFn: () => revisionsApi.list({}) });
+  const meetsQ = useQuery({ queryKey: ['design-atd-meetings'], queryFn: () => request('/api/meetings'), retry: false });
+  const visitsQ = useQuery({ queryKey: ['design-atd-visits'], queryFn: () => visitsApi.list({}), retry: false });
+  const cabsQ = useQuery({ queryKey: ['design-atd-cabs'], queryFn: () => allowanceApi.list({}), retry: false });
+  const workQ = useQuery({ queryKey: ['design-atd-work'], queryFn: () => workEntriesApi.list({}), retry: false });
+
+  const projectRows = arr(projectsQ.data);
+  const activeProject = project || projectRows[0]?._id || '';
+  const meta = useQuery({ queryKey: ['design-meta'], queryFn: designApi.meta });
+  const design = useQuery({
+    queryKey: ['design', activeProject],
+    queryFn: () => designApi.get(activeProject),
+    enabled: !!activeProject,
+  });
+  const delRows = useMemo(() => arr(delsQ.data), [delsQ.data]);
+  const rfiRows = useMemo(() => arr(rfisQ.data), [rfisQ.data]);
+  const revRows = useMemo(() => arr(revsQ.data), [revsQ.data]);
+  const meetRows = useMemo(() => arr(meetsQ.data), [meetsQ.data]);
+  const visitRows = useMemo(() => arr(visitsQ.data), [visitsQ.data]);
+  const cabRows = useMemo(
+    () => arr(cabsQ.data).filter((r) => String(r.reqType ?? '') === 'Cab'),
+    [cabsQ.data],
+  );
+  const workRows = useMemo(() => arr(workQ.data), [workQ.data]);
+  const qsWorkRows = useMemo(() => {
+    const qsIds = new Set();
+    for (const p of projectRows) {
+      if ((p.scope ?? []).some((s) => ['qs', 'quantity', 'estimation'].some((k) => String(s.service ?? '').toLowerCase().includes(k)))) {
+        qsIds.add(String(p._id));
+      }
+    }
+    return workRows
+      .filter((e) => qsIds.has(String(e.project?._id ?? e.project ?? '')))
+      .sort((a, b) => String(b.date ?? b.createdAt ?? '').localeCompare(String(a.date ?? a.createdAt ?? '')))
+      .slice(0, 20);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workRows, projectsQ.data]);
+
+  // ---- Shared KPIs (same basis as the director view) ----
+  const onTrackDels = delRows.filter((d) => ON_TRACK_STATUSES.includes(normStatus(d.status)));
+  const openRfis = rfiRows.filter((r) => normStatus(r.status) === 'open');
+  const submittedDels = delRows.filter((d) => normStatus(d.status) === 'submitted');
+  const pendingTd = submittedDels.length + openRfis.length;
+  const periodStart = new Date(new Date().toISOString().slice(0, 10));
+  periodStart.setDate(periodStart.getDate() - 30);
+  const inPeriod = (v) => {
+    if (!v) return false;
+    const d = new Date(v);
+    return !Number.isNaN(d.getTime()) && d >= periodStart;
+  };
+  const closedPeriod =
+    rfiRows.filter((r) => normStatus(r.status) === 'closed' && inPeriod(r.updatedAt)).length +
+    revRows.filter((r) => normStatus(r.status) === 'cleared' && inPeriod(r.clearedAt ?? r.updatedAt)).length +
+    delRows.filter((d) => normStatus(d.status) === 'approved' && inPeriod(d.updatedAt)).length;
+
+  // ---- Workflow tab ----
+  const metaSteps = meta.data?.steps ?? [];
+  const metaOwners = meta.data?.owners ?? [];
+  const savedSteps = design.data?.item?.steps ?? [];
+  const tableSteps = useMemo(() => {
+    if (savedSteps.length > 0) return savedSteps;
+    return metaSteps.map((label, i) => ({ n: i + 1, label, owner: metaOwners[i] ?? '—', status: 'Not Started', remarks: '', date: '' }));
+  }, [savedSteps, metaSteps, metaOwners]);
+  const doneSteps = tableSteps.filter((s) => normStatus(s.status) === 'completed').length;
+  const matrixRows = useMemo(() => {
+    const m = design.data?.item?.matrix;
+    return Array.isArray(m) ? m : [];
+  }, [design.data]);
+
+  // ---- Deliverables tab ----
+  const delivStatusLabel = (s) => {
+    const t = String(s ?? '');
+    if (t === 'Planned') return 'Not Started';
+    if (t === 'Submitted') return 'Submitted awaiting Technical Director';
+    return t || '—';
+  };
+
+  // ---- RFI tab ----
+  const rfiRaisedBy = (r) => {
+    const role = String(r.raisedBy?.role ?? '').toLowerCase();
+    if (RAISED_BY_TEAM[role]) return RAISED_BY_TEAM[role];
+    return r.team ?? '—';
+  };
+
+  // ---- Updates tab ----
+  const recentVisits = useMemo(
+    () => [...visitRows].sort((a, b) => String(b.visitDate ?? b.date ?? b.createdAt ?? '').localeCompare(String(a.visitDate ?? a.date ?? a.createdAt ?? ''))).slice(0, 6),
+    [visitRows],
+  );
+  const awaitingRows = useMemo(
+    () => rfiRows.filter((r) => ['open', 'responded'].includes(normStatus(r.status))),
+    [rfiRows],
+  );
+  const [todayKey] = useState(() => new Date().toISOString().slice(0, 10));
+  const nextMeetingByProject = useMemo(() => {
+    const m = new Map();
+    for (const mtg of meetRows) {
+      if (String(mtg.status ?? '') === 'Cancelled') continue;
+      const d = mtg.date ? String(mtg.date).slice(0, 10) : '';
+      if (!d || d < todayKey) continue;
+      const pid = String(mtg.project?._id ?? mtg.project ?? '');
+      const cur = m.get(pid);
+      if (!cur || d < cur.date) m.set(pid, { title: mtg.title ?? 'Meeting', date: d });
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetsQ.data]);
+
+  const loadError =
+    delsQ.error?.message ?? rfisQ.error?.message ?? revsQ.error?.message ?? meetsQ.error?.message ?? projectsQ.error?.message;
+
+  return (
+    <div id="view-design-mgmt">
+      <div className="page-head">
+        <div className="page-title">Design Management</div>
+        <div className="page-sub">Design Management Coordinator Head (SPOC Head) workflow — coordination, deliverables and RFI tracking across disciplines</div>
+      </div>
+      <Panel title="About this workflow">
+        <p style={{ fontSize: 13.5, color: 'var(--ink-muted)', margin: 0 }}>
+          Coordinators (SPOCs) work under Design Management and report into this workflow through the
+          Technical Director – Design Management, Suresh Iyengar. Deliverable submissions, RFIs, queries
+          and escalations raised by a SPOC are reviewed and actioned by the Technical Director before
+          they can be closed.
+        </p>
+      </Panel>
+      <div className="kpi-grid cols-5">
+        <KpiCard label="Deliverables tracked" value={delRows.length} accent="blueprint" />
+        <KpiCard label="On track / submitted" value={onTrackDels.length} accent="forest" />
+        <KpiCard label="RFIs / queries open" value={openRfis.length} accent="amber" />
+        <KpiCard label="Pending Technical Director action" value={pendingTd} accent="rust" />
+        <KpiCard label="Closed this period" value={closedPeriod} accent="teal" />
+      </div>
+      {loadError && (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{loadError}</div>
+      )}
+      <Tabs tabs={ASSOC_TABS} active={tab} onChange={setTab} />
+
+      {tab === 'workflow' && (
+        <Panel title="Design Management Coordinator Head (SPOC Head) — workflow" sub="Each step has a concerned head who updates its status and adds input as the project moves through it. The Technical Director – Design Management and Founding/Working Directors can update any step.">
+          <div className="form-row" style={{ maxWidth: 360, marginBottom: 12 }}>
+            <label className="form-label">Project</label>
+            <select className="filter-select" style={{ width: '100%' }} value={activeProject} onChange={(e) => setProject(e.target.value)}>
+              {projectRows.map((p) => <option key={p._id} value={String(p._id)}>{p.name} ({p.code})</option>)}
+            </select>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>
+            {projectRows.find((p) => String(p._id) === String(activeProject))?.name ?? ''} · {doneSteps} of {tableSteps.length} steps completed
+          </p>
+          {design.isLoading ? <EmptyState text="Loading workflow…" /> : design.isError ? (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>{design.error.message}</div>
+          ) : tableSteps.length === 0 ? (
+            <EmptyState text="No design workflow found for this project yet." />
+          ) : (
+            <DataTable
+              columns={[
+                { key: 'n', label: '#' },
+                { key: 'label', label: 'Step' },
+                { key: 'owner', label: 'Concerned head', render: (r) => OWNER_LABELS[r.owner] ?? r.owner ?? '—' },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                { key: 'remarks', label: 'Input / remarks', render: (r) => r.remarks || '—' },
+                { key: 'date', label: 'Date', render: (r) => r.date ? fmtAssocDate(r.date) : '—' },
+              ]}
+              rows={tableSteps}
+              emptyText="No workflow steps yet."
+            />
+          )}
+        </Panel>
+      )}
+
+      {tab === 'matrix' && (
+        <Panel title="Responsibility & Communication Matrix">
+          <div className="form-row" style={{ maxWidth: 360, marginBottom: 12 }}>
+            <label className="form-label">Project</label>
+            <select className="filter-select" style={{ width: '100%' }} value={activeProject} onChange={(e) => setProject(e.target.value)}>
+              {projectRows.map((p) => <option key={p._id} value={String(p._id)}>{p.name} ({p.code})</option>)}
+            </select>
+          </div>
+          {design.isLoading ? <EmptyState text="Loading…" /> : design.isError ? (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>{design.error.message}</div>
+          ) : matrixRows.length === 0 ? (
+            <EmptyState text="No responsibility matrix recorded for this project yet — the Design Management Head maintains it." />
+          ) : (
+            <DataTable
+              columns={[
+                { key: 'discipline', label: 'Discipline / team' },
+                { key: 'spoc', label: 'SPOC / Coordinator' },
+                { key: 'td', label: 'Technical Director' },
+                { key: 'channel', label: 'Communication channel' },
+                { key: 'frequency', label: 'Frequency' },
+              ]}
+              rows={matrixRows.map((r, i) => ({
+                discipline: r.discipline ?? '—',
+                spoc: r.spoc ?? '—',
+                td: r.td ?? '—',
+                channel: r.channel ?? '—',
+                frequency: r.frequency ?? '—',
+                _k: i,
+              }))}
+              emptyText="No matrix rows yet."
+            />
+          )}
+        </Panel>
+      )}
+
+      {tab === 'deliverables' && (
+        <Panel title="Design deliverables tracker" sub="CD → SD → DD → TD → GFC — populated from each Principal Team Lead's deliverables list">
+          {delsQ.isLoading ? <EmptyState text="Loading…" /> : delsQ.isError ? (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>{delsQ.error.message}</div>
+          ) : (
+            <DataTable
+              columns={[
+                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+                { key: 'deliverable', label: 'Deliverable', render: (r) => r.deliverable ?? '—' },
+                { key: 'stage', label: 'Stage', render: (r) => r.stage ?? '—' },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill status={delivStatusLabel(r.status)}>{delivStatusLabel(r.status)}</StatusPill> },
+                { key: 'dueDate', label: 'Due date', render: (r) => fmtAssocDate(r.dueDate) },
+                { key: 'assignedBy', label: 'Assigned by', render: (r) => r.createdBy?.name ?? r.createdBy?.email ?? '—' },
+              ]}
+              rows={delRows}
+              emptyText="No deliverables tracked yet."
+            />
+          )}
+        </Panel>
+      )}
+
+      {tab === 'rfis' && (
+        <Panel title="RFIs / Queries / Design Issues / Client Comments" sub="Assigned to the responsible team, monitored against due dates, escalated when overdue or critical">
+          {rfisQ.isLoading ? <EmptyState text="Loading…" /> : rfisQ.isError ? (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>{rfisQ.error.message}</div>
+          ) : (
+            <DataTable
+              columns={[
+                { key: 'rfiNo', label: 'ID', render: (r) => r.rfiNo ?? String(r._id ?? r.id ?? '').slice(-6) },
+                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+                { key: 'type', label: 'Type', render: (r) => r.type ?? '—' },
+                { key: 'description', label: 'Description', render: (r) => r.description ?? '—' },
+                { key: 'team', label: 'Team', render: (r) => r.team ?? '—' },
+                { key: 'raisedBy', label: 'Raised by', render: (r) => rfiRaisedBy(r) },
+                { key: 'assignedTo', label: 'Assigned to', render: (r) => r.assignedTo ?? '—' },
+                { key: 'due', label: 'Due', render: (r) => fmtAssocDate(r.due) },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+                { key: 'action', label: '', render: (r) => (String(r.status ?? '') === 'Escalated' ? 'Awaiting Technical Director' : '—') },
+              ]}
+              rows={rfiRows}
+              emptyText="No RFIs yet."
+            />
+          )}
+        </Panel>
+      )}
+
+      {tab === 'updates' && (
+        <>
+          <Panel title="SPOC (Coordinator) activity" sub="Cab bookings and coordination alerts from the SPOC allocated to Design Management">
+            {cabsQ.isLoading ? <EmptyState text="Loading…" /> : cabsQ.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{cabsQ.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'date', label: 'Date', render: (r) => fmtAssocDate(r.date) },
+                  { key: 'purpose', label: 'Meeting / purpose', render: (r) => r.purpose ?? r.description ?? '—' },
+                  { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+                  { key: 'route', label: 'Pickup → Drop', render: (r) => [r.pickup || r.route, r.drop].filter(Boolean).join(' → ') || '—' },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+                ]}
+                rows={cabRows}
+                emptyText="No SPOC bookings yet."
+              />
+            )}
+          </Panel>
+          <Panel title="PTL updates" sub="Deliverables assigned across projects">
+            <DataTable
+              columns={[
+                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+                { key: 'deliverable', label: 'Deliverable', render: (r) => r.deliverable ?? '—' },
+                { key: 'stage', label: 'Stage', render: (r) => r.stage ?? '—' },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill status={delivStatusLabel(r.status)}>{delivStatusLabel(r.status)}</StatusPill> },
+              ]}
+              rows={delRows}
+              emptyText="No deliverables yet."
+            />
+          </Panel>
+          <Panel title="QS updates" sub="Recent work log entries">
+            {workQ.isLoading ? <EmptyState text="Loading…" /> : workQ.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{workQ.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'date', label: 'Date', render: (r) => fmtAssocDate(r.date) },
+                  { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+                  { key: 'workType', label: 'Work type', render: (r) => r.taskActivity ?? r.category ?? '—' },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status ?? 'Logged'}>{r.status ?? 'Logged'}</StatusPill> },
+                ]}
+                rows={qsWorkRows}
+                emptyText="No QS entries yet."
+              />
+            )}
+          </Panel>
+          <Panel title="QA/QC updates" sub="Recent site visits">
+            {visitsQ.isLoading ? <EmptyState text="Loading…" /> : visitsQ.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{visitsQ.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'visitId', label: 'Visit', render: (r) => r.visitId ?? String(r._id ?? r.id ?? '').slice(-6) },
+                  { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+                  { key: 'visitType', label: 'Type', render: (r) => r.visitType ?? '—' },
+                  { key: 'date', label: 'Date', render: (r) => fmtAssocDate(r.visitDate ?? r.date ?? r.createdAt) },
+                ]}
+                rows={recentVisits}
+                emptyText="No site visits yet."
+              />
+            )}
+          </Panel>
+          <Panel title="Client & Architect updates" sub="Items awaiting or recently given a response">
+            <DataTable
+              columns={[
+                { key: 'source', label: 'From', render: (r) => rfiSourceOf(r) },
+                { key: 'item', label: 'Item', render: (r) => r.description ?? '—' },
+                { key: 'since', label: 'Since', render: (r) => fmtAssocDate(r.createdAt) },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill status={rfiDisplayStatus(r)}>{rfiDisplayStatus(r)}</StatusPill> },
+              ]}
+              rows={awaitingRows}
+              emptyText="Nothing awaiting response."
+            />
+          </Panel>
+          <Panel title="Projects & meetings" sub="Every project the SPOC coordinates, with upcoming meetings">
+            <DataTable
+              columns={[
+                { key: 'project', label: 'Project', render: (r) => r.name ?? '—' },
+                { key: 'branch', label: 'Branch', render: (r) => r.branch ?? '—' },
+                { key: 'stage', label: 'Stage', render: (r) => r.currentStage ?? '—' },
+                { key: 'progress', label: 'Progress', render: (r) => (r.completion != null ? `${r.completion}%` : '—') },
+                {
+                  key: 'next', label: 'Next meeting', render: (r) => {
+                    const n = nextMeetingByProject.get(String(r._id));
+                    return n ? `${n.title} (${fmtAssocDate(n.date)})` : '—';
+                  },
+                },
+              ]}
+              rows={projectRows}
+              emptyText="No projects yet."
+            />
+          </Panel>
+        </>
+      )}
+    </div>
+  );
+}
+
+function rfiSourceOf(r) {
+  const role = String(r.raisedBy?.role ?? '').toLowerCase();
+  if (role === 'client') return 'Client';
+  if (role === 'architect') return 'Architect';
+  return r.team ?? 'Internal';
+}
+
+function rfiDisplayStatus(r) {
+  return String(r.status ?? '').toLowerCase() === 'responded' ? 'Responded' : 'Pending';
+}
 
 const arr = (v) => (Array.isArray(v) ? v : (v?.items ?? []));
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : '—');
@@ -371,6 +773,10 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
 
   if (DIRECTOR_ROLES.has(role)) {
     return <DirectorDesignView />;
+  }
+
+  if (role === 'assoc_technical_director') {
+    return <AssocTDDesignView />;
   }
 
   return (

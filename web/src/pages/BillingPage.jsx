@@ -137,6 +137,7 @@ export default function BillingPage({ bootstrap }) {
         <Panel title="Enter new billing details" sub="Log a claim submission by project, stage and amount"><form onSubmit={submitClaim} className="field-grid">
           <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={claim.project} onChange={(e) => setClaim({ ...claim, project: e.target.value })}><option value="">Select project</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name} ({p.code})</option>)}</select></div>
           <div className="form-row"><label className="form-label">Stage *</label><input required className="form-input" value={claim.stage} onChange={(e) => setClaim({ ...claim, stage: e.target.value })} /></div>
+          <div className="form-row"><label className="form-label">Service (for service-wise splits)</label><input className="form-input" value={claim.service} onChange={(e) => setClaim({ ...claim, service: e.target.value })} placeholder="e.g. Structural" /></div>
           <div className="form-row"><label className="form-label">Amount (₹) *</label><input required type="number" min="0" className="form-input" value={claim.amount} onChange={(e) => setClaim({ ...claim, amount: e.target.value })} /></div>
           <div className="form-row"><label className="form-label">Submission date</label><input type="date" className="form-input" value={claim.submissionDate} onChange={(e) => setClaim({ ...claim, submissionDate: e.target.value })} /></div>
           <button type="submit" className="btn-primary" disabled={addClaim.isPending}>{addClaim.isPending ? 'Saving…' : 'Submit billing entry'}</button>
@@ -185,11 +186,11 @@ export default function BillingPage({ bootstrap }) {
       </>}
 
       {tab === 'delays' && (isDirector ? (
-      <Panel title="Service-wise delays"><DataTable columns={[
+      <Panel title="Service-wise delay tracker" sub="Any service running past its planned completion date — the concerned team is notified automatically, with reason where available"><DataTable columns={[
         { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-        { key: 'service', label: 'Service / department' }, { key: 'stage', label: 'Current stage' },
-        { key: 'plannedCompletion', label: 'Planned completion', render: (r) => r.plannedCompletion ? new Date(r.plannedCompletion).toLocaleDateString() : '—' },
-        { key: 'currentStatus', label: 'Actual / current status' }, { key: 'delayDays', label: 'Delay (days)' }, { key: 'reason', label: 'Reason' },
+        { key: 'service', label: 'Service / Department' }, { key: 'stage', label: 'Current stage' },
+        { key: 'plannedCompletion', label: 'Planned completion', render: (r) => fmtShortDate(r.plannedCompletion) },
+        { key: 'currentStatus', label: 'Actual / current status' }, { key: 'delayDays', label: 'Delay (days)', render: (r) => r.delayDays ?? 0 }, { key: 'reason', label: 'Reason', render: (r) => r.reason || 'Not recorded' },
       ]} rows={stageRows.filter((r) => (r.delayDays ?? 0) > 0)} emptyText="No delay records have been entered." /></Panel>
       ) : (
       <Panel title="Service-wise delay tracker" sub="Any service running past its planned completion date — the concerned team is notified automatically, with reason where available"><DataTable columns={[
@@ -214,6 +215,7 @@ export default function BillingPage({ bootstrap }) {
           { key: 'scope', label: 'Scope of work', render: (r) => r.scope?.map((s) => `${s.service}: ${s.scope || '—'}`).join(' · ') || '—' },
           { key: 'quotedFee', label: 'Quoted fee', render: (r) => money(r.quotedFee ?? r.scopedTotal) },
           { key: 'hospitality', label: 'Hospitality', render: (r) => r.hospitality ? 'Client-arranged' : '—' },
+          { key: 'edit', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality })}>Edit</button> },
         ]} rows={quoteRows} emptyText="Create a project first to see quoted fees." /></Panel>
       </> : <>
         <Panel title="Project quoted fee" sub="The contracted fee per project — read automatically by Finance's Project Cost & Performance tracker, so it only needs to be set here"><DataTable columns={[
@@ -221,7 +223,7 @@ export default function BillingPage({ bootstrap }) {
           { key: 'scope', label: 'Scope of work', render: (r) => r.scope?.map((s) => `${s.service}: ${s.scope || '—'}`).join(' · ') || '—' },
           { key: 'quotedFee', label: 'Quoted fee', render: (r) => money(r.quotedFee ?? r.scopedTotal) },
           { key: 'hospitality', label: 'Hospitality (client-arr.)', render: (r) => r.hospitality ? 'Client-arranged' : '—' },
-          { key: 'edit', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => setQuote((q) => ({ ...q, project: r.id }))}>Edit</button> },
+          { key: 'edit', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality })}>Edit</button> },
         ]} rows={quoteRows} emptyText="Create a project first to see quoted fees." /></Panel>
         <Panel title="Set / update quoted fee"><form onSubmit={updateQuote} className="field-grid">
           <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={quote.project} onChange={(e) => setQuote({ ...quote, project: e.target.value })}><option value="">--Select project--</option>{quoteRows.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}</select></div>

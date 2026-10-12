@@ -55,7 +55,7 @@ router.patch('/travel/:id/settle', requireInternal(), settleTravel);
 router.get('/allowances/mine', requireInternal(), myAllowances);
 router.get('/allowances', requireInternal(), allowances.list);
 router.post('/allowances', requireInternal(), createAllowance);
-router.patch('/allowances/:id/decision', requireRole('finance', 'executive_director'), decideAllowance);
+router.patch('/allowances/:id/decision', requireRole('finance', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director'), decideAllowance);
 
 // Review scope helper + pending queue for approvers
 router.get('/scope', requireInternal(), teamScopeIds);

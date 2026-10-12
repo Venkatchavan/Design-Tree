@@ -26,15 +26,29 @@ async function weekHoursByEmployee(employeeIds) {
 
 export async function myTeams(req, res, next) {
   try {
-    const me = await (await import('../models/User.js')).User.findById(
-      req.user.id,
-    );
+    const { User } = await import('../models/User.js');
+    const me = await User.findById(req.user.id);
+    // Prefer the live DB role: JWTs are minted at login, so a recently
+    // re-roled user still carries the old role in their cookie until they
+    // sign in again.
+    const role = me?.role ?? req.user.role;
+    const memberSelect =
+      'firstName lastName empId designation department branch status experience';
+    // Associate / Associate Technical Directors oversee every team without
+    // necessarily being listed on them — return all teams (same shape as the
+    // scoped path) so My Team reflects instead of rendering "No team assigned".
+    if (role === 'associate_director' || role === 'assoc_technical_director') {
+      const teams = await Team.find({})
+        .populate('projects', 'name code branch currentStage status')
+        .populate('members.employee', memberSelect);
+      return res.status(200).json({ items: teams, total: teams.length });
+    }
     if (!me?.employee) return res.status(200).json({ items: [], total: 0 });
     const teams = await Team.find({
       $or: [{ lead: me.employee }, { 'members.employee': me.employee }],
     })
       .populate('projects', 'name code branch currentStage status')
-      .populate('members.employee', 'firstName lastName empId designation');
+      .populate('members.employee', memberSelect);
     return res.status(200).json({ items: teams, total: teams.length });
   } catch (err) {
     return next(err);

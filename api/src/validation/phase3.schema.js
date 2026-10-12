@@ -90,6 +90,7 @@ export const claimSchema = z
   .object({
     project: objectId,
     stage: strOpt,
+    service: strOpt,
     amount: z.number().min(0),
     submissionDate: dateOpt,
     status: z.enum(CLAIM_STATUSES).optional(),
@@ -119,6 +120,7 @@ export const paymentSchema = z
   .object({
     project: objectId,
     amount: z.number().min(0),
+    service: strOpt,
     date: dateOpt,
     reference: strOpt,
   })

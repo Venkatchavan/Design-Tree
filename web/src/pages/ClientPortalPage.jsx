@@ -92,8 +92,14 @@ export default function ClientPortalPage({ bootstrap, user, viewKey }) {
     () => (singleProject ? certRequests : certRequests.filter((r) => sameProject(r.project, effective))),
     [certRequests, singleProject, effective],
   );
+  // Drawings carry their project id (see myPortal) so multi-project logins
+  // see only the selected project's submissions here and in the ack queue.
+  const pDrawings = useMemo(
+    () => (singleProject ? drawings : drawings.filter((d) => sameProject(d.project, effective))),
+    [drawings, singleProject, effective],
+  );
 
-  const unacked = useMemo(() => drawings.filter((d) => !d.acknowledged && d.ack !== true), [drawings]);
+  const unacked = useMemo(() => pDrawings.filter((d) => !d.acknowledged && d.ack !== true), [pDrawings]);
   const ackDefault = unacked.length > 0 ? String(unacked[0].id ?? unacked[0]._id ?? '') : '';
 
   const ack = useMutation({
@@ -271,21 +277,58 @@ export default function ClientPortalPage({ bootstrap, user, viewKey }) {
   const clientName = effective?.clientName ?? effective?.client ?? data.clientName ?? data.client ?? '—';
   const responding = pRequests.find((r) => String(r._id ?? r.id) === respondId) ?? null;
 
+  // Multi-project switching: one login can be linked to several projects.
+  // The selector is always visible; search narrows it for long lists.
+  // Switching projects also clears any in-progress ack/respond drafts.
+  function pickProject(id) {
+    setSelectedId(String(id));
+    setSearch('');
+    setAckDrawing('');
+    setAckRemarks('');
+    setAckErr('');
+    setRespondId('');
+    setRespondRemarks('');
+  }
+
+  function pendingFor(p) {
+    const pid = projIdOf(p);
+    return pendingRequests.filter((r) => String(r.project?._id ?? r.project ?? '') === pid).length;
+  }
+
   return (
     <>
       <div className="page-head">
         <div className="page-title">Project Portal</div>
-        <div className="page-sub">Search projects</div>
+        <div className="page-sub">Your linked projects</div>
       </div>
       {!singleProject && (
-        <div style={{ marginBottom: 12 }}>
-          <input
-            className="form-input"
-            style={{ maxWidth: 260 }}
-            placeholder="Search projects"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        <div style={{ marginBottom: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <div className="form-row" style={{ minWidth: 240 }}>
+            <label className="form-label">Project ({projects.length} linked)</label>
+            <select
+              className="filter-select"
+              style={{ width: '100%' }}
+              value={effective ? projIdOf(effective) : ''}
+              onChange={(e) => pickProject(e.target.value)}
+              aria-label="Select project"
+            >
+              {projects.map((p) => (
+                <option key={projIdOf(p)} value={projIdOf(p)}>
+                  {p.name ?? p.code ?? '—'} ({pendingFor(p)} pending)
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row" style={{ minWidth: 200 }}>
+            <label className="form-label">Search projects</label>
+            <input
+              className="form-input"
+              style={{ maxWidth: 260 }}
+              placeholder="Search projects"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           {search.trim() !== '' && (
             <div className="search-results">
               {searchHits.length === 0 ? <div className="search-result-row">No matches.</div> : searchHits.map((p) => (
@@ -294,8 +337,8 @@ export default function ClientPortalPage({ bootstrap, user, viewKey }) {
                   className={`search-result-row${projIdOf(p) === projIdOf(effective) ? ' selected' : ''}`}
                   role="button"
                   tabIndex={0}
-                  onClick={() => { setSelectedId(projIdOf(p)); setSearch(''); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { setSelectedId(projIdOf(p)); setSearch(''); } }}
+                  onClick={() => pickProject(projIdOf(p))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') pickProject(projIdOf(p)); }}
                 >
                   {p.name ?? p.code ?? '—'}
                 </div>
@@ -446,7 +489,7 @@ export default function ClientPortalPage({ bootstrap, user, viewKey }) {
                     : <StatusPill tone="amber">Pending acknowledgement</StatusPill>),
                 },
               ]}
-              rows={drawings}
+              rows={pDrawings}
               emptyText="No drawings shared yet."
             />
           </Panel>

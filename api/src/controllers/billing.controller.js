@@ -308,6 +308,21 @@ export async function revenueByProject(_req, res, next) {
       const received = payments
         .filter((c) => c.project.toString() === pid)
         .reduce((s, c) => s + c.amount, 0);
+      const serviceRows = (p.scope ?? []).filter((x) => x.service).map((x) => {
+        const svcInvoiced = claims
+          .filter((c) => c.project.toString() === pid && c.service === x.service && (c.status === 'Billed' || c.status === 'Ready for billing'))
+          .reduce((s, c) => s + c.amount, 0);
+        const svcReceived = payments
+          .filter((c) => c.project.toString() === pid && c.service === x.service)
+          .reduce((s, c) => s + c.amount, 0);
+        return {
+          service: x.service,
+          contract: x.fee ?? 0,
+          invoiced: svcInvoiced,
+          received: svcReceived,
+          outstanding: (x.fee ?? 0) - svcInvoiced,
+        };
+      });
       return {
         id: pid,
         name: p.name,
@@ -318,9 +333,45 @@ export async function revenueByProject(_req, res, next) {
         pct: invoiced > 0 ? Math.round((received / invoiced) * 100) : 0,
         outstanding: invoiced - received,
         services: [...new Set((p.scope ?? []).map((x) => x.service).filter(Boolean))],
+        serviceRows,
       };
     });
-    return res.status(200).json({ items: rows, total: rows.length });
+    // Per-service splits for the Management Finance tab. Contract comes from
+    // scope fees (always present); invoiced/received only from service-tagged
+    // claims/payments — untagged legacy entries stay in project totals above.
+    const byService = (() => {
+      const m = new Map();
+      for (const p of projects) {
+        for (const s of p.scope ?? []) {
+          if (!s.service) continue;
+          const g = m.get(s.service) ?? { service: s.service, projects: new Set(), contract: 0, invoiced: 0, received: 0 };
+          g.projects.add(p._id.toString());
+          g.contract += s.fee ?? 0;
+          m.set(s.service, g);
+        }
+      }
+      for (const c of claims) {
+        if (!c.service) continue;
+        const g = m.get(c.service) ?? { service: c.service, projects: new Set(), contract: 0, invoiced: 0, received: 0 };
+        if ((c.status === 'Billed' || c.status === 'Ready for billing')) g.invoiced += c.amount;
+        m.set(c.service, g);
+      }
+      for (const pay of payments) {
+        if (!pay.service) continue;
+        const g = m.get(pay.service) ?? { service: pay.service, projects: new Set(), contract: 0, invoiced: 0, received: 0 };
+        g.received += pay.amount;
+        m.set(pay.service, g);
+      }
+      return [...m.values()].map((g) => ({
+        service: g.service,
+        projects: g.projects.size,
+        contract: g.contract,
+        invoiced: g.invoiced,
+        received: g.received,
+        pct: g.invoiced > 0 ? Math.round((g.received / g.invoiced) * 100) : 0,
+      })).sort((a, b) => b.contract - a.contract);
+    })();
+    return res.status(200).json({ items: rows, total: rows.length, byService });
   } catch (err) {
     return next(err);
   }

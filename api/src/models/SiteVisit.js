@@ -8,6 +8,10 @@ const siteVisitSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    // Human-readable sequence (SV-2026-001…) assigned on create via Counter.
+    visitId: { type: String, trim: true, uppercase: true, index: true },
+    // Construction phase context (e.g. Construction, Initial).
+    phase: { type: String, trim: true },
     visitType: { type: String, required: true, trim: true },
     date: { type: Date, default: Date.now },
     photos: [{ type: String, trim: true }],

@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { projectsApi } from '../lib/api.js';
+import { meApi, projectsApi } from '../lib/api.js';
 import { SUPER_ROLES } from '../lib/session.js';
 import { allowanceApi, holidaysApi, leaveApi, travelApi } from '../lib/phase4bApi.js';
 import { docsApi, fileUrl } from '../lib/docsApi.js';
+import { employeesApi } from '../lib/api.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -32,9 +33,8 @@ function quarterStart() {
   return new Date(now.getFullYear(), q, 1);
 }
 
-const LEAVE_TYPES = ['Casual', 'Sick', 'Earned', 'Unpaid', 'Other'];
-const TRAVEL_MODES = ['Train', 'Flight', 'Bus', 'Car', 'Other'];
-const REQ_TYPES = ['LA', 'Cab', 'Other'];
+const LEAVE_TYPES = ['Casual leave', 'Sick leave', 'Earned leave', 'Unpaid leave', 'Other'];
+const TRAVEL_MODES = ['Train', 'Flight', 'Bus', 'Taxi', 'Car', 'Other'];
 
 export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
   void user;
@@ -44,6 +44,15 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
   const roleKey = bootstrap?.role?.key ?? '';
 
   // --- queries ---
+  const meQ = useQuery({ queryKey: ['me'], queryFn: meApi });
+  const myEmpId = meQ.data?.user?.employee ?? null;
+  const employeeQ = useQuery({
+    queryKey: ['employee-self', myEmpId],
+    queryFn: () => employeesApi.get(myEmpId),
+    enabled: !!myEmpId,
+    retry: false,
+  });
+  const selfEmployee = employeeQ.data?.item ?? employeeQ.data?.employee ?? employeeQ.data ?? null;
   const leaveMineQ = useQuery({ queryKey: ['leave-mine'], queryFn: leaveApi.mine });
   const travelMineQ = useQuery({ queryKey: ['travel-mine'], queryFn: travelApi.mine });
   const allowMineQ = useQuery({ queryKey: ['allowance-mine'], queryFn: allowanceApi.mine });
@@ -98,8 +107,8 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
   const awaitingCount = filteredQueue.leave.length + filteredQueue.travel.length + filteredQueue.allowance.length;
 
   const myPending = useMemo(
-    () => leaveMine.filter((r) => isPending(r.status)).length,
-    [leaveMine],
+    () => [...leaveMine, ...travelMine, ...allowMine].filter((r) => isPending(r.status)).length,
+    [leaveMine, travelMine, allowMine],
   );
   const travelQuarter = useMemo(() => {
     const qs = quarterStart();
@@ -121,19 +130,20 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
   return (
     <>
       <div className="page-head">
-        <div className="page-title">Leave & travel</div>
-        <div className="page-sub">Requests, settlements and approvals — live from the leave-travel API.</div>
+        <div className="page-title">Leave & Travel</div>
+        <div className="page-sub">Submit and track your own leave and travel requests</div>
       </div>
-      <div className="kpi-grid">
-        <KpiCard label="My pending leave" value={leaveMineQ.isLoading ? '…' : myPending} accent="amber" />
+      <div className="kpi-grid cols-3">
+        <KpiCard label="My pending requests" value={leaveMineQ.isLoading ? '…' : myPending} accent="amber" />
         <KpiCard label="Awaiting my approval" value={queueQ.isLoading ? '…' : awaitingCount} accent="rust" />
-        <KpiCard label="Travel this quarter" value={travelMineQ.isLoading ? '…' : travelQuarter} accent="blueprint" />
+        <KpiCard label="Travel this quarter" value={travelMineQ.isLoading ? '…' : `${travelQuarter} trips`} accent="blueprint" />
       </div>
       <Tabs
         tabs={[
           { key: 'leave', label: 'Leave request' },
           { key: 'travel', label: 'Travel request' },
-          { key: 'allowance', label: 'LA / Cab / Other' },
+          { key: 'allowance', label: 'LA / Cab / Other requests' },
+          { key: 'approvals', label: 'Approvals' },
         ]}
         active={tab}
         onChange={setTab}
@@ -144,6 +154,7 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
           loading={leaveMineQ.isLoading}
           error={leaveMineQ.error}
           holidays={holidaysQ.data?.items ?? []}
+          employee={selfEmployee}
           onDone={invalidateAll}
         />
       )}
@@ -153,13 +164,23 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
       {tab === 'allowance' && (
         <AllowanceTab mine={allowMine} loading={allowMineQ.isLoading} error={allowMineQ.error} projects={projects} onDone={invalidateAll} />
       )}
+      {tab === 'approvals' && (
+        <ApprovalsTab
+          queue={filteredQueue}
+          loading={queueQ.isLoading}
+          error={queueQ.error}
+          roleKey={roleKey}
+          meName={meQ.data?.user?.name ?? ''}
+          onDone={invalidateAll}
+        />
+      )}
     </>
   );
 }
 
-function LeaveTab({ mine, loading, error, holidays, onDone }) {
+function LeaveTab({ mine, loading, error, holidays, employee, onDone }) {
   const queryClient = useQueryClient();
-  const [leaveType, setLeaveType] = useState('Casual');
+  const [leaveType, setLeaveType] = useState('Casual leave');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [reason, setReason] = useState('');
@@ -188,11 +209,19 @@ function LeaveTab({ mine, loading, error, holidays, onDone }) {
     create.mutate({ leaveType, from, to, reason: reason || undefined });
   }
 
+  const empName = [employee?.firstName, employee?.lastName].filter(Boolean).join(' ') || employee?.empId || '';
+
   return (
     <>
-      <Panel title="New leave request (employee auto-resolved)">
+      <Panel title="New leave request">
         <form onSubmit={submit}>
           <div className="field-grid">
+            {empName && (
+              <div className="form-row"><label className="form-label">Employee</label><div style={{ fontSize: 13.5 }}>{empName}{employee?.designation ? ` · ${employee.designation}` : ''}</div></div>
+            )}
+            {employee?.reportingManager && (
+              <div className="form-row"><label className="form-label">Reporting manager / PTL</label><div style={{ fontSize: 13.5 }}>{employee.reportingManager}</div></div>
+            )}
             <div className="form-row">
               <label className="form-label">Leave type</label>
               <select className="filter-select" style={{ width: '100%' }} value={leaveType} onChange={(e) => setLeaveType(e.target.value)}>
@@ -200,21 +229,21 @@ function LeaveTab({ mine, loading, error, holidays, onDone }) {
               </select>
             </div>
             <div className="form-row">
-              <label className="form-label">From</label>
+              <label className="form-label">From date</label>
               <input className="form-input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
             </div>
             <div className="form-row">
-              <label className="form-label">To</label>
+              <label className="form-label">To date</label>
               <input className="form-input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
             </div>
           </div>
           <div className="form-row">
             <label className="form-label">Reason</label>
-            <textarea className="form-input" value={reason} onChange={(e) => setReason(e.target.value)} />
+            <textarea className="form-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Brief reason for leave" />
           </div>
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
           <button type="submit" className="btn-primary" disabled={create.isPending}>
-            {create.isPending ? 'Submitting…' : 'Submit leave'}
+            {create.isPending ? 'Submitting…' : 'Submit leave request'}
           </button>
         </form>
       </Panel>
@@ -227,9 +256,10 @@ function LeaveTab({ mine, loading, error, holidays, onDone }) {
               { key: 'leaveType', label: 'Type' },
               { key: 'from', label: 'From', render: (r) => fmtDate(r.from) },
               { key: 'to', label: 'To', render: (r) => fmtDate(r.to) },
-              { key: 'days', label: 'Days (auto)' },
+              { key: 'days', label: 'Days', render: (r) => r.days ?? '—' },
+              { key: 'reason', label: 'Reason', render: (r) => r.reason ?? '—' },
+              { key: 'approver', label: 'Approver', render: (r) => r.decidedBy?.name ?? r.decidedBy?.email ?? '—' },
               { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
-              { key: 'remarks', label: 'Remarks', render: (r) => r.remarks ?? r.decisionRemarks ?? '—' },
             ]}
             rows={mine}
             emptyText="No leave requests yet."
@@ -312,11 +342,11 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
                 ))}
               </select>
             </div>
-            <div className="form-row"><label className="form-label">Purpose</label><input className="form-input" value={purpose} onChange={(e) => setPurpose(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">From city</label><input className="form-input" value={fromCity} onChange={(e) => setFromCity(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">To city</label><input className="form-input" value={toCity} onChange={(e) => setToCity(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">Departure</label><input className="form-input" type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">Return</label><input className="form-input" type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} /></div>
+            <div className="form-row"><label className="form-label">Purpose</label><input className="form-input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Site visit" /></div>
+            <div className="form-row"><label className="form-label">From city</label><input className="form-input" value={fromCity} onChange={(e) => setFromCity(e.target.value)} placeholder="Departure city" /></div>
+            <div className="form-row"><label className="form-label">To city</label><input className="form-input" value={toCity} onChange={(e) => setToCity(e.target.value)} placeholder="Destination city" /></div>
+            <div className="form-row"><label className="form-label">Departure date</label><input className="form-input" type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} /></div>
+            <div className="form-row"><label className="form-label">Return date</label><input className="form-input" type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} /></div>
             <div className="form-row">
               <label className="form-label">Mode</label>
               <select className="filter-select" style={{ width: '100%' }} value={mode} onChange={(e) => setMode(e.target.value)}>
@@ -324,12 +354,12 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
                 {TRAVEL_MODES.map((m) => (<option key={m} value={m}>{m}</option>))}
               </select>
             </div>
-            <div className="form-row"><label className="form-label">Est. expense</label><input className="form-input" type="number" min="0" value={estExpense} onChange={(e) => setEstExpense(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">Advance requested</label><input className="form-input" type="number" min="0" value={advanceRequested} onChange={(e) => setAdvanceRequested(e.target.value)} /></div>
+            <div className="form-row"><label className="form-label">Estimated expense (₹)</label><input className="form-input" type="number" min="0" value={estExpense} onChange={(e) => setEstExpense(e.target.value)} /></div>
+            <div className="form-row"><label className="form-label">Advance amount requested (₹)</label><input className="form-input" type="number" min="0" value={advanceRequested} onChange={(e) => setAdvanceRequested(e.target.value)} /></div>
           </div>
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
           <button type="submit" className="btn-primary" disabled={create.isPending}>
-            {create.isPending ? 'Submitting…' : 'Submit travel'}
+            {create.isPending ? 'Submitting…' : 'Submit travel request'}
           </button>
         </form>
       </Panel>
@@ -339,13 +369,21 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
         ) : (
           <DataTable
             columns={[
+              { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
               { key: 'route', label: 'Route', render: (r) => `${r.fromCity ?? ''} → ${r.toCity ?? ''}` },
               { key: 'dates', label: 'Dates', render: (r) => `${fmtDate(r.departureDate)} / ${fmtDate(r.returnDate)}` },
-              { key: 'estExpense', label: 'Est.', render: (r) => r.estExpense ?? '—' },
-              { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+              { key: 'mode', label: 'Mode', render: (r) => r.mode ?? '—' },
+              { key: 'advanceRequested', label: 'Advance req.', render: (r) => r.advanceRequested ? `₹${Number(r.advanceRequested).toLocaleString('en-IN')}` : '—' },
+              { key: 'advanceReceived', label: 'Advance recd.', render: (r) => r.advanceReceived ? `₹${Number(r.advanceReceived).toLocaleString('en-IN')}` : '—' },
+              { key: 'actualExpense', label: 'Actual expense', render: (r) => r.actualExpense ? `₹${Number(r.actualExpense).toLocaleString('en-IN')}` : '—' },
+              { key: 'hospitality', label: 'Hospitality (client-arr.)', render: (r) => r.hospitalityAmount ? `₹${Number(r.hospitalityAmount).toLocaleString('en-IN')}` : '—' },
+              { key: 'balance', label: 'Balance', render: (r) => (r.balance ?? null) != null ? `₹${Number(r.balance).toLocaleString('en-IN')}` : '—' },
+              { key: 'settlement', label: 'Settlement', render: (r) => r.settlementStatus ?? '—' },
+              { key: 'settledOn', label: 'Settled on', render: (r) => fmtDate(r.settlementDate) },
+              { key: 'approval', label: 'Approval', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
               {
                 key: 'settle',
-                label: 'Settle',
+                label: 'Actions',
                 render: (r) => (
                   <button type="button" className="approve-btn" onClick={() => { setSettleId(r._id ?? r.id); setSettleResult(r.balance != null || r.actualExpense != null ? r : null); }}>
                     Settle
@@ -362,6 +400,7 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
         <SettleModal
           travelId={settleId}
           initialResult={settleResult}
+          trips={mine}
           onClose={() => { setSettleId(null); setSettleResult(null); }}
           onDone={onDone}
         />
@@ -370,23 +409,33 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
   );
 }
 
-function SettleModal({ travelId, initialResult, onClose, onDone }) {
-  const [advanceReceived, setAdvanceReceived] = useState('');
-  const [fare, setFare] = useState('');
+const SETTLE_LINES = [
+  { key: 'fare', label: 'Travel fare' },
+  { key: 'lodgingAmount', label: 'Lodging' },
+  { key: 'foodPerDiem', label: 'Food & per diem' },
+  { key: 'localConveyance', label: 'Local conveyance' },
+  { key: 'misc', label: 'Miscellaneous' },
+];
+const SETTLE_STATUSES = ['Settled', 'Pending'];
+
+function SettleModal({ travelId, initialResult, trips, onClose, onDone }) {
+  const [tripId, setTripId] = useState(travelId);
+  const trip = (trips ?? []).find((t) => String(t._id ?? t.id) === String(tripId)) ?? initialResult ?? null;
+  const advanceReceived = trip?.advanceReceived != null ? String(trip.advanceReceived) : '';
+  const [amounts, setAmounts] = useState({ fare: '', lodgingAmount: '', foodPerDiem: '', localConveyance: '', misc: '' });
+  const [ticked, setTicked] = useState([]);
   const [hotel, setHotel] = useState('');
   const [location, setLocation] = useState('');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [nights, setNights] = useState('');
-  const [foodPerDiem, setFoodPerDiem] = useState('');
-  const [localConveyance, setLocalConveyance] = useState('');
-  const [misc, setMisc] = useState('');
-  const [hospitality, setHospitality] = useState('');
+  const [status, setStatus] = useState('Settled');
+  const [settlementDate, setSettlementDate] = useState(new Date().toISOString().slice(0, 10));
   const [err, setErr] = useState('');
   const [result, setResult] = useState(initialResult);
 
   const settle = useMutation({
-    mutationFn: (body) => travelApi.settle(travelId, body),
+    mutationFn: (body) => travelApi.settle(tripId, body),
     onSuccess: (data) => {
       setResult(data?.item ?? data ?? null);
       setErr('');
@@ -395,13 +444,36 @@ function SettleModal({ travelId, initialResult, onClose, onDone }) {
     onError: (e) => setErr(e.message),
   });
 
+  function setAmount(key, v) {
+    setAmounts((p) => ({ ...p, [key]: v }));
+  }
+
+  function toggleTick(key) {
+    setTicked((p) => (p.includes(key) ? p.filter((x) => x !== key) : [...p, key]));
+  }
+
+  function onDate(key, v) {
+    if (key === 'in') setCheckIn(v);
+    else setCheckOut(v);
+    const a = key === 'in' ? v : checkIn;
+    const b = key === 'out' ? v : checkOut;
+    if (a && b) {
+      const n = Math.round((new Date(b) - new Date(a)) / 86400000);
+      setNights(Number.isFinite(n) && n >= 0 ? String(n) : '');
+    }
+  }
+
+  const num = (v) => (v === '' || v == null ? 0 : Number(v) || 0);
+  const untickedTotal = SETTLE_LINES.filter((l) => !ticked.includes(l.key)).reduce((s, l) => s + num(amounts[l.key]), 0);
+  const tickedTotal = SETTLE_LINES.filter((l) => ticked.includes(l.key)).reduce((s, l) => s + num(amounts[l.key]), 0);
+  const previewBalance = num(advanceReceived) - untickedTotal;
+
   function submit(e) {
     e.preventDefault();
     setErr('');
-    const num = (v) => (v === '' ? undefined : Number(v));
-    settle.mutate({
-      advanceReceived: num(advanceReceived),
-      fare: num(fare),
+    const body = {
+      advanceReceived: advanceReceived === '' ? undefined : Number(advanceReceived),
+      fare: amounts.fare === '' ? undefined : Number(amounts.fare),
       lodging: {
         hotel: hotel || undefined,
         location: location || undefined,
@@ -409,28 +481,73 @@ function SettleModal({ travelId, initialResult, onClose, onDone }) {
         checkOut: checkOut || undefined,
         nights: nights === '' ? undefined : Number(nights),
       },
-      foodPerDiem: num(foodPerDiem),
-      localConveyance: num(localConveyance),
-      misc: num(misc),
-      hospitality: num(hospitality),
-    });
+      lodgingAmount: amounts.lodgingAmount === '' ? undefined : Number(amounts.lodgingAmount),
+      foodPerDiem: amounts.foodPerDiem === '' ? undefined : Number(amounts.foodPerDiem),
+      localConveyance: amounts.localConveyance === '' ? undefined : Number(amounts.localConveyance),
+      misc: amounts.misc === '' ? undefined : Number(amounts.misc),
+      hospitalityLines: ticked,
+      settlementStatus: status || undefined,
+      settlementDate: settlementDate || undefined,
+    };
+    settle.mutate(body);
   }
 
   return (
-    <Modal title="Travel settlement (own trip)" onClose={onClose}>
+    <Modal title="Settle travel expense" onClose={onClose} wide>
+      <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>
+        Complete this once the trip is done, to reconcile advance vs. actual spend
+      </p>
       <form onSubmit={submit}>
         <div className="field-grid">
-          <div className="form-row"><label className="form-label">Advance received</label><input className="form-input" type="number" min="0" value={advanceReceived} onChange={(e) => setAdvanceReceived(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Fare</label><input className="form-input" type="number" min="0" value={fare} onChange={(e) => setFare(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Hotel</label><input className="form-input" value={hotel} onChange={(e) => setHotel(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Location</label><input className="form-input" value={location} onChange={(e) => setLocation(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Check-in</label><input className="form-input" type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Check-out</label><input className="form-input" type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} /></div>
+          <div className="form-row">
+            <label className="form-label">Trip to settle</label>
+            <select className="filter-select" style={{ width: '100%' }} value={tripId ?? ''} onChange={(e) => setTripId(e.target.value)}>
+              <option value="">Select a trip…</option>
+              {(trips ?? []).map((t) => (
+                <option key={String(t._id ?? t.id)} value={String(t._id ?? t.id)}>
+                  {t.purpose ?? `${t.fromCity ?? ''} → ${t.toCity ?? ''}`} · {fmtDate(t.departureDate)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row"><label className="form-label">Advance amount received?</label><div style={{ fontSize: 13.5 }}>{trip?.advanceReceived ? `₹${Number(trip.advanceReceived).toLocaleString('en-IN')}` : 'No'}</div></div>
+        </div>
+        <div className="section-label">Expense split</div>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
+          Hospitality (hotel, food, travel/transport) arranged directly by the client? Tick “Client arranged” on that line — it will be excluded from your reimbursement, but still recorded separately for reporting.
+        </p>
+        <div className="field-grid">
+          {SETTLE_LINES.map((l) => (
+            <div className="form-row" key={l.key}>
+              <label className="form-label">{l.label} (₹)</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input className="form-input" type="number" min="0" value={amounts[l.key]} onChange={(e) => setAmount(l.key, e.target.value)} style={{ flex: 1 }} />
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                  <input type="checkbox" checked={ticked.includes(l.key)} onChange={() => toggleTick(l.key)} />
+                  Client arranged
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="section-label">Accommodation details (optional — fill in if a hotel stay was involved)</div>
+        <div className="field-grid">
+          <div className="form-row"><label className="form-label">Hotel name</label><input className="form-input" value={hotel} onChange={(e) => setHotel(e.target.value)} placeholder="e.g. ITC Grand Chola, Chennai" /></div>
+          <div className="form-row"><label className="form-label">Location</label><input className="form-input" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="City, state" /></div>
+          <div className="form-row"><label className="form-label">Check-in</label><input className="form-input" type="datetime-local" value={checkIn} onChange={(e) => onDate('in', e.target.value)} /></div>
+          <div className="form-row"><label className="form-label">Check-out</label><input className="form-input" type="datetime-local" value={checkOut} onChange={(e) => onDate('out', e.target.value)} /></div>
           <div className="form-row"><label className="form-label">Nights</label><input className="form-input" type="number" min="0" value={nights} onChange={(e) => setNights(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Food per diem</label><input className="form-input" type="number" min="0" value={foodPerDiem} onChange={(e) => setFoodPerDiem(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Local conveyance</label><input className="form-input" type="number" min="0" value={localConveyance} onChange={(e) => setLocalConveyance(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Misc</label><input className="form-input" type="number" min="0" value={misc} onChange={(e) => setMisc(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Hospitality</label><input className="form-input" type="number" min="0" value={hospitality} onChange={(e) => setHospitality(e.target.value)} /></div>
+        </div>
+        <div className="field-grid">
+          <div className="form-row"><label className="form-label">Actual expense (reimbursable)</label><div style={{ fontSize: 13.5 }} className="mono">₹{untickedTotal.toLocaleString('en-IN')}</div></div>
+          <div className="form-row"><label className="form-label">Hospitality (client-arranged)</label><div style={{ fontSize: 13.5 }} className="mono">₹{tickedTotal.toLocaleString('en-IN')}</div></div>
+          <div className="form-row"><label className="form-label">Balance</label><div style={{ fontSize: 13.5 }} className="mono">₹{previewBalance.toLocaleString('en-IN')}</div></div>
+          <div className="form-row"><label className="form-label">Settlement status</label>
+            <select className="filter-select" style={{ width: '100%' }} value={status} onChange={(e) => setStatus(e.target.value)}>
+              {SETTLE_STATUSES.map((s) => (<option key={s} value={s}>{s}</option>))}
+            </select>
+          </div>
+          <div className="form-row"><label className="form-label">Settlement date</label><input className="form-input" type="date" value={settlementDate} onChange={(e) => setSettlementDate(e.target.value)} /></div>
         </div>
         {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
         {result && (
@@ -439,12 +556,157 @@ function SettleModal({ travelId, initialResult, onClose, onDone }) {
             {' '}· Balance: <b className="mono">{result.balance ?? result?.item?.balance ?? '—'}</b>
           </p>
         )}
-        <button type="submit" className="btn-primary" disabled={settle.isPending}>
-          {settle.isPending ? 'Settling…' : 'Submit settlement'}
+        <button type="submit" className="btn-primary" disabled={settle.isPending || !tripId}>
+          {settle.isPending ? 'Saving…' : 'Save settlement'}
         </button>
       </form>
     </Modal>
   );
+}
+
+function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
+  const queryClient = useQueryClient();
+  const [remarks, setRemarks] = useState({});
+  const [err, setErr] = useState('');
+
+  const decidedQ = useQuery({ queryKey: ['leave-decided'], queryFn: () => leaveApi.list({}) });
+
+  function setRemark(id, v) {
+    setRemarks((p) => ({ ...p, [id]: v }));
+  }
+
+  async function decide(kind, id, status) {
+    setErr('');
+    const remark = (remarks[id] ?? '').trim() || undefined;
+    try {
+      if (kind === 'leave') await leaveApi.decide(id, { status, remarks: remark });
+      else if (kind === 'travel') await travelApi.decide(id, { status, remarks: remark });
+      else await allowanceApi.decide(id, { status, remarks: remark });
+      onDone();
+      queryClient.invalidateQueries({ queryKey: ['leave-decided'] });
+      setRemarks((p) => ({ ...p, [id]: '' }));
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  function decideButtons(kind, r) {
+    const id = String(r._id ?? r.id);
+    return (
+      <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          className="form-input"
+          style={{ minWidth: 140 }}
+          value={remarks[id] ?? ''}
+          onChange={(e) => setRemark(id, e.target.value)}
+          placeholder="Remarks (required to reject leave)"
+        />
+        <button type="button" className="approve-btn" onClick={() => decide(kind, id, 'Approved')}>Approve</button>
+        <button type="button" className="approve-btn" onClick={() => decide(kind, id, 'Rejected')}>Reject</button>
+      </span>
+    );
+  }
+
+  const empNameOf = (e) => (e && typeof e === 'object'
+    ? [e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || '—'
+    : '—');
+
+  const decisions = useMemo(() => arr(decidedQ.data?.items ?? decidedQ.data)
+    .filter((r) => String(r.status ?? '').toLowerCase() !== 'pending')
+    .sort((a, b) => String(b.decidedAt ?? b.updatedAt ?? '').localeCompare(String(a.decidedAt ?? a.updatedAt ?? '')))
+    .slice(0, 50), [decidedQ.data]);
+
+  const scopeSub = ['hr', 'finance', 'admin_billing', 'admin'].includes(roleKey) || SUPER_ROLES.includes(roleKey)
+    ? 'All employees'
+    : `Employees in scope for ${meName || 'you'}`;
+
+  return (
+    <>
+      <Panel title="Leave approvals" sub={scopeSub}>
+        {loading ? <EmptyState text="Loading…" /> : error ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>
+        ) : queue.leave.length === 0 ? (
+          <EmptyState text="Nothing pending." />
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'employee', label: 'Employee', render: (r) => empNameOf(r.employee) },
+              { key: 'leaveType', label: 'Type' },
+              { key: 'from', label: 'From', render: (r) => fmtDate(r.from) },
+              { key: 'to', label: 'To', render: (r) => fmtDate(r.to) },
+              { key: 'reason', label: 'Reason', render: (r) => r.reason ?? '—' },
+              { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+              { key: 'decide', label: '', render: (r) => decideButtons('leave', r) },
+            ]}
+            rows={queue.leave}
+            emptyText="Nothing pending."
+          />
+        )}
+      </Panel>
+      <Panel title="Travel approvals">
+        {loading ? <EmptyState text="Loading…" /> : error ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>
+        ) : queue.travel.length === 0 ? (
+          <EmptyState text="Nothing pending." />
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'employee', label: 'Employee', render: (r) => empNameOf(r.employee) },
+              { key: 'route', label: 'Route', render: (r) => `${r.fromCity ?? ''} → ${r.toCity ?? ''}` },
+              { key: 'dates', label: 'Dates', render: (r) => `${fmtDate(r.departureDate)} / ${fmtDate(r.returnDate)}` },
+              { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+              { key: 'decide', label: '', render: (r) => decideButtons('travel', r) },
+            ]}
+            rows={queue.travel}
+            emptyText="Nothing pending."
+          />
+        )}
+      </Panel>
+      <Panel title="LA / Cab / Other approvals">
+        {loading ? <EmptyState text="Loading…" /> : error ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>
+        ) : queue.allowance.length === 0 ? (
+          <EmptyState text="Nothing pending." />
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'employee', label: 'Employee', render: (r) => empNameOf(r.employee) },
+              { key: 'reqType', label: 'Type' },
+              { key: 'amount', label: 'Amount', render: (r) => `₹${Number(r.amount ?? 0).toLocaleString('en-IN')}` },
+              { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+              { key: 'decide', label: '', render: (r) => decideButtons('allowance', r) },
+            ]}
+            rows={queue.allowance}
+            emptyText="Nothing pending."
+          />
+        )}
+      </Panel>
+      {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
+      <Panel title="Recent leave decisions" sub="Every approval and rejection across the organisation, with remarks where rejected">
+        {decidedQ.isLoading ? <EmptyState text="Loading…" /> : decidedQ.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{decidedQ.error.message}</div>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'employee', label: 'Employee', render: (r) => empNameOf(r.employee) },
+              { key: 'role', label: 'Role', render: (r) => r.employee?.designation ?? '—' },
+              { key: 'leaveType', label: 'Leave type' },
+              { key: 'status', label: 'Decision', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+              { key: 'remarks', label: 'Remarks', render: (r) => r.remarks ?? '—' },
+              { key: 'decidedBy', label: 'Decided by', render: (r) => r.decidedBy?.name ?? r.decidedBy?.email ?? '—' },
+              { key: 'decidedAt', label: 'Date', render: (r) => fmtDate(r.decidedAt) },
+            ]}
+            rows={decisions}
+            emptyText="No decisions recorded yet."
+          />
+        )}
+      </Panel>
+    </>
+  );
+}
+
+function arr(v) {
+  return Array.isArray(v) ? v : [];
 }
 
 function AllowanceTab({ mine, loading, error, projects, onDone }) {
@@ -453,13 +715,6 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
   const [project, setProject] = useState('');
   const [amount, setAmount] = useState('');
   const [days, setDays] = useState('');
-  const [route, setRoute] = useState('');
-  const [pickup, setPickup] = useState('');
-  const [drop, setDrop] = useState('');
-  const [meetingTime, setMeetingTime] = useState('');
-  const [vehicle, setVehicle] = useState('');
-  const [passengers, setPassengers] = useState('');
-  const [description, setDescription] = useState('');
   const [purpose, setPurpose] = useState('');
   const [billFile, setBillFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -470,15 +725,23 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
     setProject('');
     setAmount('');
     setDays('');
-    setRoute('');
-    setPickup('');
-    setDrop('');
-    setMeetingTime('');
-    setVehicle('');
-    setPassengers('');
-    setDescription('');
     setPurpose('');
     setBillFile(null);
+  }
+
+  function reqTypeLabel(t) {
+    if (t === 'LA') return 'Local Allowance';
+    if (t === 'Cab') return 'Cab booking';
+    return t ?? '—';
+  }
+
+  function reqDetails(r) {
+    if (r.reqType === 'LA') {
+      return r.days != null ? `${r.days} day${Number(r.days) === 1 ? '' : 's'}` : (r.description ?? r.purpose ?? '—');
+    }
+    const route = r.route ?? [r.pickup, r.drop].filter(Boolean).join(' → ');
+    const parts = [route, r.meetingTime, r.vehicle, r.passengers != null ? `${r.passengers} pax` : ''].filter(Boolean);
+    return parts.join(' · ') || (r.description ?? r.purpose ?? '—');
   }
 
   async function submit(e) {
@@ -492,13 +755,6 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
         project: project || undefined,
         amount: amount === '' ? undefined : Number(amount),
         days: days === '' ? undefined : Number(days),
-        route: route || undefined,
-        pickup: pickup || undefined,
-        drop: drop || undefined,
-        meetingTime: meetingTime || undefined,
-        vehicle: vehicle || undefined,
-        passengers: passengers === '' ? undefined : Number(passengers),
-        description: description || undefined,
         purpose: purpose || undefined,
       });
       const id = created?.item?._id ?? created?.item?.id;
@@ -516,16 +772,17 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
 
   return (
     <>
-      <Panel title="New LA / Cab / Other request">
+      <Panel title="New request" sub="Local Allowance, cab booking or any other travel-related expense, with the bill attached">
         <form onSubmit={submit}>
           <div className="field-grid">
             <div className="form-row">
-              <label className="form-label">Type</label>
+              <label className="form-label">Request type</label>
               <select className="filter-select" style={{ width: '100%' }} value={reqType} onChange={(e) => setReqType(e.target.value)}>
-                {REQ_TYPES.map((t) => (<option key={t} value={t}>{t}</option>))}
+                <option value="LA">Local Allowance</option>
+                <option value="Cab">Cab booking</option>
+                <option value="Other">Other</option>
               </select>
             </div>
-            <div className="form-row"><label className="form-label">Date</label><input className="form-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
             <div className="form-row">
               <label className="form-label">Project</label>
               <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
@@ -535,38 +792,36 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
                 ))}
               </select>
             </div>
-            <div className="form-row"><label className="form-label">Amount</label><input className="form-input" type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">Days</label><input className="form-input" type="number" min="0" value={days} onChange={(e) => setDays(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">Route</label><input className="form-input" value={route} onChange={(e) => setRoute(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">Pickup</label><input className="form-input" value={pickup} onChange={(e) => setPickup(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">Drop</label><input className="form-input" value={drop} onChange={(e) => setDrop(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">Meeting time</label><input className="form-input" value={meetingTime} onChange={(e) => setMeetingTime(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">Vehicle</label><input className="form-input" value={vehicle} onChange={(e) => setVehicle(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">Passengers</label><input className="form-input" type="number" min="0" value={passengers} onChange={(e) => setPassengers(e.target.value)} /></div>
+            <div className="form-row"><label className="form-label">Date</label><input className="form-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+            <div className="form-row"><label className="form-label">Amount (₹)</label><input className="form-input" type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+            <div className="form-row"><label className="form-label">No. of days</label><input className="form-input" type="number" min="0" value={days} onChange={(e) => setDays(e.target.value)} placeholder="e.g. 1" /></div>
           </div>
-          <div className="form-row"><label className="form-label">Description</label><input className="form-input" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Purpose</label><input className="form-input" value={purpose} onChange={(e) => setPurpose(e.target.value)} /></div>
-          <div className="form-row"><label className="form-label">Bill / invoice (attachment)</label><input type="file" onChange={(e) => setBillFile(e.target.files?.[0] ?? null)} /></div>
+          <div className="form-row"><label className="form-label">Purpose / remarks</label><input className="form-input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Brief purpose for this expense" /></div>
+          <div className="form-row"><label className="form-label">Bill / invoice attachment</label><input type="file" onChange={(e) => setBillFile(e.target.files?.[0] ?? null)} /></div>
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
           <button type="submit" className="btn-primary" disabled={busy}>
             {busy ? 'Submitting…' : 'Submit request'}
           </button>
         </form>
       </Panel>
-      <Panel title="My LA / Cab / Other history">
+      <Panel title="My LA / Cab / Other requests">
         {loading ? <EmptyState text="Loading…" /> : error ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>
         ) : (
           <DataTable
             columns={[
-              { key: 'reqType', label: 'Type' },
+              { key: 'reqType', label: 'Type', render: (r) => reqTypeLabel(r.reqType) },
+              { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
               { key: 'date', label: 'Date', render: (r) => fmtDate(r.date) },
-              { key: 'amount', label: 'Amount' },
-              { key: 'bill', label: 'Bill', render: (r) => (r.bill ? <a href={fileUrl(r.bill)} download>Download</a> : '—') },
+              { key: 'details', label: 'Details', render: (r) => reqDetails(r) },
+              { key: 'amount', label: 'Amount', render: (r) => `₹${Number(r.amount ?? 0).toLocaleString('en-IN')}` },
+              { key: 'bill', label: 'Bill', render: (r) => (r.bill ? <a href={fileUrl(r.bill)} download>Download</a> : 'No bill') },
               { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+              { key: 'remarks', label: 'Remarks', render: (r) => r.remarks ?? '—' },
+              { key: 'submitted', label: 'Submitted', render: (r) => fmtDate(r.createdAt) },
             ]}
             rows={mine}
-            emptyText="No allowance requests yet."
+            emptyText="No requests submitted yet."
           />
         )}
       </Panel>

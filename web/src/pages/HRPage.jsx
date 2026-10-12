@@ -1987,6 +1987,22 @@ export default function HRPage({ bootstrap }) {
         { key: 'track', label: 'Track record' },
         { key: 'recruitment', label: 'Recruitment' },
       ];
+  // Associate/Technical Directors have no HR access (no nav entry, canAccess
+  // false). Belt-and-braces: deny render even if the route is force-mounted.
+  // Placed after hooks so hook order stays stable.
+  if (roleKey === 'associate_director' || roleKey === 'technical_director') {
+    return (
+      <>
+        <div className="page-head">
+          <div className="page-title">HR</div>
+          <div className="page-sub">Employee records and workforce administration, company-wide</div>
+        </div>
+        <Panel title="Access denied">
+          <EmptyState text="You do not have access to this area." />
+        </Panel>
+      </>
+    );
+  }
   return (
     <>
       <div className="page-head">

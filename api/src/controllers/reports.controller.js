@@ -1,5 +1,7 @@
 import { Claim } from '../models/Claim.js';
 import { Discrepancy } from '../models/Discrepancy.js';
+import { Drawing } from '../models/Drawing.js';
+import { DrawingAck } from '../models/DrawingAck.js';
 import { Meeting } from '../models/Meeting.js';
 import { Payment } from '../models/Payment.js';
 import { PeerReview } from '../models/PeerReview.js';
@@ -26,6 +28,7 @@ export async function managementOverview(req, res, next) {
     const byStage = {};
     const byService = {};
     const byBranch = {};
+    const byBranchStats = {};
     let active = 0, onHold = 0, completed = 0;
     for (const p of projects) {
       if (stage && p.currentStage !== stage) continue;
@@ -34,6 +37,10 @@ export async function managementOverview(req, res, next) {
       else if (p.status === 'Completed') completed += 1;
       byStage[p.currentStage] = (byStage[p.currentStage] ?? 0) + 1;
       byBranch[p.branch] = (byBranch[p.branch] ?? 0) + 1;
+      const bs = (byBranchStats[p.branch] ??= { projects: 0, active: 0, completed: 0 });
+      bs.projects += 1;
+      if (p.status === 'Active') bs.active += 1;
+      if (p.status === 'Completed') bs.completed += 1;
       for (const s of p.scope ?? []) {
         if (service && s.service !== service) continue;
         byService[s.service] = (byService[s.service] ?? 0) + 1;
@@ -68,13 +75,36 @@ export async function managementOverview(req, res, next) {
       return true;
     });
 
+    // Project submissions for the Projects tab: issued drawings/documents
+    // joined with client/architect acknowledgements (single bundle so every
+    // management viewer sees the same labels without extra requests).
+    const [subDrawings, subAcks] = await Promise.all([
+      Drawing.find({}).populate('project', 'name branch').sort({ date: -1 }).limit(500),
+      DrawingAck.find({}).select('drawing at'),
+    ]);
+    const subAcked = new Set(subAcks.map((a) => a.drawing.toString()));
+    const submissions = subDrawings.map((d) => ({
+      id: d._id.toString(),
+      date: d.date,
+      project: d.project?.name ?? '—',
+      projectId: d.project?._id?.toString?.() ?? '',
+      branch: d.project?.branch ?? '—',
+      service: d.service ?? '—',
+      stage: d.stage ?? '—',
+      drawingNo: d.drawingNo ?? '—',
+      rev: d.rev ?? '—',
+      to: d.issuedTo ?? '—',
+      status: subAcked.has(d._id.toString()) ? 'Acknowledged' : 'Pending acknowledgement',
+    }));
+
     return res.status(200).json({
       projects: {
         active, onHold, completed,
         total: active + onHold + completed,
-        byStage, byBranch, byService,
+        byStage, byBranch, byService, byBranchStats,
       },
       revisions: scopedRevisions.length,
+      submissions,
       billing: {
         ready: scopedClaims.filter((c) => c.status === 'Ready for billing').length,
         pending: scopedClaims.filter((c) => c.status === 'Pending').length,

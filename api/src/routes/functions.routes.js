@@ -7,6 +7,7 @@ import {
 import {
   addChecklistItem,
   addComment,
+  approveWeeklyReport,
   areaSettlements,
   bimWorkOrders,
   boqItems,
@@ -23,6 +24,7 @@ import {
   siteVisits,
   updateChecklistItem,
   updateComment,
+  weeklyReports,
 } from '../controllers/functions.controller.js';
 
 const router = Router();
@@ -67,6 +69,12 @@ router.post('/conveyance', requireInternal(), conveyances.create);
 router.get('/rfis', requireInternal(), rfis.list);
 router.post('/rfis', requireInternal(), createRfi);
 router.put('/rfis/:id', requireInternal(), rfis.update);
+
+// QA/QC weekly reports (team submits, Specs Head approves)
+router.get('/weekly-reports', requireInternal(), weeklyReports.list);
+router.get('/weekly-reports/:id', requireInternal(), weeklyReports.get);
+router.post('/weekly-reports', requireRole('qaqc', 'qaqc_head'), weeklyReports.create);
+router.patch('/weekly-reports/:id/approve', requireRole('qaqc_head'), approveWeeklyReport);
 
 // BIM work orders
 router.get('/bim-work-orders', requireInternal(), bimWorkOrders.list);

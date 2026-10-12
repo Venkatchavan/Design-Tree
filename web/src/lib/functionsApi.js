@@ -42,6 +42,20 @@ export const visitsApi = {
     }),
 };
 
+export const weeklyReportApi = {
+  list: (params = {}) => request(`/api/functions/weekly-reports${toQuery(params)}`),
+  create: (body) =>
+    request('/api/functions/weekly-reports', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  approve: (id, body) =>
+    request(`/api/functions/weekly-reports/${id}/approve`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+};
+
 export const discApi = {
   list: (params = {}) => request(`/api/functions/discrepancies${toQuery(params)}`),
   create: (body) =>

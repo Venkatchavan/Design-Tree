@@ -16,7 +16,7 @@ const router = Router();
 router.use(requireAuth);
 
 // Directors manage bookings alongside Finance.
-const BOOKING_WRITERS = ['finance', 'executive_director'];
+const BOOKING_WRITERS = ['finance', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director'];
 
 router.get('/summary', requireView('travel-booking'), bookingSummary);
 router.get('/', requireView('travel-booking'), bookings.list);

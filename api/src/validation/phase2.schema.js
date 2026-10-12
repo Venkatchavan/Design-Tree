@@ -4,6 +4,7 @@ import { RECRUITMENT_STATUSES } from '../models/Recruitment.js';
 import { REVISION_STATUSES } from '../models/Revision.js';
 import { SPOC_REVISION_STATUSES, SPOC_SERVICES, SPOC_WORK_AREAS } from '../models/SpocEntry.js';
 import { TASK_PRIORITIES, TASK_STATUSES } from '../models/Task.js';
+import { WEEKLY_REPORT_STATUSES } from '../models/WeeklyReport.js';
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
 const strOpt = z.string().trim().optional();
@@ -137,6 +138,7 @@ export const siteVisitSchema = z
     project: objectId,
     visitType: z.string().trim().min(1),
     date: dateOpt,
+    phase: strOpt,
     photos: z.array(z.string().trim()).optional(),
     remarksClient: strOpt,
     remarksDesigner: strOpt,
@@ -151,6 +153,7 @@ export const discrepancySchema = z
     project: objectId,
     discipline: strOpt,
     severity: strOpt,
+    kind: z.enum(['Construction', 'Drawing']).optional(),
     issue: z.string().trim().min(1),
     raised: dateOpt,
     due: dateOpt,
@@ -158,6 +161,18 @@ export const discrepancySchema = z
   })
   .strict();
 export const discrepancyUpdateSchema = discrepancySchema.partial();
+
+export const weeklyReportSchema = z
+  .object({
+    project: objectId,
+    weekStart: z.coerce.date(),
+    weekEnd: dateOpt,
+    weekLabel: strOpt,
+  })
+  .strict();
+export const weeklyReportApproveSchema = z
+  .object({ status: z.enum(WEEKLY_REPORT_STATUSES) })
+  .strict();
 
 export const conveyanceSchema = z
   .object({
@@ -181,7 +196,7 @@ export const rfiSchema = z
     team: strOpt,
     assignedTo: strOpt,
     due: dateOpt,
-    status: z.enum(['Open', 'Responded', 'Closed']).optional(),
+    status: z.enum(['Open', 'In Progress', 'Escalated', 'Responded', 'Closed']).optional(),
   })
   .strict();
 export const rfiUpdateSchema = rfiSchema.partial();
