@@ -29,6 +29,7 @@ try {
   const { Discrepancy } = await import('./src/models/Discrepancy.js');
   const { PeerReview } = await import('./src/models/PeerReview.js');
   const { Rfi } = await import('./src/models/Rfi.js');
+  const { Employee } = await import('./src/models/Employee.js');
   const { Counter } = await import('./src/models/Counter.js');
   for (const [Model, field, prefix, pad, counterName] of [
     [SiteVisit, 'visitId', 'SV', 3, 'site-visit'],
@@ -56,6 +57,13 @@ try {
   await Discrepancy.updateMany(
     { kind: { $in: [null, ''] } },
     { $set: { kind: 'Construction' } },
+  );
+  // Legacy employees predate the leave-quota field; apply the policy default
+  // once (HR can adjust per employee afterwards — the balance card is never
+  // a hardcoded number).
+  await Employee.updateMany(
+    { annualLeaveQuota: { $in: [null, ''] } },
+    { $set: { annualLeaveQuota: 14 } },
   );
 } catch (err) {
   console.error('ID backfill skipped:', err?.message ?? err);

@@ -42,6 +42,9 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState('leave');
   const roleKey = bootstrap?.role?.key ?? '';
+  // AssocTD: spec layout — balance / pending / quarterly trips, and the
+  // three request tabs only (no Approvals tab, no awaiting card).
+  const isAssocTD = roleKey === 'assoc_technical_director';
 
   // --- queries ---
   const meQ = useQuery({ queryKey: ['me'], queryFn: meApi });
@@ -110,6 +113,17 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
     () => [...leaveMine, ...travelMine, ...allowMine].filter((r) => isPending(r.status)).length,
     [leaveMine, travelMine, allowMine],
   );
+  // Balance = stored annual quota minus approved leave taken this calendar
+  // year. No quota on record → '—' (never a hardcoded number).
+  const leaveBalance = useMemo(() => {
+    const quota = selfEmployee?.annualLeaveQuota;
+    if (quota == null) return null;
+    const year = new Date().getFullYear();
+    const used = leaveMine
+      .filter((r) => String(r.status ?? '').toLowerCase() === 'approved' && new Date(r.from ?? r.createdAt).getFullYear() === year)
+      .reduce((s, r) => s + (Number(r.days) || 0), 0);
+    return Math.max(0, Number(quota) - used);
+  }, [selfEmployee, leaveMine]);
   const travelQuarter = useMemo(() => {
     const qs = quarterStart();
     return travelMine.filter((t) => {
@@ -134,8 +148,13 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
         <div className="page-sub">Submit and track your own leave and travel requests</div>
       </div>
       <div className="kpi-grid cols-3">
+        {isAssocTD && (
+          <KpiCard label="My leave balance" value={leaveBalance == null ? '—' : `${leaveBalance} days`} accent="forest" />
+        )}
         <KpiCard label="My pending requests" value={leaveMineQ.isLoading ? '…' : myPending} accent="amber" />
-        <KpiCard label="Awaiting my approval" value={queueQ.isLoading ? '…' : awaitingCount} accent="rust" />
+        {!isAssocTD && (
+          <KpiCard label="Awaiting my approval" value={queueQ.isLoading ? '…' : awaitingCount} accent="rust" />
+        )}
         <KpiCard label="Travel this quarter" value={travelMineQ.isLoading ? '…' : `${travelQuarter} trips`} accent="blueprint" />
       </div>
       <Tabs
@@ -143,7 +162,7 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
           { key: 'leave', label: 'Leave request' },
           { key: 'travel', label: 'Travel request' },
           { key: 'allowance', label: 'LA / Cab / Other requests' },
-          { key: 'approvals', label: 'Approvals' },
+          ...(!isAssocTD ? [{ key: 'approvals', label: 'Approvals' }] : []),
         ]}
         active={tab}
         onChange={setTab}
@@ -164,7 +183,7 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
       {tab === 'allowance' && (
         <AllowanceTab mine={allowMine} loading={allowMineQ.isLoading} error={allowMineQ.error} projects={projects} onDone={invalidateAll} />
       )}
-      {tab === 'approvals' && (
+      {tab === 'approvals' && !isAssocTD && (
         <ApprovalsTab
           queue={filteredQueue}
           loading={queueQ.isLoading}
