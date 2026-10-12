@@ -113,17 +113,20 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
     () => [...leaveMine, ...travelMine, ...allowMine].filter((r) => isPending(r.status)).length,
     [leaveMine, travelMine, allowMine],
   );
-  // Balance = the employee's stored annual quota minus approved leave taken
-  // this calendar year. Quota is HR-maintained data; unset means unknown.
+  // Balance = upcoming holidays on this year's HR calendar minus approved
+  // personal leave taken this year (floored at 0). No quota anywhere.
   const leaveBalance = useMemo(() => {
-    const quota = selfEmployee?.annualLeaveQuota;
-    if (quota == null || quota === '') return null;
-    const year = new Date().getFullYear();
+    const today = new Date().toISOString().slice(0, 10);
+    const year = String(new Date().getFullYear());
+    const upcomingHolidays = (holidaysQ.data?.items ?? []).filter((h) => {
+      const d = String(h.date ?? '').slice(0, 10);
+      return d && d.slice(0, 4) === year && d >= today;
+    }).length;
     const used = leaveMine
-      .filter((r) => String(r.status ?? '').toLowerCase() === 'approved' && new Date(r.from ?? r.createdAt).getFullYear() === year)
+      .filter((r) => String(r.status ?? '').toLowerCase() === 'approved' && new Date(r.from ?? r.createdAt).getFullYear() === Number(year))
       .reduce((s, r) => s + (Number(r.days) || 0), 0);
-    return Math.max(0, Number(quota) - used);
-  }, [selfEmployee, leaveMine]);
+    return Math.max(0, upcomingHolidays - used);
+  }, [holidaysQ.data, leaveMine]);
   const travelQuarter = useMemo(() => {
     const qs = quarterStart();
     return travelMine.filter((t) => {
@@ -148,7 +151,7 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
         <div className="page-sub">Submit and track your own leave and travel requests</div>
       </div>
       <div className="kpi-grid cols-3">
-        <KpiCard label="My leave balance" value={leaveBalance == null ? '—' : `${leaveBalance} days`} accent="forest" />
+        <KpiCard label="My leave balance" value={`${leaveBalance} days`} accent="forest" />
         <KpiCard label="My pending requests" value={leaveMineQ.isLoading ? '…' : myPending} accent="amber" />
         {!isAssocTD && (
           <KpiCard label="Awaiting my approval" value={queueQ.isLoading ? '…' : awaitingCount} accent="rust" />

@@ -25,7 +25,6 @@ export const employeeSchema = z
     qualification: strOpt,
     department: strOpt,
     reportingManager: strOpt,
-    annualLeaveQuota: z.number().min(0).optional(),
     branch: strOpt,
     division: strOpt,
     salaryStructure: strOpt,
