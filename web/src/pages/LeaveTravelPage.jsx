@@ -113,11 +113,11 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
     () => [...leaveMine, ...travelMine, ...allowMine].filter((r) => isPending(r.status)).length,
     [leaveMine, travelMine, allowMine],
   );
-  // Balance = stored annual quota minus approved leave taken this calendar
-  // year. No quota on record → '—' (never a hardcoded number).
+  // Balance = the employee's stored annual quota minus approved leave taken
+  // this calendar year. Quota is HR-maintained data; unset means unknown.
   const leaveBalance = useMemo(() => {
     const quota = selfEmployee?.annualLeaveQuota;
-    if (quota == null) return null;
+    if (quota == null || quota === '') return null;
     const year = new Date().getFullYear();
     const used = leaveMine
       .filter((r) => String(r.status ?? '').toLowerCase() === 'approved' && new Date(r.from ?? r.createdAt).getFullYear() === year)
@@ -148,9 +148,7 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
         <div className="page-sub">Submit and track your own leave and travel requests</div>
       </div>
       <div className="kpi-grid cols-3">
-        {isAssocTD && (
-          <KpiCard label="My leave balance" value={leaveBalance == null ? '—' : `${leaveBalance} days`} accent="forest" />
-        )}
+        <KpiCard label="My leave balance" value={leaveBalance == null ? '—' : `${leaveBalance} days`} accent="forest" />
         <KpiCard label="My pending requests" value={leaveMineQ.isLoading ? '…' : myPending} accent="amber" />
         {!isAssocTD && (
           <KpiCard label="Awaiting my approval" value={queueQ.isLoading ? '…' : awaitingCount} accent="rust" />

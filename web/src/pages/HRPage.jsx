@@ -24,6 +24,7 @@ const EMP_BLANK = {
   salutation: '', firstName: '', middleName: '', lastName: '', shortName: '',
   fatherName: '', motherName: '', dob: '', sex: '', maritalStatus: '', spouseName: '',
   designation: '', qualification: '', department: '', reportingManager: '',
+  annualLeaveQuota: '',
   branch: '', division: '', salaryStructure: '', email: '', phone: '', mobile: '',
   stdCode: '', dateOfJoining: '', salaryFrom: '', leavingDate: '', leavingReason: '',
   pan: '', wardCircle: '', director: '', aadhar: '', remarks: '', rejoinee: false,
@@ -68,6 +69,7 @@ function empToForm(emp = {}) {
     qualification: emp.qualification ?? '',
     department: emp.department ?? '',
     reportingManager: emp.reportingManager ?? '',
+    annualLeaveQuota: emp.annualLeaveQuota ?? '',
     branch: emp.branch ?? '',
     division: emp.division ?? '',
     salaryStructure: emp.salaryStructure ?? '',
@@ -796,6 +798,7 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
       qualification: f.qualification || undefined,
       department: f.department || undefined,
       reportingManager: f.reportingManager || undefined,
+      annualLeaveQuota: f.annualLeaveQuota === '' || f.annualLeaveQuota == null ? undefined : Number(f.annualLeaveQuota),
       // Unchanged legacy branches predate the master — don't re-send them.
       branch: (f.branch ?? '') === (initial?.branch ?? '') ? undefined : (f.branch || undefined),
       division: f.division || undefined,
@@ -867,6 +870,7 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
         <div className="form-row"><label className="form-label">Qualification</label>{I('qualification')}</div>
         <div className="form-row"><label className="form-label">Department</label>{I('department')}</div>
         <div className="form-row"><label className="form-label">Reporting manager</label>{I('reportingManager')}</div>
+        <div className="form-row"><label className="form-label">Annual leave quota (days)</label>{I('annualLeaveQuota', { type: 'number', min: 0 })}</div>
         <div className="form-row"><label className="form-label">Branch</label>
           <select className="form-input" value={f.branch ?? ''} onChange={(e) => set('branch', e.target.value)}>
             <option value="">—</option>

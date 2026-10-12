@@ -27,9 +27,10 @@ const employeeSchema = new mongoose.Schema(
     qualification: { type: String, trim: true },
     department: { type: String, trim: true, index: true },
     reportingManager: { type: String, trim: true },
-    // Annual leave entitlement (days). The Leave & Travel balance card is
-    // quota minus approved leave taken in the calendar year — never hardcoded.
-    annualLeaveQuota: { type: Number, min: 0, default: 14 },
+    // Annual leave entitlement in days, maintained by HR per employee.
+    // The Leave & Travel balance card is quota minus approved leave taken
+    // in the calendar year. No default — unset means unknown, never assumed.
+    annualLeaveQuota: { type: Number, min: 0 },
     branch: { type: String, trim: true, index: true },
     division: { type: String, trim: true },
     salaryStructure: { type: String, trim: true },
