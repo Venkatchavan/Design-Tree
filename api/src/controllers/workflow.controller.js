@@ -138,31 +138,52 @@ export const revisions = makeCrud(Revision, {
   ],
 });
 
+export async function deleteDeliverable(req, res, next) {
+  try {
+    const { Deliverable } = await import('../models/Deliverable.js');
+    const doc = await Deliverable.findByIdAndDelete(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Not found.' });
+    return res.status(200).json({ ok: true });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 export async function createRevision(req, res, next) {
   const parsed = revisionSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: 'Invalid data.' });
   }
   try {
-    const emailLog = [];
-    if (parsed.data.notify && parsed.data.assignedTo) {
-      const { Employee } = await import('../models/Employee.js');
-      const assignee = await Employee.findById(parsed.data.assignedTo);
-      if (assignee?.email) {
-        // Logged only — no real mail service is connected (spec §7).
-        emailLog.push(
-          `Notified ${assignee.firstName} ${assignee.lastName} <${assignee.email}> — revision logged (queued, not sent)`,
-        );
-      }
-    }
+    // Recipients: assigned designer, project SPOC, the logging TL (copy) and
+    // any directors / ATD / DMH ticked on the form. Mail is logged only (queued).
+    const { Employee } = await import('../models/Employee.js');
+    const { SpocAllocation } = await import('../models/SpocAllocation.js');
+    const { User } = await import('../models/User.js');
+    const alloc = await SpocAllocation.findOne({ project: parsed.data.project, status: 'Approved' })
+      .select('coordinator')
+      .lean();
+    const me = await User.findById(req.user.id).select('employee').lean();
+    const employeeIds = [
+      ...new Set(
+        [parsed.data.assignedTo, alloc?.coordinator, me?.employee, ...(parsed.data.notifyEmployees ?? [])]
+          .filter(Boolean)
+          .map(String),
+      ),
+    ];
+    const people = await Employee.find({ _id: { $in: employeeIds } }).select('firstName lastName email').lean();
+    const emailLog = people.map(
+      (p) => `Notified ${p.firstName ?? ''} ${p.lastName ?? ''} <${p.email ?? 'no email on file'}> — revision logged (queued, not sent)`.replace(/\s+/g, ' '),
+    );
     const doc = await Revision.create({
       ...parsed.data,
+      notifyEmployees: parsed.data.notifyEmployees ?? [],
       emailLog,
       createdBy: req.user.id,
     });
     try {
-      const assignees = parsed.data.assignedTo ? await userIdsForEmployees([parsed.data.assignedTo]) : [];
-      const recipients = [...new Set([...assignees])].filter((u) => u !== String(req.user.id));
+      const assignees = await userIdsForEmployees(employeeIds);
+      const recipients = [...new Set(assignees)].filter((u) => u !== String(req.user.id));
       await notify({
         roles: ['team_lead'],
         users: recipients,

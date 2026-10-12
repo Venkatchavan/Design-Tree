@@ -24,6 +24,15 @@ const router = Router();
 router.use(requireAuth);
 
 const BILLING_WRITERS = ['admin_billing', 'executive_director'];
+// Stage completion can be entered by SPOC / Team leads / DMH — a completed
+// stage auto-flips to Ready for billing and notifies Admin.
+const STAGE_WRITERS = [
+  'admin_billing',
+  'executive_director',
+  'coordinator',
+  'design_mgmt_head',
+  'team_lead',
+];
 // Finance reads claims/stages live in Billing Status + Revenue (§4.15).
 const BILLING_READERS = [
   'admin_billing',
@@ -43,10 +52,10 @@ router.patch(
 );
 
 // Stage tracker + billing readiness (also powers Billing Status live).
-// Associate/Technical/Associate-TD Directors read the tracker for Billing Status.
-router.get('/stages', requireRole(...BILLING_READERS, 'associate_director', 'technical_director', 'assoc_technical_director'), stages.list);
-router.post('/stages', requireRole(...BILLING_WRITERS), upsertStage);
-router.put('/stages/:id', requireRole(...BILLING_WRITERS), stages.update);
+// Associate/Technical/Associate-TD Directors + DMH/SPOC/PTL read the tracker.
+router.get('/stages', requireRole(...BILLING_READERS, 'associate_director', 'technical_director', 'assoc_technical_director', 'design_mgmt_head', 'coordinator', 'team_lead'), stages.list);
+router.post('/stages', requireRole(...STAGE_WRITERS), upsertStage);
+router.put('/stages/:id', requireRole(...STAGE_WRITERS), stages.update);
 
 // Quoted fee (Billing view only).
 router.get('/quoted-fees', requireView('billing'), quotedFees);

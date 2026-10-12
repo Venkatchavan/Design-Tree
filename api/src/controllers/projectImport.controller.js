@@ -21,6 +21,8 @@ const HEADER_MAP = [
   [/^project\s*type$|^type$/i, 'projectType'],
   [/^branch(\s*name)?$/i, 'branch'],
   [/^used\s*for$/i, 'usedFor'],
+  [/^services?$|^service$/i, 'services'],
+  [/^source$|^project\s*source$/i, 'source'],
   [/^entity(\s*name)?$/i, 'entityName'],
   [/^location$|^project\s*location$/i, 'locationLabel'],
   [/^client$/i, 'clientName'],
@@ -29,6 +31,12 @@ const HEADER_MAP = [
   [/^job\s*number$/i, 'jobNumber'],
   [/^project\s*director$/i, 'projectDirector'],
 ];
+
+function parseServices(v) {
+  if (v == null || v === '') return undefined;
+  if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
+  return String(v).split(/[,;|/]/).map((x) => x.trim()).filter(Boolean);
+}
 
 function mapRow(raw) {
   const norm = {};
@@ -39,14 +47,16 @@ function mapRow(raw) {
   }
   return {
     name: norm.name,
-    code: norm.code,
-    state: norm.state,
-    projectType: norm.projectType,
-    branch: norm.branch,
-    usedFor: norm.usedFor,
-    entityName: norm.entityName,
-    location: { label: norm.locationLabel },
-    clientName: norm.clientName,
+    code: norm.code || undefined,
+    state: norm.state || undefined,
+    projectType: norm.projectType || undefined,
+    branch: norm.branch || undefined,
+    usedFor: norm.usedFor || undefined,
+    services: parseServices(norm.services),
+    source: norm.source || undefined,
+    entityName: norm.entityName || undefined,
+    location: norm.locationLabel ? { label: norm.locationLabel } : undefined,
+    clientName: norm.clientName || undefined,
     status:
       norm.status && PROJECT_STATUSES.includes(norm.status)
         ? norm.status
@@ -55,8 +65,8 @@ function mapRow(raw) {
       norm.currentStage && STAGES.includes(norm.currentStage)
         ? norm.currentStage
         : undefined,
-    jobNumber: norm.jobNumber,
-    related: { projectDirector: norm.projectDirector || 'To be assigned' },
+    jobNumber: norm.jobNumber || undefined,
+    related: norm.projectDirector ? { projectDirector: norm.projectDirector } : undefined,
   };
 }
 
@@ -90,15 +100,21 @@ export async function importProjects(req, res, next) {
         });
         continue;
       }
-      try {
-        parsed.data.branch = await requireActiveBranch(parsed.data.branch);
-      } catch (err) {
-        errors.push({ row: i + 2, reason: err.message });
-        continue;
+      if (parsed.data.branch) {
+        try {
+          parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+        } catch (err) {
+          errors.push({ row: i + 2, reason: err.message });
+          continue;
+        }
+      }
+      if (!parsed.data.code) {
+        const year = new Date().getFullYear();
+        parsed.data.code = `PRJ-${year}-${String(Date.now()).slice(-6)}${i}`;
       }
       docs.push({
         ...parsed.data,
-        code: parsed.data.code.toUpperCase(),
+        code: String(parsed.data.code).toUpperCase(),
         _importRow: i + 2,
       });
     }

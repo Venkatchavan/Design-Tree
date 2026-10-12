@@ -15,7 +15,7 @@ test.describe.serial('05 spoc allocation', () => {
     await page.locator('nav.nav').getByRole('button', { name: /my coordination/i }).first().click();
     await expect(page.getByText('My Coordination').first()).toBeVisible();
 
-    const dirTab = page.getByRole('tab', { name: /project directory/i }).first();
+    const dirTab = page.getByRole('tab', { name: /team allocation/i }).first();
     if (await dirTab.isVisible().catch(() => false)) await dirTab.click();
     await expect(page.getByText('Record allocation').first()).toBeVisible();
 
@@ -37,7 +37,7 @@ test.describe.serial('05 spoc allocation', () => {
       }
     }
 
-    await page.getByRole('button', { name: /record allocation/i }).click();
+    await page.getByRole('button', { name: /record allocation/i }).first().click();
 
     // Expected: Overview tab → "1 allocated project(s)".
     const overview = page.getByRole('tab', { name: /overview/i }).first();

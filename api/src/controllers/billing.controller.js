@@ -90,23 +90,32 @@ export async function upsertStage(req, res, next) {
     return res.status(400).json({ message: 'Invalid data.' });
   }
   try {
+    const { requestCompletion, confirmCompletion, ptlRemark, spocRemark, ...rest } = parsed.data;
+    const role = req.user.role;
+    const isPTL = ['team_lead'].includes(role);
+    const isSPOC = ['coordinator', 'design_mgmt_head'].includes(role);
+    const isAdmin = ['admin_billing', 'executive_director'].includes(role);
     const doc = await StageStatus.findOneAndUpdate(
       {
         project: parsed.data.project,
         service: parsed.data.service ?? null,
         stage: parsed.data.stage ?? null,
       },
-      { ...parsed.data, updatedBy: req.user.id },
+      { ...rest, updatedBy: req.user.id },
       { upsert: true, new: true, returnDocument: 'after', runValidators: true },
     );
-    // A completed stage that hasn't been billed yet is flagged Ready and
-    // the billing team is notified automatically.
     let finalDoc = doc;
-    const isCompleted = String(doc.currentStatus ?? '').trim().toLowerCase() === 'completed';
-    if (isCompleted && doc.billingReadiness !== 'Billed' && doc.billingReadiness !== 'Ready for billing') {
+    // Step 1: PTL requests completion → Pending SPOC confirm, notify SPOC/DMH (no Admin yet).
+    if (requestCompletion) {
       finalDoc = await StageStatus.findByIdAndUpdate(
         doc._id,
-        { billingReadiness: 'Ready for billing' },
+        {
+          confirmationStatus: 'PTL Requested',
+          ptlRequestedBy: req.user.id,
+          ptlRequestedAt: new Date(),
+          ptlRemark: ptlRemark ?? rest.reason ?? '',
+          currentStatus: 'Pending SPOC confirm',
+        },
         { new: true, returnDocument: 'after', runValidators: true },
       );
       try {
@@ -114,7 +123,72 @@ export async function upsertStage(req, res, next) {
         const proj = await Project.findById(doc.project).select('name code').lean();
         const projLabel = proj ? `${proj.name} (${proj.code})` : 'a project';
         await notify({
-          roles: ['admin_billing', 'executive_director'],
+          roles: ['coordinator', 'design_mgmt_head'],
+          project: doc.project,
+          link: { view: 'billing' },
+          title: `PTL stage completion request: ${finalDoc.stage || 'stage'} — ${projLabel}`,
+          detail: `${finalDoc.service || 'Service'} marked complete by PTL, awaiting SPOC confirm.${ptlRemark ? ` Remark: ${ptlRemark}` : ''}`,
+          type: 'stage-ptl-request',
+        });
+      } catch {
+        /* best-effort */
+      }
+      return res.status(200).json({ item: finalDoc });
+    }
+    // Step 2: SPOC confirms → Ready + notify DMH + all directors + Admin.
+    if (confirmCompletion && (isSPOC || isAdmin)) {
+      finalDoc = await StageStatus.findByIdAndUpdate(
+        doc._id,
+        {
+          confirmationStatus: 'SPOC Confirmed',
+          spocConfirmedBy: req.user.id,
+          spocConfirmedAt: new Date(),
+          spocRemark: spocRemark ?? '',
+          currentStatus: 'Completed',
+          billingReadiness: 'Ready for billing',
+        },
+        { new: true, returnDocument: 'after', runValidators: true },
+      );
+      try {
+        const { notify } = await import('../models/Notification.js');
+        const proj = await Project.findById(doc.project).select('name code').lean();
+        const projLabel = proj ? `${proj.name} (${proj.code})` : 'a project';
+        await notify({
+          roles: ['design_mgmt_head', 'associate_director', 'technical_director', 'assoc_technical_director', 'admin_billing', 'executive_director'],
+          project: doc.project,
+          link: { view: 'billing' },
+          title: `Stage ready for billing (SPOC confirmed): ${finalDoc.stage || 'stage'} — ${projLabel}`,
+          detail: `${finalDoc.service || 'Service'} confirmed by SPOC and flagged ready for billing.`,
+          type: 'stage-ready',
+        });
+      } catch {
+        /* best-effort */
+      }
+      return res.status(200).json({ item: finalDoc });
+    }
+    // Legacy direct complete (Admin) → auto-confirm + Ready.
+    const isCompleted = String(doc.currentStatus ?? '').trim().toLowerCase() === 'completed';
+    if (isCompleted && doc.billingReadiness !== 'Billed' && doc.billingReadiness !== 'Ready for billing') {
+      // If PTL requested but not yet SPOC-confirmed, hold at Pending unless Admin.
+      if (doc.confirmationStatus === 'PTL Requested' && !isAdmin && !isSPOC) {
+        return res.status(200).json({ item: finalDoc });
+      }
+      finalDoc = await StageStatus.findByIdAndUpdate(
+        doc._id,
+        {
+          billingReadiness: 'Ready for billing',
+          ...(isAdmin || isSPOC ? { confirmationStatus: 'SPOC Confirmed' } : {}),
+        },
+        { new: true, returnDocument: 'after', runValidators: true },
+      );
+      try {
+        const { notify } = await import('../models/Notification.js');
+        const proj = await Project.findById(doc.project).select('name code').lean();
+        const projLabel = proj ? `${proj.name} (${proj.code})` : 'a project';
+        await notify({
+          roles: isAdmin || isSPOC
+            ? ['design_mgmt_head', 'associate_director', 'technical_director', 'assoc_technical_director', 'admin_billing', 'executive_director']
+            : ['admin_billing', 'executive_director'],
           project: doc.project,
           link: { view: 'billing' },
           title: `Stage ready for billing: ${finalDoc.stage || 'stage'} — ${projLabel}`,

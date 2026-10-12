@@ -27,7 +27,7 @@ router.post(
 );
 router.post(
   '/allocations',
-  requireRole('coordinator', 'design_mgmt_head'),
+  requireRole('coordinator', 'design_mgmt_head', 'team_lead'),
   recordAllocation,
 );
 router.patch(

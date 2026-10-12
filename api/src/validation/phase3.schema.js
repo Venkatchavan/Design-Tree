@@ -112,6 +112,10 @@ export const stageStatusSchema = z
     delayDays: z.number().optional(),
     reason: strOpt,
     billingReadiness: z.enum(BILLING_READINESS).optional(),
+    ptlRemark: strOpt,
+    spocRemark: strOpt,
+    requestCompletion: z.boolean().optional(),
+    confirmCompletion: z.boolean().optional(),
   })
   .strict();
 export const stageStatusUpdateSchema = stageStatusSchema.partial();

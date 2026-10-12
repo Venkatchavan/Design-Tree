@@ -14,6 +14,7 @@ import {
   teamsMineApi,
 } from '../lib/workApi.js';
 import { meetingsApi } from '../lib/phase4bApi.js';
+import { holidaysApi } from '../lib/phase4bApi.js';
 import { transmittalsApi } from '../lib/phase3Api.js';
 import {
   MeetingDetailModal,
@@ -811,7 +812,18 @@ function myAttendance(m, myEmpId) {
   return att.present ? 'Attended' : 'Absent';
 }
 
-export default function MyWorkPage({ bootstrap: bootstrapProp }) {
+function LeaveTravelCard() {
+  const navigate = useNavigate();
+  return (
+    <Panel title="Leave and travel" sub="Leave and travel requests now have their own dedicated section.">
+      <button type="button" className="btn-primary" onClick={() => navigate('/leave-travel')}>
+        Go to Leave & Travel
+      </button>
+    </Panel>
+  );
+}
+
+export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   const bootstrap = useBootstrapProp(bootstrapProp);
   const role = bootstrap?.role?.key ?? '';
   const navigate = useNavigate();

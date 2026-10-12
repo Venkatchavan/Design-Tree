@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { employeesApi, metaApi, projectsApi } from '../lib/api.js';
+import { metaApi, projectsApi } from '../lib/api.js';
 import { marketingApi } from '../lib/phase4aApi.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
 import Panel from '../components/Panel.jsx';
@@ -20,9 +20,11 @@ const BASE_PROJECT_TYPES = [
   'Residential', 'Commercial', 'Industrial', 'Institutional', 'Healthcare',
   'Hospitality', 'Retail', 'Mixed-use', 'Infrastructure', 'Interior',
 ];
-const BASE_USED_FOR = [
-  'Residential apartments', 'Commercial office', 'Retail mall', 'Hospital',
-  'Hotel', 'School / campus', 'Industrial plant', 'IT park', 'Villa layout',
+const BASE_SERVICES = [
+  'SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS',
+];
+const BASE_SOURCES = [
+  'Referral', 'Direct', 'Tender', 'Repeat Client', 'Marketing', 'Other',
 ];
 const CONTACT_KINDS = [
   { key: 'client', label: 'Client Contact', contactType: 'Client' },
@@ -37,7 +39,8 @@ const BLANK = {
   state: '',
   projectType: '',
   branch: '',
-  usedFor: '',
+  services: [],
+  source: '',
   entityName: '',
   location: { label: '', address1: '', address2: '', city: '', state: '', zip: '' },
   scopeText: '',
@@ -45,7 +48,6 @@ const BLANK = {
   hospitality: '',
   bimWorkOrder: { scope: '', fee: '', description: '' },
   contacts: { client: null, architect: null, billing: null },
-  related: { projectDirector: '', projectDirectorDesignation: '', projectHead: '', projectHeadDesignation: '' },
 };
 
 function cloneBlank() {
@@ -68,10 +70,6 @@ function union(base, live) {
     out.push(t);
   }
   return out.sort((a, b) => a.localeCompare(b));
-}
-
-function empDisplayName(e) {
-  return [e.salutation, e.firstName, e.middleName, e.lastName].filter(Boolean).join(' ') || e.empId || '—';
 }
 
 function unionOptions(base, live) {
@@ -300,37 +298,35 @@ export default function NewProjectPage() {
   const setLoc = (key, value) => setForm((f) => ({ ...f, location: { ...f.location, [key]: value } }));
   const setContactPicked = (kind, value) =>
     setForm((f) => ({ ...f, contacts: { ...f.contacts, [kind]: value } }));
-  const setRelated = (key, value) =>
-    setForm((f) => ({ ...f, related: { ...f.related, [key]: value } }));
   const setBim = (key, value) =>
     setForm((f) => ({ ...f, bimWorkOrder: { ...f.bimWorkOrder, [key]: value } }));
+  function toggleService(s) {
+    setForm((f) => ({
+      ...f,
+      services: (f.services ?? []).includes(s)
+        ? (f.services ?? []).filter((x) => x !== s)
+        : [...(f.services ?? []), s],
+    }));
+  }
 
   const branchOptionsQ = useBranchOptions();
   const branchOptions = branchOptionItems(branchOptionsQ.data);
 
-  const codeQ = useQuery({ queryKey: ['next-code'], queryFn: projectsApi.nextCode, retry: false, staleTime: Infinity });
-  const jobQ = useQuery({ queryKey: ['next-job-number'], queryFn: projectsApi.nextJobNumber, retry: false, staleTime: Infinity });
   const projectsQ = useQuery({ queryKey: ['projects-new-form'], queryFn: () => projectsApi.list({}) });
-  const employeesQ = useQuery({ queryKey: ['employees-new-form'], queryFn: () => employeesApi.list({}) });
 
   const projectRows = projectsQ.data?.items ?? [];
-  const employeeRows = (employeesQ.data?.items ?? []).filter(
-    (e) => String(e.status ?? 'Active').toLowerCase() !== 'exited',
-  );
 
   const stateOptions = unionOptions(BASE_STATES, projectRows.map((p) => p.state));
   const projectTypeOptions = unionOptions(BASE_PROJECT_TYPES, projectRows.map((p) => p.projectType));
-  const usedForOptions = unionOptions(BASE_USED_FOR, projectRows.map((p) => p.usedFor));
+  const serviceOptions = unionOptions(BASE_SERVICES, projectRows.flatMap((p) => p.services ?? []));
+  const sourceOptions = unionOptions(BASE_SOURCES, projectRows.map((p) => p.source));
   const entityOptions = unionOptions([], projectRows.map((p) => p.entityName));
-  const designationOptions = unionOptions([], employeeRows.map((e) => e.designation));
 
   const save = useMutation({
     mutationFn: (body) => projectsApi.create(body),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['projects-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['next-code'] });
-      queryClient.invalidateQueries({ queryKey: ['next-job-number'] });
       if (saveMode === 'new') {
         setForm(cloneBlank());
         setFormError('');
@@ -360,8 +356,6 @@ export default function NewProjectPage() {
       setImportResult({ ok: true, created: data.created ?? 0, errors: data.errors ?? [] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['projects-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['next-code'] });
-      queryClient.invalidateQueries({ queryKey: ['next-job-number'] });
     },
     onError: (e) => setImportResult({ ok: false, message: e.message, errors: e.data?.errors ?? [] }),
   });
@@ -370,21 +364,22 @@ export default function NewProjectPage() {
     const fee = numOrUndef(form.fee);
     return {
       name: form.name.trim(),
-      code: codeQ.data?.code,
       state: form.state || undefined,
       projectType: form.projectType || undefined,
-      branch: form.branch,
-      usedFor: form.usedFor || undefined,
+      branch: form.branch || undefined,
+      services: form.services ?? [],
+      source: form.source.trim() || undefined,
       entityName: form.entityName.trim() || undefined,
-      jobNumber: jobQ.data?.jobNumber,
-      location: {
-        label: form.location.label.trim(),
-        address1: form.location.address1.trim() || undefined,
-        address2: form.location.address2.trim() || undefined,
-        city: form.location.city.trim() || undefined,
-        state: form.location.state.trim() || undefined,
-        zip: form.location.zip.trim() || undefined,
-      },
+      location: form.location.label.trim()
+        ? {
+            label: form.location.label.trim(),
+            address1: form.location.address1.trim() || undefined,
+            address2: form.location.address2.trim() || undefined,
+            city: form.location.city.trim() || undefined,
+            state: form.location.state.trim() || undefined,
+            zip: form.location.zip.trim() || undefined,
+          }
+        : undefined,
       scope: form.scopeText.trim() || fee !== undefined
         ? [{ scope: form.scopeText.trim() || undefined, fee }]
         : [],
@@ -398,15 +393,9 @@ export default function NewProjectPage() {
             }
           : undefined,
       contacts: {
-        client: form.contacts.client ?? undefined,
-        architect: form.contacts.architect ?? undefined,
-        billing: form.contacts.billing ?? undefined,
-      },
-      related: {
-        projectDirector: form.related.projectDirector,
-        projectDirectorDesignation: form.related.projectDirectorDesignation || undefined,
-        projectHead: form.related.projectHead || undefined,
-        projectHeadDesignation: form.related.projectHeadDesignation || undefined,
+        client: (form.contacts.client && typeof form.contacts.client === 'object' && (form.contacts.client.name || form.contacts.client.email || form.contacts.client.company)) ? form.contacts.client : undefined,
+        architect: (form.contacts.architect && typeof form.contacts.architect === 'object' && (form.contacts.architect.name || form.contacts.architect.email || form.contacts.architect.company)) ? form.contacts.architect : undefined,
+        billing: (form.contacts.billing && typeof form.contacts.billing === 'object' && (form.contacts.billing.name || form.contacts.billing.email || form.contacts.billing.company)) ? form.contacts.billing : undefined,
       },
     };
   }
@@ -415,19 +404,8 @@ export default function NewProjectPage() {
     e.preventDefault();
     setFormError('');
     setSaveMode(mode);
-    const missing = [];
-    if (!form.name.trim()) missing.push('Project name');
-    if (!codeQ.data?.code) missing.push('Project code (auto-generation failed — retry)');
-    if (!form.state) missing.push('State');
-    if (!form.projectType) missing.push('Project type');
-    if (!form.branch) missing.push('Branch');
-    if (!form.usedFor) missing.push('Used for');
-    if (!form.entityName.trim()) missing.push('Entity name');
-    if (!jobQ.data?.jobNumber) missing.push('Job number (auto-generation failed — retry)');
-    if (!form.location.label.trim()) missing.push('Project location (use Add Location)');
-    if (!form.related.projectDirector) missing.push('Project director');
-    if (missing.length > 0) {
-      setFormError(`Missing required: ${missing.join(', ')}.`);
+    if (!form.name.trim()) {
+      setFormError('Missing required: Project name.');
       return;
     }
     save.mutate(buildPayload());
@@ -442,7 +420,6 @@ export default function NewProjectPage() {
         <div className="page-title">New Project</div>
         <div className="page-sub">These fields become the basis for every filter downstream — branch, service, and team lead</div>
       </div>
-      <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>* = Required Information</p>
 
       {formError && (
         <div className="login-error" role="alert" style={{ display: 'block' }}>{formError}</div>
@@ -480,41 +457,54 @@ export default function NewProjectPage() {
 
         <Panel title="Information">
           <div className="field-grid">
-            <F label="Project Name *"><input className="form-input" placeholder="e.g. Business park - Tower A" value={form.name} onChange={(e) => set('name', e.target.value)} required /></F>
-            <F label="State *">
-              <select className="form-input" value={form.state} onChange={(e) => set('state', e.target.value)} required>
+            <F label="Project Name"><input className="form-input" placeholder="e.g. Business park - Tower A" value={form.name} onChange={(e) => set('name', e.target.value)} required /></F>
+            <F label="State">
+              <select className="form-input" value={form.state} onChange={(e) => set('state', e.target.value)}>
                 <option value="">--None--</option>
                 {stateOptions.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </F>
-            <F label="Project Type *">
-              <select className="form-input" value={form.projectType} onChange={(e) => set('projectType', e.target.value)} required>
+            <F label="Project Type">
+              <select className="form-input" value={form.projectType} onChange={(e) => set('projectType', e.target.value)}>
                 <option value="">--None--</option>
                 {projectTypeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </F>
-            <F label="Branch Name *">
-              <select className="form-input" value={form.branch} onChange={(e) => set('branch', e.target.value)} required>
+            <F label="Branch Name">
+              <select className="form-input" value={form.branch} onChange={(e) => set('branch', e.target.value)}>
                 <option value="">--None--</option>
                 {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
             </F>
             <F label="Building / Street Address 2"><input className="form-input" value={form.location.address2} onChange={(e) => setLoc('address2', e.target.value)} /></F>
-            <F label="Used For *">
-              <select className="form-input" value={form.usedFor} onChange={(e) => set('usedFor', e.target.value)} required>
+            <div className="form-row">
+              <label className="form-label">Services</label>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {serviceOptions.map((s) => (
+                  <label key={s} className="form-label" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input type="checkbox" checked={(form.services ?? []).includes(s)} onChange={() => toggleService(s)} />
+                    {s}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <F label="Project Sources">
+              <select
+                className="form-input"
+                value={form.source}
+                onChange={(e) => set('source', e.target.value)}
+              >
                 <option value="">--None--</option>
-                {usedForOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                {sourceOptions.map((x) => <option key={x} value={x}>{x}</option>)}
               </select>
             </F>
-            <F label="Project Code *"><input className="form-input" readOnly value={codeQ.data?.code ?? 'Auto-generated'} /></F>
-            <F label="Entity Name *">
+            <F label="Entity Name">
               <input
                 className="form-input"
                 list="np-entities"
                 placeholder="Search Entities..."
                 value={form.entityName}
                 onChange={(e) => set('entityName', e.target.value)}
-                required
               />
               <datalist id="np-entities">
                 {entityOptions.map((x) => <option key={x} value={x} />)}
@@ -523,7 +513,7 @@ export default function NewProjectPage() {
             <div className="form-row">
               <button type="button" className="approve-btn" onClick={() => set('entityName', form.entityName.trim())}>Add</button>
             </div>
-            <F label="Project Location *">
+            <F label="Project Location">
               {form.location.label ? <div>{form.location.label}</div> : <span style={{ color: 'var(--ink-muted)' }}>No location set yet.</span>}
             </F>
             <div className="form-row">
@@ -537,7 +527,6 @@ export default function NewProjectPage() {
                 <input className="form-input" placeholder="ZIP" value={form.location.zip} onChange={(e) => setLoc('zip', e.target.value)} />
               </div>
             </F>
-            <F label="Job Number"><input className="form-input" readOnly value={jobQ.data?.jobNumber ?? 'Auto-generated'} /></F>
           </div>
         </Panel>
 
@@ -553,10 +542,6 @@ export default function NewProjectPage() {
               </select>
             </F>
           </div>
-        </Panel>
-
-        <Panel title="Principal team leads" sub="Entered by the SPOC after allocation (My coordination → Project team leads) — shown here once saved">
-          <EmptyState text="No team leads yet. The SPOC enters them after project allocation; they then appear on the dashboard and project detail." />
         </Panel>
 
         <Panel title="BIM Work Order (optional)" sub="Set up a separate BIM work order for this project, kept apart from its regular work order">
@@ -578,35 +563,6 @@ export default function NewProjectPage() {
               onClear={() => setContactPicked(c.key, null)}
             />
           ))}
-        </Panel>
-
-        <Panel title="Related User">
-          <div className="field-grid">
-            <F label="Project Director *">
-              <select className="form-input" value={form.related.projectDirector} onChange={(e) => setRelated('projectDirector', e.target.value)} required>
-                <option value="">--None--</option>
-                {employeeRows.map((x) => <option key={x._id} value={empDisplayName(x)}>{empDisplayName(x)}{x.designation ? ` · ${x.designation}` : ''}</option>)}
-              </select>
-            </F>
-            <F label="Project Director Designation">
-              <select className="form-input" value={form.related.projectDirectorDesignation} onChange={(e) => setRelated('projectDirectorDesignation', e.target.value)}>
-                <option value="">--None--</option>
-                {designationOptions.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </F>
-            <F label="Project Head">
-              <select className="form-input" value={form.related.projectHead} onChange={(e) => setRelated('projectHead', e.target.value)}>
-                <option value="">--None--</option>
-                {employeeRows.map((x) => <option key={x._id} value={empDisplayName(x)}>{empDisplayName(x)}{x.designation ? ` · ${x.designation}` : ''}</option>)}
-              </select>
-            </F>
-            <F label="Project Head Designation">
-              <select className="form-input" value={form.related.projectHeadDesignation} onChange={(e) => setRelated('projectHeadDesignation', e.target.value)}>
-                <option value="">--None--</option>
-                {designationOptions.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </F>
-          </div>
         </Panel>
 
         <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>

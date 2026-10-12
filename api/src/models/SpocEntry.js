@@ -1,14 +1,16 @@
 import mongoose from 'mongoose';
 
 export const SPOC_SERVICES = [
-  'Structure',
-  'Architecture',
-  'Mechanical',
-  'Electrical',
-  'Plumbing',
-  'Fire',
+  'SMEPF',
+  'SMEP',
+  'MEP',
+  'STR',
+  'PHE',
+  'ELE',
+  'HVAC',
+  'FIRE',
   'BIM',
-  'Other',
+  'GBS',
 ];
 export const SPOC_WORK_AREAS = [
   'Project Directory',

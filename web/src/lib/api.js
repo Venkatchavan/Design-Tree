@@ -99,12 +99,6 @@ export const projectsApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
-  directory: (id) => request(`/api/projects/${id}/directory`),
-  saveDirectory: (id, body) =>
-    request(`/api/projects/${id}/directory`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }),
   saveSpocContacts: (id, body) =>
     request(`/api/projects/${id}/spoc-contacts`, {
       method: 'PUT',

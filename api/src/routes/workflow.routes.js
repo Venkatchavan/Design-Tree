@@ -7,6 +7,7 @@ import {
 } from '../middlewares/requireRole.js';
 import {
   createDeliverable,
+  deleteDeliverable,
   createRecruitment,
   createRevision,
   myRevisions,
@@ -48,6 +49,7 @@ router.put(
   requireRole(...TL_CHAIN),
   deliverables.update,
 );
+router.delete('/deliverables/:id', requireRole(...TL_CHAIN), deleteDeliverable);
 router.get('/deliverables-log', requireInternal(), listDeliverableLog);
 
 // Revisions

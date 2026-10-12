@@ -44,6 +44,7 @@ const byProject = (req) => {
 
 export const areaSettlements = makeCrud(AreaSettlement, {
   create: areaSettlementSchema,
+  update: areaSettlementSchema.partial(),
   filters: byProject,
   populate: [{ path: 'project', select: POP_PROJ }],
 });

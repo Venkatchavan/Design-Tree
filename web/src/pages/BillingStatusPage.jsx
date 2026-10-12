@@ -54,7 +54,7 @@ export default function BillingStatusPage({ bootstrap }) {
         <KpiCard label="Pending (stage in progress)" value={pending} accent="amber" />
       </div>
       )}
-      <Panel title="Billing status by stage">
+      <Panel title="Billing status by stage" sub="Given by SPOCs after PTL request + SPOC confirm.">
         <div style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center' }}>
           {isDirector && <span className="form-label">Filter by billing status</span>}
           <select className="filter-select" value={readiness} onChange={(e) => setReadiness(e.target.value)}>
@@ -72,6 +72,7 @@ export default function BillingStatusPage({ bootstrap }) {
               { key: 'stage', label: 'Stage' },
               { key: 'plannedCompletion', label: 'Planned completion', render: (r) => fmtShortDate(r.plannedCompletion) },
               { key: 'currentStatus', label: 'Current status' },
+              { key: 'confirmationStatus', label: 'PTL/SPOC', render: (r) => r.confirmationStatus ?? '—' },
               { key: 'delayDays', label: 'Delay', render: (r) => delayLabel(r) },
               { key: 'billingReadiness', label: 'Billing status', render: (r) => <StatusPill status={r.billingReadiness}>{r.billingReadiness}</StatusPill> },
             ]}

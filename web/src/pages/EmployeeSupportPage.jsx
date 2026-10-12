@@ -37,6 +37,15 @@ function SupportTab({ kind, title, showMonth, hint }) {
   const mineQ = useQuery({ queryKey: ['support-mine', kind], queryFn: supportApi.mine });
   const allMine = mineQ.data?.items ?? [];
   const mine = useMemo(() => allMine.filter((r) => String(r.kind ?? '').toLowerCase() === kind.toLowerCase()), [allMine, kind]);
+  const categoryOptions = useMemo(() => {
+    const defaults = {
+      complaint: ['Facilities', 'IT', 'HR', 'Admin', 'Other'],
+      suggestion: ['Process improvement', 'Tools', 'Workplace', 'Other'],
+      query: ['HR policy', 'Payroll', 'Leave', 'Other'],
+      'salary-slip': [],
+    }[kind] ?? ['Other'];
+    return [...new Set([...defaults, ...mine.map((r) => r.category).filter(Boolean)])];
+  }, [mine, kind]);
 
   const create = useMutation({
     mutationFn: (body) => supportApi.create(body),
@@ -80,7 +89,10 @@ function SupportTab({ kind, title, showMonth, hint }) {
           )}
           <div className="form-row">
             <label className="form-label">Category</label>
-            <input className="form-input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Optional category" />
+            <select className="filter-select" style={{ width: '100%' }} value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">Select category</option>
+              {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
           <div className="form-row">
             <label className="form-label">Subject</label>
@@ -122,7 +134,7 @@ export default function EmployeeSupportPage({ bootstrap, user, viewKey }) {
     <>
       <div className="page-head">
         <div className="page-title">Employee support</div>
-        <div className="page-sub">Salary slips, complaints, suggestions and queries — live from the support API.</div>
+        <div className="page-sub">Request your salary slip, and raise complaints, suggestions or queries directly with HR</div>
       </div>
       <Tabs
         tabs={[

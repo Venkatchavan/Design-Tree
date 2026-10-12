@@ -25,7 +25,6 @@ const HEAD_TABS = [
   { key: 'bim-head', label: 'BIM' },
   { key: 'gbs-head', label: 'GBS' },
   { key: 'peer-review-head', label: 'Peer review' },
-  { key: 'qs-head', label: 'QS / BOQ' },
 ];
 
 function fmtShortDate(v) {
@@ -133,25 +132,25 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
   const areas = useQuery({
     queryKey: ['function-areas'],
     queryFn: () => areaApi.list({}),
-    enabled: active === 'qs-head',
+    enabled: false,
   });
   const boq = useQuery({
     queryKey: ['function-boq'],
     queryFn: () => boqApi.list({}),
-    enabled: active === 'qs-head',
+    enabled: false,
     retry: false,
   });
   const employees = useQuery({
     queryKey: ['function-employees'],
     queryFn: () => employeesApi.list({}),
-    enabled: active === 'qs-head',
+    enabled: false,
     retry: false,
   });
   const qsLeave = useQuery({
     queryKey: ['function-qs-leave', qsLeaveFilter],
     queryFn: () =>
       request(`/api/leave-travel/leave${toQuery({ status: qsLeaveFilter || undefined })}`),
-    enabled: active === 'qs-head',
+    enabled: false,
     retry: false,
   });
   const weeklyQ = useQuery({
@@ -163,7 +162,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
   const assocWorkQ = useQuery({
     queryKey: ['function-work-entries-all'],
     queryFn: () => workEntriesApi.list({}),
-    enabled: isAssocTD && ['bim-head', 'gbs-head', 'qs-head'].includes(active),
+    enabled: isAssocTD && ['bim-head', 'gbs-head'].includes(active),
     retry: false,
   });
 
@@ -240,11 +239,11 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['function-peers'] }),
   });
   const reviewArea = useMutation({
-    mutationFn: ({ id, body }) => areaApi.review(id, body),
+    mutationFn: ({ id, body }) => areaApi.update(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['function-areas'] }),
   });
   const reviewBoq = useMutation({
-    mutationFn: ({ id, body }) => boqApi.review(id, body),
+    mutationFn: ({ id, body }) => boqApi.update(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['function-boq'] }),
   });
   const decideLeave = useMutation({

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { employeesApi } from '../lib/api.js';
-import { billingApi, bookingsApi } from '../lib/phase3Api.js';
+import { billingApi } from '../lib/phase3Api.js';
 import { leaveApi, travelApi } from '../lib/phase4bApi.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
@@ -30,7 +30,6 @@ export default function FinancePage({ bootstrap }) {
     queryKey: ['finance-hours'],
     queryFn: () => billingApi.stages({}),
   });
-  const bookings = useQuery({ queryKey: ['bookings-finance'], queryFn: () => bookingsApi.list({}) });
   const settlements = useQuery({ queryKey: ['travel-settlements'], queryFn: () => travelApi.list({}) });
   const employees = useQuery({ queryKey: ['employees-finance'], queryFn: () => employeesApi.list({}) });
   const leaves = useQuery({ queryKey: ['finance-leaves'], queryFn: () => leaveApi.list({}) });
@@ -131,20 +130,6 @@ export default function FinancePage({ bootstrap }) {
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
       {tab === 'travel' && (
         <>
-          <Panel title="Travel expense summary">
-            <DataTable
-              columns={[
-                { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
-                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-                { key: 'dates', label: 'Dates', render: (r) => `${r.departureDate ? new Date(r.departureDate).toLocaleDateString() : '—'} → ${r.returnDate ? new Date(r.returnDate).toLocaleDateString() : '—'}` },
-                { key: 'hotel', label: 'Hotel' },
-                { key: 'nights', label: 'Nights' },
-                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-              ]}
-              rows={bookings.data?.items ?? []}
-              emptyText="No travel bookings yet."
-            />
-          </Panel>
           <Panel title="Settled travel expenses">
             <DataTable
               columns={[

@@ -19,6 +19,8 @@ const revisionSchema = new mongoose.Schema(
     resubmissionDue: { type: Date },
     details: { type: String, required: true, trim: true },
     notify: { type: Boolean, default: false },
+    priority: { type: String, enum: ['Normal', 'High', 'Urgent'], default: 'Normal' },
+    notifyEmployees: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }],
     emailLog: [{ type: String, trim: true }],
     status: { type: String, enum: REVISION_STATUSES, default: 'Open', index: true },
     resubmittedAt: { type: Date },

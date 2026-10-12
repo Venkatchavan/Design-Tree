@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { transmittalRegisterApi, downloadCsv } from '../lib/phase3Api.js';
-import { projectsApi } from '../lib/api.js';
+import { employeesApi, projectsApi } from '../lib/api.js';
+import { teamsMineApi } from '../lib/workApi.js';
+import { spocApi } from '../lib/spocApi.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -41,11 +43,18 @@ function monthYearOf(items) {
 }
 
 export default function TransmittalLogPage({ bootstrap }) {
-  const isDirector = DIRECTOR_ROLES.has(bootstrap?.role?.key ?? '');
-  const isAssocTD = (bootstrap?.role?.key ?? '') === 'assoc_technical_director';
+  const roleKey = bootstrap?.role?.key ?? '';
+  const isDirector = DIRECTOR_ROLES.has(roleKey);
+  const isAssocTD = roleKey === 'assoc_technical_director';
+  const isSpoc = roleKey === 'coordinator';
+  const isPTL = roleKey === 'team_lead';
+  const isEng = roleKey === 'engineer_drafter';
   const [tab, setTab] = useState('register');
   const [project, setProject] = useState('');
   const [search, setSearch] = useState('');
+  const [docType, setDocType] = useState('');
+  const [printType, setPrintType] = useState('');
+  const [service, setService] = useState('');
   const projects = useQuery({ queryKey: ['projects-register-pick'], queryFn: () => projectsApi.list({}) });
   const register = useQuery({
     queryKey: ['transmittal-register', project, search],
@@ -53,7 +62,11 @@ export default function TransmittalLogPage({ bootstrap }) {
   });
   const items = register.data?.items ?? [];
   const summary = register.data?.summary ?? {};
-  const rows = useMemo(() => items, [items]);
+  const rows = useMemo(() => items.filter((r) =>
+    (!docType || r.docType === docType) &&
+    (!printType || r.print === printType) &&
+    (!service || r.service === service),
+  ), [items, docType, printType, service]);
 
   const columns = [
     { key: 'date', label: 'Date', render: (r) => r.date ? new Date(r.date).toLocaleDateString() : '—' },
@@ -79,6 +92,10 @@ export default function TransmittalLogPage({ bootstrap }) {
     return <DirectorRegisterView scoped />;
   }
 
+  if (isSpoc || isPTL || isEng) {
+    return <AssignedRegisterView roleKey={roleKey} />;
+  }
+
   return (
     <div id="view-transmittals">
       <div className="page-head">
@@ -101,6 +118,9 @@ export default function TransmittalLogPage({ bootstrap }) {
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
               <input className="form-input" style={{ maxWidth: 250 }} placeholder="Search TR, project or team" value={search} onChange={(e) => setSearch(e.target.value)} />
               <select className="filter-select" value={project} onChange={(e) => setProject(e.target.value)}><option value="">All accessible projects</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select>
+              <select className="filter-select" value={docType} onChange={(e) => setDocType(e.target.value)}><option value="">All document types</option>{DIR_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+              <select className="filter-select" value={printType} onChange={(e) => setPrintType(e.target.value)}><option value="">All print types</option>{DIR_PRINT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+              <select className="filter-select" value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{DIR_SERVICES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
               <button type="button" className="approve-btn" onClick={() => downloadCsv(rows, columns.map((c) => ({ key: c.key, label: c.label, value: c.render ? (r) => {
                 if (c.key === 'project') return r.project?.name ?? r.projectName;
                 return r[c.key];
@@ -129,6 +149,7 @@ function LogTransmittalForm({ onDone }) {
   });
   const filters = useQuery({ queryKey: ['projects-filters'], queryFn: projectsApi.filters });
   const projects = useQuery({ queryKey: ['projects-register-pick'], queryFn: () => projectsApi.list({}) });
+  const employees = useQuery({ queryKey: ['employees-register-pick'], queryFn: () => employeesApi.list({}) });
   const services = filters.data?.services ?? [];
   const add = useMutation({
     mutationFn: transmittalRegisterApi.create,
@@ -162,10 +183,10 @@ function LogTransmittalForm({ onDone }) {
       </div>
       <div className="form-row"><label className="form-label">Date *</label><input className="form-input" type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
       <div className="form-row"><label className="form-label">TR no. *</label><input className="form-input" required value={form.trNo} onChange={(e) => setForm({ ...form, trNo: e.target.value })} /></div>
-      <div className="form-row"><label className="form-label">Department *</label><input className="form-input" required value={form.dept} onChange={(e) => setForm({ ...form, dept: e.target.value })} /></div>
-      <div className="form-row"><label className="form-label">Team member</label><input className="form-input" value={form.team} onChange={(e) => setForm({ ...form, team: e.target.value })} /></div>
-      <div className="form-row"><label className="form-label">Type of print *</label><input className="form-input" required value={form.print} onChange={(e) => setForm({ ...form, print: e.target.value })} /></div>
-      <div className="form-row"><label className="form-label">Document type *</label><input className="form-input" required value={form.docType} onChange={(e) => setForm({ ...form, docType: e.target.value })} /></div>
+      <div className="form-row"><label className="form-label">Department *</label><select className="filter-select" style={{ width: '100%' }} required value={form.dept} onChange={(e) => setForm({ ...form, dept: e.target.value })}><option value="">Select department</option>{services.map((s) => <option key={s}>{s}</option>)}</select></div>
+      <div className="form-row"><label className="form-label">Team member</label><input className="form-input" list="tr-team-emps" value={form.team} onChange={(e) => setForm({ ...form, team: e.target.value })} placeholder="Select or type" /><datalist id="tr-team-emps">{(employees.data?.items ?? []).map((e) => { const n = `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim() || e.empId; return <option key={e._id ?? e.id} value={n} />; })}</datalist></div>
+      <div className="form-row"><label className="form-label">Type of print *</label><select className="filter-select" style={{ width: '100%' }} required value={form.print} onChange={(e) => setForm({ ...form, print: e.target.value })}><option value="">Select print</option>{DIR_PRINT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
+      <div className="form-row"><label className="form-label">Document type *</label><select className="filter-select" style={{ width: '100%' }} required value={form.docType} onChange={(e) => setForm({ ...form, docType: e.target.value })}><option value="">Select type</option>{DIR_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
       <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={form.service} onChange={(e) => setForm({ ...form, service: e.target.value })}><option value="">Select service</option>{services.map((s) => <option key={s}>{s}</option>)}</select></div>
       <div className="form-row"><label className="form-label">Qty (sheets) *</label><input className="form-input" type="number" min="0" required value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></div>
       <div className="form-row"><label className="form-label">Sets *</label><input className="form-input" type="number" min="0" required value={form.sets} onChange={(e) => setForm({ ...form, sets: e.target.value })} /></div>
@@ -174,6 +195,115 @@ function LogTransmittalForm({ onDone }) {
       {add.isError && <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>{add.error.message}</div>}
       <div><button className="btn-primary" type="submit" disabled={add.isPending}>{add.isPending ? 'Saving…' : 'Log transmittal'}</button></div>
     </form>
+  );
+}
+
+function AssignedRegisterView({ roleKey }) {
+  const [search, setSearch] = useState('');
+  const [docType, setDocType] = useState('');
+  const [printType, setPrintType] = useState('');
+  const [service, setService] = useState('');
+  const [logOpen, setLogOpen] = useState(false);
+  const allocQ = useQuery({ queryKey: ['spoc-allocations-mine'], queryFn: spocApi.allocationsMine, enabled: roleKey === 'coordinator' });
+  const teamsQ = useQuery({ queryKey: ['teams-mine-transmittal'], queryFn: teamsMineApi.list, enabled: roleKey === 'team_lead' || roleKey === 'engineer_drafter' });
+  const register = useQuery({
+    queryKey: ['transmittal-register-all'],
+    queryFn: () => transmittalRegisterApi.list({}),
+  });
+  const myIds = useMemo(() => {
+    if (roleKey === 'coordinator') {
+      const ids = (allocQ.data?.items ?? []).map((a) => {
+        const p = a?.project;
+        return String(p?._id ?? p?.id ?? p ?? '');
+      }).filter(Boolean);
+      return new Set(ids);
+    }
+    const teams = teamsQ.data?.items ?? teamsQ.data?.teams ?? (Array.isArray(teamsQ.data) ? teamsQ.data : []);
+    const ids = [];
+    for (const t of teams) {
+      for (const p of t.projects ?? []) {
+        ids.push(String(p?._id ?? p?.id ?? p ?? ''));
+      }
+    }
+    return new Set(ids.filter(Boolean));
+  }, [allocQ.data, teamsQ.data, roleKey]);
+  const rows = useMemo(
+    () =>
+      (register.data?.items ?? []).filter((r) => {
+        const pid = String(r.project?._id ?? r.project ?? '');
+        if (myIds.size > 0 && !myIds.has(pid)) return false;
+        const projName = String(r.project?.name ?? r.projectName ?? '').toLowerCase();
+        return (
+          (!docType || r.docType === docType) &&
+          (!printType || r.print === printType) &&
+          (!service || r.service === service) &&
+          (!search.trim() || projName.includes(search.trim().toLowerCase()))
+        );
+      }),
+    [register.data, docType, printType, service, search, myIds],
+  );
+  const items = register.data?.items ?? [];
+  const projectCount = new Set(rows.map((r) => String(r.project?._id ?? r.project ?? r.projectName ?? '—'))).size;
+  const sheets = rows.reduce((sum, r) => sum + Number(r.total ?? 0), 0);
+  const revisions = rows.filter((r) => /^R[1-9]/.test(String(r.rev ?? ''))).length;
+  const registerLabel = monthYearOf(items);
+  const loading = register.isLoading || allocQ.isLoading || teamsQ.isLoading;
+  const columns = [
+    { key: 'date', label: 'Date', render: (r) => fmtRegisterDate(r.date) },
+    { key: 'project', label: 'Project', render: (r) => r.project?.name ?? r.projectName ?? '—' },
+    { key: 'dept', label: 'Dept', render: (r) => r.dept ?? '—' },
+    { key: 'print', label: 'Print', render: (r) => r.print ?? '—' },
+    { key: 'docType', label: 'Document Type', render: (r) => r.docType ?? '—' },
+    { key: 'service', label: 'Service', render: (r) => r.service ?? '—' },
+    { key: 'team', label: 'Team', render: (r) => r.team ?? '—' },
+    { key: 'trNo', label: 'TR No.', render: (r) => <span className="mono">{r.trNo ?? '—'}</span> },
+    { key: 'qty', label: 'Qty', render: (r) => r.qty ?? 0 },
+    { key: 'sets', label: 'Set', render: (r) => r.sets ?? 0 },
+    { key: 'total', label: 'Total', render: (r) => r.total ?? 0 },
+    { key: 'rev', label: 'Rev', render: (r) => r.rev ?? '—' },
+    { key: 'reason', label: 'Reason for revision', render: (r) => r.reason ?? '—' },
+  ];
+  return (
+    <div id="view-transmittals">
+      <div className="page-head">
+        <div className="page-title">Transmittal Log</div>
+        <div className="page-sub">{`Your assigned projects · ${registerLabel} · ${loading ? '…' : myIds.size} projects`}</div>
+      </div>
+      <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
+        Showing transmittals for your assigned projects only. Founding/Working Directors, the Executive Director, Admin/Billing and Associate/Technical Directors can see the complete company register.
+      </p>
+      <div className="kpi-grid cols-4">
+        <KpiCard label="Transmittals" value={rows.length} accent="blueprint" />
+        <KpiCard label="Sheets issued" value={sheets} accent="copper" />
+        <KpiCard label="Projects" value={projectCount} accent="forest" />
+        <KpiCard label="Revisions issued (R1+)" value={revisions} accent="violet" />
+      </div>
+      <Panel title="Transmittal Log" sub={`${registerLabel} register`}>
+        <div className="page-sub" style={{ marginBottom: 12 }}>Date · Project · Department · Print · Document Type · Service · Team · TR No. · Drawing · Sheets · Revision</div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+          <input className="form-input" style={{ maxWidth: 170 }} placeholder="Search project" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <select className="filter-select" value={docType} onChange={(e) => setDocType(e.target.value)}><option value="">All document types</option>{DIR_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+          <select className="filter-select" value={printType} onChange={(e) => setPrintType(e.target.value)}><option value="">All print types</option>{DIR_PRINT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+          <select className="filter-select" value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{DIR_SERVICES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+          <button type="button" className="btn-primary" onClick={() => setLogOpen(true)}>Log transmittal</button>
+          <button type="button" className="approve-btn" onClick={() => downloadCsv(rows, columns.map((c) => ({ key: c.key, label: c.label, value: c.render ? (r) => {
+            if (c.key === 'date') return fmtRegisterDate(r.date);
+            if (c.key === 'project') return r.project?.name ?? r.projectName;
+            return r[c.key];
+          } : undefined })), 'transmittal-register.csv')}>Export CSV</button>
+        </div>
+        {loading ? <EmptyState text="Loading register…" /> : register.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{register.error.message}</div>
+        ) : (
+          <DataTable columns={columns} rows={rows} emptyText="No transmittals match these filters." />
+        )}
+      </Panel>
+      {logOpen && (
+        <Modal title="Log transmittal" onClose={() => setLogOpen(false)} wide>
+          <LogTransmittalForm onDone={() => setLogOpen(false)} />
+        </Modal>
+      )}
+    </div>
   );
 }
 

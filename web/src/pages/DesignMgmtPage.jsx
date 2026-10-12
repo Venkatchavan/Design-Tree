@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { projectsApi, request, toQuery, workEntriesApi } from '../lib/api.js';
+import { employeesApi, projectsApi, request, toQuery, workEntriesApi } from '../lib/api.js';
 import { designApi } from '../lib/phase4aApi.js';
 import { deliverablesApi, revisionsApi } from '../lib/workApi.js';
 import { rfiApi, visitsApi } from '../lib/functionsApi.js';
+import { certificatesApi } from '../lib/phase3Api.js';
 import { allowanceApi } from '../lib/phase4bApi.js';
 import { spocApi } from '../lib/spocApi.js';
 import Panel from '../components/Panel.jsx';
@@ -16,16 +17,16 @@ import EmptyState from '../components/EmptyState.jsx';
 const SUPER = new Set(['founding_director', 'working_director']);
 const STEP_STATUSES = ['Not Started', 'In Progress', 'Completed', 'On Hold'];
 const TEAM_SERVICES = [
-  'Structural',
-  'Mechanical',
-  'Electrical',
-  'Plumbing',
-  'Fire',
+  'SMEPF',
+  'SMEP',
+  'MEP',
+  'STR',
+  'PHE',
+  'ELE',
+  'HVAC',
+  'FIRE',
   'BIM',
-  'QA/QC',
-  'Peer Review',
-  'QS/BOQ',
-  'Other',
+  'GBS',
 ];
 const TEAM_STATUSES = ['Pending', 'Confirmed'];
 
@@ -648,6 +649,24 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
     enabled: !!activeProject && tab === 'team',
     retry: false,
   });
+  const employeesQ = useQuery({
+    queryKey: ['employees-design-mgmt'],
+    queryFn: () => employeesApi.list({}),
+    enabled: tab === 'team',
+    retry: false,
+  });
+  const allocsQ = useQuery({
+    queryKey: ['spoc-allocs-design', activeProject],
+    queryFn: () => request(`/api/spoc/allocations${toQuery({ project: activeProject })}`),
+    enabled: !!activeProject && tab === 'team',
+    retry: false,
+  });
+  const certsQ = useQuery({
+    queryKey: ['design-certs', activeProject],
+    queryFn: () => certificatesApi.list({ project: activeProject }),
+    enabled: !!activeProject && tab === 'team',
+    retry: false,
+  });
 
   useEffect(() => {
     const item = design.data?.item;
@@ -991,6 +1010,7 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
       )}
 
       {tab === 'team' && (
+        <>
         <Panel title="Project team finalisation — SPOC / PTL / TL per discipline">
           {projectDetail.isLoading ? (
             <EmptyState text="Loading team confirmation…" />
@@ -1041,30 +1061,44 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
                   {
                     key: 'spoc',
                     label: 'SPOC',
-                    render: (r) =>
-                      canEdit ? (
-                        <input
-                          className="form-input"
+                    render: (r) => {
+                      if (!canEdit) return (r.spoc || '—');
+                      const emps = employeesQ.data?.items ?? [];
+                      const allocCoords = (allocsQ.data?.items ?? []).map((a) => a.coordinator).filter(Boolean);
+                      const names = [...new Set([
+                        ...emps.map((e) => `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim()).filter(Boolean),
+                        ...allocCoords.map((c) => typeof c === 'string' ? c : `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim()).filter(Boolean),
+                      ])].sort();
+                      return (
+                        <select
+                          className="filter-select"
                           value={r.spoc ?? ''}
                           onChange={(e) => patchDiscipline(r._rowKey, 'spoc', e.target.value)}
-                        />
-                      ) : (
-                        (r.spoc || '—')
-                      ),
+                        >
+                          <option value="">Select SPOC…</option>
+                          {names.map((n) => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      );
+                    },
                   },
                   {
                     key: 'ptlTl',
                     label: 'PTL / TL',
-                    render: (r) =>
-                      canEdit ? (
-                        <input
-                          className="form-input"
+                    render: (r) => {
+                      if (!canEdit) return (r.ptlTl || '—');
+                      const emps = employeesQ.data?.items ?? [];
+                      const names = [...new Set(emps.map((e) => `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim()).filter(Boolean))].sort();
+                      return (
+                        <select
+                          className="filter-select"
                           value={r.ptlTl ?? ''}
                           onChange={(e) => patchDiscipline(r._rowKey, 'ptlTl', e.target.value)}
-                        />
-                      ) : (
-                        (r.ptlTl || '—')
-                      ),
+                        >
+                          <option value="">Select lead…</option>
+                          {names.map((n) => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      );
+                    },
                   },
                   {
                     key: 'detail',
@@ -1096,7 +1130,7 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
                   },
                 ]}
                 rows={disciplines.map((d, i) => ({ ...d, _rowKey: i }))}
-                emptyText="No disciplines yet — add Structural / MEPF / BIM / QA/QC / Peer Review / QS rows."
+                emptyText="No disciplines yet — add SMEPF / SMEP / MEP / STR / PHE / ELE / HVAC / FIRE / BIM / GBS rows."
               />
               {canEdit && (
                 <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
@@ -1119,7 +1153,7 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
                       checked={sharedToAdmin}
                       onChange={(e) => setSharedToAdmin(e.target.checked)}
                     />
-                    Share confirmed team to Admin
+                    Share confirmed team to Admin, SPOC and Management
                   </label>
                 </div>
               )}
@@ -1146,6 +1180,25 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
             </form>
           )}
         </Panel>
+        <Panel title="Completion certificates — reflection from Admin" sub="Read-only. Issued and requested by Admin; no input here.">
+          {certsQ.isLoading ? (
+            <EmptyState text="Loading certificates…" />
+          ) : certsQ.isError ? (
+            <EmptyState text="Certificates unavailable." />
+          ) : (
+            <DataTable
+              columns={[
+                { key: 'certType', label: 'Certificate type' },
+                { key: 'stage', label: 'Stage' },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                { key: 'issuedBy', label: 'Issued by', render: (r) => r.issuedBy ?? '—' },
+              ]}
+              rows={certsQ.data?.items ?? []}
+              emptyText="No completion certificates reflected from Admin yet."
+            />
+          )}
+        </Panel>
+        </>
       )}
 
       {tab === 'deliverables' && (

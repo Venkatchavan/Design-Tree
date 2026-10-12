@@ -48,10 +48,8 @@ async function nextSequence(name, usedCodes) {
 
 export async function nextProjectCode(_req, res, next) {
   try {
-    const year = new Date().getFullYear();
-    const existing = await Project.find({ code: new RegExp(`^PRJ-${year}-\\d+$`) }).select('code').lean();
-    const seq = await nextSequence(`project-code-${year}`, existing.map((p) => p.code));
-    return res.status(200).json({ code: `PRJ-${year}-${String(seq).padStart(3, '0')}` });
+    const code = await generateProjectCode();
+    return res.status(200).json({ code });
   } catch (err) {
     return next(err);
   }
@@ -59,13 +57,25 @@ export async function nextProjectCode(_req, res, next) {
 
 export async function nextJobNumber(_req, res, next) {
   try {
-    const year = new Date().getFullYear();
-    const existing = await Project.find({ jobNumber: new RegExp(`^WO/${year}/\\d+$`) }).select('jobNumber').lean();
-    const seq = await nextSequence(`job-number-${year}`, existing.map((p) => p.jobNumber));
-    return res.status(200).json({ jobNumber: `WO/${year}/${String(seq).padStart(4, '0')}` });
+    const jobNumber = await generateJobNumber();
+    return res.status(200).json({ jobNumber });
   } catch (err) {
     return next(err);
   }
+}
+
+async function generateProjectCode() {
+  const year = new Date().getFullYear();
+  const existing = await Project.find({ code: new RegExp(`^PRJ-${year}-\\d+$`) }).select('code').lean();
+  const seq = await nextSequence(`project-code-${year}`, existing.map((p) => p.code));
+  return `PRJ-${year}-${String(seq).padStart(3, '0')}`;
+}
+
+async function generateJobNumber() {
+  const year = new Date().getFullYear();
+  const existing = await Project.find({ jobNumber: new RegExp(`^WO/${year}/\\d+$`) }).select('jobNumber').lean();
+  const seq = await nextSequence(`job-number-${year}`, existing.map((p) => p.jobNumber));
+  return `WO/${year}/${String(seq).padStart(4, '0')}`;
 }
 
 export async function listProjects(req, res, next) {
@@ -75,10 +85,18 @@ export async function listProjects(req, res, next) {
     if (branch) filter.branch = branch;
     if (stage) filter.currentStage = stage;
     if (status) filter.status = status;
-    if (service) filter['scope.service'] = service;
+    if (service) filter.$or = [{ 'scope.service': service }, { services: service }];
     if (search) {
       const rx = new RegExp(escapeRegExp(search), 'i');
-      filter.$or = [{ name: rx }, { code: rx }, { clientName: rx }];
+      filter.$or = [...(filter.$or ?? []), { name: rx }, { code: rx }, { clientName: rx }];
+      // When both service + search are present $or mixes conditions; nest service part.
+      if (service && search) {
+        filter.$and = [
+          { $or: [{ 'scope.service': service }, { services: service }] },
+          { $or: [{ name: rx }, { code: rx }, { clientName: rx }] },
+        ];
+        delete filter.$or;
+      }
     }
     const [items, total] = await Promise.all([
       Project.find(filter).sort({ updatedAt: -1 }).limit(200),
@@ -94,7 +112,7 @@ export async function projectStats(_req, res, next) {
   try {
     const projects = await Project.find(
       {},
-      { status: 1, completion: 1, branch: 1, currentStage: 1, scope: 1 },
+      { status: 1, completion: 1, branch: 1, currentStage: 1, scope: 1, services: 1 },
     );
     const counts = { active: 0, completed: 0, onHold: 0 };
     const byBranch = new Map();
@@ -111,6 +129,9 @@ export async function projectStats(_req, res, next) {
       byStage.set(p.currentStage, (byStage.get(p.currentStage) ?? 0) + 1);
       for (const s of p.scope ?? []) {
         if (s.service) byService.set(s.service, (byService.get(s.service) ?? 0) + 1);
+      }
+      for (const s of p.services ?? []) {
+        if (s) byService.set(s, (byService.get(s) ?? 0) + 1);
       }
     }
     return res.status(200).json({
@@ -214,15 +235,21 @@ export async function createProject(req, res, next) {
         .status(400)
         .json({ message: 'Invalid project data.', issues: validationIssues(parsed.error) });
     }
-    try {
-      parsed.data.branch = await requireActiveBranch(parsed.data.branch);
-    } catch (err) {
-      return res.status(err.status ?? 400).json({ message: err.message });
+    if (parsed.data.branch) {
+      try {
+        parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+      } catch (err) {
+        return res.status(err.status ?? 400).json({ message: err.message });
+      }
     }
+    const code = (parsed.data.code?.trim() || await generateProjectCode()).toUpperCase();
+    const jobNumber = parsed.data.jobNumber?.trim() || await generateJobNumber();
     const activationStatus = parsed.data.activation?.status ?? 'Pending';
     const project = await Project.create({
       ...parsed.data,
-      code: parsed.data.code.toUpperCase(),
+      code,
+      jobNumber,
+      services: parsed.data.services ?? [],
       activation: {
         ...(parsed.data.activation ?? {}),
         status: activationStatus,
@@ -344,6 +371,7 @@ export async function saveSpocContacts(req, res, next) {
 
 // PUT /api/projects/:id/team-leads — SPOC-owned principal team leads
 // (+ optional related director/head). Admin side is display-only.
+// Multiple people per service supported via repeated rows or names[].
 export async function saveTeamLeads(req, res, next) {
   try {
     const parsed = teamLeadsSchema.safeParse(req.body ?? {});
@@ -354,9 +382,21 @@ export async function saveTeamLeads(req, res, next) {
     }
     const set = {};
     if (parsed.data.principalTeamLeads !== undefined) {
-      set.principalTeamLeads = parsed.data.principalTeamLeads
-        .filter((t) => (t.service ?? '').trim() || (t.name ?? '').trim())
-        .map((t) => ({ service: (t.service ?? '').trim(), name: (t.name ?? '').trim() }));
+      const rows = [];
+      for (const t of parsed.data.principalTeamLeads) {
+        const service = (t.service ?? '').trim();
+        const single = (t.name ?? '').trim();
+        const multi = (t.names ?? []).map((n) => String(n ?? '').trim()).filter(Boolean);
+        const extra = {
+          ...(t.role?.trim() ? { role: t.role.trim() } : {}),
+          ...(t.nominatedBy?.trim() ? { nominatedBy: t.nominatedBy.trim() } : {}),
+          ...(t.approvalStatus ? { approvalStatus: t.approvalStatus } : {}),
+        };
+        if (single) rows.push({ service, name: single, ...extra });
+        for (const n of multi) rows.push({ service, name: n, ...extra });
+        if (!single && multi.length === 0 && service) rows.push({ service, name: '', ...extra });
+      }
+      set.principalTeamLeads = rows.filter((t) => (t.service ?? '').trim() || (t.name ?? '').trim());
     }
     for (const k of [
       'projectDirector',
@@ -499,11 +539,11 @@ export async function saveTeamConfirmation(req, res, next) {
       try {
         const { notify } = await import('../models/Notification.js');
         await notify({
-          roles: ['admin_billing'],
+          roles: ['admin_billing', 'coordinator', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director'],
           project: project._id,
           link: { view: 'dashboard', id: project._id.toString() },
           title: `Team confirmed: ${project.name} (${project.code})`,
-          detail: 'Design Management Head shared the confirmed project team.',
+          detail: 'Design Management Head shared the confirmed project team to Admin, SPOC and Management.',
           type: 'team-confirmed',
         });
       } catch {

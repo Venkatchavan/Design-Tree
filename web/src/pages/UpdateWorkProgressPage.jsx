@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -6,6 +6,7 @@ import {
   projectsApi,
   workEntriesApi,
 } from '../lib/api.js';
+import { teamsMineApi } from '../lib/workApi.js';
 import {
   isPendingLogout,
   performLogout,
@@ -32,6 +33,11 @@ function projLabel(p) {
   if (typeof p === 'string') return p;
   return p.name ?? p.code ?? '—';
 }
+function empName(e) {
+  if (!e) return '—';
+  if (typeof e === 'string') return e;
+  return [e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || e.email || '—';
+}
 function fmtDate(v) {
   if (!v) return '—';
   const d = new Date(v);
@@ -46,8 +52,12 @@ function useBootstrapProp(prop) {
   return prop ?? q.data ?? null;
 }
 
-export default function UpdateWorkProgressPage({ bootstrap: bootstrapProp }) {
-  useBootstrapProp(bootstrapProp);
+export default function UpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
+  const bootstrap = useBootstrapProp(bootstrapProp);
+  const roleKey = bootstrap?.role?.key ?? '';
+  const isPTL = roleKey === 'team_lead';
+  const userName = user?.name ?? user?.email ?? '';
+  const userDesig = user?.designation ?? bootstrap?.role?.label ?? '';
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [project, setProject] = useState('');
@@ -76,7 +86,30 @@ export default function UpdateWorkProgressPage({ bootstrap: bootstrapProp }) {
     queryKey: ['active-projects'],
     queryFn: () => projectsApi.list({ status: 'Active' }),
   });
-  const projectOptions = projectsQ.data?.items ?? [];
+  const teamsQ = useQuery({
+    queryKey: ['teams-mine-uwp'],
+    queryFn: teamsMineApi.list,
+    enabled: isPTL,
+    retry: false,
+  });
+  const myTeams = useMemo(() => {
+    const d = teamsQ.data;
+    if (!d) return [];
+    if (Array.isArray(d)) return d;
+    return d.items ?? d.teams ?? [];
+  }, [teamsQ.data]);
+  const teamProjectIds = useMemo(() => {
+    const ids = new Set();
+    for (const t of myTeams) {
+      for (const p of t.projects ?? []) ids.add(String(p?._id ?? p?.id ?? p ?? ''));
+    }
+    return ids;
+  }, [myTeams]);
+  const projectOptions = useMemo(() => {
+    const all = projectsQ.data?.items ?? [];
+    if (!isPTL || teamProjectIds.size === 0) return all;
+    return all.filter((p) => teamProjectIds.has(String(p._id ?? p.id ?? '')));
+  }, [projectsQ.data, isPTL, teamProjectIds]);
 
   const previewQ = useQuery({
     queryKey: ['project', project],
@@ -90,6 +123,22 @@ export default function UpdateWorkProgressPage({ bootstrap: bootstrapProp }) {
     queryFn: () => workEntriesApi.list({ mine: true }),
   });
   const myEntries = mineQ.data?.items ?? [];
+  const teamEntriesQ = useQuery({
+    queryKey: ['team-work-entries-uwp'],
+    queryFn: () => workEntriesApi.list({}),
+    enabled: isPTL,
+    retry: false,
+  });
+  const teamEntries = useMemo(() => {
+    const items = teamEntriesQ.data?.items ?? [];
+    if (teamProjectIds.size === 0) return items;
+    return items.filter((e) => {
+      const pid = e?.project?._id ?? e?.project?.id ?? (typeof e?.project === 'string' ? e.project : '');
+      return teamProjectIds.has(String(pid ?? ''));
+    });
+  }, [teamEntriesQ.data, teamProjectIds]);
+  const submissionRows = isPTL ? [...teamEntries].sort((a, b) =>
+    String(b.date ?? b.createdAt ?? '').localeCompare(String(a.date ?? a.createdAt ?? ''))) : myEntries;
 
   const create = useMutation({
     mutationFn: (body) => workEntriesApi.create(body),
@@ -171,9 +220,15 @@ export default function UpdateWorkProgressPage({ bootstrap: bootstrapProp }) {
       <div className="page-head">
         <div className="page-title">Update work progress</div>
         <div className="page-sub">Daily progress form — both buttons create work entries only.</div>
+        {userName && (
+          <div className="page-sub" style={{ marginTop: 4 }}>
+            {userName}{userDesig ? ` · ${userDesig}` : ''}
+          </div>
+        )}
       </div>
 
       <Panel title="Log work">
+        <div className="section-label">1. Select project{isPTL ? " — showing only the projects you're on" : ''}</div>
         {pendingLogout && (
           <div className="login-error" role="alert" style={{ display: 'block' }}>
             Mandatory hours pending: submitting today&apos;s update will complete sign-out.
@@ -198,12 +253,17 @@ export default function UpdateWorkProgressPage({ bootstrap: bootstrapProp }) {
           </div>
           {project && (
             <div className="field-grid" style={{ marginBottom: 12 }}>
-              <Field label="Job / client" value={preview?.clientName ?? preview?.client ?? preview?.job ?? '—'} />
+              <Field label="Job no." value={preview?.jobNumber ?? preview?.job ?? '—'} />
+              <Field label="Client" value={preview?.clientName ?? preview?.client ?? '—'} />
               <Field label="Branch" value={preview?.branch ?? '—'} />
-              <Field label="Stage" value={preview?.currentStage ?? preview?.stage ?? '—'} />
-              <Field label="Team" value={preview?.team?.name ?? preview?.team ?? '—'} />
+              <Field label="Current stage" value={preview?.currentStage ?? preview?.stage ?? '—'} />
+              <Field
+                label="Project team"
+                value={((preview?.principalTeamLeads ?? []).map((t) => `${t.name ?? ''}${t.service ? ` · ${t.service}` : ''}`.trim()).filter((s) => s && s !== '·').join(', ')) || (preview?.team?.name ?? preview?.team ?? '—')}
+              />
             </div>
           )}
+          <div className="section-label">2. What are you logging work against?</div>
           <div className="form-row">
             <label className="form-label">Log against *</label>
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
@@ -238,10 +298,14 @@ export default function UpdateWorkProgressPage({ bootstrap: bootstrapProp }) {
               <input className="form-input" value={drawing} onChange={(e) => setDrawing(e.target.value)} />
             </div>
           )}
+          <div className="section-label">3. Update work progress</div>
           <div className="field-grid">
             <div className="form-row">
               <label className="form-label">Stage</label>
-              <input className="form-input" value={stage} onChange={(e) => setStage(e.target.value)} />
+              <select className="filter-select" style={{ width: '100%' }} value={stage} onChange={(e) => setStage(e.target.value)}>
+                <option value="">Select stage</option>
+                {['CD', 'SD', 'DD', 'TD', 'GFC'].map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
             </div>
             <div className="form-row">
               <label className="form-label">Hours *</label>
@@ -267,7 +331,7 @@ export default function UpdateWorkProgressPage({ bootstrap: bootstrapProp }) {
               placeholder={needsExtraReason ? `Required — total ${totalHours.toFixed(1)}h exceeds ${EXTRA_HOURS_AT}h` : `Only needed when the day's total exceeds ${EXTRA_HOURS_AT}h`}
             />
           </div>
-          <div className="section-label">Other project hours</div>
+          <div className="section-label">Worked on other projects too? Add their hours{isPTL ? ' — lists every project under your PTL' : ''}</div>
           {otherRows.map((r, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
               <select
@@ -322,25 +386,31 @@ export default function UpdateWorkProgressPage({ bootstrap: bootstrapProp }) {
         </form>
       </Panel>
 
-      <Panel title="My submissions">
-        {mineQ.isLoading ? (
+      <Panel title={isPTL ? 'My submissions — everyone’s updates logged from this page' : 'My submissions'}>
+        {mineQ.isLoading || (isPTL && teamEntriesQ.isLoading) ? (
           <EmptyState text="Loading…" />
         ) : (
           <DataTable
             columns={[
-              { key: 'wu', label: 'WU / Ref', render: (e) => wuDisplay(e) },
+              { key: 'wu', label: 'WU no.', render: (e) => wuDisplay(e) },
               { key: 'date', label: 'Date', render: (e) => fmtDate(e.date) },
+              ...(isPTL ? [{ key: 'employee', label: 'Employee', render: (e) => empName(e.employee) }] : []),
               { key: 'project', label: 'Project', render: (e) => projLabel(e.project) },
+              { key: 'stage', label: 'Stage', render: (e) => e.stage ?? '—' },
               { key: 'deliverable', label: 'Deliverable', render: (e) => e.deliverable ?? e.taskActivity ?? '—' },
+              { key: 'task', label: 'Task / Activity', render: (e) => e.taskActivity ?? '—' },
+              { key: 'drawing', label: 'Drawing', render: (e) => e.drawing ?? '—' },
+              { key: 'hours', label: 'Hourly work handled', render: (e) => e.hours ?? '—' },
               { key: 'progressPct', label: 'Progress %', render: (e) => e.progressPct ?? '—' },
               {
                 key: 'status',
                 label: 'Status',
                 render: (e) => <StatusPill tone={toneFor(e.status)}>{e.status ?? '—'}</StatusPill>,
               },
+              { key: 'followup', label: 'Follow-up', render: (e) => e.followUp ?? e.remarks ?? '—' },
             ]}
-            rows={myEntries}
-            emptyText="No submissions yet."
+            rows={submissionRows}
+            emptyText="No work progress submitted yet."
           />
         )}
       </Panel>

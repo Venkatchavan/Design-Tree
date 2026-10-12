@@ -50,6 +50,8 @@ export const revisionSchema = z
     resubmissionDue: dateOpt,
     details: z.string().trim().min(1),
     notify: z.boolean().optional(),
+    priority: z.enum(['Normal', 'High', 'Urgent']).optional(),
+    notifyEmployees: z.array(objectId).optional(),
   })
   .strict();
 export const revisionUpdateSchema = revisionSchema.partial();
@@ -103,6 +105,7 @@ export const areaSettlementSchema = z
     initial: z.number().min(0),
     revised: z.number().min(0),
     remarks: strOpt,
+    status: z.enum(['Pending', 'Approved', 'Rejected']).optional(),
   })
   .strict();
 export const areaSettlementReviewSchema = z
@@ -122,13 +125,13 @@ export const boqItemSchema = z
     rate: z.number().min(0).optional(),
     amount: z.number().min(0).optional(),
     remarks: strOpt,
-    status: z.enum(['Draft', 'Submitted']).optional(),
+    status: z.enum(['Draft', 'Submitted', 'Approved']).optional(),
   })
   .strict();
 export const boqItemUpdateSchema = boqItemSchema.partial();
 export const boqReviewSchema = z
   .object({
-    status: z.enum(['Submitted', 'Approved']),
+    status: z.enum(['Draft', 'Submitted', 'Approved']),
     remarks: strOpt,
   })
   .strict();

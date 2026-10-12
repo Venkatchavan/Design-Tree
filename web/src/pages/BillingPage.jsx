@@ -16,7 +16,11 @@ const TABS = [
   { key: 'quotes', label: 'Project quoted fee' },
 ];
 const STATUSES = ['Pending', 'Ready for billing', 'Billed', 'Flagged'];
+const SERVICES_10 = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS'];
+const STAGES_5 = ['CD', 'SD', 'DD', 'TD', 'GFC'];
+const STAGE_STATUS = ['Not Started', 'In Progress', 'PTL Requested', 'Pending SPOC confirm', 'Completed'];
 const WRITERS = new Set(['founding_director', 'working_director', 'admin_billing', 'executive_director']);
+const STAGE_WRITERS = new Set(['admin_billing', 'executive_director', 'coordinator', 'design_mgmt_head', 'team_lead']);
 const DIRECTOR_READONLY = new Set(['founding_director', 'working_director', 'executive_director']);
 const money = (v) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 const moneyCr = (v) => {
@@ -42,6 +46,7 @@ export default function BillingPage({ bootstrap }) {
   const isDirector = DIRECTOR_READONLY.has(role);
   const isAdmin = role === 'admin_billing';
   const canPostClaimOrStage = canWrite && !isDirector;
+  const canPostStage = STAGE_WRITERS.has(role) && !isDirector;
   const qc = useQueryClient();
   const projects = useQuery({ queryKey: ['projects-billing'], queryFn: () => projectsApi.list({}) });
   const overview = useQuery({ queryKey: ['billing-overview'], queryFn: billingApi.overview });
@@ -119,6 +124,14 @@ export default function BillingPage({ bootstrap }) {
           {claims.isLoading ? <EmptyState text="Loading claims…" /> : <DataTable columns={claimColumns} rows={claimRows} emptyText="No billing claims have been entered." />}
         </Panel>
       </> : <>
+        <Panel title="Enter new billing details" sub="Log a claim submission by project, stage and amount"><form onSubmit={submitClaim} className="field-grid">
+          <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={claim.project} onChange={(e) => setClaim({ ...claim, project: e.target.value })}><option value="">Select project</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name} ({p.code})</option>)}</select></div>
+          <div className="form-row"><label className="form-label">Stage *</label><select required className="filter-select" style={{ width: '100%' }} value={claim.stage} onChange={(e) => setClaim({ ...claim, stage: e.target.value })}><option value="">Select stage</option>{STAGES_5.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
+          <div className="form-row"><label className="form-label">Service (for service-wise splits)</label><select className="filter-select" style={{ width: '100%' }} value={claim.service} onChange={(e) => setClaim({ ...claim, service: e.target.value })}><option value="">Select service</option>{SERVICES_10.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
+          <div className="form-row"><label className="form-label">Amount (₹) *</label><input required type="number" min="0" className="form-input" value={claim.amount} onChange={(e) => setClaim({ ...claim, amount: e.target.value })} /></div>
+          <div className="form-row"><label className="form-label">Submission date</label><input type="date" className="form-input" value={claim.submissionDate} onChange={(e) => setClaim({ ...claim, submissionDate: e.target.value })} /></div>
+          <button type="submit" className="btn-primary" disabled={addClaim.isPending}>{addClaim.isPending ? 'Saving…' : 'Submit billing entry'}</button>
+        </form></Panel>
         <Panel title="Recent claims" sub="Across projects, most recent first">
           {claims.isLoading ? <EmptyState text="Loading claims…" /> : (
           <DataTable
@@ -134,28 +147,34 @@ export default function BillingPage({ bootstrap }) {
           />
           )}
         </Panel>
-        <Panel title="Enter new billing details" sub="Log a claim submission by project, stage and amount"><form onSubmit={submitClaim} className="field-grid">
-          <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={claim.project} onChange={(e) => setClaim({ ...claim, project: e.target.value })}><option value="">Select project</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name} ({p.code})</option>)}</select></div>
-          <div className="form-row"><label className="form-label">Stage *</label><input required className="form-input" value={claim.stage} onChange={(e) => setClaim({ ...claim, stage: e.target.value })} /></div>
-          <div className="form-row"><label className="form-label">Service (for service-wise splits)</label><input className="form-input" value={claim.service} onChange={(e) => setClaim({ ...claim, service: e.target.value })} placeholder="e.g. Structural" /></div>
-          <div className="form-row"><label className="form-label">Amount (₹) *</label><input required type="number" min="0" className="form-input" value={claim.amount} onChange={(e) => setClaim({ ...claim, amount: e.target.value })} /></div>
-          <div className="form-row"><label className="form-label">Submission date</label><input type="date" className="form-input" value={claim.submissionDate} onChange={(e) => setClaim({ ...claim, submissionDate: e.target.value })} /></div>
-          <button type="submit" className="btn-primary" disabled={addClaim.isPending}>{addClaim.isPending ? 'Saving…' : 'Submit billing entry'}</button>
-        </form></Panel>
       </>)}
 
       {tab === 'stages' && <>
-        {canPostClaimOrStage && <Panel title="Update stage tracker"><form onSubmit={submitStage} className="field-grid">
+        {canPostStage && <Panel title="Update stage tracker"><form onSubmit={submitStage} className="field-grid">
           <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={stage.project} onChange={(e) => setStage({ ...stage, project: e.target.value })}><option value="">Select project</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
-          <div className="form-row"><label className="form-label">Service</label><input className="form-input" value={stage.service} onChange={(e) => setStage({ ...stage, service: e.target.value })} /></div>
-          <div className="form-row"><label className="form-label">Stage</label><input className="form-input" value={stage.stage} onChange={(e) => setStage({ ...stage, stage: e.target.value })} /></div>
+          <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={stage.service} onChange={(e) => setStage({ ...stage, service: e.target.value })}><option value="">Select service</option>{SERVICES_10.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
+          <div className="form-row"><label className="form-label">Stage</label><select className="filter-select" style={{ width: '100%' }} value={stage.stage} onChange={(e) => setStage({ ...stage, stage: e.target.value })}><option value="">Select stage</option>{STAGES_5.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
           <div className="form-row"><label className="form-label">Planned completion</label><input type="date" className="form-input" value={stage.plannedCompletion} onChange={(e) => setStage({ ...stage, plannedCompletion: e.target.value })} /></div>
-          <div className="form-row"><label className="form-label">Current status</label><input className="form-input" value={stage.currentStatus} onChange={(e) => setStage({ ...stage, currentStatus: e.target.value })} /></div>
+          <div className="form-row"><label className="form-label">Current status</label><select className="filter-select" style={{ width: '100%' }} value={stage.currentStatus} onChange={(e) => setStage({ ...stage, currentStatus: e.target.value })}><option value="">Select status</option>{STAGE_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
           <div className="form-row"><label className="form-label">Delay (days)</label><input type="number" className="form-input" value={stage.delayDays} onChange={(e) => setStage({ ...stage, delayDays: e.target.value })} /></div>
           <div className="form-row"><label className="form-label">Billing readiness</label><select className="filter-select" value={stage.billingReadiness} onChange={(e) => setStage({ ...stage, billingReadiness: e.target.value })}>{['Billed', 'Ready for billing', 'Pending'].map((s) => <option key={s}>{s}</option>)}</select></div>
           <div className="form-row"><label className="form-label">Reason</label><input className="form-input" value={stage.reason} onChange={(e) => setStage({ ...stage, reason: e.target.value })} /></div>
           <button className="btn-primary" type="submit" disabled={saveStage.isPending}>Save stage status</button>
         </form></Panel>}
+        <Panel title="Requests from SPOC — after every stage completion" sub="PTL requested → SPOC final confirmed → DMH, directors, Admin. Admin marks billed here.">
+          {stages.isLoading ? <EmptyState text="Loading…" /> : (
+          <DataTable columns={[
+            { key: 'project', label: 'Project', render: (r) => r.project?.name ?? projectName(r.project) },
+            { key: 'service', label: 'Service' }, { key: 'stage', label: 'Stage' },
+            { key: 'currentStatus', label: 'Status' },
+            { key: 'confirmationStatus', label: 'Confirm', render: (r) => r.confirmationStatus ?? '—' },
+            { key: 'ptlRemark', label: 'PTL note', render: (r) => r.ptlRemark ?? '—' },
+            { key: 'spocRemark', label: 'SPOC note', render: (r) => r.spocRemark ?? '—' },
+            { key: 'billingReadiness', label: 'Readiness', render: (r) => <StatusPill status={r.billingReadiness}>{readinessLabel(r)}</StatusPill> },
+            { key: 'actions', label: '', render: (r) => r.billingReadiness === 'Ready for billing' && canPostClaimOrStage ? <button type="button" className="approve-btn" disabled={stageBilledMut.isPending} onClick={() => stageBilledMut.mutate(r._id)}>Mark billed</button> : '—' },
+          ]} rows={stageRows.filter((r) => (r.confirmationStatus && r.confirmationStatus !== 'None') || r.billingReadiness === 'Ready for billing')} emptyText="No SPOC billing requests yet. PTL requests in My Team → SPOC confirms in Team allocation." />
+          )}
+        </Panel>
         <Panel title="Project status — stage-wise" sub="Live stage per project & service. A completed stage that hasn't been billed yet is flagged “Ready” and the Billing team is notified automatically.">
           <div className="kpi-grid cols-3">
             <KpiCard label="Billed" value={stageBilled} accent="forest" />

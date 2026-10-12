@@ -16,8 +16,6 @@ import {
   discrepancies,
   getGbsCert,
   peerReviews,
-  reviewAreaSettlement,
-  reviewBoqItem,
   rfis,
   saveGbsSteps,
   setPeerFinal,
@@ -30,20 +28,15 @@ import {
 const router = Router();
 router.use(requireAuth);
 
-// QS area settlement (QS logs, QS Head reviews)
+// QS area settlement (QS-owned, no head review)
 router.get('/area-settlements', requireInternal(), areaSettlements.list);
 router.post('/area-settlements', requireRole('qs'), areaSettlements.create);
-router.patch(
-  '/area-settlements/:id/review',
-  requireRole('qs_head'),
-  reviewAreaSettlement,
-);
+router.put('/area-settlements/:id', requireRole('qs'), areaSettlements.update);
 
-// QS/BOQ line items (QS logs Draft/Submitted, QS Head approves)
+// QS/BOQ line items (QS-owned Draft → Submitted → Approved, no head review)
 router.get('/boq', requireInternal(), boqItems.list);
 router.post('/boq', requireRole('qs'), boqItems.create);
 router.put('/boq/:id', requireRole('qs'), boqItems.update);
-router.patch('/boq/:id/review', requireRole('qs_head'), reviewBoqItem);
 
 // QA/QC site visits + discrepancies + conveyance + RFIs
 router.get('/site-visits', requireInternal(), siteVisits.list);

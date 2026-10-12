@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { API_BASE, projectsApi } from '../lib/api.js';
+import { API_BASE, employeesApi, projectsApi } from '../lib/api.js';
 import { certificatesApi } from '../lib/phase3Api.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -16,12 +16,8 @@ const TABS = [
 
 export default function CertificatesPage({ bootstrap }) {
   const roleKey = bootstrap?.role?.key ?? '';
-  // Read-only director view: FD/WD/ED plus Associate/Technical Directors.
-  // Writers (Admin tabbed UI below) stay admin-only; API POSTs already 403.
-  const isDirector = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director']).has(roleKey);
-  // Assoc Technical Director: issued table (read-only) + template + request
-  // management, but no issued-certificate creation (stays Admin-only).
-  const isAssocTD = roleKey === 'assoc_technical_director';
+  // Read-only log view for directors + AssocTD + DMH (Admin reflection, no inputs).
+  const isReadonly = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director', 'design_mgmt_head']).has(roleKey);
   const isAdmin = roleKey === 'admin_billing';
   const [tab, setTab] = useState('issued');
   const [cert, setCert] = useState({ project: '', certType: '', certNo: '', stage: '', issuedBy: '', status: 'Issued' });
@@ -31,6 +27,7 @@ export default function CertificatesPage({ bootstrap }) {
   const [message, setMessage] = useState('');
   const qc = useQueryClient();
   const projects = useQuery({ queryKey: ['projects-certs'], queryFn: () => projectsApi.list({}) });
+  const employees = useQuery({ queryKey: ['employees-certs'], queryFn: () => employeesApi.list({}) });
   const list = useQuery({ queryKey: ['certificates'], queryFn: () => certificatesApi.list({}) });
   const templates = useQuery({ queryKey: ['certificate-templates'], queryFn: certificatesApi.templates });
   const requests = useQuery({ queryKey: ['certificate-requests'], queryFn: () => certificatesApi.requests({}) });
@@ -54,6 +51,19 @@ export default function CertificatesPage({ bootstrap }) {
     return `${day}-${mon}-${String(d.getFullYear()).slice(2)}`;
   };
   const templateCategories = (templates.data?.items ?? []).map((t) => t.category).filter(Boolean);
+  const templateFor = (category) => (templates.data?.items ?? []).find((t) => t.category === category);
+
+  function copyLink(url) {
+    try {
+      navigator.clipboard?.writeText(url);
+      setMessage(`Link copied: ${url}`);
+    } catch {
+      setMessage(url);
+    }
+  }
+
+  const certLink = (id) => `${API_BASE}/api/certificates/${id}/file`;
+  const templateLink = (id) => `${API_BASE}/api/certificates/templates/${id}/download`;
 
   async function uploadTemplate(e) {
     e.preventDefault();
@@ -65,87 +75,48 @@ export default function CertificatesPage({ bootstrap }) {
     } catch (err) { setMessage(err.message); }
   }
 
-  if (isAssocTD) {
+  if (isReadonly) {
+    const merged = [
+      ...(list.data?.items ?? []).map((c) => ({
+        _id: c._id ?? c.id,
+        project: c.project,
+        kind: 'Issued',
+        label: c.certType ?? '—',
+        stage: c.stage ?? '—',
+        status: c.status ?? '—',
+        date: c.issuedDate ?? c.createdAt,
+        fileId: (c.file && (c._id ?? c.id)) ? (c._id ?? c.id) : null,
+        fileName: c.file ? String(c.file).split('/').pop() : null,
+      })),
+      ...(allRequests.map((r) => {
+        const f = uploadedFileFor(r);
+        return {
+          _id: r._id ?? r.id,
+          project: r.project,
+          kind: 'Client upload',
+          label: r.category ?? '—',
+          stage: '—',
+          status: r.status ?? '—',
+          date: r.createdAt,
+          fileId: f?.id ?? null,
+          fileName: f?.name ?? null,
+        };
+      })),
+    ];
     return (
       <div id="view-completioncerts">
-        <div className="page-head"><div className="page-title">Completion Certificates</div><div className="page-sub">Issued certificates, templates, and client-uploaded certificate requests</div></div>
-        <Panel title="Completion Certificates" sub="Issued on completion of a project stage or discipline scope"><DataTable columns={[
+        <div className="page-head"><div className="page-title">Completion Certificates</div><div className="page-sub">Completion certificate log only — reflection from Admin</div></div>
+        <Panel title="Completion certificate log" sub={`${merged.length} entries`}><DataTable columns={[
           { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-          { key: 'certType', label: 'Certificate type' }, { key: 'stage', label: 'Stage' },
+          { key: 'kind', label: 'Type' },
+          { key: 'label', label: 'Certificate / Category' },
+          { key: 'stage', label: 'Stage' },
           { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-          { key: 'issuedDate', label: 'Issued date', render: (r) => fmtCertDate(r.issuedDate) },
-          { key: 'issuedBy', label: 'Issued by', render: (r) => r.issuedBy ?? '—' },
-        ]} rows={list.data?.items ?? []} emptyText="No certificates issued yet." /></Panel>
-        <Panel title="Completion certificate templates" sub="Upload a blank template per category — shown to the client as the format to follow, and available as a category when requesting a certificate">
-          <form onSubmit={uploadTemplate} className="field-grid">
-            <div className="form-row"><label className="form-label">Certificate category *</label><input className="form-input" required placeholder="e.g. HVAC Completion Certificate" value={category} onChange={(e) => setCategory(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">Upload template file *</label><input type="file" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></div>
-            <button type="submit" className="btn-primary" disabled={!file}>Add template</button>
-            {message && <p role="status" style={{ color: 'var(--ink-muted)' }}>{message}</p>}
-          </form>
-          <div style={{ marginTop: 12 }}>
-            <DataTable columns={[
-              { key: 'category', label: 'Category' },
-              { key: 'file', label: 'Template file', render: (r) => r.file ? String(r.file).split('/').pop() : '—' },
-              { key: 'createdAt', label: 'Uploaded on', render: (r) => fmtCertDate(r.createdAt) },
-              { key: 'download', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => certificatesApi.downloadTemplate(r._id).catch((e) => setMessage(e.message))}>Download</button> },
-            ]} rows={templates.data?.items ?? []} emptyText="No certificate templates uploaded." />
-          </div>
-        </Panel>
-        <Panel title="Request completion certificate from client" sub="Sent to the client to upload; the uploaded file can then be downloaded here">
-          <form onSubmit={(e) => { e.preventDefault(); requestCert.mutate(req); }} className="field-grid">
-            <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={req.project} onChange={(e) => setReq({ ...req, project: e.target.value })}><option value="">Select project</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
-            <div className="form-row"><label className="form-label">Certificate category *</label>{templateCategories.length > 0 ? (
-              <select required className="filter-select" style={{ width: '100%' }} value={req.category} onChange={(e) => setReq({ ...req, category: e.target.value })}><option value="">Select category</option>{templateCategories.map((c) => <option key={c} value={c}>{c}</option>)}</select>
-            ) : (
-              <input required className="form-input" value={req.category} onChange={(e) => setReq({ ...req, category: e.target.value })} />
-            )}</div>
-            <button type="submit" className="btn-primary" disabled={requestCert.isPending}>{requestCert.isPending ? 'Sending…' : 'Send request to client'}</button>
-          </form>
-        </Panel>
-        <Panel title="Client-uploaded certificates" sub={`${allRequests.length} requested · ${uploadedCount} uploaded · ${awaitingCount} awaiting client`}><DataTable columns={[
-          { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-          { key: 'category', label: 'Category' },
-          { key: 'createdAt', label: 'Requested', render: (r) => fmtCertDate(r.createdAt) },
-          { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-          { key: 'file', label: 'Uploaded file', render: (r) => {
-            const f = uploadedFileFor(r);
-            return f ? <a href={`${API_BASE}/api/certificates/${f.id}/file`} download>{f.name}</a> : '—';
-          } },
-          { key: 'download', label: '', render: (r) => {
-            const f = uploadedFileFor(r);
-            return f ? <a href={`${API_BASE}/api/certificates/${f.id}/file`} download>Download</a> : '—';
-          } },
-        ]} rows={uploadedRows} emptyText="No client-uploaded certificates yet." /></Panel>
-      </div>
-    );
-  }
-
-  if (isDirector) {
-    return (
-      <div id="view-completioncerts">
-        <div className="page-head"><div className="page-title">Completion Certificates</div><div className="page-sub">Issued certificates, templates, and client-uploaded certificate requests</div></div>
-        <Panel title="Completion Certificates" sub="Issued on completion of a project stage or discipline scope"><DataTable columns={[
-          { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-          { key: 'certType', label: 'Certificate type' }, { key: 'stage', label: 'Stage' },
-          { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-          { key: 'issuedDate', label: 'Issued date', render: (r) => r.issuedDate ? new Date(r.issuedDate).toLocaleDateString() : '—' },
-          { key: 'issuedBy', label: 'Issued by' },
-        ]} rows={list.data?.items ?? []} emptyText="No certificates issued yet." /></Panel>
-        <Panel title="Client-uploaded certificates" sub={`${allRequests.length} requested · ${uploadedCount} uploaded · ${awaitingCount} awaiting client`}><DataTable columns={[
-          { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-          { key: 'category', label: 'Category' },
-          { key: 'createdAt', label: 'Requested', render: (r) => r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—' },
-          { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-          { key: 'file', label: 'Uploaded file', render: (r) => {
-            const f = uploadedFileFor(r);
-            return f ? <a href={`${API_BASE}/api/certificates/${f.id}/file`} download>{f.name}</a> : '—';
-          } },
-          { key: 'download', label: '', render: (r) => {
-            const f = uploadedFileFor(r);
-            return f ? <a href={`${API_BASE}/api/certificates/${f.id}/file`} download>Download</a> : '—';
-          } },
-        ]} rows={uploadedRows} emptyText="No client-uploaded certificates yet." /></Panel>
+          { key: 'date', label: 'Date', render: (r) => fmtCertDate(r.date) },
+          { key: 'file', label: 'File', render: (r) => r.fileId ? <a href={`${API_BASE}/api/certificates/${r.fileId}/file`} download>{r.fileName ?? 'Download'}</a> : '—' },
+          { key: 'link', label: 'Link', render: (r) => r.fileId ? <button type="button" className="approve-btn" onClick={() => copyLink(certLink(r.fileId))}>Generate link</button> : '—' },
+        ]} rows={merged} emptyText="No completion certificates yet." /></Panel>
+        {message && <p role="status" style={{ color: 'var(--ink-muted)' }}>{message}</p>}
       </div>
     );
   }
@@ -154,24 +125,22 @@ export default function CertificatesPage({ bootstrap }) {
     return (
       <div id="view-completioncerts">
         <div className="page-head"><div className="page-title">Completion Certificates</div><div className="page-sub">Issued certificates, templates, and client-uploaded certificate requests</div></div>
-        <Panel title="Completion Certificates" sub="Issued on completion of a project stage or discipline scope"><DataTable columns={[
-          { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-          { key: 'certType', label: 'Certificate type' }, { key: 'stage', label: 'Stage' },
-          { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-          { key: 'issuedDate', label: 'Issued date', render: (r) => fmtCertDate(r.issuedDate) },
-          { key: 'issuedBy', label: 'Issued by', render: (r) => r.issuedBy ?? '—' },
-        ]} rows={list.data?.items ?? []} emptyText="No certificates issued yet." /></Panel>
         <Panel title="Add issued certificate"><form className="field-grid" onSubmit={(e) => { e.preventDefault(); create.mutate({ ...cert }); }}>
           <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={cert.project} onChange={(e) => setCert({ ...cert, project: e.target.value })}><option value="">Select project</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
-          <div className="form-row"><label className="form-label">Certificate type *</label><input required className="form-input" value={cert.certType} onChange={(e) => setCert({ ...cert, certType: e.target.value })} /></div>
+          <div className="form-row"><label className="form-label">Certificate type *</label>{templateCategories.length > 0 ? (
+            <select required className="filter-select" style={{ width: '100%' }} value={cert.certType} onChange={(e) => setCert({ ...cert, certType: e.target.value })}><option value="">Select type</option>{templateCategories.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+          ) : (
+            <input required className="form-input" value={cert.certType} onChange={(e) => setCert({ ...cert, certType: e.target.value })} />
+          )}</div>
           <div className="form-row"><label className="form-label">Certificate no.</label><input className="form-input" placeholder="e.g. CC-STR-2026-045" value={cert.certNo} onChange={(e) => setCert({ ...cert, certNo: e.target.value })} /></div>
-          <div className="form-row"><label className="form-label">Stage</label><input className="form-input" value={cert.stage} onChange={(e) => setCert({ ...cert, stage: e.target.value })} /></div>
-          <div className="form-row"><label className="form-label">Issued by</label><input className="form-input" value={cert.issuedBy} onChange={(e) => setCert({ ...cert, issuedBy: e.target.value })} /></div>
+          <div className="form-row"><label className="form-label">Stage</label><select className="filter-select" style={{ width: '100%' }} value={cert.stage} onChange={(e) => setCert({ ...cert, stage: e.target.value })}><option value="">Select stage</option>{['CD', 'SD', 'DD', 'TD', 'GFC'].map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
+          <div className="form-row"><label className="form-label">Issued by</label><select className="filter-select" style={{ width: '100%' }} value={cert.issuedBy} onChange={(e) => setCert({ ...cert, issuedBy: e.target.value })}><option value="">Select person</option>{(employees.data?.items ?? []).map((x) => { const n = `${x.firstName ?? ''} ${x.lastName ?? ''}`.trim() || x.empId; return <option key={x._id ?? x.id} value={n}>{n}</option>; })}</select></div>
           <div className="form-row"><label className="form-label">Status</label><select className="filter-select" value={cert.status} onChange={(e) => setCert({ ...cert, status: e.target.value })}><option>Issued</option><option>Pending</option></select></div>
           {create.isError && <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>{create.error.message}</div>}
           <button className="btn-primary" type="submit" disabled={create.isPending}>Add certificate</button>
         </form></Panel>
-        <Panel title="Completion certificate templates" sub="Upload a blank template per category — shown to the client as the format to follow, and available as a category when requesting a certificate">
+        <Panel title="Templates + Request from client (clubbed)" sub="Readily available templates clubbed with client requests. Template list below; client link can be generated per row.">
+          <div className="section-label">Add template (entry)</div>
           <form onSubmit={uploadTemplate} className="field-grid">
             <div className="form-row"><label className="form-label">Certificate category *</label><input className="form-input" required placeholder="e.g. HVAC Completion Certificate" value={category} onChange={(e) => setCategory(e.target.value)} /></div>
             <div className="form-row"><label className="form-label">Upload template file *</label><input type="file" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></div>
@@ -183,10 +152,11 @@ export default function CertificatesPage({ bootstrap }) {
               { key: 'category', label: 'Category' }, { key: 'file', label: 'Template file' },
               { key: 'createdAt', label: 'Uploaded on', render: (r) => fmtCertDate(r.createdAt) },
               { key: 'download', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => certificatesApi.downloadTemplate(r._id).catch((e) => setMessage(e.message))}>Download</button> },
+              { key: 'link', label: 'Client link', render: (r) => <button type="button" className="approve-btn" onClick={() => copyLink(templateLink(r._id))}>Generate link</button> },
             ]} rows={templates.data?.items ?? []} emptyText="No certificate templates uploaded." />
           </div>
-        </Panel>
-        <Panel title="Request completion certificate from client" sub="Sent to the client to upload; the uploaded file can then be downloaded here">
+          <div className="section-label" style={{ marginTop: 16 }}>Request from client (entry, uses template above)</div>
+
           <form onSubmit={(e) => { e.preventDefault(); requestCert.mutate(req); }} className="field-grid">
             <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={req.project} onChange={(e) => setReq({ ...req, project: e.target.value })}><option value="">Select project</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
             <div className="form-row"><label className="form-label">Certificate category *</label>{templateCategories.length > 0 ? (
@@ -194,9 +164,26 @@ export default function CertificatesPage({ bootstrap }) {
             ) : (
               <input required className="form-input" value={req.category} onChange={(e) => setReq({ ...req, category: e.target.value })} />
             )}</div>
+            {req.category && templateFor(req.category) && (
+              <div className="form-row">
+                <label className="form-label">Linked template (readily available)</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13 }}>{templateFor(req.category).file ? String(templateFor(req.category).file).split('/').pop() : templateFor(req.category).category}</span>
+                  <button type="button" className="approve-btn" onClick={() => certificatesApi.downloadTemplate(templateFor(req.category)._id).catch((e) => setMessage(e.message))}>Download template</button>
+                  <button type="button" className="approve-btn" onClick={() => copyLink(templateLink(templateFor(req.category)._id))}>Generate link</button>
+                </div>
+              </div>
+            )}
             <button type="submit" className="btn-primary" disabled={requestCert.isPending}>{requestCert.isPending ? 'Sending…' : 'Send request to client'}</button>
           </form>
         </Panel>
+        <Panel title="Completion Certificates" sub="Issued on completion of a project stage or discipline scope"><DataTable columns={[
+          { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+          { key: 'certType', label: 'Certificate type' }, { key: 'stage', label: 'Stage' },
+          { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+          { key: 'issuedDate', label: 'Issued date', render: (r) => fmtCertDate(r.issuedDate) },
+          { key: 'issuedBy', label: 'Issued by', render: (r) => r.issuedBy ?? '—' },
+        ]} rows={list.data?.items ?? []} emptyText="No certificates issued yet." /></Panel>
         <Panel title="Client-uploaded certificates" sub={`${allRequests.length} requested · ${uploadedCount} uploaded · ${awaitingCount} awaiting client`}><DataTable columns={[
           { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
           { key: 'category', label: 'Category' },
@@ -209,6 +196,10 @@ export default function CertificatesPage({ bootstrap }) {
           { key: 'download', label: '', render: (r) => {
             const f = uploadedFileFor(r);
             return f ? <a href={`${API_BASE}/api/certificates/${f.id}/file`} download>Download</a> : '—';
+          } },
+          { key: 'link', label: 'Link', render: (r) => {
+            const f = uploadedFileFor(r);
+            return f ? <button type="button" className="approve-btn" onClick={() => copyLink(certLink(f.id))}>Generate link</button> : '—';
           } },
         ]} rows={uploadedRows} emptyText="No client-uploaded certificates yet." /></Panel>
       </div>
@@ -222,10 +213,14 @@ export default function CertificatesPage({ bootstrap }) {
       {tab === 'issued' && <>
         <Panel title="Add issued certificate"><form className="field-grid" onSubmit={(e) => { e.preventDefault(); create.mutate({ ...cert }); }}>
           <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={cert.project} onChange={(e) => setCert({ ...cert, project: e.target.value })}><option value="">Select project</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
-          <div className="form-row"><label className="form-label">Certificate type *</label><input required className="form-input" value={cert.certType} onChange={(e) => setCert({ ...cert, certType: e.target.value })} /></div>
+          <div className="form-row"><label className="form-label">Certificate type *</label>{templateCategories.length > 0 ? (
+            <select required className="filter-select" style={{ width: '100%' }} value={cert.certType} onChange={(e) => setCert({ ...cert, certType: e.target.value })}><option value="">Select type</option>{templateCategories.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+          ) : (
+            <input required className="form-input" value={cert.certType} onChange={(e) => setCert({ ...cert, certType: e.target.value })} />
+          )}</div>
           <div className="form-row"><label className="form-label">Certificate no.</label><input className="form-input" placeholder="e.g. CC-STR-2026-045" value={cert.certNo} onChange={(e) => setCert({ ...cert, certNo: e.target.value })} /></div>
-          <div className="form-row"><label className="form-label">Stage</label><input className="form-input" value={cert.stage} onChange={(e) => setCert({ ...cert, stage: e.target.value })} /></div>
-          <div className="form-row"><label className="form-label">Issued by</label><input className="form-input" value={cert.issuedBy} onChange={(e) => setCert({ ...cert, issuedBy: e.target.value })} /></div>
+          <div className="form-row"><label className="form-label">Stage</label><select className="filter-select" style={{ width: '100%' }} value={cert.stage} onChange={(e) => setCert({ ...cert, stage: e.target.value })}><option value="">Select stage</option>{['CD', 'SD', 'DD', 'TD', 'GFC'].map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
+          <div className="form-row"><label className="form-label">Issued by</label><select className="filter-select" style={{ width: '100%' }} value={cert.issuedBy} onChange={(e) => setCert({ ...cert, issuedBy: e.target.value })}><option value="">Select person</option>{(employees.data?.items ?? []).map((x) => { const n = `${x.firstName ?? ''} ${x.lastName ?? ''}`.trim() || x.empId; return <option key={x._id ?? x.id} value={n}>{n}</option>; })}</select></div>
           {create.isError && <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>{create.error.message}</div>}
           <button className="btn-primary" type="submit" disabled={create.isPending}>Add certificate</button>
         </form></Panel>

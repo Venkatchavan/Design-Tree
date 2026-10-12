@@ -25,10 +25,6 @@ import {
   updateProject,
 } from '../controllers/projects.controller.js';
 import {
-  getDirectory,
-  saveDirectory,
-} from '../controllers/directory.controller.js';
-import {
   importProjects,
   uploadSpreadsheet,
 } from '../controllers/projectImport.controller.js';
@@ -47,12 +43,6 @@ router.get('/next-code', denyRoles(...NO_PROJECT_WRITES), requireRole('admin_bil
 router.get('/next-job-number', denyRoles(...NO_PROJECT_WRITES), requireRole('admin_billing'), nextJobNumber);
 router.get('/:id/team', requireAuth, getProjectTeam);
 router.get('/:id/gfc-readiness', requireInternal(), gfcReadiness);
-router.get('/:id/directory', requireAuth, getDirectory);
-router.put(
-  '/:id/directory',
-  requireRole('coordinator', 'design_mgmt_head', 'admin_billing'),
-  saveDirectory,
-);
 // SPOC-owned contacts + team leads (admin is read-only on these).
 router.put(
   '/:id/spoc-contacts',

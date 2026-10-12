@@ -76,8 +76,8 @@ function useBootstrapProp(prop) {
 export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
   const bootstrap = useBootstrapProp(bootstrapProp);
   const isDirector = new Set(['founding_director', 'working_director', 'executive_director']).has(bootstrap?.role?.key ?? '');
-  // Assoc Technical Director: organisation-wide today view (spec layout).
-  const isAssocTD = (bootstrap?.role?.key ?? '') === 'assoc_technical_director';
+  // Assoc Technical Director + PTL (team_lead): organisation-wide today view (spec layout).
+  const isAssocTD = ['assoc_technical_director', 'team_lead'].includes(bootstrap?.role?.key ?? '');
   const [date, setDate] = useState(todayISO());
   const [tab, setTab] = useState('wise');
   const [fDept, setFDept] = useState('');

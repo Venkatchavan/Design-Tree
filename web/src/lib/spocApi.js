@@ -7,6 +7,11 @@ export const spocApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  proposeAllocation: (body) =>
+    request('/api/spoc/allocations/propose', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   entriesList: (params = {}) => request(`/api/spoc/entries${toQuery(params)}`),
   entriesCreate: (body) =>
     request('/api/spoc/entries', {

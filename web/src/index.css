@@ -6651,3 +6651,8 @@ table.data tr.row-click:hover {
         opacity: 0;
     }
 }
+
+/* Draggable responsive sidebar + entry-top tables */
+.nav [draggable]{touch-action:pan-y}
+@media (max-width: 760px){.field-grid{grid-template-columns:1fr !important}.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr)) !important}table.data{display:block;overflow-x:auto;white-space:nowrap}.sidebar{max-width:86vw}}
+

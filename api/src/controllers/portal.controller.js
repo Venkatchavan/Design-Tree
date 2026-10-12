@@ -33,25 +33,8 @@ export async function myPortal(req, res, next) {
       ]);
     const acked = new Map(acks.map((a) => [a.drawing.toString(), a]));
     const stageAcked = new Set(stageAcks.map((a) => a.stageStatus.toString()));
-    // Shared project-directory sections the SPOC maintains (read-only here).
-    let directory = [];
-    try {
-      const { ProjectDirectory } = await import('../models/ProjectDirectory.js');
-      const docs = await ProjectDirectory.find({ project: { $in: ids } })
-        .select('project sections updatedAt')
-        .lean();
-      directory = docs.map((d) => ({
-        project: d.project.toString(),
-        sections: (d.sections ?? []).map((s) => ({
-          key: s.key,
-          title: s.title,
-          body: s.body,
-        })),
-        updatedAt: d.updatedAt,
-      }));
-    } catch {
-      directory = [];
-    }
+    // Project directory 10-section removed — return empty for legacy clients.
+    const directory = [];
     return res.status(200).json({
       projects: projects.map((p) => ({
         id: p._id.toString(),

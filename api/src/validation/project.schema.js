@@ -23,28 +23,31 @@ const contact = z
 
 export const projectSchema = z.object({
   name: z.string().trim().min(1),
-  code: z.string().trim().min(1),
-  state: z.string().trim().min(1),
-  projectType: z.string().trim().min(1),
-  branch: z.string().trim().min(1),
-  usedFor: z.string().trim().min(1),
-  entityName: z.string().trim().min(1),
+  code: z.string().trim().min(1).optional(),
+  state: z.string().trim().optional(),
+  projectType: z.string().trim().optional(),
+  branch: z.string().trim().optional(),
+  usedFor: z.string().trim().optional(),
+  services: z.array(z.string().trim().min(1)).optional(),
+  source: z.string().trim().optional(),
+  entityName: z.string().trim().optional(),
   location: z
     .object({
-      label: z.string().trim().min(1),
+      label: z.string().trim().optional(),
       address1: z.string().trim().optional(),
       address2: z.string().trim().optional(),
       city: z.string().trim().optional(),
       state: z.string().trim().optional(),
       zip: z.string().trim().optional(),
     })
-    .strict(),
+    .strict()
+    .optional(),
   jobNumber: z.string().trim().optional(),
   scope: z
     .array(
       z
         .object({
-          service: z.enum(SERVICES).optional(),
+          service: z.string().trim().optional(),
           scope: z.string().trim().optional(),
           fee: z.number().min(0).optional(),
         })
@@ -66,6 +69,10 @@ export const projectSchema = z.object({
         .object({
           service: z.string().trim().optional(),
           name: z.string().trim().optional(),
+          names: z.array(z.string().trim()).optional(),
+          role: z.string().trim().optional(),
+          nominatedBy: z.string().trim().optional(),
+          approvalStatus: z.enum(['Proposed', 'Approved']).optional(),
         })
         .strict(),
     )
@@ -83,12 +90,13 @@ export const projectSchema = z.object({
   clientName: z.string().trim().optional(),
   related: z
     .object({
-      projectDirector: z.string().trim().min(1),
+      projectDirector: z.string().trim().optional(),
       projectDirectorDesignation: z.string().trim().optional(),
       projectHead: z.string().trim().optional(),
       projectHeadDesignation: z.string().trim().optional(),
     })
-    .strict(),
+    .strict()
+    .optional(),
   owner: z.string().trim().optional(),
   startDate: z.coerce.date().optional(),
   expectedCompletion: z.coerce.date().optional(),
@@ -182,38 +190,8 @@ export const finalApprovalSchema = z
   })
   .strict();
 
-export const DIRECTORY_KEYS = [
-  'project-information',
-  'client-details',
-  'architect-details',
-  'pmc-details',
-  'work-order',
-  'bim-work-order',
-  'project-team',
-  'scope-services',
-  'project-documents',
-  'communication-records',
-];
-
-// PUT /api/projects/:id/directory — SPOC-owned project directory sections.
-export const projectDirectorySchema = z
-  .object({
-    sections: z
-      .array(
-        z
-          .object({
-            key: z.enum(DIRECTORY_KEYS),
-            title: z.string().trim().optional(),
-            body: z.string().trim().optional(),
-          })
-          .strict(),
-      )
-      .min(1),
-  })
-  .strict();
-
 // PUT /api/projects/:id/team-leads — SPOC-owned principal team leads
-// (+ optional related director/head override). Admin is read-only here.
+// (+ optional related director/head override). Multiple people per service.
 export const teamLeadsSchema = z
   .object({
     principalTeamLeads: z
@@ -222,6 +200,10 @@ export const teamLeadsSchema = z
           .object({
             service: z.string().trim().optional(),
             name: z.string().trim().optional(),
+            names: z.array(z.string().trim()).optional(),
+            role: z.string().trim().optional(),
+            nominatedBy: z.string().trim().optional(),
+            approvalStatus: z.enum(['Proposed', 'Approved']).optional(),
           })
           .strict(),
       )

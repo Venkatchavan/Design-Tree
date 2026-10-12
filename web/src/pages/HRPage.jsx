@@ -687,6 +687,9 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
   const isCreate = !f._id;
   const branchOptionsQ = useBranchOptions();
   const branchOptions = branchOptionItems(branchOptionsQ.data);
+  const empFiltersQ = useQuery({ queryKey: ['employees-filters-hr'], queryFn: () => employeesApi.filters(), retry: false });
+  const designationChoices = [...new Set([...(empFiltersQ.data?.designations ?? []), ...(f.designation ? [f.designation] : [])])].sort();
+  const departmentChoices = [...new Set([...(empFiltersQ.data?.departments ?? []), ...(f.department ? [f.department] : [])])].sort();
   // Legacy values predate the branch master — keep displaying them, but any
   // change must pick from the master (unchanged values are not re-sent).
   const branchChoices =
@@ -863,9 +866,19 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
       </div>
       <div className="section-label">Employment</div>
       <div className="field-grid">
-        <div className="form-row"><label className="form-label">Designation</label>{I('designation')}</div>
+        <div className="form-row"><label className="form-label">Designation</label>
+          <select className="form-input" value={f.designation ?? ''} onChange={(e) => set('designation', e.target.value)}>
+            <option value="">—</option>
+            {designationChoices.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
         <div className="form-row"><label className="form-label">Qualification</label>{I('qualification')}</div>
-        <div className="form-row"><label className="form-label">Department</label>{I('department')}</div>
+        <div className="form-row"><label className="form-label">Department</label>
+          <select className="form-input" value={f.department ?? ''} onChange={(e) => set('department', e.target.value)}>
+            <option value="">—</option>
+            {departmentChoices.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
         <div className="form-row"><label className="form-label">Reporting manager</label>{I('reportingManager')}</div>
         <div className="form-row"><label className="form-label">Branch</label>
           <select className="form-input" value={f.branch ?? ''} onChange={(e) => set('branch', e.target.value)}>

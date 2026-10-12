@@ -24,7 +24,6 @@ import AdminTransmittalPage from './pages/AdminTransmittalPage.jsx'
 import BillingPage from './pages/BillingPage.jsx'
 import CertificatesPage from './pages/CertificatesPage.jsx'
 import FinancePage from './pages/FinancePage.jsx'
-import TravelBookingPage from './pages/TravelBookingPage.jsx'
 import RevenueReportsPage from './pages/RevenueReportsPage.jsx'
 import BillingStatusPage from './pages/BillingStatusPage.jsx'
 import FinanceOccPage from './pages/FinanceOccPage.jsx'
@@ -52,13 +51,14 @@ const VIEW_COMPONENTS = {
   'admin-work-update': AdminWorkUpdatePage,
   'my-coordination': MyCoordinationPage,
   'my-meetings': MyMeetingsPage,
+  meetings: MyMeetingsPage,
+  'qs-log': WorkTrackingPage,
   'work-tracking': WorkTrackingPage,
   'transmittal-log': TransmittalLogPage,
   transmittal: AdminTransmittalPage,
   billing: BillingPage,
   certificates: CertificatesPage,
   finance: FinancePage,
-  'travel-booking': TravelBookingPage,
   'revenue-reports': RevenueReportsPage,
   'billing-status': BillingStatusPage,
   'finance-occ': FinanceOccPage,
@@ -69,7 +69,6 @@ const VIEW_COMPONENTS = {
   'bim-head': FunctionHeadPage,
   'gbs-head': FunctionHeadPage,
   'peer-review-head': FunctionHeadPage,
-  'qs-head': FunctionHeadPage,
   structural: DeptDashboardPage,
   mechanical: DeptDashboardPage,
   electrical: DeptDashboardPage,

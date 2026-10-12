@@ -7,9 +7,9 @@ export const areaApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  review: (id, body) =>
-    request(`/api/functions/area-settlements/${id}/review`, {
-      method: 'PATCH',
+  update: (id, body) =>
+    request(`/api/functions/area-settlements/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(body),
     }),
 };
@@ -24,11 +24,6 @@ export const boqApi = {
   update: (id, body) =>
     request(`/api/functions/boq/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(body),
-    }),
-  review: (id, body) =>
-    request(`/api/functions/boq/${id}/review`, {
-      method: 'PATCH',
       body: JSON.stringify(body),
     }),
 };

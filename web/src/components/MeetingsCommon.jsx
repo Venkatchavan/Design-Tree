@@ -491,7 +491,7 @@ export function MeetingDetailModal({ meetingId, onClose, manage = false }) {
               <>
                 <div className="field-grid" style={{ marginTop: 10 }}>
                   <div className="form-row"><label className="form-label">Action text *</label><input className="form-input" value={actionText} onChange={(e) => setActionText(e.target.value)} /></div>
-                  <div className="form-row"><label className="form-label">Owner (employee id)</label><input className="form-input" value={actionOwner} onChange={(e) => setActionOwner(e.target.value)} placeholder="Optional employee id" /></div>
+                  <div className="form-row"><label className="form-label">Owner</label><select className="filter-select" style={{ width: '100%' }} value={actionOwner} onChange={(e) => setActionOwner(e.target.value)}><option value="">Select team member</option>{members.map((m) => { const id = String(m?.employee?._id ?? m?.employee?.id ?? ''); const n = [m?.employee?.firstName, m?.employee?.lastName].filter(Boolean).join(' ') || id; return id ? <option key={id} value={id}>{n}</option> : null; })}</select></div>
                   <div className="form-row"><label className="form-label">Due</label><input className="form-input" type="date" value={actionDue} onChange={(e) => setActionDue(e.target.value)} /></div>
                   <div className="form-row">
                     <label className="form-label">Priority</label>

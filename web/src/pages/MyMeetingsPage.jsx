@@ -234,7 +234,7 @@ export default function MyMeetingsPage() {
     <>
       <div className="page-head">
         <div className="page-title">My meetings</div>
-        <div className="page-sub">Meetings you are invited to — view only. Scheduling is done by the coordinator (SPOC).</div>
+        <div className="page-sub">DesignTree · Employee Meeting Dashboard · Meeting invitations and meeting log</div>
       </div>
       {listQ.isError && (
         <div className="login-error" role="alert" style={{ display: 'block' }}>{listQ.error.message}</div>

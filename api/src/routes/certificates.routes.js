@@ -16,7 +16,8 @@ import {
 const router = Router();
 router.use(requireAuth);
 
-// Viewers (§4.5): directors, Admin, HR. Writers: Admin (+ superusers).
+// Viewers (§4.5): directors, Admin, HR + DMH read-only reflection.
+// Writers: Admin (+ superusers).
 const VIEWERS = [
   'admin_billing',
   'hr',
@@ -24,6 +25,7 @@ const VIEWERS = [
   'associate_director',
   'technical_director',
   'assoc_technical_director',
+  'design_mgmt_head',
 ];
 
 router.get('/templates/all', requireRole(...VIEWERS), listTemplates);

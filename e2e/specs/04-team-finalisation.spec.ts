@@ -20,12 +20,12 @@ test.describe.serial('04 team finalisation', () => {
       state: PROJECT.state,
       projectType: PROJECT.projectType,
       branch: PROJECT.branch,
-      usedFor: PROJECT.usedFor,
+      services: [...PROJECT.services],
+      source: PROJECT.source,
       entityName: PROJECT.entityName,
       location: { label: PROJECT.location.label, city: PROJECT.location.city, zip: PROJECT.location.zip },
       jobNumber: PROJECT.jobNumber,
       scope: [...PROJECT.scope],
-      related: { ...PROJECT.related },
     });
     const ids = await getEmployeeIdMap(request);
     // Fallback if directory lookup is empty (fresh DB without §1 UI run):
