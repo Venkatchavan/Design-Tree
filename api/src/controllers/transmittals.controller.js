@@ -1,3 +1,4 @@
+import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import multer from 'multer';
 import XLSX from 'xlsx';
 import { nextNumber } from '../models/Counter.js';
@@ -71,6 +72,10 @@ export async function listTransmittals(req, res, next) {
       .populate(POP)
       .sort({ createdAt: -1 })
       .limit(500);
+    const scopeIds = await projectScopeIds(req.user);
+    if (scopeIds) {
+      items = items.filter((t) => scopeIds.includes(t.drawing?.project?._id?.toString() ?? ''));
+    }
     if (project) {
       items = items.filter(
         (t) => t.drawing?.project?._id?.toString() === project,

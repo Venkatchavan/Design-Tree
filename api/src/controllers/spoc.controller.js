@@ -1,3 +1,4 @@
+import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { Employee } from '../models/Employee.js';
 import { SpocEntry } from '../models/SpocEntry.js';
 import { User } from '../models/User.js';
@@ -46,6 +47,7 @@ export async function listSpocEntries(req, res, next) {
   try {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
+    narrowByProject(filter, 'project', await projectScopeIds(req.user));
     if (req.query.employee) filter.employee = req.query.employee;
     if (req.query.mine === 'true') {
       const me = await User.findById(req.user.id);
@@ -143,6 +145,7 @@ export async function listAllocations(req, res, next) {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
     if (req.query.status) filter.status = req.query.status;
+    narrowByProject(filter, 'project', await projectScopeIds(req.user));
     const items = await SpocAllocation.find(filter)
       .populate('project', 'name code branch currentStage status')
       .populate('coordinator', 'firstName lastName empId designation')

@@ -1,3 +1,4 @@
+import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { nextNumber } from '../models/Counter.js';
 import { Employee } from '../models/Employee.js';
 import { Project } from '../models/Project.js';
@@ -116,6 +117,7 @@ export async function listWorkEntries(req, res, next) {
       filter.employee = employee;
     }
     if (project) filter.project = project;
+    narrowByProject(filter, 'project', await projectScopeIds(req.user));
     if (status) filter.status = status;
     if (from || to) {
       filter.date = {};

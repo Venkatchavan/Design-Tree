@@ -43,6 +43,7 @@ const byProject = (req) => {
 };
 
 export const areaSettlements = makeCrud(AreaSettlement, {
+  scopedByProject: true,
   create: areaSettlementSchema,
   update: areaSettlementSchema.partial(),
   filters: byProject,
@@ -73,6 +74,7 @@ export async function reviewAreaSettlement(req, res, next) {
 
 // QS/BOQ line items (QS logs, QS Head reviews) — feeds GFC readiness.
 export const boqItems = makeCrud(BoqItem, {
+  scopedByProject: true,
   create: boqItemSchema,
   update: boqItemUpdateSchema,
   filters: byProject,
@@ -102,6 +104,7 @@ export async function reviewBoqItem(req, res, next) {
 }
 
 export const siteVisits = makeCrud(SiteVisit, {
+  scopedByProject: true,
   create: siteVisitSchema,
   filters: byProject,
   populate: [{ path: 'project', select: POP_PROJ }],
@@ -118,6 +121,7 @@ export const siteVisits = makeCrud(SiteVisit, {
 });
 
 export const discrepancies = makeCrud(Discrepancy, {
+  scopedByProject: true,
   create: discrepancySchema,
   update: discrepancyUpdateSchema,
   filters: byProject,
@@ -153,6 +157,7 @@ export const conveyances = makeCrud(Conveyance, {
 });
 
 export const rfis = makeCrud(Rfi, {
+  scopedByProject: true,
   create: rfiSchema,
   update: rfiUpdateSchema,
   filters: (req) => {
@@ -205,6 +210,7 @@ export async function createRfi(req, res, next) {
 }
 
 export const bimWorkOrders = makeCrud(BimWorkOrder, {
+  scopedByProject: true,
   create: bimWorkOrderSchema,
   update: bimWorkOrderUpdateSchema,
   filters: byProject,
@@ -214,6 +220,7 @@ export const bimWorkOrders = makeCrud(BimWorkOrder, {
 // QA/QC weekly reports: submitted by the QA/QC team, approved by the
 // QA/QC Specs Head. Reads are internal-wide (management + AssocTD views).
 export const weeklyReports = makeCrud(WeeklyReport, {
+  scopedByProject: true,
   create: weeklyReportSchema,
   filters: byProject,
   populate: [
@@ -280,6 +287,7 @@ export async function saveGbsSteps(req, res, next) {
 }
 
 export const peerReviews = makeCrud(PeerReview, {
+  scopedByProject: true,
   create: peerReviewSchema,
   update: peerReviewUpdateSchema,
   filters: (req) => {

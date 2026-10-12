@@ -1,3 +1,4 @@
+import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { z } from 'zod';
 import { Deliverable, DeliverableLog } from '../models/Deliverable.js';
 import { TASK_STATUSES } from '../models/Task.js';
@@ -30,6 +31,7 @@ const POP_EMP = 'firstName lastName empId designation';
 const POP_PROJ = 'name code branch';
 
 export const tasks = makeCrud(Task, {
+  scopedByProject: true,
   create: taskSchema,
   update: taskUpdateSchema,
   filters: (req) => {
@@ -72,6 +74,7 @@ async function logDeliverable(project, action, payload, by) {
 }
 
 export const deliverables = makeCrud(Deliverable, {
+  scopedByProject: true,
   create: deliverableSchema,
   update: deliverableUpdateSchema,
   filters: (req) => {
@@ -113,6 +116,7 @@ export async function listDeliverableLog(req, res, next) {
   try {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
+    narrowByProject(filter, 'project', await projectScopeIds(req.user));
     const items = await DeliverableLog.find(filter)
       .populate('project', POP_PROJ)
       .sort({ createdAt: -1 })
@@ -124,6 +128,7 @@ export async function listDeliverableLog(req, res, next) {
 }
 
 export const revisions = makeCrud(Revision, {
+  scopedByProject: true,
   create: revisionSchema,
   update: revisionUpdateSchema,
   filters: (req) => {
@@ -244,6 +249,7 @@ export async function setRevisionStatus(req, res, next) {
 }
 
 export const drawings = makeCrud(Drawing, {
+  scopedByProject: true,
   create: drawingSchema,
   update: drawingUpdateSchema,
   filters: (req) => {

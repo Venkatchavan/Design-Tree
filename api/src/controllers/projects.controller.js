@@ -14,6 +14,12 @@ import {
   teamLeadsSchema,
 } from '../validation/project.schema.js';
 import { requireActiveBranch } from '../utils/branches.js';
+import { projectScopeIds } from '../utils/projectScope.js';
+
+async function projectVisible(user, id) {
+  const ids = await projectScopeIds(user);
+  return !ids || ids.includes(String(id));
+}
 
 // Only Admin/Billing may create/import projects (FD/WD superusers bypass via requireRole §3.4).
 const CREATOR_ROLES = ['admin_billing'];
@@ -82,6 +88,8 @@ export async function listProjects(req, res, next) {
   try {
     const { branch, service, stage, status, search } = req.query;
     const filter = {};
+    const scopeIds = await projectScopeIds(req.user);
+    if (scopeIds) filter._id = { $in: scopeIds };
     if (branch) filter.branch = branch;
     if (stage) filter.currentStage = stage;
     if (status) filter.status = status;
@@ -108,10 +116,11 @@ export async function listProjects(req, res, next) {
   }
 }
 
-export async function projectStats(_req, res, next) {
+export async function projectStats(req, res, next) {
   try {
+    const scopeIds = await projectScopeIds(req.user);
     const projects = await Project.find(
-      {},
+      scopeIds ? { _id: { $in: scopeIds } } : {},
       { status: 1, completion: 1, branch: 1, currentStage: 1, scope: 1, services: 1 },
     );
     const counts = { active: 0, completed: 0, onHold: 0 };
@@ -159,9 +168,11 @@ export async function projectStats(_req, res, next) {
 
 export async function projectFilters(_req, res, next) {
   try {
+    const scopeIds = await projectScopeIds(_req.user);
+    const scope = scopeIds ? { _id: { $in: scopeIds } } : {};
     const [branches, statuses] = await Promise.all([
-      Project.distinct('branch'),
-      Project.distinct('status'),
+      Project.distinct('branch', scope),
+      Project.distinct('status', scope),
     ]);
     const { branchOptionsWithLegacy } = await import('../utils/branches.js');
     return res.status(200).json({
@@ -179,6 +190,7 @@ export async function getProject(req, res, next) {
   try {
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ message: 'Project not found.' });
+    if (!(await projectVisible(req.user, project._id))) return res.status(404).json({ message: 'Project not found.' });
     return res.status(200).json({ project });
   } catch (err) {
     return next(err);
@@ -192,6 +204,7 @@ export async function getProjectTeam(req, res, next) {
     const { projectTeamBundle } = await import('../utils/meetingTeam.js');
     const project = await Project.findById(req.params.id).lean();
     if (!project) return res.status(404).json({ message: 'Project not found.' });
+    if (!(await projectVisible(req.user, project._id))) return res.status(404).json({ message: 'Project not found.' });
     const bundle = await projectTeamBundle(project);
     return res.status(200).json({
       project: {
@@ -328,6 +341,7 @@ export async function updateProject(req, res, next) {
 // contacts (admin does not know these; no link with directory sections).
 export async function saveSpocContacts(req, res, next) {
   try {
+    if (!(await projectVisible(req.user, req.params.id))) return res.status(404).json({ message: 'Project not found.' });
     const parsed = spocContactsSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res
@@ -374,6 +388,7 @@ export async function saveSpocContacts(req, res, next) {
 // Multiple people per service supported via repeated rows or names[].
 export async function saveTeamLeads(req, res, next) {
   try {
+    if (!(await projectVisible(req.user, req.params.id))) return res.status(404).json({ message: 'Project not found.' });
     const parsed = teamLeadsSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res
@@ -596,6 +611,7 @@ export async function recordFinalApproval(req, res, next) {
 // revisions, peer reviews, RFIs, QS/BOQ before final approval + GFC issue.
 export async function gfcReadiness(req, res, next) {
   try {
+    if (!(await projectVisible(req.user, req.params.id))) return res.status(404).json({ message: 'Project not found.' });
     const project = await Project.findById(req.params.id).lean();
     if (!project) return res.status(404).json({ message: 'Project not found.' });
     const pid = project._id;

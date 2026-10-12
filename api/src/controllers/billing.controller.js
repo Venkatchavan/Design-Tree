@@ -73,6 +73,7 @@ export async function setClaimStatus(req, res, next) {
 }
 
 export const stages = makeCrud(StageStatus, {
+  scopedByProject: true,
   create: stageStatusSchema,
   update: stageStatusUpdateSchema,
   filters: (req) => {

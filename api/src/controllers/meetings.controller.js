@@ -1,3 +1,4 @@
+import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { isSuperRole } from '../config/roles.js';
 import { Counter } from '../models/Counter.js';
 import { notify, userIdsForEmployees } from '../models/Notification.js';
@@ -88,6 +89,7 @@ export async function listMeetings(req, res, next) {
   try {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
+    narrowByProject(filter, 'project', await projectScopeIds(req.user));
     if (req.query.status) filter.status = req.query.status;
     if (req.query.category) filter.category = req.query.category;
     if (req.query.type) filter.type = req.query.type;
