@@ -16,7 +16,7 @@ import { applyMeetingAudience } from '../middlewares/meetingAccess.js';
 export const meetingFilesUpload = uploadMany('files', 'meetings', 10);
 export const meetingMomUpload = uploadMany('files', 'meetings', 2);
 
-const POP_PROJ_FULL = 'name code branch clientName scope';
+const POP_PROJ_FULL = 'name code branch clientName scope services';
 
 function invalidMessage(parsed) {
   const issues = parsed.error?.issues ?? [];

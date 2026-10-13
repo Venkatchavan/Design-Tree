@@ -13,6 +13,11 @@ async function signIn(page: Page, role: string) {
 function panel(page: Page, title: string) { return page.locator('.panel').filter({has:page.locator('.panel-title').filter({hasText:new RegExp('^'+title.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'$')})}); }
 function field(root: any, label: string) { return root.locator('.form-row').filter({has:root.page().locator('label',{hasText:new RegExp(`^${label} ?\\*?$`)})}); }
 
+async function spocProjectMeetings(page:Page,meetingId?:string) {
+  await page.goto(`/projects/${fixture.project}${meetingId ? `?meeting=${meetingId}` : ''}`);
+  await page.getByRole('tab',{name:'Coordinator',exact:true}).click();await page.getByRole('tab',{name:'Meetings',exact:true}).click();
+}
+
 test('updated login enters the employee dashboard; assigned projects survive reload', async ({page}) => {
   await page.goto('/'); await page.locator('#loginEmail').fill(fixture.cast.engineer.email); await page.locator('#loginPassword').fill(fixture.password);
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
@@ -117,4 +122,34 @@ test('meeting invitation reaches an already-open employee dashboard live',async(
 
 test('director QS screen shows real BOQ quantities and pending area review',async({page})=>{
   await signIn(page,'td');await page.goto('/qs-log');await page.locator('select').selectOption(fixture.project);await expect(page.getByText('BOQ acceptance item',{exact:true}).first()).toBeVisible();await expect(page.getByText('Acceptance zone',{exact:true}).first()).toBeVisible();await expect(page.getByText('10',{exact:true}).first()).toBeVisible();
+});
+
+test('SPOC counts, bundle chart and combined filters match stored meetings',async({page})=>{
+  await signIn(page,'spoc');const data=await page.context().request.get(`${fixture.base}/api/meetings`);const meetings=(await data.json()).items;
+  await spocProjectMeetings(page);await expect(page.locator('.kpi-grid.cols-5 .kpi-card')).toHaveCount(10);await expect(page.locator('.kpi-card').filter({has:page.locator('.kpi-label',{hasText:'Total meetings'})}).locator('.kpi-value')).toHaveText(String(meetings.length));
+  await expect(page.locator('canvas[aria-label^="Service meeting counts"]')).toHaveAttribute('aria-label',new RegExp(`SMEPF: ${meetings.filter(m=>m.project._id===fixture.project).length}`));
+  const chart=page.locator('canvas').first();const box=await chart.boundingBox();expect(box).toBeTruthy();await expect.poll(()=>chart.evaluate((c:HTMLCanvasElement)=>c.getContext('2d')!.getImageData(Math.floor(c.width*.65),Math.floor(c.height*.5),1,1).data[3])).toBeGreaterThan(200);await chart.click({position:{x:box!.width*.65,y:box!.height*.5}});await expect(page.getByRole('tab',{name:'All meetings',exact:true})).toHaveAttribute('aria-selected','true');const list=page.locator('.panel').filter({has:page.locator('.panel-title',{hasText:/^All meetings/})});
+  await field(list,'Service').locator('select').selectOption('SMEPF');await expect(list.getByText('Scheduled acceptance meeting',{exact:true})).toBeVisible();
+  await field(list,'Project').locator('select').selectOption(fixture.project);await field(list,'Category').locator('select').selectOption('Scheduled');await field(list,'Meeting type').locator('select').selectOption('PMC');await field(list,'SPOC / coordinator').locator('select').selectOption('Test spoc Workflow');
+  await expect(list.getByText('Scheduled acceptance meeting',{exact:true})).toBeVisible();await field(list,'Meeting type').locator('select').selectOption('');
+  await field(list,'Meeting status').locator('select').selectOption('Cancelled');await expect(list.getByText('Cancelled acceptance meeting',{exact:true})).toBeVisible();await expect(list.getByText('Sudden acceptance meeting',{exact:true})).toHaveCount(0);
+  await list.getByRole('button',{name:'Clear filters',exact:true}).click();await field(list,'Attendance').locator('select').selectOption('Some absent');await field(list,'Action items').locator('select').selectOption('Has pending');await expect(list.getByText('Scheduled acceptance meeting',{exact:true})).toBeVisible();
+  await list.getByRole('button',{name:'Clear filters',exact:true}).click();await field(list,'From').locator('input').fill(new Date(Date.now()+10*86400000).toISOString().slice(0,10));await expect(list.getByText('No meetings match these filters.',{exact:true})).toBeVisible();
+});
+
+test('SPOC absence export and chronological project history share persisted attendance',async({page})=>{
+  await signIn(page,'spoc');await page.addInitScript(()=>Object.defineProperty(navigator,'clipboard',{value:{writeText:async(text:string)=>{(window as any).testClipboard=text;}}}));await spocProjectMeetings(page);await page.getByRole('tab',{name:'Absence log',exact:true}).click();
+  const filters=panel(page,'Absence log filters');await expect(field(filters,'Project').locator('select')).toHaveValue(fixture.project);await field(filters,'Service').locator('select').selectOption('Structural');await field(filters,'Team member').locator('select').selectOption(fixture.cast.engineer.employee);await field(filters,'Meeting type').locator('select').selectOption('PMC');
+  await expect(page.getByRole('button',{name:'Copy log for Excel',exact:true})).toBeEnabled();await page.getByRole('button',{name:'Copy log for Excel',exact:true}).click();await expect(page.getByText('Copied 1 absence record for Excel.',{exact:true})).toBeVisible();const text=await page.evaluate(()=>(window as any).testClipboard);expect(text.split('\n')[0].split('\t')).toHaveLength(17);expect(text).toContain('Leave');
+  await page.getByRole('tab',{name:'Project history',exact:true}).click();const history=panel(page,'Project history');await history.locator('select').selectOption(fixture.project);await expect(history.getByText('Scope S, M, E, P, F',{exact:false})).toBeVisible();await expect(history.getByRole('cell',{name:'Ad-hoc',exact:true})).toBeVisible();await expect(history.getByRole('cell',{name:/Test engineer Workflow/}).first()).toBeVisible();
+  const raw=await page.context().request.get(`${fixture.base}/api/meetings`);const meetings=(await raw.json()).items.filter(m=>m.project._id===fixture.project).sort((a,b)=>+new Date(a.date)-+new Date(b.date));expect(await history.locator('tbody tr').count()).toBe(meetings.length);
+});
+
+test('meeting audit actors, reminders and the six-stage tracker reflect real state',async({page})=>{
+  await signIn(page,'spoc');const response=await page.context().request.get(`${fixture.base}/api/meetings`);const meetings=(await response.json()).items;const stored=meetings.find(m=>m.title==='Scheduled acceptance meeting');const detail=await page.context().request.get(`${fixture.base}/api/meetings/${stored._id}`);const history=(await detail.json()).item.history;expect(history.length).toBeGreaterThan(5);expect(history.every(e=>e.by&&e.at)).toBe(true);
+  await spocProjectMeetings(page);await expect(panel(page,'Alerts & reminders').getByRole('button',{name:/MOM pending: Sudden acceptance meeting/})).toBeVisible();await spocProjectMeetings(page,stored._id);const dialog=page.getByRole('dialog',{name:'Meeting details',exact:true});
+  for(const label of ['Planned','Conducted','Attendance','MOM','Action items','Tracked'])await expect(dialog.getByText(label,{exact:true}).first()).toBeVisible();
+  expect(await dialog.getByText('Tracked',{exact:true}).first().evaluate(el=>el.style.background)).toBe('');
+  const sudden=meetings.find(m=>m.title==='Sudden acceptance meeting');await spocProjectMeetings(page,sudden._id);expect(await page.getByRole('dialog').getByText('Attendance',{exact:true}).first().evaluate(el=>el.style.background)).toBe('');
+  await signIn(page,'engineer');await page.goto('/meetings/mine');await expect(panel(page,'Alerts & reminders')).toBeVisible();
 });

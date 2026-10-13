@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
-import { isUpcoming, momRecorded, displayStatus } from '../lib/meetingsLogic.js';
+import { computeAlerts, isUpcoming, momRecorded, displayStatus } from '../lib/meetingsLogic.js';
 import { MeetingDetailModal } from '../components/MeetingsCommon.jsx';
 import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
 import { useMemo, useState } from 'react';
@@ -131,6 +131,8 @@ function EmployeeMeetings() {
     }
     return out;
   }, [meetings, myEmpId]);
+
+  const reminders = useMemo(() => computeAlerts(meetings.map(m => ({...m,invites:(m.invites ?? []).filter(i=>String(i.employee?._id ?? i.employee)===myEmpId),actions:(m.actions ?? []).filter(a=>String(a.owner?._id ?? a.owner)===myEmpId)}))),[meetings,myEmpId]);
 
   const openActions = useMemo(
     () => allMyActions.filter((a) => String(a.status ?? '').toLowerCase() !== 'completed'),
@@ -298,6 +300,7 @@ function EmployeeMeetings() {
               />
             )}
           </Panel>
+          <Panel title="Alerts & reminders">{reminders.length ? <ul>{reminders.map((r,i)=><li key={i}><button type="button" className="approve-btn" onClick={()=>setDetailId(r.meetingId)}>{r.text}</button></li>)}</ul> : <EmptyState text="No meeting reminders." />}</Panel>
           <Panel title="My action items" sub={`${openActions.length} open`}>
             {listQ.isLoading ? <EmptyState text="Loading…" /> : openActions.length === 0 ? (
               <EmptyState text="No open action items." />

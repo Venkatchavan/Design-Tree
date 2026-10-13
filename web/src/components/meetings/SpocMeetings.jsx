@@ -1,3 +1,4 @@
+import { serviceNames, committedServiceNames } from '../../lib/services.js';
 import { useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -116,12 +117,12 @@ function DashboardTab({ meetings, onOpen, onFilterType, onFilterService, onOpenA
 
   const byType = MEETING_TYPES.map((t) => meetings.filter((m) => m.type === t).length);
   const byService = ['Structural', 'Mechanical', 'Electrical', 'Plumbing', 'Fire', 'MEP Coordination'].map(
-    (s) => meetings.filter((m) => (m.services ?? []).some((x) => String(x).toLowerCase() === s.toLowerCase())).length,
+    (s) => meetings.filter((m) => serviceNames(m.services).some((x) => x.toLowerCase() === s.toLowerCase())).length,
   );
   const smepfCount = meetings.filter((m) => {
     const p = m.project;
     if (!p || typeof p !== 'object') return false;
-    const scope = (p.scope ?? []).map((s) => String(s.service ?? s).toLowerCase());
+    const scope = committedServiceNames(p).map(s=>s.toLowerCase());
     return ['structural', 'mechanical', 'electrical', 'plumbing', 'fire'].every((s) => scope.includes(s));
   }).length;
 
@@ -193,10 +194,10 @@ function DashboardTab({ meetings, onOpen, onFilterType, onFilterService, onOpenA
 
       <div className="two-col">
         <Panel title="By meeting type">
-          <div className="chart-wrap"><Bar data={barData(MEETING_TYPES, byType)} options={barOptions(onFilterType)} /></div>
+          <div className="chart-wrap"><Bar role="img" aria-label={MEETING_TYPES.map((type,i)=>`${type}: ${byType[i]}`).join(', ')} data={barData(MEETING_TYPES, byType)} options={barOptions(onFilterType)} /></div>
         </Panel>
         <Panel title="By service">
-          <div className="chart-wrap"><Bar data={barData(['Structural', 'Mechanical', 'Electrical', 'Plumbing', 'Fire', 'MEP Coordination', 'SMEPF'], [...byService, smepfCount])} options={barOptions(onFilterService)} /></div>
+          <div className="chart-wrap"><Bar role="img" aria-label={`Service meeting counts; SMEPF: ${smepfCount}; Structural: ${byService[0]}`} data={barData(['Structural', 'Mechanical', 'Electrical', 'Plumbing', 'Fire', 'MEP Coordination', 'SMEPF'], [...byService, smepfCount])} options={barOptions(onFilterService)} /></div>
         </Panel>
       </div>
     </>
@@ -230,9 +231,9 @@ function AllMeetingsTab({ meetings, projects, preset, onOpen }) {
     if (f.service) {
       if (f.service === 'SMEPF') {
         const p = m.project;
-        const scope = p && typeof p === 'object' ? (p.scope ?? []).map((s) => String(s.service ?? s).toLowerCase()) : [];
+        const scope = p && typeof p === 'object' ? committedServiceNames(p).map(s=>s.toLowerCase()) : [];
         if (!['structural', 'mechanical', 'electrical', 'plumbing', 'fire'].every((s) => scope.includes(s))) return false;
-      } else if (!(m.services ?? []).some((x) => String(x).toLowerCase() === f.service.toLowerCase())) return false;
+      } else if (!serviceNames(m.services).some((x) => x.toLowerCase() === f.service.toLowerCase())) return false;
     }
     if (f.responsible && m.responsible !== f.responsible) return false;
     if (f.from && new Date(m.date) < new Date(f.from)) return false;
@@ -577,7 +578,7 @@ function ProjectHistoryTab({ meetings, onOpen }) {
                 { key: 'cat', label: 'Category', render: (r) => (r.category === 'Sudden' ? 'Ad-hoc' : 'Scheduled') },
                 { key: 'type', label: 'Type', render: (r) => r.type ?? '—' },
                 { key: 'svc', label: 'Service', render: (r) => (r.services ?? []).map(serviceCode).join(', ') || '—' },
-                { key: 'part', label: 'Participants', render: (r) => (r.invites ?? []).map((v) => empName(v.employee)).join(', ') || (r.participants ?? []).map((p) => p.name).join(', ') || '—' },
+                { key: 'part', label: 'Participants', render: (r) => (r.invites ?? []).map((v) => empName(v.employee)).join(', ') || (r.participants ?? []).map((p) => p.name || empName(p.employee)).join(', ') || '—' },
                 { key: 'att', label: 'Attendance', render: (r) => attendanceSummary(r).label },
                 { key: 'disc', label: 'Key discussions', render: (r) => ((r.mom?.discussion ?? '').slice(0, 90) || r.agenda?.slice(0, 90) || '—') },
                 { key: 'mom', label: 'MOM', render: (r) => (momRecorded(r) ? <StatusPill tone="forest">Recorded</StatusPill> : String(r.status) === 'Held' ? <StatusPill tone="amber">Pending</StatusPill> : '—') },
@@ -701,7 +702,7 @@ export default function SpocMeetings({ projectId, readOnly = false }) {
 // ---------------- Detail panel (slide-over) ----------------
 function Tracker({ meeting }) {
   const held = String(meeting?.status ?? '').toLowerCase() === 'held';
-  const attendanceDone = (meeting?.attendance ?? []).length > 0;
+  const attendanceDone = (meeting?.attendance ?? []).some(a=>typeof a.present==='boolean');
   const momDone = momRecorded(meeting);
   const actions = meeting?.actions ?? [];
   const steps = [
