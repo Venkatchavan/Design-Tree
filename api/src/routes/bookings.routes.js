@@ -15,8 +15,8 @@ import {
 const router = Router();
 router.use(requireAuth);
 
-// Directors manage bookings alongside Finance.
-const BOOKING_WRITERS = ['finance', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director'];
+// Finance-only (FD/WD superusers bypass via requireRole).
+const BOOKING_WRITERS = ['finance'];
 
 router.get('/summary', requireView('travel-booking'), bookingSummary);
 router.get('/', requireView('travel-booking'), bookings.list);

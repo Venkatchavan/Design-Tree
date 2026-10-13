@@ -9,15 +9,11 @@ import StatusPill from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 
 const BOOKING_STATUSES = ['Pending', 'Approved', 'Confirmed', 'Rejected', 'Rescheduled', 'Cancelled', 'Completed'];
-// Mirrors the write list on the travel-bookings API; superusers pass server-side.
+// Finance-only (FD/WD superusers pass server-side via requireRole bypass).
 const WRITER_ROLES = new Set([
+  'finance',
   'founding_director',
   'working_director',
-  'finance',
-  'executive_director',
-  'associate_director',
-  'technical_director',
-  'assoc_technical_director',
 ]);
 const EMPTY_FORM = {
   employee: '',
