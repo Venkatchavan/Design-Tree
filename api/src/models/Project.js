@@ -33,6 +33,8 @@ export const PROJECT_COMPLEXITIES = ['Low', 'Medium', 'High'];
 export const ACTIVATION_STATUSES = ['Pending', 'Activated'];
 export const TEAM_CONFIRMATION_STATUSES = ['Pending', 'Confirmed'];
 export const FINAL_APPROVAL_STATUSES = ['Pending', 'Approved'];
+export const PROJECT_PRIORITIES = ['High', 'Medium', 'Low'];
+export const PROJECT_CATEGORIES = ['Category A', 'Category B', 'Category C'];
 
 const contactSchema = new mongoose.Schema(
   {
@@ -83,9 +85,12 @@ const projectSchema = new mongoose.Schema(
     ],
     hospitalityByClient: { type: Boolean, default: false },
     bimWorkOrder: {
+      no: { type: String, trim: true },
+      date: { type: Date },
       scope: { type: String, trim: true },
       fee: { type: Number, min: 0 },
       description: { type: String, trim: true },
+      status: { type: String, trim: true },
     },
     principalTeamLeads: [
       {
@@ -125,6 +130,13 @@ const projectSchema = new mongoose.Schema(
     description: { type: String, trim: true },
     requirements: { type: String, trim: true },
     complexity: { type: String, enum: PROJECT_COMPLEXITIES, trim: true },
+    priority: { type: String, enum: PROJECT_PRIORITIES, trim: true },
+    category: { type: String, enum: PROJECT_CATEGORIES, trim: true },
+    referral: { type: String, trim: true },
+    sourcePerson: { type: String, trim: true },
+    clientSpoc: { type: String, trim: true },
+    workOrderDate: { type: Date },
+    workOrderDocument: { type: String, trim: true },
     // Project activation: Admin activates the project and assigns the
     // confirmed SPOC. New projects default to Pending; Admin confirms via
     // POST /api/projects/:id/activate which assigns the SPOC.

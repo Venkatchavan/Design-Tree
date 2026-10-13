@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { metaApi, projectsApi } from '../lib/api.js';
+import { projectsApi } from '../lib/api.js';
 import { marketingApi } from '../lib/phase4aApi.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
 import Panel from '../components/Panel.jsx';
-import Modal from '../components/Modal.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import LocationModal from '../components/LocationModal.jsx';
 
 // Base option lists: unioned with distinct live values below so dropdowns
 // reflect existing data and never render empty on a fresh database.
@@ -46,7 +46,14 @@ const BLANK = {
   scopeText: '',
   fee: '',
   hospitality: '',
-  bimWorkOrder: { scope: '', fee: '', description: '' },
+  priority: '',
+  category: '',
+  referral: '',
+  sourcePerson: '',
+  clientSpoc: '',
+  workOrderDate: '',
+  workOrderDocument: '',
+  bimWorkOrder: { no: '', date: '', scope: '', fee: '', description: '', status: '' },
   contacts: { client: null, architect: null, billing: null },
 };
 
@@ -188,100 +195,6 @@ function ContactPicker({ label, contactType, value, onPick, onClear }) {
   );
 }
 
-function LocationModal({ onSave, onClose }) {
-  const [q, setQ] = useState('');
-  const [debounced, setDebounced] = useState('');
-  const [manual, setManual] = useState(false);
-  const [customLabel, setCustomLabel] = useState('');
-  const [fullAddress, setFullAddress] = useState('');
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(q.trim()), 400);
-    return () => clearTimeout(t);
-  }, [q]);
-
-  const geoQ = useQuery({
-    queryKey: ['geocode', debounced],
-    queryFn: () => metaApi.geocode(debounced),
-    enabled: debounced.length >= 3,
-    retry: false,
-  });
-  const hits = geoQ.data?.items ?? [];
-
-  return (
-    <Modal title="Set project location" onClose={onClose} wide>
-      <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>
-        Search for the project / site location — no need to paste a Google Maps link
-      </p>
-      <div className="form-row">
-        <label className="form-label">Search location</label>
-        <input
-          className="form-input"
-          placeholder="e.g. Whitefield, Bengaluru"
-          value={q}
-          onChange={(e) => { setQ(e.target.value); setManual(false); }}
-        />
-      </div>
-      {debounced.length >= 3 && (
-        <div className="location-results">
-          {geoQ.isLoading ? <div className="location-result-row">Searching…</div>
-            : geoQ.isError ? <div className="location-result-row">Search is unavailable right now.</div>
-              : hits.length === 0 ? <div className="location-result-row">No matches found.</div>
-                : hits.map((h) => {
-                    const sub = [h.address1, h.city, h.state, h.zip].filter(Boolean).join(', ');
-                    return (
-                      <div
-                        key={`${h.label}-${sub}`}
-                        className="location-result-row"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => onSave(h)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') onSave(h); }}
-                      >
-                        <b>{h.label || '—'}</b>
-                        {sub && (
-                          <div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{sub}</div>
-                        )}
-                      </div>
-                    );
-                  })}
-        </div>
-      )}
-      <p style={{ fontSize: 13, marginTop: 12 }}>
-        Can&apos;t find it? Enter the site address manually.
-      </p>
-      {!manual ? (
-        <button type="button" className="approve-btn" onClick={() => setManual(true)}>Custom address</button>
-      ) : (
-        <>
-          <div className="form-row">
-            <label className="form-label">Custom address</label>
-            <input className="form-input" value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} placeholder="e.g. Whitefield, Bengaluru" />
-          </div>
-          <div className="form-row">
-            <label className="form-label">Full project / site address</label>
-            <textarea className="form-input" value={fullAddress} onChange={(e) => setFullAddress(e.target.value)} />
-          </div>
-        </>
-      )}
-      <p style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>Location search © OpenStreetMap contributors</p>
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        {manual && (
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={!customLabel.trim()}
-            onClick={() => onSave({ label: customLabel.trim(), address1: fullAddress.trim(), address2: '', city: '', state: '', zip: '' })}
-          >
-            Save Location
-          </button>
-        )}
-        <button type="button" className="approve-btn" onClick={onClose}>Cancel</button>
-      </div>
-    </Modal>
-  );
-}
-
 export default function NewProjectPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -383,13 +296,23 @@ export default function NewProjectPage() {
       scope: form.scopeText.trim() || fee !== undefined
         ? [{ scope: form.scopeText.trim() || undefined, fee }]
         : [],
+      priority: form.priority || undefined,
+      category: form.category || undefined,
+      referral: form.referral.trim() || undefined,
+      sourcePerson: form.sourcePerson.trim() || undefined,
+      clientSpoc: form.clientSpoc.trim() || undefined,
+      workOrderDate: form.workOrderDate || undefined,
+      workOrderDocument: form.workOrderDocument.trim() || undefined,
       hospitalityByClient: form.hospitality === 'yes' ? true : form.hospitality === 'no' ? false : undefined,
       bimWorkOrder:
-        form.bimWorkOrder.scope.trim() || form.bimWorkOrder.fee !== '' || form.bimWorkOrder.description.trim()
+        form.bimWorkOrder.scope.trim() || form.bimWorkOrder.fee !== '' || form.bimWorkOrder.description.trim() || form.bimWorkOrder.no.trim() || form.bimWorkOrder.date || form.bimWorkOrder.status.trim()
           ? {
+              no: form.bimWorkOrder.no.trim() || undefined,
+              date: form.bimWorkOrder.date || undefined,
               scope: form.bimWorkOrder.scope.trim() || undefined,
               fee: numOrUndef(form.bimWorkOrder.fee),
               description: form.bimWorkOrder.description.trim() || undefined,
+              status: form.bimWorkOrder.status.trim() || undefined,
             }
           : undefined,
       contacts: {
@@ -498,6 +421,21 @@ export default function NewProjectPage() {
                 {sourceOptions.map((x) => <option key={x} value={x}>{x}</option>)}
               </select>
             </F>
+            <F label="Priority">
+              <select className="form-input" value={form.priority} onChange={(e) => set('priority', e.target.value)}>
+                <option value="">--None--</option>
+                {['High', 'Medium', 'Low'].map((x) => <option key={x} value={x}>{x}</option>)}
+              </select>
+            </F>
+            <F label="Category">
+              <select className="form-input" value={form.category} onChange={(e) => set('category', e.target.value)}>
+                <option value="">--None--</option>
+                {['Category A', 'Category B', 'Category C'].map((x) => <option key={x} value={x}>{x}</option>)}
+              </select>
+            </F>
+            <F label="Referral"><input className="form-input" value={form.referral} onChange={(e) => set('referral', e.target.value)} /></F>
+            <F label="Source person"><input className="form-input" value={form.sourcePerson} onChange={(e) => set('sourcePerson', e.target.value)} /></F>
+            <F label="Client SPOC"><input className="form-input" value={form.clientSpoc} onChange={(e) => set('clientSpoc', e.target.value)} /></F>
             <F label="Entity Name">
               <input
                 className="form-input"
@@ -541,6 +479,8 @@ export default function NewProjectPage() {
                 <option value="no">No</option>
               </select>
             </F>
+            <F label="Work order date"><input type="date" className="form-input" value={form.workOrderDate} onChange={(e) => set('workOrderDate', e.target.value)} /></F>
+            <F label="Work order document"><input className="form-input" placeholder="e.g. WO_PRJ045_signed.pdf" value={form.workOrderDocument} onChange={(e) => set('workOrderDocument', e.target.value)} /></F>
           </div>
         </Panel>
 
@@ -548,6 +488,11 @@ export default function NewProjectPage() {
           <F label="BIM scope of work"><textarea className="form-input" placeholder="Not applicable to this project" value={form.bimWorkOrder.scope} onChange={(e) => setBim('scope', e.target.value)} /></F>
           <div className="field-grid">
             <F label="Fee / value (optional)"><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span>₹</span><input type="number" min="0" className="form-input" value={form.bimWorkOrder.fee} onChange={(e) => setBim('fee', e.target.value)} /></div></F>
+          </div>
+          <div className="field-grid">
+            <F label="BIM work order no."><input className="form-input" value={form.bimWorkOrder.no} onChange={(e) => setBim('no', e.target.value)} /></F>
+            <F label="BIM work order date"><input type="date" className="form-input" value={form.bimWorkOrder.date} onChange={(e) => setBim('date', e.target.value)} /></F>
+            <F label="BIM work order status"><input className="form-input" placeholder="e.g. Active" value={form.bimWorkOrder.status} onChange={(e) => setBim('status', e.target.value)} /></F>
           </div>
           <F label="Scope description"><textarea className="form-input" placeholder="Describe the BIM deliverable and scope covered" value={form.bimWorkOrder.description} onChange={(e) => setBim('description', e.target.value)} /></F>
         </Panel>

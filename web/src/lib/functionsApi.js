@@ -74,6 +74,20 @@ export const convApi = {
     }),
 };
 
+export const variationApi = {
+  list: (params = {}) => request(`/api/variations${toQuery(params)}`),
+  create: (body) =>
+    request('/api/variations', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  update: (id, body) =>
+    request(`/api/variations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+};
+
 export const rfiApi = {
   list: (params = {}) => request(`/api/functions/rfis${toQuery(params)}`),
   create: (body) =>

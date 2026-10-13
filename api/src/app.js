@@ -6,6 +6,7 @@ import attendanceRoutes from './routes/attendance.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import billingRoutes from './routes/billing.routes.js';
 import bookingsRoutes from './routes/bookings.routes.js';
+import variationsRoutes from './routes/variations.routes.js';
 import branchesRoutes from './routes/branches.routes.js';
 import certificatesRoutes from './routes/certificates.routes.js';
 import designmgmtRoutes from './routes/designmgmt.routes.js';
@@ -63,6 +64,7 @@ export function createApp() {
   app.use('/api/finance-occ', financeOccRoutes);
   app.use('/api/certificates', certificatesRoutes);
   app.use('/api/travel-bookings', bookingsRoutes);
+  app.use('/api/variations', variationsRoutes);
   app.use('/api/design', designmgmtRoutes);
   app.use('/api/marketing', marketingRoutes);
   app.use('/api/leave-travel', leaveRoutes);

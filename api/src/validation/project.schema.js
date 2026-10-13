@@ -2,7 +2,9 @@ import { z } from 'zod';
 import {
   ACTIVATION_STATUSES,
   FINAL_APPROVAL_STATUSES,
+  PROJECT_CATEGORIES,
   PROJECT_COMPLEXITIES,
+  PROJECT_PRIORITIES,
   PROJECT_STATUSES,
   SERVICES,
   STAGES,
@@ -57,9 +59,12 @@ export const projectSchema = z.object({
   hospitalityByClient: z.boolean().optional(),
   bimWorkOrder: z
     .object({
+      no: z.string().trim().optional(),
+      date: z.coerce.date().optional(),
       scope: z.string().trim().optional(),
       fee: z.number().min(0).optional(),
       description: z.string().trim().optional(),
+      status: z.string().trim().optional(),
     })
     .strict()
     .optional(),
@@ -104,6 +109,13 @@ export const projectSchema = z.object({
   description: z.string().trim().optional(),
   requirements: z.string().trim().optional(),
   complexity: z.enum(PROJECT_COMPLEXITIES).optional(),
+  priority: z.enum(PROJECT_PRIORITIES).optional(),
+  category: z.enum(PROJECT_CATEGORIES).optional(),
+  referral: z.string().trim().optional(),
+  sourcePerson: z.string().trim().optional(),
+  clientSpoc: z.string().trim().optional(),
+  workOrderDate: z.coerce.date().optional(),
+  workOrderDocument: z.string().trim().optional(),
   activation: z
     .object({
       status: z.enum(ACTIVATION_STATUSES).optional(),

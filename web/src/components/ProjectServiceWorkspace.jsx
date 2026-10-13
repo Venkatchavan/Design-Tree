@@ -1,52 +1,24 @@
-import { useState } from 'react';
 import Panel from './Panel.jsx';
-import Tabs from './Tabs.jsx';
 import DataTable from './DataTable.jsx';
 import KpiCard from './KpiCard.jsx';
 import StatusPill from './StatusPill.jsx';
 import EmptyState from './EmptyState.jsx';
+import VariationsPanel from './VariationsPanel.jsx';
 
 export const SERVICE_TABS = [
   { key: 'structural', label: 'Structural', codes: ['STR', 'Structural', 'Structure'], kind: 'design' },
-  { key: 'mechanical', label: 'Mechanical', codes: ['HVAC', 'MEP', 'Mechanical'], kind: 'design' },
   { key: 'electrical', label: 'Electrical', codes: ['ELE', 'Electrical'], kind: 'design' },
+  { key: 'mechanical', label: 'Mechanical', codes: ['HVAC', 'MEP', 'Mechanical'], kind: 'design' },
   { key: 'plumbing', label: 'Plumbing', codes: ['PHE', 'Plumbing'], kind: 'design' },
   { key: 'fire', label: 'Fire', codes: ['FIRE', 'Fire'], kind: 'design' },
   { key: 'qs', label: 'QS', codes: ['QS', 'QS/BOQ'], kind: 'qs' },
   { key: 'qaqc', label: 'QAQC', codes: ['QAQC', 'QA/QC'], kind: 'qaqc' },
   { key: 'gbs', label: 'GBS', codes: ['GBS'], kind: 'gbs' },
   { key: 'bim', label: 'BIM', codes: ['BIM'], kind: 'bim' },
+  { key: 'peer', label: 'Peer review', codes: ['PEER', 'Peer Review'], kind: 'peer' },
   { key: 'drawings', label: 'Drawings', codes: [], kind: 'drawings' },
   { key: 'variations', label: 'Variations', codes: [], kind: 'variations' },
 ];
-
-const DESIGN_SUBTABS = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'team', label: 'Team' },
-  { key: 'stages', label: 'Stage status' },
-  { key: 'drawings', label: 'Drawings' },
-];
-
-const SUBTABS_BY_KIND = {
-  design: DESIGN_SUBTABS,
-  bim: DESIGN_SUBTABS,
-  qs: [
-    { key: 'overview', label: 'Overview' },
-    { key: 'boq', label: 'BOQ' },
-    { key: 'area', label: 'Area settlement' },
-  ],
-  qaqc: [
-    { key: 'overview', label: 'Overview' },
-    { key: 'visits', label: 'Site visits' },
-    { key: 'weekly', label: 'Weekly reports' },
-  ],
-  gbs: [
-    { key: 'overview', label: 'Overview' },
-    { key: 'certification', label: 'Certification' },
-  ],
-  drawings: [{ key: 'register', label: 'Drawing register' }],
-  variations: [{ key: 'log', label: 'Variation log' }],
-};
 
 export function idOf(v) {
   if (v && typeof v === 'object') return String(v._id ?? v.id ?? '');
@@ -70,36 +42,17 @@ function delayText(days) {
   return n > 0 ? `${n} day(s) late` : 'On time';
 }
 
-function ServiceOverview({ service, project, svcStages, svcDrawings }) {
-  const active = svcStages.filter((s) => String(s.currentStatus ?? '').toLowerCase() !== 'completed');
-  const delayed = svcStages.filter((s) => Number(s.delayDays ?? 0) > 0);
-  const gfc = svcDrawings.filter((d) => String(d.stage ?? '').toUpperCase() === 'GFC');
+function KpiRow({ items }) {
   return (
-    <>
-      <div className="kpi-grid cols-4">
-        <KpiCard label="Stages tracked" value={svcStages.length} accent="blueprint" />
-        <KpiCard label="Active stages" value={active.length} accent="forest" />
-        <KpiCard label="Delayed stages" value={delayed.length} accent="rust" />
-        <KpiCard label="GFC drawings" value={gfc.length} accent="teal" />
-      </div>
-      {service.kind === 'bim' && (
-        <Panel title="BIM work order" sub="Kept separate from the project work order">
-          {!project.bimWorkOrder ? (
-            <EmptyState text="No BIM work order for this project." />
-          ) : (
-            <div className="field-grid">
-              <div><div className="form-label">Scope of work</div><div>{project.bimWorkOrder.scope || '—'}</div></div>
-              <div><div className="form-label">Fee / value</div><div>{project.bimWorkOrder.fee ?? '—'}</div></div>
-              <div><div className="form-label">Description</div><div>{project.bimWorkOrder.description || '—'}</div></div>
-            </div>
-          )}
-        </Panel>
-      )}
-    </>
+    <div className={`kpi-grid cols-${items.length}`}>
+      {items.map((k) => (
+        <KpiCard key={k.label} label={k.label} value={k.value} accent={k.accent} />
+      ))}
+    </div>
   );
 }
 
-function TeamView({ service, project, teamBundle }) {
+function TeamPanels({ service, project, teamBundle }) {
   const codes = service.codes;
   const leads = (project.principalTeamLeads ?? []).filter((t) => codes.includes(String(t.service ?? '')));
   const members = (teamBundle?.members ?? []).filter((m) => codes.includes(String(m.service ?? '')));
@@ -130,7 +83,7 @@ function TeamView({ service, project, teamBundle }) {
   );
 }
 
-function StagesView({ svcStages }) {
+function StagePanel({ svcStages }) {
   return (
     <Panel title="Stage status">
       <DataTable
@@ -149,7 +102,7 @@ function StagesView({ svcStages }) {
   );
 }
 
-function DrawingsView({ rows, emptyText }) {
+function DrawingsPanel({ rows, emptyText }) {
   return (
     <Panel title="Drawing register">
       <DataTable
@@ -170,32 +123,118 @@ function DrawingsView({ rows, emptyText }) {
   );
 }
 
-export default function ProjectServiceWorkspace({ service, project, stages, drawings, areaRows, boqRows, visitRows, weeklyRows, gbsItem, teamBundle }) {
-  const subtabs = SUBTABS_BY_KIND[service.kind] ?? DESIGN_SUBTABS;
-  const [sub, setSub] = useState(subtabs[0].key);
+function BimWorkOrderPanel({ project }) {
+  const bwo = project.bimWorkOrder;
+  return (
+    <Panel title="BIM work order" sub="Issued by Admin, kept separate from the work order above">
+      {!bwo ? (
+        <EmptyState text="No BIM work order for this project." />
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'no', label: 'BIM WO No.', render: (r) => r.no || '—' },
+            { key: 'scope', label: 'Scope of work', render: (r) => r.scope || '—' },
+            { key: 'date', label: 'Date', render: (r) => fmtDate(r.date) },
+            { key: 'fee', label: 'Fee / value', render: (r) => (r.fee != null ? `₹${Number(r.fee).toLocaleString('en-IN')}` : '—') },
+            { key: 'status', label: 'Status', render: (r) => r.status || '—' },
+          ]}
+          rows={[bwo]}
+          emptyText="No BIM work order for this project."
+        />
+      )}
+    </Panel>
+  );
+}
+
+function PeerReviewPanel({ rows }) {
+  return (
+    <Panel title="Peer reviews" sub="Peer review submissions for this project">
+      <DataTable
+        columns={[
+          { key: 'submission', label: 'Submission', render: (r) => r.submission || '—' },
+          { key: 'discipline', label: 'Discipline', render: (r) => r.discipline || '—' },
+          { key: 'stage', label: 'Stage', render: (r) => r.stage || '—' },
+          { key: 'reviewer', label: 'Reviewer', render: (r) => r.reviewer || '—' },
+          { key: 'due', label: 'Due', render: (r) => fmtDate(r.dueDate) },
+          { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+        ]}
+        rows={rows}
+        emptyText="No peer reviews for this project yet."
+      />
+    </Panel>
+  );
+}
+
+export default function ProjectServiceWorkspace({
+  service,
+  project,
+  stages,
+  drawings,
+  areaRows,
+  boqRows,
+  visitRows,
+  weeklyRows,
+  gbsItem,
+  teamBundle,
+  peerRows = [],
+  variations = [],
+  role = '',
+}) {
   const codes = service.codes;
   const svcStages = stages.filter((s) => codes.includes(String(s.service ?? '')));
   const svcDrawings = drawings.filter((d) => codes.includes(String(d.service ?? '')));
+  const kind = service.kind;
 
-  let body = null;
-  if (service.kind === 'design' || service.kind === 'bim') {
-    if (sub === 'overview') body = <ServiceOverview service={service} project={project} svcStages={svcStages} svcDrawings={svcDrawings} />;
-    if (sub === 'team') body = <TeamView service={service} project={project} teamBundle={teamBundle} />;
-    if (sub === 'stages') body = <StagesView svcStages={svcStages} />;
-    if (sub === 'drawings') body = <DrawingsView rows={svcDrawings} emptyText="No drawings submitted for this service yet." />;
-  } else if (service.kind === 'qs') {
+  if (kind === 'drawings') {
+    return <DrawingsPanel rows={drawings} emptyText="No drawings submitted for this project yet." />;
+  }
+
+  if (kind === 'variations') {
+    return <VariationsPanel projectId={project._id} variations={variations} role={role} />;
+  }
+
+  if (kind === 'design' || kind === 'bim' || kind === 'peer') {
+    const active = svcStages.filter((s) => String(s.currentStatus ?? '').toLowerCase() !== 'completed');
+    const delayed = svcStages.filter((s) => Number(s.delayDays ?? 0) > 0);
+    const gfc = svcDrawings.filter((d) => String(d.stage ?? '').toUpperCase() === 'GFC');
+    const peerOpen = peerRows.filter((p) => p.status !== 'Approved for Issue');
+    const items =
+      kind === 'peer'
+        ? [
+            { label: 'Peer reviews', value: peerRows.length, accent: 'blueprint' },
+            { label: 'Open reviews', value: peerOpen.length, accent: 'amber' },
+            { label: 'Approved for issue', value: peerRows.length - peerOpen.length, accent: 'forest' },
+            { label: 'Stages tracked', value: svcStages.length, accent: 'teal' },
+          ]
+        : [
+            { label: 'Stages tracked', value: svcStages.length, accent: 'blueprint' },
+            { label: 'Active stages', value: active.length, accent: 'forest' },
+            { label: 'Delayed stages', value: delayed.length, accent: 'rust' },
+            { label: 'GFC drawings', value: gfc.length, accent: 'teal' },
+          ];
+    return (
+      <>
+        {kind === 'bim' && <BimWorkOrderPanel project={project} />}
+        <KpiRow items={items} />
+        {kind === 'peer' && <PeerReviewPanel rows={peerRows} />}
+        <TeamPanels service={service} project={project} teamBundle={teamBundle} />
+        <StagePanel svcStages={svcStages} />
+        <DrawingsPanel rows={svcDrawings} emptyText="No drawings submitted for this service yet." />
+      </>
+    );
+  }
+
+  if (kind === 'qs') {
     const total = boqRows.reduce((s, r) => s + Number(r.amount ?? 0), 0);
-    if (sub === 'overview') {
-      body = (
-        <div className="kpi-grid cols-3">
-          <KpiCard label="BOQ items" value={boqRows.length} accent="blueprint" />
-          <KpiCard label="BOQ total" value={total.toLocaleString('en-IN')} accent="copper" />
-          <KpiCard label="Area zones" value={areaRows.length} accent="forest" />
-        </div>
-      );
-    }
-    if (sub === 'boq') {
-      body = (
+    return (
+      <>
+        <KpiRow
+          items={[
+            { label: 'BOQ items', value: boqRows.length, accent: 'blueprint' },
+            { label: 'BOQ total', value: total.toLocaleString('en-IN'), accent: 'copper' },
+            { label: 'Area zones', value: areaRows.length, accent: 'forest' },
+          ]}
+        />
         <Panel title="BOQ">
           <DataTable
             columns={[
@@ -211,10 +250,6 @@ export default function ProjectServiceWorkspace({ service, project, stages, draw
             emptyText="No BOQ items logged for this project yet."
           />
         </Panel>
-      );
-    }
-    if (sub === 'area') {
-      body = (
         <Panel title="Area settlement">
           <DataTable
             columns={[
@@ -229,21 +264,21 @@ export default function ProjectServiceWorkspace({ service, project, stages, draw
             emptyText="No area settlements recorded for this project yet."
           />
         </Panel>
-      );
-    }
-  } else if (service.kind === 'qaqc') {
+      </>
+    );
+  }
+
+  if (kind === 'qaqc') {
     const discrepancies = visitRows.filter((v) => v.discrepancyFound).length;
-    if (sub === 'overview') {
-      body = (
-        <div className="kpi-grid cols-3">
-          <KpiCard label="Site visits" value={visitRows.length} accent="blueprint" />
-          <KpiCard label="Drawing issues found" value={discrepancies} accent="rust" />
-          <KpiCard label="Weekly reports" value={weeklyRows.length} accent="forest" />
-        </div>
-      );
-    }
-    if (sub === 'visits') {
-      body = (
+    return (
+      <>
+        <KpiRow
+          items={[
+            { label: 'Site visits', value: visitRows.length, accent: 'blueprint' },
+            { label: 'Drawing issues found', value: discrepancies, accent: 'rust' },
+            { label: 'Weekly reports', value: weeklyRows.length, accent: 'forest' },
+          ]}
+        />
         <Panel title="Site visits">
           <DataTable
             columns={[
@@ -258,10 +293,6 @@ export default function ProjectServiceWorkspace({ service, project, stages, draw
             emptyText="No site visits recorded for this project yet."
           />
         </Panel>
-      );
-    }
-    if (sub === 'weekly') {
-      body = (
         <Panel title="Weekly reports and approval">
           <DataTable
             columns={[
@@ -273,21 +304,21 @@ export default function ProjectServiceWorkspace({ service, project, stages, draw
             emptyText="No weekly reports submitted for this project yet."
           />
         </Panel>
-      );
-    }
-  } else if (service.kind === 'gbs') {
+      </>
+    );
+  }
+
+  if (kind === 'gbs') {
     const steps = gbsItem?.steps ?? [];
     const done = steps.filter((s) => s.status === 'Completed').length;
-    if (sub === 'overview') {
-      body = (
-        <div className="kpi-grid cols-2">
-          <KpiCard label="Certification steps" value={steps.length} accent="blueprint" />
-          <KpiCard label="Completed steps" value={done} accent="forest" />
-        </div>
-      );
-    }
-    if (sub === 'certification') {
-      body = (
+    return (
+      <>
+        <KpiRow
+          items={[
+            { label: 'Certification steps', value: steps.length, accent: 'blueprint' },
+            { label: 'Completed steps', value: done, accent: 'forest' },
+          ]}
+        />
         <Panel title="Certification steps">
           <DataTable
             columns={[
@@ -300,22 +331,9 @@ export default function ProjectServiceWorkspace({ service, project, stages, draw
             emptyText="No GBS certification steps recorded for this project yet."
           />
         </Panel>
-      );
-    }
-  } else if (service.kind === 'drawings') {
-    body = <DrawingsView rows={drawings} emptyText="No drawings submitted for this project yet." />;
-  } else if (service.kind === 'variations') {
-    body = (
-      <Panel title="Variation log">
-        <EmptyState text="Variation tracking is not set up in the system yet." />
-      </Panel>
+      </>
     );
   }
 
-  return (
-    <>
-      <Tabs tabs={subtabs} active={sub} onChange={setSub} />
-      {body}
-    </>
-  );
+  return null;
 }
