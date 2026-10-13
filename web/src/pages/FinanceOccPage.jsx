@@ -896,49 +896,213 @@ function DirectorFinanceDashboard({ canDecideLeave }) {
 }
 
 function EntryModal({ kind, employees, projects, travels, onClose, onSubmit, error, pending }) {
-  const [f, setF] = useState({ employee: '', project: '', amount: '', purpose: '', vendor: '', dept: '', poNo: '', location: '', fromDate: '', toDate: '', client: '', linkedTravel: '', remarks: '', requestedBy: '' });
+  const [f, setF] = useState({
+    employee: '', project: '', purpose: '', vendor: '', dept: '', poNo: '', client: '', linkedTravel: '', remarks: '', requestedBy: '',
+    // advance fields
+    location: '', fromDate: '', toDate: '', advanceAmount: '', advanceDate: '',
+    // expense fields
+    travelTickets: '', hotelBills: '', foodBills: '', localConveyance: '', cabBills: '', otherBills: '',
+    // bills & settlement
+    billsSubmitted: 'No', hardcopyReceived: 'No', settlementStatus: 'Pending', settlementVerified: '', verificationRemark: '',
+    // docs
+    docFile: null,
+  });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const setNum = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const setFile = (file) => setF({ ...f, docFile: file });
+
+  // Computed values for display
+  const travelTicketsNum = Number(f.travelTickets) || 0;
+  const hotelBillsNum = Number(f.hotelBills) || 0;
+  const foodBillsNum = Number(f.foodBills) || 0;
+  const localConveyanceNum = Number(f.localConveyance) || 0;
+  const cabBillsNum = Number(f.cabBills) || 0;
+  const otherBillsNum = Number(f.otherBills) || 0;
+  const totalBills = travelTicketsNum + hotelBillsNum + foodBillsNum + localConveyanceNum + cabBillsNum + otherBillsNum;
+  const advanceNum = Number(f.advanceAmount) || 0;
+  const eligible = totalBills;
+  const balance = advanceNum - eligible;
+
   function submit(e) {
     e.preventDefault();
-    const body = { kind, employee: f.employee, project: f.project || undefined, amount: Number(f.amount) || 0, purpose: f.purpose || undefined, remarks: f.remarks || undefined };
+    const body = {
+      kind,
+      employee: f.employee,
+      project: f.project || undefined,
+      purpose: f.purpose || undefined,
+      remarks: f.remarks || undefined,
+    };
     if (kind === 'po') Object.assign(body, { vendor: f.vendor || undefined, dept: f.dept || undefined, poNo: f.poNo || undefined, requestedBy: f.requestedBy || undefined });
-    if (kind === 'advance') Object.assign(body, { location: f.location || undefined, fromDate: f.fromDate || undefined, toDate: f.toDate || undefined });
+    if (kind === 'advance') Object.assign(body, {
+      location: f.location || undefined,
+      fromDate: f.fromDate || undefined,
+      toDate: f.toDate || undefined,
+      amount: advanceNum,
+      advanceReceived: advanceNum,
+      advanceDate: f.advanceDate || undefined,
+      fare: travelTicketsNum || undefined,
+      lodgingAmount: hotelBillsNum || undefined,
+      foodPerDiem: foodBillsNum || undefined,
+      localConveyance: localConveyanceNum || undefined,
+      misc: (cabBillsNum + otherBillsNum) || undefined,
+      settlementStatus: f.settlementStatus || undefined,
+      billsSubmitted: f.billsSubmitted === 'Yes',
+      hardcopyReceived: f.hardcopyReceived === 'Yes',
+      verification: {
+        checks: {
+          travel: !!f.travelTickets,
+          stay: !!f.hotelBills,
+          food: !!f.foodBills,
+          local: !!f.localConveyance,
+          misc: !!(cabBillsNum + otherBillsNum),
+        },
+        missing: f.verificationRemark || undefined,
+      },
+    });
     if (kind === 'claim') Object.assign(body, { client: f.client || undefined, linkedTravel: f.linkedTravel || undefined });
     onSubmit(body);
   }
+
+  const today = new Date().toISOString().slice(0, 10);
+
   return (
-    <Modal title={kind === 'po' ? 'New purchase order' : kind === 'claim' ? 'New hospitality / claim' : 'New travel advance'} onClose={onClose} wide>
-      <form onSubmit={submit} className="field-grid">
-        <div className="form-row"><label className="form-label">Employee *</label><select required className="filter-select" style={{ width: '100%' }} value={f.employee} onChange={set('employee')}><option value="">Select employee</option>{employees.map((x) => <option key={x._id} value={x._id}>{x.firstName} {x.lastName} ({x.empId})</option>)}</select></div>
-        <div className="form-row"><label className="form-label">Project</label><select className="filter-select" style={{ width: '100%' }} value={f.project} onChange={set('project')}><option value="">No project</option>{projects.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
-        {kind === 'po' && (
-          <>
-            <div className="form-row"><label className="form-label">PO number</label><input className="form-input" value={f.poNo} onChange={set('poNo')} placeholder="Auto if blank" /></div>
-            <div className="form-row"><label className="form-label">Vendor</label><input className="form-input" value={f.vendor} onChange={set('vendor')} /></div>
-            <div className="form-row"><label className="form-label">Department</label><input className="form-input" value={f.dept} onChange={set('dept')} /></div>
-            <div className="form-row"><label className="form-label">Requested by</label><input className="form-input" value={f.requestedBy} onChange={set('requestedBy')} /></div>
-          </>
-        )}
-        {kind === 'advance' && (
-          <>
-            <div className="form-row"><label className="form-label">Location</label><input className="form-input" value={f.location} onChange={set('location')} /></div>
-            <div className="form-row"><label className="form-label">From</label><input type="date" className="form-input" value={f.fromDate} onChange={set('fromDate')} /></div>
-            <div className="form-row"><label className="form-label">To</label><input type="date" className="form-input" value={f.toDate} onChange={set('toDate')} /></div>
-          </>
-        )}
-        {kind === 'claim' && (
-          <>
-            <div className="form-row"><label className="form-label">Client</label><input className="form-input" value={f.client} onChange={set('client')} /></div>
-            <div className="form-row"><label className="form-label">Linked travel</label><select className="filter-select" style={{ width: '100%' }} value={f.linkedTravel} onChange={set('linkedTravel')}><option value="">None</option>{travels.map((t) => <option key={t._id} value={t._id}>{empName(t.employee)} — {t.location || t.purpose || t._id.slice(-6)}</option>)}</select></div>
-          </>
-        )}
-        <div className="form-row"><label className="form-label">Amount (₹)</label><input type="number" min="0" className="form-input" value={f.amount} onChange={set('amount')} /></div>
-        <div className="form-row"><label className="form-label">Purpose</label><input className="form-input" value={f.purpose} onChange={set('purpose')} /></div>
-        <div className="form-row" style={{ gridColumn: '1 / -1' }}><label className="form-label">Remarks</label><input className="form-input" value={f.remarks} onChange={set('remarks')} /></div>
-        {error && <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>{error}</div>}
-        <button className="btn-primary" type="submit" disabled={pending}>Save entry</button>
-      </form>
+    <Modal title="New travel advance" onClose={onClose} wide>
+      {kind === 'advance' && (
+        <>
+          <p style={{ fontSize: 13, color: 'var(--ink-muted)', marginBottom: 16 }}>Record the advance now; add expenses when bills come in.</p>
+
+          <div className="section-label">Employee & trip</div>
+          <form onSubmit={submit} className="field-grid">
+            <div className="form-row"><label className="form-label">Employee name</label><select required className="filter-select" style={{ width: '100%' }} value={f.employee} onChange={set('employee')}><option value="">Select employee</option>{employees.map((x) => <option key={x._id} value={x._id}>{x.firstName} {x.lastName}</option>)}</select></div>
+            <div className="form-row"><label className="form-label">Employee ID</label><div className="mono">{(employees.find((x) => x._id === f.employee)?.empId) || '—'}</div></div>
+            <div className="form-row"><label className="form-label">Project</label><select className="filter-select" style={{ width: '100%' }} value={f.project} onChange={set('project')}><option value="">No project</option>{projects.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
+            <div className="form-row"><label className="form-label">Department</label><div className="mono">{(employees.find((x) => x._id === f.employee)?.department) || '—'}</div></div>
+            <div className="form-row"><label className="form-label">Client</label><input className="form-input" value={f.client || ''} onChange={(e) => setF({ ...f, client: e.target.value })} placeholder="Client name" /></div>
+            <div className="form-row"><label className="form-label">Location</label><input className="form-input" value={f.location} onChange={set('location')} placeholder="Travel location" /></div>
+            <div className="form-row"><label className="form-label">Travel purpose</label><input className="form-input" value={f.purpose} onChange={set('purpose')} placeholder="Purpose of travel" /></div>
+            <div className="form-row"><label className="form-label">Travel from</label><input type="date" className="form-input" value={f.fromDate} onChange={set('fromDate')} /></div>
+            <div className="form-row"><label className="form-label">Travel to</label><input type="date" className="form-input" value={f.toDate} onChange={set('toDate')} /></div>
+          </form>
+
+          <div className="section-label">Advance & actual expenses</div>
+          <form onSubmit={submit} className="field-grid">
+            <div className="form-row"><label className="form-label">Advance amount received (₹)</label><input type="number" min="0" className="form-input" value={f.advanceAmount} onChange={setNum('advanceAmount')} /></div>
+            <div className="form-row"><label className="form-label">Date of advance</label><input type="date" className="form-input" value={f.advanceDate} onChange={set('advanceDate')} /></div>
+            <div className="form-row"><label className="form-label">Travel tickets (₹)</label><input type="number" min="0" className="form-input" value={f.travelTickets} onChange={setNum('travelTickets')} /></div>
+            <div className="form-row"><label className="form-label">Hotel bills (₹)</label><input type="number" min="0" className="form-input" value={f.hotelBills} onChange={setNum('hotelBills')} /></div>
+            <div className="form-row"><label className="form-label">Food bills (₹)</label><input type="number" min="0" className="form-input" value={f.foodBills} onChange={setNum('foodBills')} /></div>
+            <div className="form-row"><label className="form-label">Local conveyance (₹)</label><input type="number" min="0" className="form-input" value={f.localConveyance} onChange={setNum('localConveyance')} /></div>
+            <div className="form-row"><label className="form-label">Cab bills (₹)</label><input type="number" min="0" className="form-input" value={f.cabBills} onChange={setNum('cabBills')} /></div>
+            <div className="form-row"><label className="form-label">Other supporting bills (₹)</label><input type="number" min="0" className="form-input" value={f.otherBills} onChange={setNum('otherBills')} /></div>
+          </form>
+
+          <div className="section-label">Claim summary</div>
+          <div className="field-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            <div className="form-row"><div className="form-label">Claimed</div><div className="mono">₹{totalBills.toLocaleString('en-IN')}</div></div>
+            <div className="form-row"><div className="form-label">Eligible</div><div className="mono">₹{eligible.toLocaleString('en-IN')}</div></div>
+            <div className="form-row"><div className="form-label">Balance</div><div className="mono">₹{balance.toLocaleString('en-IN')}</div></div>
+          </div>
+          <p style={{ fontSize: 12.5, color: 'var(--ink-muted)', marginTop: 8 }}>Balance = advance ₹{advanceNum.toLocaleString('en-IN')} − eligible ₹{eligible.toLocaleString('en-IN')}.</p>
+
+          <div className="section-label">Bills & settlement</div>
+          <form onSubmit={submit} className="field-grid">
+            <div className="form-row"><label className="form-label">Bills submitted</label>
+              <select className="filter-select" style={{ width: '100%' }} value={f.billsSubmitted} onChange={set('billsSubmitted')}>
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+              </select>
+            </div>
+            <div className="form-row"><label className="form-label">Hardcopy bills received</label>
+              <select className="filter-select" style={{ width: '100%' }} value={f.hardcopyReceived} onChange={set('hardcopyReceived')}>
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+              </select>
+            </div>
+            <div className="form-row"><label className="form-label">Bill verification status</label>
+              <div style={{ fontSize: 13 }}>Pending 0/5 checks</div>
+            </div>
+            <div className="form-row"><label className="form-label">Settlement status</label>
+              <select className="filter-select" style={{ width: '100%' }} value={f.settlementStatus} onChange={set('settlementStatus')}>
+                <option value="Pending">Pending</option>
+                <option value="Verified">Verified</option>
+                <option value="Approved">Approved</option>
+                <option value="Paid">Paid</option>
+                <option value="Closed">Closed</option>
+              </select>
+            </div>
+            <div className="form-row"><label className="form-label">Settlement verified by</label><input className="form-input" value={f.settlementVerified} onChange={set('settlementVerified')} placeholder="Verifier name / date" /></div>
+            <div className="form-row"><label className="form-label">Verification remark</label><input className="form-input" value={f.verificationRemark} onChange={set('verificationRemark')} placeholder="e.g. original not confirmed" /></div>
+          </form>
+          <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 8, fontStyle: 'italic' }}>
+            Verified, Approved, Paid and Closed stay locked until the hardcopy checklist is complete. Open: bills not submitted, hardcopy not received, original not confirmed, amount match not confirmed, verifier/date blank.
+          </p>
+
+          <div className="section-label">Remarks</div>
+          <form onSubmit={submit} className="field-grid">
+            <div className="form-row" style={{ gridColumn: '1 / -1' }}><label className="form-label">Remarks</label><textarea className="form-input" value={f.remarks} onChange={set('remarks')} rows={3} placeholder="Additional remarks" /></div>
+          </form>
+
+          <div className="section-label">Documents</div>
+          <form onSubmit={submit} className="field-grid">
+            <div className="form-row"><label className="form-label">Upload bill</label>
+              <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ fontSize: 13 }} />
+            </div>
+            <div className="form-row"><div style={{ fontSize: 13, color: f.docFile ? 'var(--ink)' : 'var(--ink-muted)' }}>
+              {f.docFile ? f.docFile.name : 'No file chosen'}
+            </div></div>
+            <div className="form-row"><p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>PDF or image, up to 20 MB each</p></div>
+          </form>
+
+          {error && <div className="login-error" role="alert" style={{ display: 'block', marginTop: 12 }}>{error}</div>}
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <button type="button" className="approve-btn" onClick={onClose}>Close</button>
+            <button type="submit" className="btn-primary" disabled={pending} onClick={submit}>Save</button>
+          </div>
+        </>
+      )}
+      {kind !== 'advance' && (
+        <ModalContent kind={kind} employees={employees} projects={projects} travels={travels} f={f} set={set} setNum={setNum} error={error} pending={pending} onClose={onClose} onSubmit={onSubmit} />
+      )}
     </Modal>
+  );
+}
+
+function ModalContent({ kind, employees, projects, travels, f, set, setNum, error, pending, onClose, onSubmit }) {
+  const [fInner, setFInner] = useState({ employee: '', project: '', amount: '', purpose: '', vendor: '', dept: '', poNo: '', location: '', fromDate: '', toDate: '', client: '', linkedTravel: '', remarks: '', requestedBy: '' });
+  const localSet = (k) => (e) => setFInner({ ...fInner, [k]: e.target.value });
+  const localSetNum = (k) => (e) => setFInner({ ...fInner, [k]: e.target.value });
+  const submit = (e) => {
+    e.preventDefault();
+    const body = { kind, employee: fInner.employee, project: fInner.project || undefined, amount: Number(fInner.amount) || 0, purpose: fInner.purpose || undefined, remarks: fInner.remarks || undefined };
+    if (kind === 'po') Object.assign(body, { vendor: fInner.vendor || undefined, dept: fInner.dept || undefined, poNo: fInner.poNo || undefined, requestedBy: fInner.requestedBy || undefined });
+    if (kind === 'claim') Object.assign(body, { client: fInner.client || undefined, linkedTravel: fInner.linkedTravel || undefined });
+    onSubmit(body);
+  };
+  return (
+    <form onSubmit={submit} className="field-grid">
+      <div className="form-row"><label className="form-label">Employee *</label><select required className="filter-select" style={{ width: '100%' }} value={fInner.employee} onChange={localSet('employee')}><option value="">Select employee</option>{employees.map((x) => <option key={x._id} value={x._id}>{x.firstName} {x.lastName} ({x.empId})</option>)}</select></div>
+      <div className="form-row"><label className="form-label">Project</label><select className="filter-select" style={{ width: '100%' }} value={fInner.project} onChange={localSet('project')}><option value="">No project</option>{projects.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
+      {kind === 'po' && (
+        <>
+          <div className="form-row"><label className="form-label">PO number</label><input className="form-input" value={fInner.poNo} onChange={localSet('poNo')} placeholder="Auto if blank" /></div>
+          <div className="form-row"><label className="form-label">Vendor</label><input className="form-input" value={fInner.vendor} onChange={localSet('vendor')} /></div>
+          <div className="form-row"><label className="form-label">Department</label><input className="form-input" value={fInner.dept} onChange={localSet('dept')} /></div>
+          <div className="form-row"><label className="form-label">Requested by</label><input className="form-input" value={fInner.requestedBy} onChange={localSet('requestedBy')} /></div>
+        </>
+      )}
+      {kind === 'claim' && (
+        <>
+          <div className="form-row"><label className="form-label">Client</label><input className="form-input" value={fInner.client} onChange={localSet('client')} /></div>
+          <div className="form-row"><label className="form-label">Linked travel</label><select className="filter-select" style={{ width: '100%' }} value={fInner.linkedTravel} onChange={localSet('linkedTravel')}><option value="">None</option>{travels.map((t) => <option key={t._id} value={t._id}>{empName(t.employee)} — {t.location || t.purpose || t._id.slice(-6)}</option>)}</select></div>
+        </>
+      )}
+      <div className="form-row"><label className="form-label">Amount (₹)</label><input type="number" min="0" className="form-input" value={fInner.amount} onChange={localSetNum('amount')} /></div>
+      <div className="form-row"><label className="form-label">Purpose</label><input className="form-input" value={fInner.purpose} onChange={localSet('purpose')} /></div>
+      <div className="form-row" style={{ gridColumn: '1 / -1' }}><label className="form-label">Remarks</label><input className="form-input" value={fInner.remarks} onChange={localSet('remarks')} /></div>
+      {error && <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>{error}</div>}
+      <button className="btn-primary" type="submit" disabled={pending}>Save entry</button>
+    </form>
   );
 }
 

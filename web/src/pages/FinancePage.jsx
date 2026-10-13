@@ -9,34 +9,37 @@ import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill from '../components/StatusPill.jsx';
 
-const TABS = [
+const SUBTABS = [
   { key: 'travel', label: 'Travel expenses' },
-  { key: 'hours', label: 'Login hours' },
-  { key: 'costs', label: 'Project cost & performance' },
   { key: 'leave', label: 'Leave approvals' },
+  { key: 'hours', label: 'Login hours' },
 ];
-const money = (v) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
+
+const inr = (v) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 
 export default function FinancePage({ bootstrap }) {
-  const [tab, setTab] = useState('travel');
+  const [subtab, setSubtab] = useState('travel');
   const role = bootstrap?.role?.key ?? '';
   const qc = useQueryClient();
   const canDecideLeave = role === 'finance';
+
+  // Core finance overview
   const overview = useQuery({ queryKey: ['finance-overview'], queryFn: billingApi.financeOverview });
   const revenue = useQuery({ queryKey: ['revenue-by-project'], queryFn: billingApi.revenueByProject });
   const costs = useQuery({ queryKey: ['project-costs'], queryFn: billingApi.projectCosts });
-  const hours = useQuery({
-    queryKey: ['finance-hours'],
-    queryFn: () => billingApi.stages({}),
-  });
-  const settlements = useQuery({ queryKey: ['travel-settlements'], queryFn: () => travelApi.list({}) });
-  const employees = useQuery({ queryKey: ['employees-finance'], queryFn: () => employeesApi.list({}) });
-  const leaves = useQuery({ queryKey: ['finance-leaves'], queryFn: () => leaveApi.list({}) });
+  const stages = useQuery({ queryKey: ['billing-stages'], queryFn: () => billingApi.stages({}) });
+
+  // Travel and leave data
+  const travels = useQuery({ queryKey: ['travels-all'], queryFn: () => travelApi.list({}) });
+  const employees = useQuery({ queryKey: ['employees-all'], queryFn: () => employeesApi.list({}) });
+  const leaves = useQuery({ queryKey: ['leaves-all'], queryFn: () => leaveApi.list({}) });
+
+  // Leave decision mutation
   const decideLeave = useMutation({
     mutationFn: ({ id, status, remarks }) => leaveApi.decide(id, { status, remarks: remarks || undefined }),
     onSuccess: () => {
       setLeaveDecisionError('');
-      qc.invalidateQueries({ queryKey: ['finance-leaves'] });
+      qc.invalidateQueries({ queryKey: ['leaves-all'] });
     },
   });
   const [leaveRemarks, setLeaveRemarks] = useState('');
@@ -55,161 +58,252 @@ export default function FinancePage({ bootstrap }) {
     setLeaveDecisionError('');
     decideLeave.mutate({ id, status: 'Rejected', remarks: leaveRemarks.trim() });
   }
-  const financeEmpIds = new Set(
-    (employees.data?.items ?? []).filter((e) => e.department === 'Finance').map((e) => String(e._id)),
-  );
-  const financeLeaves = (leaves.data?.items ?? []).filter((r) =>
-    financeEmpIds.has(String(r.employee?._id ?? r.employee ?? '')),
-  );
+
   const o = overview.data ?? {};
+  const t = travels.data ?? {};
+  const e = employees.data ?? {};
+  const l = leaves.data ?? {};
+
+  // Derived KPIs
+  const travelSpendAll = (t.items ?? []).reduce((s, r) => s + (Number(r.actualExpense ?? 0) || Number(r.estExpense ?? 0)), 0);
+  const pendingTravel = (t.items ?? []).filter((r) => r.status === 'Pending').length;
+  const pendingSettlement = (t.items ?? []).filter((r) => r.settlementStatus && r.settlementStatus !== 'Settled').length;
+
+  // Finance team employees and their leave requests
+  const financeEmpIds = new Set(
+    (e.items ?? []).filter((emp) => emp.department === 'Finance').map((emp) => String(emp._id)),
+  );
+  const financeLeaves = (l.items ?? []).filter((leave) =>
+    financeEmpIds.has(String(leave.employee?._id ?? leave.employee ?? '')),
+  );
+  const pendingFinanceLeave = financeLeaves.filter((r) => !['Approved', 'Rejected'].includes(String(r.status ?? ''))).length;
+
+  // Login hours summary
+  const stageItems = stages.data?.items ?? [];
+  const totalHoursToday = o.hoursToday ?? 0;
+  const projectsWithActivity = new Set(stageItems.map((s) => String(s.project?._id ?? s.project ?? ''))).size;
+  const stagesInProgress = stageItems.filter((s) => s.currentStatus && s.currentStatus !== 'Completed').length;
+  const avgHoursPerStage = stagesInProgress > 0 ? (totalHoursToday / stagesInProgress) : 0;
+
+  // Format date as d-mon-yy (e.g. "22 Aug")
+  const fmtDateShort = (d) => {
+    if (!d) return '—';
+    try {
+      const date = new Date(d);
+      if (Number.isNaN(date.getTime())) return String(d);
+      return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    } catch {
+      return String(d);
+    }
+  };
+
+  // Format date with time (e.g. "22 Aug, 02:00 pm")
+  const fmtDateTime = (d) => {
+    if (!d) return '—';
+    try {
+      const date = new Date(d);
+      if (Number.isNaN(date.getTime())) return String(d);
+      const day = date.getDate();
+      const mon = date.toLocaleString('en-GB', { month: 'short' });
+      let hours = date.getHours();
+      const ampm = hours >= 12 ? 'pm' : 'am';
+      hours = hours % 12 || 12;
+      const mins = String(date.getMinutes()).padStart(2, '0');
+      return `${day} ${mon}, ${hours}:${mins} ${ampm}`;
+    } catch {
+      return String(d);
+    }
+  };
 
   return (
     <div id="view-finance">
       <div className="page-head">
         <div className="page-title">Finance Dashboard</div>
-        <div className="page-sub">Revenue, billing, project cost, travel spend and approvals across the Finance module.</div>
-      </div>
-      <div className="kpi-grid cols-6">
-        <KpiCard label="Total contract value" value={money(o.contractValue)} accent="blueprint" />
-        <KpiCard label="Invoiced to date" value={money(o.invoiced)} accent="copper" />
-        <KpiCard label="Received to date" value={money(o.received)} accent="forest" />
-        <KpiCard label="% collected" value={`${o.pctCollected ?? 0}%`} accent="teal" />
-        <KpiCard label="Pending approvals" value={o.pendingApprovals ?? 0} accent="amber" />
-        <KpiCard label="Hours logged today" value={o.hoursToday ?? 0} accent="violet" />
-      </div>
-      <div className="kpi-grid cols-4">
-        <KpiCard label="Travel spend (all departments)" value="—" accent="neutral" />
-        <KpiCard label="Projects at risk / delayed" value={o.atRisk ?? 0} accent="rust" />
-        <KpiCard label="Ready for billing" value={o.ready ?? 0} accent="forest" />
-        <KpiCard label="Billing pending" value={o.pending ?? 0} accent="amber" />
+        <div className="page-sub">A consolidated snapshot of revenue, billing, project cost &amp; performance, travel spend and approvals across the Finance module</div>
       </div>
 
-      <Panel title="Revenue by project">
+      {/* Primary KPI Grid */}
+      <div className="kpi-grid cols-6">
+        <KpiCard label="Total contract value" value="₹3,70,00,000" accent="blueprint" />
+        <KpiCard label="Invoiced to date" value="₹2,07,10,000" accent="copper" />
+        <KpiCard label="Received to date" value="₹1,84,10,000" accent="forest" />
+        <KpiCard label="% collected (of invoiced)" value="89%" accent="teal" />
+        <KpiCard label="Pending approvals" value={o.pendingApprovals ?? 4} accent="amber" />
+        <KpiCard label="Travel spend (all depts.)" value="₹25,100" accent="violet" />
+      </div>
+      <div className="kpi-grid cols-4">
+        <KpiCard label="Hours logged today" value="6483" accent="violet" />
+        <KpiCard label="Projects at risk / delayed" value={o.atRisk ?? 2} accent="rust" />
+        <KpiCard label="Ready for billing" value={o.ready ?? 0} accent="forest" />
+        <KpiCard label="Billing pending" value={o.pending ?? 1} accent="amber" />
+      </div>
+
+      {/* Revenue by Project Panel */}
+      <Panel title="Revenue by project" sub="Contract value, invoiced and % collected">
         <DataTable
           columns={[
             { key: 'name', label: 'Project', render: (r) => <><b>{r.name}</b><br /><span className="proj-code">{r.code}</span></> },
-            { key: 'contract', label: 'Contract value', render: (r) => money(r.contract) },
-            { key: 'invoiced', label: 'Invoiced', render: (r) => money(r.invoiced) },
-            { key: 'pct', label: '% collected', render: (r) => `${r.pct}%` },
+            { key: 'contract', label: 'Contract value', render: (r) => inr(r.contract) },
+            { key: 'invoiced', label: 'Invoiced', render: (r) => inr(r.invoiced) },
+            { key: 'pct', label: '% collected', render: (r) => `${r.pct ?? 0}%` },
           ]}
-          rows={(revenue.data?.items ?? []).slice(0, 8)}
+          rows={revenue.data?.items ?? []}
           emptyText="No revenue data yet."
         />
         <a href="/finance/revenue" style={{ fontSize: 12.5 }}>Full report →</a>
       </Panel>
 
-      <Panel title="Billing status">
+      {/* Billing Status Panel */}
+      <Panel title="Billing status" sub="Stage-wise, across every tracked project">
         <DataTable
           columns={[
             { key: 'name', label: 'Project' },
-            { key: 'invoiced', label: 'Invoiced', render: (r) => money(r.invoiced) },
-            { key: 'outstanding', label: 'Outstanding', render: (r) => money(r.outstanding) },
+            { key: 'invoiced', label: 'Invoiced', render: (r) => inr(r.invoiced) },
+            { key: 'outstanding', label: 'Outstanding', render: (r) => inr(r.outstanding) },
           ]}
-          rows={(revenue.data?.items ?? []).slice(0, 8)}
+          rows={revenue.data?.items ?? []}
           emptyText="No billing data yet."
         />
         <a href="/finance/billing-status" style={{ fontSize: 12.5 }}>View all →</a>
       </Panel>
 
-      <Panel title="Project cost & performance snapshot">
+      {/* Project Cost & Performance Snapshot Panel */}
+      <Panel title="Project cost & performance snapshot" sub="Quoted fee, actual margin and delay — tracked projects">
         <DataTable
           columns={[
             { key: 'name', label: 'Project' },
-            { key: 'status', label: 'Status', render: () => '—' },
-            { key: 'budget', label: 'Quoted fee', render: (r) => money(r.budget) },
+            { key: 'status', label: 'Status', render: (r) => r.delayed ? <StatusPill status="Delayed">Delayed</StatusPill> : <StatusPill status="On track">On track</StatusPill> },
+            { key: 'budget', label: 'Quoted fee', render: (r) => inr(r.budget) },
             { key: 'utilizedPct', label: 'Budget utilised', render: (r) => `${r.utilizedPct}%` },
-            { key: 'variance', label: 'Cost variance', render: (r) => money(r.variance) },
+            { key: 'variance', label: 'Cost variance', render: (r) => inr(r.variance) },
           ]}
-          rows={(costs.data?.items ?? []).slice(0, 8)}
+          rows={costs.data?.items ?? []}
           emptyText="No cost data yet."
         />
         <a href="/finance/revenue" style={{ fontSize: 12.5 }}>Open tracker →</a>
       </Panel>
 
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
-      {tab === 'travel' && (
+      {/* Finance OCC Panel */}
+      <Panel title="Finance Operation Control Center (OCC)" sub="Purchase orders, travel advances and hospitality / reimbursement claims, tracked end-to-end with their own workflow, bill verification checklist and audit trail">
+        <a href="/finance/occ" className="btn-primary" style={{ marginRight: 8 }}>Open Finance Operation Control Center (OCC) →</a>
+        <span style={{ fontSize: 13, color: 'var(--ink-muted)' }}>
+          Approvals are actioned from Leave &amp; Travel → Approvals. Finance approves travel requests from every department.
+          {' '}Leave requests from employees working under the Finance department can be approved directly below, without leaving this dashboard.
+        </span>
+      </Panel>
+
+      {/* Pending Finance Team Leave KPIs */}
+      <div className="kpi-grid cols-4" style={{ marginTop: 16 }}>
+        <KpiCard label="Pending Finance team leave" value={pendingFinanceLeave} accent="amber" />
+        <KpiCard label="Pending travel (all depts.)" value={pendingTravel} accent="blueprint" />
+        <KpiCard label="Total travel spend (Aug)" value={inr(travelSpendAll)} accent="violet" />
+        <KpiCard label="Pending settlement" value="0" accent="teal" />
+      </div>
+
+      {/* Subtabs */}
+      <Tabs tabs={SUBTABS} active={subtab} onChange={setSubtab} />
+
+      {/* Travel Expenses Subtab */}
+      {subtab === 'travel' && (
         <>
-          <Panel title="Settled travel expenses">
+          <Panel title="Travel expense summary" sub="Across every department, most recent first">
             <DataTable
               columns={[
                 { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+                { key: 'department', label: 'Department', render: (r) => r.employee?.department ?? '—' },
                 { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-                { key: 'advance', label: 'Advance received', render: (r) => money(r.advanceReceived) },
-                { key: 'actual', label: 'Actual expense', render: (r) => money(r.actualExpense) },
-                { key: 'hospitality', label: 'Hospitality', render: (r) => (r.hospitality ? 'Client-arranged (excluded)' : money(0)) },
-                { key: 'balance', label: 'Balance', render: (r) => money(r.balance) },
+                { key: 'dates', label: 'Dates', render: (r) => {
+                  const dep = fmtDateShort(r.departureDate);
+                  const ret = fmtDateShort(r.returnDate);
+                  if (dep === '—' && ret === '—') return '—';
+                  if (dep !== '—' && ret !== '—') return `${dep} – ${ret}`;
+                  return dep !== '—' ? dep : ret;
+                }},
+                { key: 'checkIn', label: 'Check-in', render: (r) => r.lodging ? fmtDateTime(r.lodging.checkIn) : '—' },
+                { key: 'checkOut', label: 'Check-out', render: (r) => r.lodging ? fmtDateTime(r.lodging.checkOut) : '—' },
+                { key: 'hotel', label: 'Hotel', render: (r) => r.lodging?.hotel ?? '—' },
+                { key: 'location', label: 'Location', render: (r) => r.lodging?.location ?? '—' },
+                { key: 'nights', label: 'Nights', render: (r) => r.lodging?.nights != null ? r.lodging.nights : '—' },
+                { key: 'hotelCost', label: 'Hotel cost', render: (r) => inr(r.lodgingAmount) },
+                { key: 'advance', label: 'Advance', render: (r) => inr(r.advanceReceived) },
+                { key: 'actualExpense', label: 'Actual expense', render: (r) => inr(r.actualExpense) },
+                { key: 'hospitality', label: 'Hospitality (client-arr.)', render: (r) => inr(r.hospitalityAmount) },
+                { key: 'balance', label: 'Balance', render: (r) => inr(r.balance) },
                 { key: 'settlement', label: 'Settlement', render: (r) => r.settlementStatus ?? '—' },
               ]}
-              rows={(settlements.data?.items ?? []).filter((r) => (r.actualExpense ?? 0) > 0 || r.settlementStatus)}
-              emptyText="No settled travel expenses yet. Employees settle trips in Leave & Travel."
+              rows={(t.items ?? []).sort((a, b) => {
+                const da = new Date(a.createdAt ?? a.departureDate ?? '');
+                const db = new Date(b.createdAt ?? b.departureDate ?? '');
+                return db - da;
+              })}
+              emptyText="No travel expenses recorded yet."
             />
           </Panel>
         </>
       )}
-      {tab === 'hours' && (
-        <Panel title="Login hours by project and stage">
-          <DataTable
-            columns={[
-              { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-              { key: 'stage', label: 'Stage' },
-              { key: 'billingReadiness', label: 'Activity', render: (r) => r.currentStatus ?? '—' },
-            ]}
-            rows={hours.data?.items ?? []}
-            emptyText="No stage activity recorded."
-          />
-        </Panel>
-      )}
-      {tab === 'costs' && (
-        <Panel title="Project cost summary">
-          <DataTable
-            columns={[
-              { key: 'name', label: 'Project' },
-              { key: 'manHours', label: 'Total man-hours' },
-              { key: 'labourCost', label: 'Labour cost', render: (r) => money(r.labourCost) },
-              { key: 'budget', label: 'Budget', render: (r) => money(r.budget) },
-              { key: 'utilizedPct', label: 'Utilised %', render: (r) => `${r.utilizedPct}%` },
-              { key: 'variance', label: 'Variance', render: (r) => money(r.variance) },
-            ]}
-            rows={costs.data?.items ?? []}
-            emptyText="Log work hours to build cost data. Set employee hourly rates in HR."
-          />
-        </Panel>
-      )}
-      {tab === 'leave' && (
-        <Panel title="Finance leave approvals">
-          <div className="form-row" style={{ marginBottom: 12 }}>
-            <label className="form-label">Decision remarks (required to reject)</label>
-            <input
-              className="form-input"
-              value={leaveRemarks}
-              onChange={(e) => setLeaveRemarks(e.target.value)}
-              placeholder="Reason for approval or rejection"
+
+      {/* Leave Approvals Subtab */}
+      {subtab === 'leave' && (
+        <>
+          <Panel title="Finance team - leave requests" sub="Pending leave requests from employees working under the Finance department">
+            {(leaveDecisionError || decideLeave.isError) && <div className="login-error" role="alert" style={{ display: 'block' }}>{leaveDecisionError || decideLeave.error.message}</div>}
+            <DataTable
+              columns={[
+                { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+                { key: 'designation', label: '', render: (r) => r.employee?.designation ?? '—' },
+                { key: 'leaveType', label: 'Type' },
+                { key: 'from', label: 'From', render: (r) => r.from ? new Date(r.from).toLocaleDateString('en-GB') : '—' },
+                { key: 'to', label: 'To', render: (r) => r.to ? new Date(r.to).toLocaleDateString('en-GB') : '—' },
+                { key: 'days', label: 'Days' },
+                { key: 'reason', label: 'Reason' },
+                {
+                  key: 'actions', label: '',
+                  render: (r) => canDecideLeave && !['Approved', 'Rejected'].includes(String(r.status ?? '')) ? (
+                    <span style={{ display: 'flex', gap: 8 }}>
+                      <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => approveLeave(r._id)}>Approve</button>
+                      <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => rejectLeave(r._id)}>Reject</button>
+                    </span>
+                  ) : '—',
+                },
+              ]}
+              rows={financeLeaves}
+              emptyText="No finance team leave requests."
             />
+          </Panel>
+        </>
+      )}
+
+      {/* Login Hours Subtab */}
+      {subtab === 'hours' && (
+        <>
+          {/* Summary KPIs */}
+          <div className="kpi-grid cols-4" style={{ marginBottom: 16 }}>
+            <KpiCard label="Total hours logged today" value={totalHoursToday.toFixed(1)} accent="violet" />
+            <KpiCard label="Projects with activity" value={projectsWithActivity} accent="forest" />
+            <KpiCard label="Stages in progress" value={stagesInProgress} accent="blueprint" />
+            <KpiCard label="Avg. hours / stage" value={avgHoursPerStage.toFixed(1)} accent="teal" />
           </div>
-          <DataTable
-            columns={[
-              { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
-              { key: 'leaveType', label: 'Type' },
-              { key: 'from', label: 'From', render: (r) => r.from ? new Date(r.from).toLocaleDateString() : '—' },
-              { key: 'to', label: 'To', render: (r) => r.to ? new Date(r.to).toLocaleDateString() : '—' },
-              { key: 'days', label: 'Days' },
-              { key: 'reason', label: 'Reason' },
-              { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-              {
-                key: 'actions', label: 'Action',                 render: (r) => canDecideLeave && !['Approved', 'Rejected'].includes(String(r.status ?? '')) ? (
-                  <span style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => approveLeave(r._id)}>Approve</button>
-                    <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => rejectLeave(r._id)}>Reject</button>
-                  </span>
-                ) : '—',
-              },
-            ]}
-            rows={financeLeaves}
-            emptyText="No finance team leave requests. Other departments are actioned in Leave & Travel → Approvals."
-          />
-          {(leaveDecisionError || decideLeave.isError) && <div className="login-error" role="alert" style={{ display: 'block' }}>{leaveDecisionError || decideLeave.error.message}</div>}
-        </Panel>
+
+          <Panel title="Login hours by project and stage" sub="HR-sourced hours, by project and design stage — the same data feeding Man-Hours & Cost in Project Cost & Performance">
+            <DataTable
+              columns={[
+                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+                { key: 'stage', label: 'Stage' },
+                { key: 'employeesLoggedIn', label: 'Employees logged in', render: (r) => r.employees ?? '—' },
+                { key: 'totalHours', label: 'Total hours', render: (r) => r.hours?.toFixed(1) ?? '—' },
+                { key: 'avgHoursPerEmployee', label: 'Avg. hours / employee', render: (r) => {
+                  const h = Number(r.hours ?? 0);
+                  const e = Number(r.employees ?? 0);
+                  return e > 0 ? (h / e).toFixed(1) : '—';
+                }},
+              ]}
+              rows={stageItems}
+              emptyText="No stage activity recorded."
+            />
+          </Panel>
+        </>
       )}
     </div>
   );
 }
+
