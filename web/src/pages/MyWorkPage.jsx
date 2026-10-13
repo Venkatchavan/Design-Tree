@@ -962,7 +962,6 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
           { key: 'deliverables', label: 'Deliverables & Drawings' },
           { key: 'update', label: 'Update progress' },
           { key: 'submissions', label: 'My submissions' },
-          { key: 'meetings', label: 'Meetings' },
         ]}
         active={tab}
         onChange={setTab}
@@ -1269,7 +1268,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
         </Panel>
       )}
 
-      {tab === 'meetings' && <MyMeetingsTab />}
+
     </>
   );
 }

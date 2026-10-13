@@ -97,6 +97,7 @@ export default function AdminTransmittalPage() {
     { key: 'ackAt', label: 'Acknowledged', render: (r) => r.ackAt ? new Date(r.ackAt).toLocaleDateString() : '—' },
     { key: 'handledBy', label: 'Handled by' },
     { key: 'remarks', label: 'Remarks' },
+    { key: 'edit', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => { setDrawingId(drawingOf(r)?._id ?? ''); setIssuedTo(r.issuedTo ?? 'Client'); setMethod(r.method ?? 'Portal'); setRemarks(r.remarks ?? ''); setModalOpen(true); }}>Edit</button> },
   ], [changeStatus]);
 
   function openCreate() {
@@ -166,7 +167,8 @@ export default function AdminTransmittalPage() {
       )}
 
       {tab === 'drawings' && (
-        <Panel title="TL drawing lists">
+        <Panel title="Drawing lists shared by Team Leads" sub="Tick the drawings to send, then create their transmittal entries below. Drawings already in the log show their status.">
+          <div style={{ fontSize: 12.5, color: 'var(--ink-muted)', marginBottom: 8 }}>All projects · Transmittals are issued only for drawings at GFC stage. Drawings at other stages are listed for reference but cannot be selected.</div>
           <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 12 }}>
             <select className="filter-select" value={project} onChange={(e) => setProject(e.target.value)}><option value="">All projects</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select>
             <button className="approve-btn" type="button" onClick={() => setSelected(drawingRows.filter((d) => d.gfc && !d.transmitted).map((d) => d.id))}>Select all awaiting</button>
@@ -182,14 +184,17 @@ export default function AdminTransmittalPage() {
             { key: 'stage', label: 'Stage', render: (d) => <StatusPill status={d.gfc ? 'GFC' : 'Not at GFC stage'}>{d.stage ?? '—'}</StatusPill> },
             { key: 'sharedBy', label: 'Shared by TL', render: (d) => d.sharedBy?.name ?? d.sharedBy ?? '—' },
             { key: 'date', label: 'Date shared', render: (d) => d.date ? new Date(d.date).toLocaleDateString() : '—' },
-            { key: 'transmitted', label: 'Transmittal status', render: (d) => d.transmitted ? 'Logged' : d.gfc ? 'Awaiting transmittal' : 'Not at GFC stage' },
+            { key: 'transmitted', label: 'Transmittal status', render: (d) => d.transmitted ? `Acknowledged ${d.trNo ?? '—'}` : d.gfc ? 'Awaiting transmittal' : 'Not at GFC stage' },
           ]} rows={drawingRows} emptyText="No drawings have been shared by Team Leads yet." />
-          {selected.length > 0 && <div style={{ marginTop: 14 }} className="field-grid">
-            <div><label className="form-label">Issued to</label><select className="filter-select" value={issuedTo} onChange={(e) => setIssuedTo(e.target.value)}>{RECIPIENTS.map((x) => <option key={x}>{x}</option>)}</select></div>
-            <div><label className="form-label">Method</label><select className="filter-select" value={method} onChange={(e) => setMethod(e.target.value)}>{METHODS.map((x) => <option key={x}>{x}</option>)}</select></div>
-            <div><label className="form-label">Remarks</label><input className="form-input" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></div>
-            <div style={{ alignSelf: 'end' }}><button className="btn-primary" type="button" disabled={batchCreate.isPending} onClick={() => batchCreate.mutate()}>{batchCreate.isPending ? 'Creating…' : `Create ${selected.length} entries`}</button></div>
-          </div>}
+          <Panel title="Create transmittal from selected drawings" sub={selected.length === 0 ? 'No drawings selected' : `${selected.length} drawing(s) selected`}>
+            <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginBottom: 10 }}>Transmittal no. Auto-generated (one per project & recipient) · Date 12-10-2026 · Issued to Use each drawing's recipient · Method Use each drawing's method</div>
+            <div className="field-grid" style={{ gap: 10, display: 'flex', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 240px', minWidth: 220 }}><label className="form-label">Remarks — Optional note carried to every entry</label><input className="form-input" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional note" /></div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button className="btn-primary" type="button" disabled={batchCreate.isPending || selected.length === 0} onClick={() => batchCreate.mutate()}>{batchCreate.isPending ? 'Creating…' : `Create transmittal entries (${selected.length})`}</button>
+            </div>
+          </Panel>
           {batchCreate.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{batchCreate.error.message}</div>}
           {batchCreate.isSuccess && <p style={{ color: 'var(--forest-dark)', marginTop: 10 }}>Transmittal entries created. The Team Lead notification was recorded.</p>}
         </Panel>
@@ -221,15 +226,34 @@ export default function AdminTransmittalPage() {
       )}
 
       {modalOpen && <Modal title="Add transmittal" onClose={() => setModalOpen(false)}>
-        <form onSubmit={submitCreate}>
-          <div className="form-row"><label className="form-label">GFC drawing *</label><select className="filter-select" style={{ width: '100%' }} required value={drawingId} onChange={(e) => setDrawingId(e.target.value)}><option value="">Select TL-shared GFC drawing</option>{drawingRows.filter((d) => d.gfc).map((d) => <option key={d.id} value={d.id}>{d.project?.name} · {d.drawingNo} · {d.rev ?? '—'} · {d.title}</option>)}</select></div>
+        <form onSubmit={submitCreate} className="field-grid" style={{ gap: '10px 12px', maxWidth: '100%', display: 'flex', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 240px', minWidth: 220 }} className="form-row"><label className="form-label">Transmittal no.</label><input readOnly className="form-input" style={{ width: '100%' }} value="Auto-generated on save" /></div>
+          <div className="form-row"><label className="form-label">Date *</label><input type="date" required className="form-input" value={new Date().toISOString().slice(0,10)} onChange={() => {}} /></div>
+          <div className="form-row"><label className="form-label">Drawing from the TL drawing list *</label><select className="filter-select" style={{ width: '100%' }} required value={drawingId} onChange={(e) => { const d = drawingRows.find(x => String(x.id) === String(e.target.value)); setDrawingId(d ? d.id : ''); }}><option value="">Select a drawing shared by a TL…</option>{drawingRows.filter((d) => d.gfc).map((d) => <option key={d.id} value={d.id}>{d.project?.name} · {d.drawingNo} · {d.rev ?? 'R00'} · {d.title}</option>)}</select></div>
           <div className="field-grid">
-            <div className="form-row"><label className="form-label">Issued to *</label><select className="filter-select" style={{ width: '100%' }} value={issuedTo} onChange={(e) => setIssuedTo(e.target.value)}>{RECIPIENTS.map((x) => <option key={x}>{x}</option>)}</select></div>
-            <div className="form-row"><label className="form-label">Method *</label><select className="filter-select" style={{ width: '100%' }} value={method} onChange={(e) => setMethod(e.target.value)}>{METHODS.map((x) => <option key={x}>{x}</option>)}</select></div>
+            <div className="form-row"><label className="form-label">Project *</label><input className="form-input" value={drawingId ? (drawingRows.find(d=>String(d.id)===String(drawingId))?.project?.name ?? '') : ''} readOnly /></div>
+            <div className="form-row"><label className="form-label">Drawing no. *</label><input className="form-input" value={drawingId ? (drawingRows.find(d=>String(d.id)===String(drawingId))?.drawingNo ?? '') : ''} readOnly /></div>
+            <div className="form-row"><label className="form-label">Drawing title</label><input className="form-input" value={drawingId ? (drawingRows.find(d=>String(d.id)===String(drawingId))?.title ?? '') : ''} readOnly /></div>
+            <div className="form-row"><label className="form-label">Revision</label><input className="form-input" value={drawingId ? (drawingRows.find(d=>String(d.id)===String(drawingId))?.rev ?? 'R00') : 'R00'} readOnly /></div>
+            <div className="form-row"><label className="form-label">Service</label><input className="form-input" value={drawingId ? (drawingRows.find(d=>String(d.id)===String(drawingId))?.service ?? 'Structural') : ''} readOnly /></div>
+            <div className="form-row"><label className="form-label">Stage</label><input className="form-input" value={drawingId ? (drawingRows.find(d=>String(d.id)===String(drawingId))?.stage ?? 'GFC') : ''} readOnly /></div>
+          </div>
+          <div className="field-grid">
+            <div className="form-row"><label className="form-label">Issued to *</label><select className="filter-select" style={{ width: '100%' }} required value={issuedTo} onChange={(e) => setIssuedTo(e.target.value)}>{RECIPIENTS.map((x) => <option key={x}>{x}</option>)}</select></div>
+            <div className="form-row"><label className="form-label">Method *</label><select className="filter-select" style={{ width: '100%' }} required value={method} onChange={(e) => setMethod(e.target.value)}>{METHODS.map((x) => <option key={x}>{x}</option>)}</select></div>
+            <div className="form-row"><label className="form-label">Status *</label><select className="filter-select" style={{ width: '100%' }} value="Pending" onChange={() => {}}><option>Pending</option><option>Sent</option><option>Acknowledged</option></select></div>
+            <div className="form-row"><label className="form-label">Handled by</label><input className="form-input" value="Admin user" readOnly /></div>
+          </div>
+          <div className="field-grid">
+            <div className="form-row"><label className="form-label">Date sent</label><input type="date" className="form-input" /></div>
+            <div className="form-row"><label className="form-label">Acknowledged on</label><input type="date" className="form-input" /></div>
           </div>
           <div className="form-row"><label className="form-label">Remarks</label><textarea className="form-input" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></div>
           {create.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{create.error.message}</div>}
-          <button type="submit" className="btn-primary" disabled={create.isPending}>{create.isPending ? 'Saving…' : 'Create transmittal'}</button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button type="button" className="approve-btn" onClick={() => setModalOpen(false)}>Cancel</button>
+            <button type="submit" className="btn-primary" disabled={create.isPending}>{create.isPending ? 'Saving…' : 'Save'}</button>
+          </div>
         </form>
       </Modal>}
     </div>

@@ -45,6 +45,7 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
   // AssocTD: spec layout — balance / pending / quarterly trips, and the
   // three request tabs only (no Approvals tab, no awaiting card).
   const isAssocTD = roleKey === 'assoc_technical_director';
+  const isSpocOrEng = ['coordinator', 'engineer_drafter', 'team_lead'].includes(roleKey);
 
   // --- queries ---
   const meQ = useQuery({ queryKey: ['me'], queryFn: meApi });
@@ -153,9 +154,6 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
       <div className="kpi-grid cols-3">
         <KpiCard label="My leave balance" value={`${leaveBalance} days`} accent="forest" />
         <KpiCard label="My pending requests" value={leaveMineQ.isLoading ? '…' : myPending} accent="amber" />
-        {!isAssocTD && (
-          <KpiCard label="Awaiting my approval" value={queueQ.isLoading ? '…' : awaitingCount} accent="rust" />
-        )}
         <KpiCard label="Travel this quarter" value={travelMineQ.isLoading ? '…' : `${travelQuarter} trips`} accent="blueprint" />
       </div>
       <Tabs
@@ -163,7 +161,6 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
           { key: 'leave', label: 'Leave request' },
           { key: 'travel', label: 'Travel request' },
           { key: 'allowance', label: 'LA / Cab / Other requests' },
-          ...(!isAssocTD ? [{ key: 'approvals', label: 'Approvals' }] : []),
         ]}
         active={tab}
         onChange={setTab}
@@ -183,16 +180,6 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
       )}
       {tab === 'allowance' && (
         <AllowanceTab mine={allowMine} loading={allowMineQ.isLoading} error={allowMineQ.error} projects={projects} onDone={invalidateAll} />
-      )}
-      {tab === 'approvals' && !isAssocTD && (
-        <ApprovalsTab
-          queue={filteredQueue}
-          loading={queueQ.isLoading}
-          error={queueQ.error}
-          roleKey={roleKey}
-          meName={meQ.data?.user?.name ?? ''}
-          onDone={invalidateAll}
-        />
       )}
     </>
   );

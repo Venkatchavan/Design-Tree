@@ -150,31 +150,6 @@ export default function BillingPage({ bootstrap }) {
       </>)}
 
       {tab === 'stages' && <>
-        {canPostStage && <Panel title="Update stage tracker"><form onSubmit={submitStage} className="field-grid">
-          <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={stage.project} onChange={(e) => setStage({ ...stage, project: e.target.value })}><option value="">Select project</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
-          <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={stage.service} onChange={(e) => setStage({ ...stage, service: e.target.value })}><option value="">Select service</option>{SERVICES_10.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
-          <div className="form-row"><label className="form-label">Stage</label><select className="filter-select" style={{ width: '100%' }} value={stage.stage} onChange={(e) => setStage({ ...stage, stage: e.target.value })}><option value="">Select stage</option>{STAGES_5.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
-          <div className="form-row"><label className="form-label">Planned completion</label><input type="date" className="form-input" value={stage.plannedCompletion} onChange={(e) => setStage({ ...stage, plannedCompletion: e.target.value })} /></div>
-          <div className="form-row"><label className="form-label">Current status</label><select className="filter-select" style={{ width: '100%' }} value={stage.currentStatus} onChange={(e) => setStage({ ...stage, currentStatus: e.target.value })}><option value="">Select status</option>{STAGE_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
-          <div className="form-row"><label className="form-label">Delay (days)</label><input type="number" className="form-input" value={stage.delayDays} onChange={(e) => setStage({ ...stage, delayDays: e.target.value })} /></div>
-          <div className="form-row"><label className="form-label">Billing readiness</label><select className="filter-select" value={stage.billingReadiness} onChange={(e) => setStage({ ...stage, billingReadiness: e.target.value })}>{['Billed', 'Ready for billing', 'Pending'].map((s) => <option key={s}>{s}</option>)}</select></div>
-          <div className="form-row"><label className="form-label">Reason</label><input className="form-input" value={stage.reason} onChange={(e) => setStage({ ...stage, reason: e.target.value })} /></div>
-          <button className="btn-primary" type="submit" disabled={saveStage.isPending}>Save stage status</button>
-        </form></Panel>}
-        <Panel title="Requests from SPOC — after every stage completion" sub="PTL requested → SPOC final confirmed → DMH, directors, Admin. Admin marks billed here.">
-          {stages.isLoading ? <EmptyState text="Loading…" /> : (
-          <DataTable columns={[
-            { key: 'project', label: 'Project', render: (r) => r.project?.name ?? projectName(r.project) },
-            { key: 'service', label: 'Service' }, { key: 'stage', label: 'Stage' },
-            { key: 'currentStatus', label: 'Status' },
-            { key: 'confirmationStatus', label: 'Confirm', render: (r) => r.confirmationStatus ?? '—' },
-            { key: 'ptlRemark', label: 'PTL note', render: (r) => r.ptlRemark ?? '—' },
-            { key: 'spocRemark', label: 'SPOC note', render: (r) => r.spocRemark ?? '—' },
-            { key: 'billingReadiness', label: 'Readiness', render: (r) => <StatusPill status={r.billingReadiness}>{readinessLabel(r)}</StatusPill> },
-            { key: 'actions', label: '', render: (r) => r.billingReadiness === 'Ready for billing' && canPostClaimOrStage ? <button type="button" className="approve-btn" disabled={stageBilledMut.isPending} onClick={() => stageBilledMut.mutate(r._id)}>Mark billed</button> : '—' },
-          ]} rows={stageRows.filter((r) => (r.confirmationStatus && r.confirmationStatus !== 'None') || r.billingReadiness === 'Ready for billing')} emptyText="No SPOC billing requests yet. PTL requests in My Team → SPOC confirms in Team allocation." />
-          )}
-        </Panel>
         <Panel title="Project status — stage-wise" sub="Live stage per project & service. A completed stage that hasn't been billed yet is flagged “Ready” and the Billing team is notified automatically.">
           <div className="kpi-grid cols-3">
             <KpiCard label="Billed" value={stageBilled} accent="forest" />
@@ -193,7 +168,8 @@ export default function BillingPage({ bootstrap }) {
           {stages.isLoading ? <EmptyState text="Loading…" /> : (
           <DataTable columns={[
             { key: 'project', label: 'Project', render: (r) => r.project?.name ?? projectName(r.project) },
-            { key: 'service', label: 'Service' }, { key: 'stage', label: 'Stage' },
+            { key: 'service', label: 'Service' },
+            { key: 'stage', label: 'Stage' },
             { key: 'plannedCompletion', label: 'Planned completion', render: (r) => fmtShortDate(r.plannedCompletion) },
             { key: 'currentStatus', label: 'Current status' },
             { key: 'delayDays', label: 'Delay', render: (r) => delayLabel(r) },

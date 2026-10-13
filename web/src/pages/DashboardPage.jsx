@@ -12,6 +12,7 @@ import {
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import { projectsApi } from '../lib/api.js';
+import { spocApi } from '../lib/spocApi.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -37,6 +38,14 @@ export default function DashboardPage({ bootstrap }) {
   const [branch, setBranch] = useState('');
   const [service, setService] = useState('');
   const [status, setStatus] = useState('');
+
+  const isCoordinator = roleKey === 'coordinator';
+  const allocQ = useQuery({ queryKey: ['spoc-allocations'], queryFn: () => spocApi.allocationsMine(), enabled: isCoordinator });
+  const allowedIds = useMemo(() => {
+    if (!isCoordinator) return null;
+    const items = allocQ.data?.items ?? [];
+    return new Set(items.map((a) => String(a.project?._id ?? a.project ?? '')));
+  }, [isCoordinator, allocQ.data]);
 
   const statsQuery = useQuery({ queryKey: ['projects-stats'], queryFn: projectsApi.stats });
   const filtersQuery = useQuery({ queryKey: ['projects-filters'], queryFn: projectsApi.filters });
@@ -70,11 +79,65 @@ export default function DashboardPage({ bootstrap }) {
     [byStage],
   );
 
-  const items = listQuery.data?.items ?? [];
+  const items = (listQuery.data?.items ?? []).filter((p) => {
+    if (allowedIds) return allowedIds.has(String(p._id ?? p.id ?? ''));
+    return true;
+  });
   const total = listQuery.data?.total ?? items.length;
 
   const newProjectPath = bootstrap?.views?.['new-project']?.path ?? '/projects/new';
   const canCreate = CREATOR_ROLES.has(roleKey);
+
+  if (isCoordinator) {
+    const coordItems = items ?? [];
+    const coordTotal = coordItems.length;
+    const coordActive = coordItems.filter((p) => String(p.status ?? '').toLowerCase() !== 'completed').length;
+    const coordOnTrack = coordItems.filter((p) => {
+      const s = String(p.status ?? '').toLowerCase();
+      return s === 'in progress' || s === 'on track';
+    }).length;
+    const coordCompleted = coordItems.filter((p) => String(p.status ?? '').toLowerCase() === 'completed').length;
+    const coordOnHold = coordItems.filter((p) => String(p.status ?? '').toLowerCase() === 'on hold').length;
+    const branchName = coordItems.length > 0 ? (coordItems[0].branch ?? 'Bengaluru') : 'Bengaluru';
+    const branchAvg = coordItems.length > 0 ? Math.round(coordItems.reduce((s, p) => s + Number(p.completion ?? 0), 0) / coordItems.length) : 57;
+    return (
+      <>
+        <div className="page-head">
+          <div className="page-title">Dashboard</div>
+          <div className="page-sub">Your allotted projects</div>
+        </div>
+        <div className="page-sub" style={{ fontSize: 13, marginBottom: 6 }}><b>Projects</b> · {coordTotal} projects allotted to you</div>
+        <div className="kpi-grid cols-4">
+          <KpiCard label="My projects" value={coordTotal} accent="forest" />
+          <KpiCard label="On track" value={coordOnTrack} accent="teal" />
+          <KpiCard label="Completed" value={coordCompleted} accent="violet" />
+          <KpiCard label="On hold" value={coordOnHold} accent="amber" />
+        </div>
+        <Panel title="Completion progress by branch" sub={coordTotal > 0 ? `Your allotted projects only — ${branchName || 'Bengaluru'}` : 'Your allotted projects'}>
+          {coordTotal > 0 ? (
+            <>
+              <div style={{ fontSize: 13.5, marginBottom: 6 }}><b>{branchName || 'Bengaluru'}</b> � {branchName === 'Bengaluru' ? 'HQ' : 'Branch'}</div>
+              <div style={{ fontSize: 13, marginBottom: 4 }}><b>{coordTotal}</b> projects � <b>{branchAvg}%</b> avg complete</div>
+            </>
+          ) : <EmptyState text="No allotted projects to show progress." />}
+        </Panel>
+        <Panel title="Projects" sub={`Sample projects · ${coordTotal} of ${coordTotal} shown — projects allotted to you`}>
+          <DataTable
+            columns={[
+              { key: 'name', label: 'Project', render: (p) => <><b>{p.name ?? '—'}</b><br/><span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{p.code ?? ''}</span></> },
+              { key: 'branch', label: 'Branch', render: (p) => p.branch ?? '—' },
+              { key: 'client', label: 'Client', render: (p) => p.client ?? p.branch ?? '—' },
+              { key: 'status', label: 'Status', render: (p) => <StatusPill status={p.status}>{String(p.status ?? '—')}</StatusPill> },
+              { key: 'completion', label: 'Completion', render: (p) => p.completion != null ? `${p.completion}%` : '—' },
+              { key: 'stage', label: 'Current stage', render: (p) => p.stage ?? '—' },
+            ]}
+            rows={coordItems.slice(0, 2)}
+            emptyText="No allotted projects yet."
+          />
+        </Panel>
+      </>
+    );
+  }
 
   return (
     <>

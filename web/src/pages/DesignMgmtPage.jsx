@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { employeesApi, projectsApi, request, toQuery, workEntriesApi } from '../lib/api.js';
+import { projectsApi, request, workEntriesApi } from '../lib/api.js';
 import { designApi } from '../lib/phase4aApi.js';
 import { deliverablesApi, revisionsApi } from '../lib/workApi.js';
 import { rfiApi, visitsApi } from '../lib/functionsApi.js';
-import { certificatesApi } from '../lib/phase3Api.js';
 import { allowanceApi } from '../lib/phase4bApi.js';
-import { spocApi } from '../lib/spocApi.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import { DesignKpiRow, TeamClientUpdates } from '../components/design/DesignHeadUpdates.jsx';
 
 const SUPER = new Set(['founding_director', 'working_director']);
 const STEP_STATUSES = ['Not Started', 'In Progress', 'Completed', 'On Hold'];
@@ -28,7 +27,7 @@ const TEAM_SERVICES = [
   'BIM',
   'GBS',
 ];
-const TEAM_STATUSES = ['Pending', 'Confirmed'];
+const MATRIX_KEYS = ['discipline', 'spoc', 'td', 'channel', 'frequency'];
 
 const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director']);
 const STAGE_ORDER = { CD: 0, SD: 1, DD: 2, TD: 3, GFC: 4 };
@@ -181,8 +180,7 @@ function DirectorDesignView() {
 
 const TABS = [
   { key: 'workflow', label: 'Workflow' },
-  { key: 'matrix', label: 'Responsibility matrix' },
-  { key: 'team', label: 'Team finalisation' },
+  { key: 'matrix', label: 'Responsibility & communication matrix' },
   { key: 'deliverables', label: 'Deliverables tracker' },
   { key: 'rfis', label: 'RFIs' },
   { key: 'updates', label: 'Team & client updates' },
@@ -602,11 +600,7 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
   const [tab, setTab] = useState('workflow');
   const [project, setProject] = useState('');
   const [steps, setSteps] = useState([]);
-  const [matrix, setMatrix] = useState({});
-  const [teamStatus, setTeamStatus] = useState('Pending');
-  const [disciplines, setDisciplines] = useState([]);
-  const [sharedToAdmin, setSharedToAdmin] = useState(false);
-  const [teamLoadedFor, setTeamLoadedFor] = useState('');
+  const [matrix, setMatrix] = useState([]);
 
   const projects = useQuery({
     queryKey: ['projects-design-mgmt'],
@@ -632,51 +626,16 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
     queryFn: () => rfiApi.list({ project: activeProject }),
     enabled: !!activeProject,
   });
-  const meetings = useQuery({
-    queryKey: ['design-meetings', activeProject],
-    queryFn: () => request(`/api/meetings${toQuery({ project: activeProject })}`),
-    enabled: !!activeProject,
-    retry: false,
-  });
-  const spocEntries = useQuery({
-    queryKey: ['design-spoc', activeProject],
-    queryFn: () => spocApi.entriesList({ project: activeProject }),
-    enabled: !!activeProject && tab === 'updates',
-  });
-  const projectDetail = useQuery({
-    queryKey: ['project', activeProject],
-    queryFn: () => projectsApi.get(activeProject),
-    enabled: !!activeProject && tab === 'team',
-    retry: false,
-  });
-  const employeesQ = useQuery({
-    queryKey: ['employees-design-mgmt'],
-    queryFn: () => employeesApi.list({}),
-    enabled: tab === 'team',
-    retry: false,
-  });
-  const allocsQ = useQuery({
-    queryKey: ['spoc-allocs-design', activeProject],
-    queryFn: () => request(`/api/spoc/allocations${toQuery({ project: activeProject })}`),
-    enabled: !!activeProject && tab === 'team',
-    retry: false,
-  });
-  const certsQ = useQuery({
-    queryKey: ['design-certs', activeProject],
-    queryFn: () => certificatesApi.list({ project: activeProject }),
-    enabled: !!activeProject && tab === 'team',
-    retry: false,
-  });
 
   useEffect(() => {
     const item = design.data?.item;
     if (!item) {
       setSteps([]);
-      setMatrix({});
+      setMatrix([]);
       return;
     }
     setSteps(Array.isArray(item.steps) ? item.steps : []);
-    setMatrix(item.matrix && typeof item.matrix === 'object' ? item.matrix : {});
+    setMatrix(Array.isArray(item.matrix) ? item.matrix : []);
   }, [design.data]);
 
   const metaSteps = meta.data?.steps ?? [];
@@ -697,78 +656,26 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
     mutationFn: designApi.save,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['design', activeProject] }),
   });
-  const saveTeam = useMutation({
-    mutationFn: (body) => projectsApi.saveTeam(activeProject, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['project', activeProject] });
-      qc.invalidateQueries({ queryKey: ['projects-design-mgmt'] });
-      qc.invalidateQueries({ queryKey: ['projects'] });
-    },
-  });
-
-  useEffect(() => {
-    if (tab !== 'team') return;
-    const p = projectDetail.data?.project;
-    if (!p || teamLoadedFor === activeProject) return;
-    // Prefill editable team form (same pattern as workflow prefill above).
-    setTeamStatus(p.teamConfirmation?.status ?? 'Pending');
-    setDisciplines(
-      Array.isArray(p.teamConfirmation?.disciplines) && p.teamConfirmation.disciplines.length > 0
-        ? p.teamConfirmation.disciplines.map((d) => ({
-            discipline: d.discipline ?? '',
-            spoc: d.spoc ?? '',
-            ptlTl: d.ptlTl ?? '',
-            detail: d.detail ?? '',
-          }))
-        : [],
-    );
-    setSharedToAdmin(Boolean(p.teamConfirmation?.sharedToAdminAt));
-    setTeamLoadedFor(activeProject);
-  }, [tab, projectDetail.data, activeProject, teamLoadedFor]);
-
-  function patchDiscipline(idx, field, value) {
-    setDisciplines((prev) => prev.map((d, i) => (i === idx ? { ...d, [field]: value } : d)));
-  }
-
-  function submitTeam(e) {
-    e.preventDefault();
-    saveTeam.mutate({
-      status: teamStatus,
-      disciplines: disciplines
-        .filter((d) => d.discipline || d.spoc || d.ptlTl || d.detail)
-        .map((d) => ({
-          discipline: d.discipline,
-          spoc: d.spoc || undefined,
-          ptlTl: d.ptlTl || undefined,
-          detail: d.detail || undefined,
-        })),
-      sharedToAdmin,
-    });
-  }
-
   const delRows = useMemo(() => arr(deliverables.data), [deliverables.data]);
-  const onTrack = delRows.filter((d) =>
-    String(d.status ?? '').toLowerCase().replace(/[\s_]+/g, '').includes('track'),
-  );
   const rfiRows = useMemo(() => arr(rfis.data), [rfis.data]);
-  const openRfis = rfiRows.filter((r) =>
-    ['open', 'pending', 'raised'].includes(String(r.status ?? '').toLowerCase()),
-  );
-  const pendingTd = tableSteps.filter(
-    (s) =>
-      String(s.owner ?? '').toLowerCase().includes('technical director') &&
-      String(s.status ?? '').toLowerCase() !== 'completed',
-  );
-  const meetingRows = useMemo(() => arr(meetings.data), [meetings.data]);
-  const onlineMeetings = meetingRows.filter((m) =>
-    ['online', 'virtual', 'video'].includes(String(m.mode ?? m.type ?? '').toLowerCase()),
-  );
 
   function patchStep(n, field, value) {
     setSteps((prev) => {
       const base = prev.length > 0 ? prev : tableSteps;
       return base.map((s) => (s.n === n ? { ...s, [field]: value } : s));
     });
+  }
+
+  function patchMatrix(idx, field, value) {
+    setMatrix((prev) => prev.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
+  }
+
+  function addMatrixRow() {
+    setMatrix((prev) => [...prev, { discipline: '', spoc: '', td: '', channel: '', frequency: '' }]);
+  }
+
+  function removeMatrixRow(idx) {
+    setMatrix((prev) => prev.filter((_, i) => i !== idx));
   }
 
   function submitSteps(e) {
@@ -782,7 +689,9 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
         remarks: s.remarks,
         date: s.date || undefined,
       })),
-      matrix,
+      matrix: matrix
+        .filter((r) => MATRIX_KEYS.some((k) => String(r[k] ?? '').trim()))
+        .map((r) => Object.fromEntries(MATRIX_KEYS.map((k) => [k, r[k] ?? ''])))
     });
   }
 
@@ -837,41 +746,12 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
         </div>
       )}
 
+      <DesignKpiRow />
+
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
       {tab === 'workflow' && (
         <>
-          <div className="kpi-grid cols-6">
-            <KpiCard label="Deliverables tracked" value={delRows.length} accent="blueprint" />
-            <KpiCard
-              label="Deliverables on-track (derived)"
-              value={onTrack.length}
-              accent="forest"
-            />
-            <KpiCard label="Open RFIs" value={openRfis.length} accent="amber" />
-            <KpiCard label="Total RFIs" value={rfiRows.length} accent="teal" />
-            <KpiCard
-              label="Pending TD action (derived)"
-              value={pendingTd.length}
-              accent="rust"
-            />
-            <KpiCard
-              label="Meetings online / total"
-              value={`${onlineMeetings.length} / ${meetingRows.length}`}
-              accent="violet"
-            />
-          </div>
-          <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
-            Derived figures: on-track counts deliverables whose status mentions
-            “track”; pending-TD-action counts steps owned by the Technical
-            Director that are not Completed; meeting mode comes from the
-            meetings log.
-          </p>
-          {meetings.error && (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>
-              Meetings: {meetings.error.message}
-            </div>
-          )}
           <Panel title="16-step design workflow">
             {design.isLoading ? (
               <EmptyState text="Loading design workflow…" />
@@ -956,47 +836,123 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
       )}
 
       {tab === 'matrix' && (
-        <Panel title="Responsibility matrix">
-          {tableSteps.length === 0 ? (
-            <EmptyState text="No responsibility matrix yet — it appears once the design workflow loads." />
+        <Panel title="Responsibility & Communication Matrix">
+          {design.isLoading ? (
+            <EmptyState text="Loading matrix…" />
           ) : (
             <form onSubmit={submitSteps}>
               <DataTable
                 columns={[
-                  { key: 'n', label: '#' },
-                  { key: 'label', label: 'Step' },
                   {
-                    key: 'owner',
-                    label: 'Owner',
+                    key: 'discipline',
+                    label: 'Discipline / team',
                     render: (r) =>
                       canEdit ? (
                         <input
                           className="form-input"
-                          value={matrix[r.n] ?? r.owner ?? ''}
-                          onChange={(e) =>
-                            setMatrix((m) => ({ ...m, [r.n]: e.target.value }))
-                          }
+                          value={r.discipline ?? ''}
+                          onChange={(e) => patchMatrix(r._rowKey, 'discipline', e.target.value)}
                         />
                       ) : (
-                        (matrix[r.n] ?? r.owner ?? '—')
+                        (r.discipline || '—')
                       ),
                   },
                   {
-                    key: 'status',
-                    label: 'Status',
-                    render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill>,
+                    key: 'spoc',
+                    label: 'SPOC / Coordinator',
+                    render: (r) =>
+                      canEdit ? (
+                        <input
+                          className="form-input"
+                          value={r.spoc ?? ''}
+                          onChange={(e) => patchMatrix(r._rowKey, 'spoc', e.target.value)}
+                        />
+                      ) : (
+                        (r.spoc || '—')
+                      ),
                   },
+                  {
+                    key: 'td',
+                    label: 'Technical Director',
+                    render: (r) =>
+                      canEdit ? (
+                        <input
+                          className="form-input"
+                          value={r.td ?? ''}
+                          onChange={(e) => patchMatrix(r._rowKey, 'td', e.target.value)}
+                        />
+                      ) : (
+                        (r.td || '—')
+                      ),
+                  },
+                  {
+                    key: 'channel',
+                    label: 'Communication channel',
+                    render: (r) =>
+                      canEdit ? (
+                        <input
+                          className="form-input"
+                          value={r.channel ?? ''}
+                          onChange={(e) => patchMatrix(r._rowKey, 'channel', e.target.value)}
+                        />
+                      ) : (
+                        (r.channel || '—')
+                      ),
+                  },
+                  {
+                    key: 'frequency',
+                    label: 'Frequency',
+                    render: (r) =>
+                      canEdit ? (
+                        <input
+                          className="form-input"
+                          value={r.frequency ?? ''}
+                          onChange={(e) => patchMatrix(r._rowKey, 'frequency', e.target.value)}
+                        />
+                      ) : (
+                        (r.frequency || '—')
+                      ),
+                  },
+                  ...(canEdit
+                    ? [
+                        {
+                          key: 'actions',
+                          label: '',
+                          render: (r) => (
+                            <button
+                              type="button"
+                              className="back-link"
+                              onClick={() => removeMatrixRow(r._rowKey)}
+                            >
+                              Remove
+                            </button>
+                          ),
+                        },
+                      ]
+                    : []),
                 ]}
-                rows={tableSteps}
-                emptyText="No matrix rows yet."
+                rows={matrix.map((r, i) => ({ ...r, _rowKey: i }))}
+                emptyText={
+                  canEdit
+                    ? 'No rows yet — click “Add row” to start the matrix.'
+                    : 'No responsibility & communication matrix recorded for this project yet.'
+                }
               />
+              {canEdit && (
+                <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                  <button type="button" className="approve-btn" onClick={addMatrixRow}>
+                    + Add row
+                  </button>
+                </div>
+              )}
               {canEdit && (
                 <button
                   type="submit"
                   className="btn-primary"
                   disabled={save.isPending || !activeProject}
+                  style={{ marginTop: 12 }}
                 >
-                  {save.isPending ? 'Saving…' : 'Save matrix with steps'}
+                  {save.isPending ? 'Saving…' : 'Save matrix'}
                 </button>
               )}
             </form>
@@ -1007,198 +963,6 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
             </div>
           )}
         </Panel>
-      )}
-
-      {tab === 'team' && (
-        <>
-        <Panel title="Project team finalisation — SPOC / PTL / TL per discipline">
-          {projectDetail.isLoading ? (
-            <EmptyState text="Loading team confirmation…" />
-          ) : (
-            <form onSubmit={submitTeam}>
-              <div className="form-row" style={{ maxWidth: 320 }}>
-                <label className="form-label">Team status</label>
-                {canEdit ? (
-                  <select
-                    className="filter-select"
-                    value={teamStatus}
-                    onChange={(e) => setTeamStatus(e.target.value)}
-                  >
-                    {TEAM_STATUSES.map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <StatusPill status={teamStatus}>{teamStatus}</StatusPill>
-                )}
-              </div>
-              {projectDetail.data?.project?.teamConfirmation?.sharedToAdminAt && (
-                <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
-                  Shared to Admin: {fmtDate(projectDetail.data.project.teamConfirmation.sharedToAdminAt)}
-                </p>
-              )}
-              <DataTable
-                columns={[
-                  {
-                    key: 'discipline',
-                    label: 'Discipline',
-                    render: (r) =>
-                      canEdit ? (
-                        <select
-                          className="filter-select"
-                          value={r.discipline ?? ''}
-                          onChange={(e) => patchDiscipline(r._rowKey, 'discipline', e.target.value)}
-                        >
-                          <option value="">Select…</option>
-                          {TEAM_SERVICES.map((s) => (
-                            <option key={s}>{s}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        (r.discipline || '—')
-                      ),
-                  },
-                  {
-                    key: 'spoc',
-                    label: 'SPOC',
-                    render: (r) => {
-                      if (!canEdit) return (r.spoc || '—');
-                      const emps = employeesQ.data?.items ?? [];
-                      const allocCoords = (allocsQ.data?.items ?? []).map((a) => a.coordinator).filter(Boolean);
-                      const names = [...new Set([
-                        ...emps.map((e) => `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim()).filter(Boolean),
-                        ...allocCoords.map((c) => typeof c === 'string' ? c : `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim()).filter(Boolean),
-                      ])].sort();
-                      return (
-                        <select
-                          className="filter-select"
-                          value={r.spoc ?? ''}
-                          onChange={(e) => patchDiscipline(r._rowKey, 'spoc', e.target.value)}
-                        >
-                          <option value="">Select SPOC…</option>
-                          {names.map((n) => <option key={n} value={n}>{n}</option>)}
-                        </select>
-                      );
-                    },
-                  },
-                  {
-                    key: 'ptlTl',
-                    label: 'PTL / TL',
-                    render: (r) => {
-                      if (!canEdit) return (r.ptlTl || '—');
-                      const emps = employeesQ.data?.items ?? [];
-                      const names = [...new Set(emps.map((e) => `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim()).filter(Boolean))].sort();
-                      return (
-                        <select
-                          className="filter-select"
-                          value={r.ptlTl ?? ''}
-                          onChange={(e) => patchDiscipline(r._rowKey, 'ptlTl', e.target.value)}
-                        >
-                          <option value="">Select lead…</option>
-                          {names.map((n) => <option key={n} value={n}>{n}</option>)}
-                        </select>
-                      );
-                    },
-                  },
-                  {
-                    key: 'detail',
-                    label: 'Designers / Engineers / Detail',
-                    render: (r) =>
-                      canEdit ? (
-                        <input
-                          className="form-input"
-                          value={r.detail ?? ''}
-                          onChange={(e) => patchDiscipline(r._rowKey, 'detail', e.target.value)}
-                        />
-                      ) : (
-                        (r.detail || '—')
-                      ),
-                  },
-                  {
-                    key: 'actions',
-                    label: '',
-                    render: (r) =>
-                      canEdit ? (
-                        <button
-                          type="button"
-                          className="back-link"
-                          onClick={() => setDisciplines((prev) => prev.filter((_, j) => j !== r._rowKey))}
-                        >
-                          Remove
-                        </button>
-                      ) : null,
-                  },
-                ]}
-                rows={disciplines.map((d, i) => ({ ...d, _rowKey: i }))}
-                emptyText="No disciplines yet — add SMEPF / SMEP / MEP / STR / PHE / ELE / HVAC / FIRE / BIM / GBS rows."
-              />
-              {canEdit && (
-                <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className="approve-btn"
-                    onClick={() =>
-                      setDisciplines((prev) => [...prev, { discipline: '', spoc: '', ptlTl: '', detail: '' }])
-                    }
-                  >
-                    + Add discipline
-                  </button>
-                </div>
-              )}
-              {canEdit && (
-                <div className="form-row" style={{ marginTop: 12 }}>
-                  <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}>
-                    <input
-                      type="checkbox"
-                      checked={sharedToAdmin}
-                      onChange={(e) => setSharedToAdmin(e.target.checked)}
-                    />
-                    Share confirmed team to Admin, SPOC and Management
-                  </label>
-                </div>
-              )}
-              {canEdit && (
-                <button
-                  type="submit"
-                  className="btn-primary"
-                  disabled={saveTeam.isPending || !activeProject}
-                  style={{ marginTop: 12 }}
-                >
-                  {saveTeam.isPending ? 'Saving…' : 'Save team confirmation'}
-                </button>
-              )}
-              {saveTeam.isError && (
-                <div className="login-error" role="alert" style={{ display: 'block' }}>
-                  {saveTeam.error.message}
-                </div>
-              )}
-              {saveTeam.isSuccess && (
-                <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>
-                  Team saved. Sharing notifies Admin / Billing.
-                </p>
-              )}
-            </form>
-          )}
-        </Panel>
-        <Panel title="Completion certificates — reflection from Admin" sub="Read-only. Issued and requested by Admin; no input here.">
-          {certsQ.isLoading ? (
-            <EmptyState text="Loading certificates…" />
-          ) : certsQ.isError ? (
-            <EmptyState text="Certificates unavailable." />
-          ) : (
-            <DataTable
-              columns={[
-                { key: 'certType', label: 'Certificate type' },
-                { key: 'stage', label: 'Stage' },
-                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-                { key: 'issuedBy', label: 'Issued by', render: (r) => r.issuedBy ?? '—' },
-              ]}
-              rows={certsQ.data?.items ?? []}
-              emptyText="No completion certificates reflected from Admin yet."
-            />
-          )}
-        </Panel>
-        </>
       )}
 
       {tab === 'deliverables' && (
@@ -1249,32 +1013,7 @@ export default function DesignMgmtPage({ bootstrap, user, viewKey }) {
         </Panel>
       )}
 
-      {tab === 'updates' && (
-        <>
-          <Panel title="Recent SPOC entries">
-            {spocEntries.error ? (
-              <div className="login-error" role="alert" style={{ display: 'block' }}>
-                {spocEntries.error.message}
-              </div>
-            ) : spocEntries.isLoading ? (
-              <EmptyState text="Loading SPOC entries…" />
-            ) : (
-              <DataTable
-                columns={[
-                  { key: 'title', label: 'Entry', render: (r) => r.title ?? r.subject ?? '—' },
-                  { key: 'date', label: 'Date', render: (r) => fmtDate(r.date ?? r.createdAt) },
-                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-                ]}
-                rows={arr(spocEntries.data)}
-                emptyText="No SPOC entries for this project yet."
-              />
-            )}
-          </Panel>
-          <Panel title="Module updates">
-            <EmptyState text="PTL progress, QS measurements, QA/QC site notes and client-side updates live in their own modules — see Work Progress, Functions and the Client Portal." />
-          </Panel>
-        </>
-      )}
+      {tab === 'updates' && <TeamClientUpdates />}
     </div>
   );
 }

@@ -125,20 +125,6 @@ export default function CertificatesPage({ bootstrap }) {
     return (
       <div id="view-completioncerts">
         <div className="page-head"><div className="page-title">Completion Certificates</div><div className="page-sub">Issued certificates, templates, and client-uploaded certificate requests</div></div>
-        <Panel title="Add issued certificate"><form className="field-grid" onSubmit={(e) => { e.preventDefault(); create.mutate({ ...cert }); }}>
-          <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={cert.project} onChange={(e) => setCert({ ...cert, project: e.target.value })}><option value="">Select project</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
-          <div className="form-row"><label className="form-label">Certificate type *</label>{templateCategories.length > 0 ? (
-            <select required className="filter-select" style={{ width: '100%' }} value={cert.certType} onChange={(e) => setCert({ ...cert, certType: e.target.value })}><option value="">Select type</option>{templateCategories.map((c) => <option key={c} value={c}>{c}</option>)}</select>
-          ) : (
-            <input required className="form-input" value={cert.certType} onChange={(e) => setCert({ ...cert, certType: e.target.value })} />
-          )}</div>
-          <div className="form-row"><label className="form-label">Certificate no.</label><input className="form-input" placeholder="e.g. CC-STR-2026-045" value={cert.certNo} onChange={(e) => setCert({ ...cert, certNo: e.target.value })} /></div>
-          <div className="form-row"><label className="form-label">Stage</label><select className="filter-select" style={{ width: '100%' }} value={cert.stage} onChange={(e) => setCert({ ...cert, stage: e.target.value })}><option value="">Select stage</option>{['CD', 'SD', 'DD', 'TD', 'GFC'].map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
-          <div className="form-row"><label className="form-label">Issued by</label><select className="filter-select" style={{ width: '100%' }} value={cert.issuedBy} onChange={(e) => setCert({ ...cert, issuedBy: e.target.value })}><option value="">Select person</option>{(employees.data?.items ?? []).map((x) => { const n = `${x.firstName ?? ''} ${x.lastName ?? ''}`.trim() || x.empId; return <option key={x._id ?? x.id} value={n}>{n}</option>; })}</select></div>
-          <div className="form-row"><label className="form-label">Status</label><select className="filter-select" value={cert.status} onChange={(e) => setCert({ ...cert, status: e.target.value })}><option>Issued</option><option>Pending</option></select></div>
-          {create.isError && <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>{create.error.message}</div>}
-          <button className="btn-primary" type="submit" disabled={create.isPending}>Add certificate</button>
-        </form></Panel>
         <Panel title="Templates + Request from client (clubbed)" sub="Readily available templates clubbed with client requests. Template list below; client link can be generated per row.">
           <div className="section-label">Add template (entry)</div>
           <form onSubmit={uploadTemplate} className="field-grid">
@@ -159,11 +145,7 @@ export default function CertificatesPage({ bootstrap }) {
 
           <form onSubmit={(e) => { e.preventDefault(); requestCert.mutate(req); }} className="field-grid">
             <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={req.project} onChange={(e) => setReq({ ...req, project: e.target.value })}><option value="">Select project</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
-            <div className="form-row"><label className="form-label">Certificate category *</label>{templateCategories.length > 0 ? (
-              <select required className="filter-select" style={{ width: '100%' }} value={req.category} onChange={(e) => setReq({ ...req, category: e.target.value })}><option value="">Select category</option>{templateCategories.map((c) => <option key={c} value={c}>{c}</option>)}</select>
-            ) : (
-              <input required className="form-input" value={req.category} onChange={(e) => setReq({ ...req, category: e.target.value })} />
-            )}</div>
+            <div className="form-row"><label className="form-label">Certificate category *</label><select required className="filter-select" style={{ width: '100%' }} value={req.category} onChange={(e) => setReq({ ...req, category: e.target.value })}><option value="">Select category from templates</option>{templateCategories.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
             {req.category && templateFor(req.category) && (
               <div className="form-row">
                 <label className="form-label">Linked template (readily available)</label>

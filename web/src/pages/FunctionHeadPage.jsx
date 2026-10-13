@@ -25,6 +25,7 @@ const HEAD_TABS = [
   { key: 'bim-head', label: 'BIM' },
   { key: 'gbs-head', label: 'GBS' },
   { key: 'peer-review-head', label: 'Peer review' },
+  { key: 'qs-head', label: 'QS' },
 ];
 
 function fmtShortDate(v) {
@@ -132,7 +133,8 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
   const areas = useQuery({
     queryKey: ['function-areas'],
     queryFn: () => areaApi.list({}),
-    enabled: false,
+    enabled: active === 'qs-head',
+    retry: false,
   });
   const boq = useQuery({
     queryKey: ['function-boq'],
@@ -143,14 +145,14 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
   const employees = useQuery({
     queryKey: ['function-employees'],
     queryFn: () => employeesApi.list({}),
-    enabled: false,
+    enabled: active === 'qs-head',
     retry: false,
   });
   const qsLeave = useQuery({
     queryKey: ['function-qs-leave', qsLeaveFilter],
     queryFn: () =>
       request(`/api/leave-travel/leave${toQuery({ status: qsLeaveFilter || undefined })}`),
-    enabled: false,
+    enabled: active === 'qs-head',
     retry: false,
   });
   const weeklyQ = useQuery({
@@ -320,12 +322,9 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     }
     return ids;
   }, [employees.data]);
-  const qsLeaveRows = useMemo(() => {
-    if (qsEmpIds.size === 0) return leaveRows;
-    return leaveRows.filter((l) =>
-      qsEmpIds.has(String(l.employee?._id ?? l.employee ?? l.employeeId ?? '')),
-    );
-  }, [leaveRows, qsEmpIds]);
+  const qsLeaveRows = leaveRows.filter((l) =>
+    qsEmpIds.has(String(l.employee?._id ?? l.employee ?? l.employeeId ?? '')),
+  );
 
   const actionError =
     approveVisit.error?.message ??

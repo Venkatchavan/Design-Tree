@@ -36,6 +36,7 @@ import ClientPortalPage from './pages/ClientPortalPage.jsx'
 import LeaveTravelPage from './pages/LeaveTravelPage.jsx'
 import EmployeeSupportPage from './pages/EmployeeSupportPage.jsx'
 import BranchesPage from './pages/BranchesPage.jsx'
+import TravelBookingPage from './pages/TravelBookingPage.jsx'
 
 const VIEW_COMPONENTS = {
   dashboard: DashboardPage,
@@ -69,6 +70,7 @@ const VIEW_COMPONENTS = {
   'bim-head': FunctionHeadPage,
   'gbs-head': FunctionHeadPage,
   'peer-review-head': FunctionHeadPage,
+  'qs-head': FunctionHeadPage,
   structural: DeptDashboardPage,
   mechanical: DeptDashboardPage,
   electrical: DeptDashboardPage,
@@ -78,6 +80,7 @@ const VIEW_COMPONENTS = {
   'leave-travel': LeaveTravelPage,
   'employee-support': EmployeeSupportPage,
   branches: BranchesPage,
+  'travel-booking': TravelBookingPage,
 }
 
 // Non-nav views and the nav view whose presence grants their route.

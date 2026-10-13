@@ -278,8 +278,10 @@ function AssignedRegisterView({ roleKey }) {
         <KpiCard label="Projects" value={projectCount} accent="forest" />
         <KpiCard label="Revisions issued (R1+)" value={revisions} accent="violet" />
       </div>
-      <Panel title="Transmittal Log" sub={`${registerLabel} register`}>
-        <div className="page-sub" style={{ marginBottom: 12 }}>Date · Project · Department · Print · Document Type · Service · Team · TR No. · Drawing · Sheets · Revision</div>
+      <Panel title="Transmittal Log">
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--ink-muted)', marginBottom: 12, paddingLeft: 4 }}>
+          <span>Date</span> · <span>Project</span> · <span>Dept</span> · <span>Print</span> · <span>Document Type</span> · <span>Service</span> · <span>Team</span> · <span>TR No.</span> · <span>Drawing</span> · <span>Sheets</span> · <span>Revision</span>
+        </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
           <input className="form-input" style={{ maxWidth: 170 }} placeholder="Search project" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className="filter-select" value={docType} onChange={(e) => setDocType(e.target.value)}><option value="">All document types</option>{DIR_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
@@ -374,8 +376,10 @@ function DirectorRegisterView({ scoped = false }) {
         <KpiCard label="Projects" value={projects.size} accent="forest" />
         <KpiCard label="Revisions issued (R1+)" value={revisions} accent="violet" />
       </div>
-      <Panel title="Transmittal Log" sub={`${registerLabel} register`}>
-        <div className="page-sub" style={{ marginBottom: 12 }}>Date · Project · Department · Print · Document Type · Service · Team · TR No. · Drawing · Sheets · Revision</div>
+      <Panel title="Transmittal Log">
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--ink-muted)', marginBottom: 12, paddingLeft: 4 }}>
+          <span>Date</span> · <span>Project</span> · <span>Dept</span> · <span>Print</span> · <span>Document Type</span> · <span>Service</span> · <span>Team</span> · <span>TR No.</span> · <span>Drawing</span> · <span>Sheets</span> · <span>Revision</span>
+        </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
           <input className="form-input" style={{ maxWidth: 170 }} placeholder="Search project" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className="filter-select" value={docType} onChange={(e) => setDocType(e.target.value)}><option value="">All document types</option>{DIR_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>

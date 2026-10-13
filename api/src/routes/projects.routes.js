@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { INTERNAL_ROLES } from '../config/roles.js';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   requireInternal,
@@ -36,9 +37,11 @@ router.use(requireAuth);
 // Directors are read-only on projects: deny create/update/import even
 // though FD/WD would otherwise pass requireRole via the superuser bypass.
 const NO_PROJECT_WRITES = ['founding_director', 'working_director', 'executive_director'];
-router.get('/', requireView('dashboard'), listProjects);
+// Project reads are company-wide for internal roles; the controller narrows scoped roles (coordinator, team lead, engineer) to their own projects.
+const PROJECT_READERS = INTERNAL_ROLES.filter((r) => r !== 'superuser');
+router.get('/', requireRole(...PROJECT_READERS), listProjects);
 router.get('/stats', requireView('dashboard'), projectStats);
-router.get('/filters', requireView('dashboard'), projectFilters);
+router.get('/filters', requireRole(...PROJECT_READERS), projectFilters);
 router.get('/next-code', denyRoles(...NO_PROJECT_WRITES), requireRole('admin_billing'), nextProjectCode);
 router.get('/next-job-number', denyRoles(...NO_PROJECT_WRITES), requireRole('admin_billing'), nextJobNumber);
 router.get('/:id/team', requireAuth, getProjectTeam);
@@ -65,7 +68,7 @@ router.post(
   requireRole('technical_director', 'executive_director', 'associate_director'),
   recordFinalApproval,
 );
-router.get('/:id', requireView('dashboard'), getProject);
+router.get('/:id', requireRole(...PROJECT_READERS), getProject);
 router.post('/', denyRoles(...NO_PROJECT_WRITES), requireRole(...CREATOR_ROLES), createProject);
 router.put('/:id', denyRoles(...NO_PROJECT_WRITES), requireRole(...CREATOR_ROLES), updateProject);
 router.patch(

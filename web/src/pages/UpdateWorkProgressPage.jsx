@@ -18,6 +18,14 @@ import StatusPill from '../components/StatusPill.jsx';
 import { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Field from '../components/Field.jsx';
+import DesignHeadWorkUpdatePage from './DesignHeadWorkUpdatePage.jsx';
+
+export default function UpdateWorkProgressPage({ bootstrap, user }) {
+  if (bootstrap?.role?.key === 'design_mgmt_head') {
+    return <DesignHeadWorkUpdatePage bootstrap={bootstrap} user={user} />;
+  }
+  return <StandardUpdateWorkProgressPage bootstrap={bootstrap} user={user} />;
+}
 
 function toneFor(status) {
   const s = String(status ?? '').toLowerCase().replace(/[\s_]+/g, '');
@@ -52,7 +60,7 @@ function useBootstrapProp(prop) {
   return prop ?? q.data ?? null;
 }
 
-export default function UpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
+function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
   const bootstrap = useBootstrapProp(bootstrapProp);
   const roleKey = bootstrap?.role?.key ?? '';
   const isPTL = roleKey === 'team_lead';

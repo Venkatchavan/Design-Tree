@@ -595,7 +595,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
       <div className="page-head">
         <div className="page-title">My projects and team</div>
         <div className="page-sub">
-          {me ? `${empName(selfEmployee ?? me.employee ?? me)} · ${bootstrap?.role?.label ?? role}` : (teamsQ.isLoading ? 'Loading…' : `role ${role || '—'}`)}
+          {selectedTeam ? `${(selectedTeam.lead && typeof selectedTeam.lead === 'object' ? [selectedTeam.lead.firstName, selectedTeam.lead.lastName].filter(Boolean).join(' ') : selectedTeam.lead) || 'Team Lead'} · ${selectedTeam.service ?? 'Structural'}` : (teamsQ.data?.items?.[0] ? `${(teamsQ.data.items[0].lead && typeof teamsQ.data.items[0].lead === 'object' ? [teamsQ.data.items[0].lead.firstName, teamsQ.data.items[0].lead.lastName].filter(Boolean).join(' ') : teamsQ.data.items[0].lead) || 'Team Lead'} · ${teamsQ.data.items[0].service ?? 'Structural'}` : (me ? `${empName(selfEmployee ?? me.employee ?? me)} · ${bootstrap?.role?.label ?? role}` : (teamsQ.isLoading ? 'Loading…' : `role ${role || '—'}`)))}
         </div>
       </div>
       {teamsQ.isError && (
@@ -620,21 +620,17 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
           </select>
         </div>
       )}
-      {!selectedTeam ? (
-        <EmptyState text={teamsQ.isLoading ? 'Loading…' : 'No team assigned yet.'} />
-      ) : (
-        <>
-          {isTL && (
-<div className="kpi-grid cols-5">
-                <KpiCard label="Active projects" value={activeProjects.length} accent="blueprint" />
-                <KpiCard label="Team members" value={members.length} accent="forest" />
-                <KpiCard label="Pending review" value={pendingEntries.length} accent="amber" />
-                <KpiCard label="Awaiting response" value={openRfis.length} accent="rust" />
-                <KpiCard label="Open revisions" value={openRevisionCount} accent="violet" />
-              </div>
-          )}
-          <Tabs tabs={tabs} active={tab} onChange={setTab} />
-
+      {isTL && (
+        <div className="kpi-grid cols-5">
+          <KpiCard label="Active projects" value={activeProjects.length} accent="blueprint" />
+          <KpiCard label="Team members" value={members.length} accent="forest" />
+          <KpiCard label="Pending review" value={pendingEntries.length} accent="amber" />
+          <KpiCard label="Awaiting response" value={openRfis.length} accent="rust" />
+          <KpiCard label="Open revisions" value={openRevisionCount} accent="violet" />
+        </div>
+      )}
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
+      <>
           {tab === 'overview' && (
             <>
               {!isTL && (
@@ -698,8 +694,6 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
 
           {tab === 'team' && (
             <>
-              {TL_CHAIN.has(role) && <ProposeCoordinatorPanel />}
-              {TL_CHAIN.has(role) && <StageRequestPanel />}
               <Panel title={`My team — ${members.length} people`}>
                 {members.length === 0 ? (
                   <EmptyState text="No members in this team yet." />
@@ -712,8 +706,9 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
                           const e = memberEmp(m);
                           const exp = expText(e);
                           return (
-                            <li key={memberId(m) || i}>
-                              {memberName(m)}{exp ? ` · ${exp}` : ''}
+                            <li key={memberId(m) || i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                              <span>{memberName(m)}{exp ? ` · ${exp}` : ''}</span>
+                              <button type="button" className="approve-btn" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => setAllocOpen(true)}>Edit</button>
                             </li>
                           );
                         })}
@@ -721,19 +716,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
                     </div>
                   ))
                 )}
-                <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-                  <button type="button" className="approve-btn" onClick={() => setAllocOpen(true)}>
-                    Edit allocations
-                  </button>
-                  <button
-                    type="button"
-                    className="approve-btn"
-                    onClick={() => navigate(`/teams/${selectedId}`)}
-                  >
-                    Manage roster in Teams →
-                  </button>
-                </div>
-              </Panel>
+                </Panel>
               <Panel title="Team efficiency this week" sub="Hours spent in each stage of project design">
                 <DataTable
                   columns={[
@@ -745,54 +728,6 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
                   emptyText="No hours logged this week."
                 />
               </Panel>
-              {!isTL && (<>
-              <Panel title="Work progress of team (entry top)">
-                <DataTable
-                  columns={[
-                    { key: 'employee', label: 'Employee', render: (e) => empName(e.employee) },
-                    { key: 'project', label: 'Project', render: (e) => projLabel(e.project) },
-                    { key: 'deliverable', label: 'Work', render: (e) => e.deliverable ?? e.taskActivity ?? '—' },
-                    { key: 'status', label: 'Status', render: (e) => <StatusPill tone={toneFor(e.status)}>{e.status ?? '—'}</StatusPill> },
-                  ]}
-                  rows={[...entries].slice(0, 20)}
-                  emptyText="No work progress yet."
-                />
-              </Panel>
-              <Panel title="Meetings of team (log)">
-                <DataTable
-                  columns={[
-                    { key: 'title', label: 'Meeting', render: (m) => m.title ?? '—' },
-                    { key: 'project', label: 'Project', render: (m) => m.project?.name ?? '—' },
-                    { key: 'date', label: 'Date', render: (m) => m.date ? String(m.date).slice(0, 10) : '—' },
-                    { key: 'status', label: 'Status', render: (m) => m.status ?? '—' },
-                  ]}
-                  rows={teamMeetings}
-                  emptyText="No team meetings yet."
-                />
-              </Panel>
-              <Panel title="Revisions — all project logs">
-                <DataTable
-                  columns={[
-                    { key: 'title', label: 'Revision', render: (r) => r.title ?? r.revNo ?? '—' },
-                    { key: 'project', label: 'Project', render: (r) => projLabel(r.project) },
-                    { key: 'status', label: 'Status', render: (r) => <StatusPill tone={toneFor(revisionDisplayStatus(r))}>{revisionDisplayStatus(r)}</StatusPill> },
-                  ]}
-                  rows={teamRevisions.slice(0, 30)}
-                  emptyText="No revisions yet."
-                />
-              </Panel>
-              <Panel title="Transmittals log view">
-                <DataTable
-                  columns={[
-                    { key: 'trNo', label: 'TR no', render: (t) => t.trNo ?? '—' },
-                    { key: 'project', label: 'Project', render: (t) => t.drawing?.project?.name ?? projLabel(t.project) ?? '—' },
-                    { key: 'status', label: 'Status', render: (t) => t.status ?? '—' },
-                  ]}
-                  rows={teamTransmittals.slice(0, 30)}
-                  emptyText="No transmittals for this team yet."
-                />
-              </Panel>
-              </>)}
             </>
           )}
 
@@ -1017,8 +952,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
 
           {tab === 'drawings' && (
             <>
-            {isTL && <DrawingEntryPanel teamProjects={teamProjects} />}
-            <Panel title="Structural drawing register" sub="Uploaded by design engineers and drafters, across my projects">
+              <Panel title="Structural drawing register" sub="Uploaded by design engineers and drafters, across my projects">
               <DataTable
                 columns={[
                   { key: 'project', label: 'Project', render: (d) => projLabel(d.project) },
@@ -1070,7 +1004,6 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
             <RecruitmentPanel rows={myRecruit} canSetStatus={canRecruitStatus} />
           )}
         </>
-      )}
 
       {allocOpen && selectedTeam && (
         <AllocationModal team={selectedTeam} onClose={() => setAllocOpen(false)} />
@@ -1355,7 +1288,8 @@ function TransmittalStatusPanel({ teamProjects, teamDrawings, teamTransmittals, 
     String(b.sentAt ?? b.createdAt ?? '').localeCompare(String(a.sentAt ?? a.createdAt ?? ''))).slice(0, 50);
   return (
     <>
-      <div className="kpi-grid cols-4">
+      <div className="kpi-grid cols-5">
+        <KpiCard label="Transmittal entries" value={teamTransmittals.length} accent="blueprint" />
         <KpiCard label="Drawings awaiting transmittal" value={awaiting} accent="amber" />
         <KpiCard label="In preparation" value={inPrep} accent="blueprint" />
         <KpiCard label="Sent, awaiting acknowledgement" value={sentAwaiting} accent="teal" />
@@ -1820,6 +1754,17 @@ function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverab
         </form>
       </Panel>
       <Panel title="Enter drawing details" sub="No file to upload? Type the drawing details straight into the register. Leave unused rows blank.">
+        <div className="form-row" style={{ maxWidth: 360, marginBottom: 10 }}>
+          <label className="form-label">Project *</label>
+          <select className="filter-select" style={{ width: '100%' }} value={drawProject} onChange={(e) => setDrawProject(e.target.value)}>
+            <option value="">Select project</option>
+            {teamProjects.map((p) => (
+              <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
+                {p.name} ({p.code ?? ''})
+              </option>
+            ))}
+          </select>
+        </div>
         <DataTable
           columns={[
             { key: 'drawingNo', label: 'Drawing no. *', render: (r) => <input className="form-input" placeholder="e.g. S-302" value={r.drawingNo} onChange={(e) => setDrawRow(r._i, { drawingNo: e.target.value })} /> },
@@ -1849,7 +1794,7 @@ function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverab
         <div className="form-row" style={{ maxWidth: 360, marginBottom: 10 }}>
           <label className="form-label">Project</label>
           <select className="filter-select" style={{ width: '100%' }} value={drawProject} onChange={(e) => pickDelivProject(e.target.value)}>
-            <option value="">Select project</option>
+            <option value="">All projects</option>
             {teamProjects.map((p) => (
               <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
                 {p.name} ({p.code ?? ''})
@@ -1882,6 +1827,17 @@ function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverab
         {saveDelivList.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{saveDelivList.error.message}</div>}
       </Panel>
       <Panel title="Deliverables log" sub="Every deliverable added, changed or removed from the list above, newest first">
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+          <span className="form-label">Project</span>
+          <select className="filter-select" value={drawProject} onChange={(e) => pickDelivProject(e.target.value)}>
+            <option value="">All projects</option>
+            {teamProjects.map((p) => (
+              <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
+                {p.name} ({p.code ?? ''})
+              </option>
+            ))}
+          </select>
+        </div>
         {delivLog.length === 0 ? (
           <EmptyState text="No deliverable changes logged yet. Edit the list above and press “Save list”." />
         ) : (
@@ -1900,7 +1856,7 @@ function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverab
           />
         )}
       </Panel>
-      <Panel title="Tasks assigned by me" sub="Most recent first · appears live in each designer’s own “My work” view">
+      <Panel title="Tasks assigned by me" sub="Most recent first · appears live in each designer's own “My work” view">
         {myTasks.length === 0 ? (
           <EmptyState text="No tasks assigned by you yet." />
         ) : (
@@ -2032,10 +1988,10 @@ function RevisionEntryPanel({ teamProjects, canCreate }) {
   const [revNo, setRevNo] = useState('');
   const [details, setDetails] = useState('');
   const [resubmissionDue, setResubmissionDue] = useState('');
-  const [notify, setNotify] = useState(false);
+  const [assignedTo, setAssignedTo] = useState('');
+  const [priority, setPriority] = useState('Normal');
   const [err, setErr] = useState('');
   const [emailLog, setEmailLog] = useState(null);
-  const [priority, setPriority] = useState('Normal');
   const [notifyEmployees, setNotifyEmployees] = useState([]);
   const empQ = useQuery({ queryKey: ['employees-revision-notify'], queryFn: () => employeesApi.list({}) });
   const notifyOptions = (empQ.data?.items ?? []).filter((e) => /director|design management/i.test(String(e.designation ?? '')));
@@ -2060,7 +2016,7 @@ function RevisionEntryPanel({ teamProjects, canCreate }) {
     );
   }
   return (
-    <Panel title="Revision entry">
+    <Panel title="Revision entry" sub="Log a revision as it happens. It is added to the Revision log and the designer's own dashboard, and email notifications go out to the concerned people automatically on submit.">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -2079,6 +2035,7 @@ function RevisionEntryPanel({ teamProjects, canCreate }) {
             stage: stage || undefined,
             drawing: drawing || undefined,
             revNo: revNo || undefined,
+            assignedTo: assignedTo || undefined,
             resubmissionDue: resubmissionDue || undefined,
             details: details.trim(),
             priority,
@@ -2099,16 +2056,28 @@ function RevisionEntryPanel({ teamProjects, canCreate }) {
             </select>
           </div>
           <div className="form-row">
-            <label className="form-label">Stage</label>
+            <label className="form-label">Stage *</label>
             <input className="form-input" value={stage} onChange={(e) => setStage(e.target.value)} />
           </div>
           <div className="form-row">
-            <label className="form-label">Drawing</label>
-            <input className="form-input" value={drawing} onChange={(e) => setDrawing(e.target.value)} />
+            <label className="form-label">Drawing / deliverable *</label>
+            <input className="form-input" value={drawing} onChange={(e) => setDrawing(e.target.value)} placeholder="Select or type the item being revised" />
           </div>
           <div className="form-row">
-            <label className="form-label">Rev no</label>
+            <label className="form-label">Revision no.</label>
             <input className="form-input" value={revNo} onChange={(e) => setRevNo(e.target.value)} />
+          </div>
+          <div className="form-row">
+            <label className="form-label">Assigned to *</label>
+            <input className="form-input" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} placeholder="Select team member" />
+          </div>
+          <div className="form-row">
+            <label className="form-label">Raised by</label>
+            <input className="form-input" value="Internal" readOnly />
+          </div>
+          <div className="form-row">
+            <label className="form-label">Date raised</label>
+            <input type="date" className="form-input" value={new Date().toISOString().slice(0,10)} readOnly />
           </div>
           <div className="form-row">
             <label className="form-label">Resubmission due</label>
