@@ -601,7 +601,7 @@ function DirectorMarketingView() {
   return (
     <div id="view-marketing">
       <div className="page-head">
-        <div className="page-title">Marketing Dashboard</div>
+        <div className="page-title">Marketing</div>
         <div className="page-sub">Project details for marketing and portfolio use — no billing, staffing or technical data</div>
       </div>
 

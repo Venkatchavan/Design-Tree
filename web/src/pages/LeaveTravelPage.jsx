@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { meApi, projectsApi } from '../lib/api.js';
-import { SUPER_ROLES } from '../lib/session.js';
 import { allowanceApi, holidaysApi, leaveApi, travelApi } from '../lib/phase4bApi.js';
 import { docsApi, fileUrl } from '../lib/docsApi.js';
 import { employeesApi } from '../lib/api.js';
@@ -19,18 +18,22 @@ function fmtDate(v) {
   if (Number.isNaN(d.getTime())) return String(v);
   return d.toISOString().slice(0, 10);
 }
-function empIdOf(v) {
-  if (v == null) return '';
-  if (typeof v === 'object') return String(v._id ?? v.id ?? '');
-  return String(v);
-}
-function isPending(s) {
-  return String(s ?? '').toLowerCase() === 'pending';
-}
 function quarterStart() {
   const now = new Date();
   const q = Math.floor(now.getMonth() / 3) * 3;
   return new Date(now.getFullYear(), q, 1);
+}
+
+// The chain produces three in-flight states: Pending (with Team Lead),
+// Pending HR and Pending Finance.
+function isPending(s) {
+  return /^(pending|pending\s+hr|pending\s+finance)$/i.test(String(s ?? '').trim());
+}
+
+// Editable while no stage has recorded a verdict yet.
+function isEditableRow(r) {
+  return !(r?.stages?.tl?.status || r?.stages?.hr?.status || r?.stages?.finance?.status)
+    && isPending(r?.status);
 }
 
 const LEAVE_TYPES = ['Casual leave', 'Sick leave', 'Earned leave', 'Unpaid leave', 'Other'];
@@ -42,10 +45,14 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState('leave');
   const roleKey = bootstrap?.role?.key ?? '';
-  // AssocTD: spec layout — balance / pending / quarterly trips, and the
-  // three request tabs only (no Approvals tab, no awaiting card).
-  const isAssocTD = roleKey === 'assoc_technical_director';
-  const isSpocOrEng = ['coordinator', 'engineer_drafter', 'team_lead'].includes(roleKey);
+
+  // Approvals sub-tab. Team Lead / HR / Finance act on the chain
+  // (TL → HR → Finance); FD / WD / AD get a read-only view of it.
+  const canDecide = ['team_lead', 'hr', 'finance'].includes(roleKey);
+  const showApprovals = canDecide || ['founding_director', 'working_director', 'associate_director'].includes(roleKey);
+  const isHr = roleKey === 'hr';
+  const isFinance = roleKey === 'finance';
+  const isTeamLead = roleKey === 'team_lead';
 
   // --- queries ---
   const meQ = useQuery({ queryKey: ['me'], queryFn: meApi });
@@ -60,8 +67,12 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
   const leaveMineQ = useQuery({ queryKey: ['leave-mine'], queryFn: leaveApi.mine });
   const travelMineQ = useQuery({ queryKey: ['travel-mine'], queryFn: travelApi.mine });
   const allowMineQ = useQuery({ queryKey: ['allowance-mine'], queryFn: allowanceApi.mine });
-  const queueQ = useQuery({ queryKey: ['lt-queue'], queryFn: leaveApi.queue });
-  const scopeQ = useQuery({ queryKey: ['lt-scope'], queryFn: leaveApi.scopeIds });
+  // Only roles that get an Approvals tab hit the queue endpoint.
+  const queueQ = useQuery({
+    queryKey: ['lt-queue'],
+    queryFn: leaveApi.queue,
+    enabled: showApprovals,
+  });
   const holidaysQ = useQuery({ queryKey: ['holidays'], queryFn: () => holidaysApi.list({}) });
   const projectsQ = useQuery({ queryKey: ['projects', 'lt'], queryFn: () => projectsApi.list({ status: 'Active' }) });
 
@@ -70,46 +81,20 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
   const allowMine = allowMineQ.data?.items ?? [];
   const projects = projectsQ.data?.items ?? [];
 
-  const scopeIds = useMemo(() => {
-    const d = scopeQ.data;
-    if (!d) return null;
-    if (Array.isArray(d)) return new Set(d.map(String));
-    const arr = d.employeeIds ?? d.ids ?? d.scope ?? d.items ?? [];
-    if (Array.isArray(arr)) return new Set(arr.map((v) => String(v?._id ?? v?.id ?? v)));
-    return null;
-  }, [scopeQ.data]);
-
   const queue = queueQ.data ?? {};
   const qLeave = queue.leave ?? queue.leaves ?? [];
   const qTravel = queue.travel ?? queue.travels ?? [];
   const qAllow = queue.allowance ?? queue.allowances ?? [];
 
-  const canSeeFullQueue = useMemo(() => {
-    if (SUPER_ROLES.includes(roleKey)) return true;
-    return ['hr', 'finance', 'admin_billing', 'admin'].includes(roleKey);
-  }, [roleKey]);
-  const isScopedApprover = ['team_lead', 'assoc_technical_director', 'technical_director'].includes(roleKey);
-
-  function inScope(item) {
-    if (canSeeFullQueue) return true;
-    if (!isScopedApprover) return false;
-    if (!scopeIds) return true;
-    const eid = empIdOf(item.employee ?? item.emp ?? item.requestedBy);
-    if (!eid) return true;
-    return scopeIds.has(eid);
-  }
-
+  // The server already scopes the queue per role (Team Lead → own teams,
+  // Finance → Finance-department leave), so no client-side filtering here.
   const filteredQueue = useMemo(
-    () => ({
-      leave: qLeave.filter(inScope),
-      travel: qTravel.filter(inScope),
-      allowance: qAllow.filter(inScope),
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [qLeave, qTravel, qAllow, scopeIds, roleKey],
+    () => ({ leave: qLeave, travel: qTravel, allowance: qAllow }),
+    [qLeave, qTravel, qAllow],
   );
-  const awaitingCount = filteredQueue.leave.length + filteredQueue.travel.length + filteredQueue.allowance.length;
 
+  // Any request still moving through the chain counts as pending for me —
+  // "Pending", "Pending HR" and "Pending Finance" are all in flight.
   const myPending = useMemo(
     () => [...leaveMine, ...travelMine, ...allowMine].filter((r) => isPending(r.status)).length,
     [leaveMine, travelMine, allowMine],
@@ -161,6 +146,9 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
           { key: 'leave', label: 'Leave request' },
           { key: 'travel', label: 'Travel request' },
           { key: 'allowance', label: 'LA / Cab / Other requests' },
+          ...(showApprovals
+            ? [{ key: 'approvals', label: canDecide ? 'Approvals' : 'Approvals (read-only)' }]
+            : []),
         ]}
         active={tab}
         onChange={setTab}
@@ -181,6 +169,19 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
       {tab === 'allowance' && (
         <AllowanceTab mine={allowMine} loading={allowMineQ.isLoading} error={allowMineQ.error} projects={projects} onDone={invalidateAll} />
       )}
+      {tab === 'approvals' && showApprovals && (
+        <ApprovalsTab
+          queue={filteredQueue}
+          loading={queueQ.isLoading}
+          error={queueQ.error}
+          roleKey={roleKey}
+          canDecide={canDecide}
+          isTeamLead={isTeamLead}
+          isHr={isHr}
+          isFinance={isFinance}
+          onDone={invalidateAll}
+        />
+      )}
     </>
   );
 }
@@ -192,6 +193,9 @@ function LeaveTab({ mine, loading, error, holidays, employee, onDone }) {
   const [to, setTo] = useState('');
   const [reason, setReason] = useState('');
   const [err, setErr] = useState('');
+  // Own request being corrected. Only editable while still at the very
+  // start of the chain (status exactly "Pending").
+  const [editingId, setEditingId] = useState(null);
 
   const create = useMutation({
     mutationFn: (body) => leaveApi.create(body),
@@ -206,6 +210,34 @@ function LeaveTab({ mine, loading, error, holidays, employee, onDone }) {
     onError: (e) => setErr(e.message),
   });
 
+  const update = useMutation({
+    mutationFn: ({ id, body }) => leaveApi.update(id, body),
+    onSuccess: () => {
+      onDone();
+      cancelEdit();
+      queryClient.invalidateQueries({ queryKey: ['leave-mine'] });
+    },
+    onError: (e) => setErr(e.message),
+  });
+
+  function startEdit(r) {
+    setEditingId(String(r._id ?? r.id));
+    setLeaveType(r.leaveType ?? 'Casual leave');
+    setFrom(String(r.from ?? '').slice(0, 10));
+    setTo(String(r.to ?? '').slice(0, 10));
+    setReason(r.reason ?? '');
+    setErr('');
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setLeaveType('Casual leave');
+    setFrom('');
+    setTo('');
+    setReason('');
+    setErr('');
+  }
+
   function submit(e) {
     e.preventDefault();
     setErr('');
@@ -213,14 +245,18 @@ function LeaveTab({ mine, loading, error, holidays, employee, onDone }) {
       setErr('From and To dates are required.');
       return;
     }
-    create.mutate({ leaveType, from, to, reason: reason || undefined });
+    const body = { leaveType, from, to, reason: reason || undefined };
+    if (editingId) update.mutate({ id: editingId, body });
+    else create.mutate(body);
   }
+
+  const busy = create.isPending || update.isPending;
 
   const empName = [employee?.firstName, employee?.lastName].filter(Boolean).join(' ') || employee?.empId || '';
 
   return (
     <>
-      <Panel title="New leave request">
+      <Panel title={editingId ? 'Edit leave request' : 'New leave request'}>
         <form onSubmit={submit}>
           <div className="field-grid">
             {empName && (
@@ -249,9 +285,16 @@ function LeaveTab({ mine, loading, error, holidays, employee, onDone }) {
             <textarea className="form-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Brief reason for leave" />
           </div>
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-          <button type="submit" className="btn-primary" disabled={create.isPending}>
-            {create.isPending ? 'Submitting…' : 'Submit leave request'}
-          </button>
+          <span style={{ display: 'flex', gap: 10 }}>
+            <button type="submit" className="btn-primary" disabled={busy}>
+              {busy ? 'Saving…' : editingId ? 'Save changes' : 'Submit leave request'}
+            </button>
+            {editingId && (
+              <button type="button" className="approve-btn" onClick={cancelEdit}>
+                Cancel
+              </button>
+            )}
+          </span>
         </form>
       </Panel>
       <Panel title="My leave history">
@@ -267,6 +310,14 @@ function LeaveTab({ mine, loading, error, holidays, employee, onDone }) {
               { key: 'reason', label: 'Reason', render: (r) => r.reason ?? '—' },
               { key: 'approver', label: 'Approver', render: (r) => r.decidedBy?.name ?? r.decidedBy?.email ?? '—' },
               { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+              {
+                key: 'edit',
+                label: '',
+                render: (r) =>
+                  isEditableRow(r) ? (
+                    <button type="button" className="back-link" onClick={() => startEdit(r)}>Edit</button>
+                  ) : null,
+              },
             ]}
             rows={mine}
             emptyText="No leave requests yet."
@@ -300,29 +351,63 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
   const [err, setErr] = useState('');
   const [settleId, setSettleId] = useState(null);
   const [settleResult, setSettleResult] = useState(null);
+  // Own request being corrected (only while status is exactly "Pending").
+  const [editingId, setEditingId] = useState(null);
 
   const create = useMutation({
     mutationFn: (body) => travelApi.create(body),
     onSuccess: () => {
       onDone();
-      setPurpose('');
-      setProject('');
-      setFromCity('');
-      setToCity('');
-      setDepartureDate('');
-      setReturnDate('');
-      setMode('');
-      setEstExpense('');
-      setAdvanceRequested('');
-      setErr('');
+      resetTravelForm();
     },
     onError: (e) => setErr(e.message),
   });
 
+  const update = useMutation({
+    mutationFn: ({ id, body }) => travelApi.update(id, body),
+    onSuccess: () => {
+      onDone();
+      cancelTravelEdit();
+    },
+    onError: (e) => setErr(e.message),
+  });
+
+  function resetTravelForm() {
+    setPurpose('');
+    setProject('');
+    setFromCity('');
+    setToCity('');
+    setDepartureDate('');
+    setReturnDate('');
+    setMode('');
+    setEstExpense('');
+    setAdvanceRequested('');
+    setErr('');
+  }
+
+  function startTravelEdit(r) {
+    setEditingId(String(r._id ?? r.id));
+    setPurpose(r.purpose ?? '');
+    setProject(String(r.project?._id ?? r.project ?? ''));
+    setFromCity(r.fromCity ?? '');
+    setToCity(r.toCity ?? '');
+    setDepartureDate(String(r.departureDate ?? '').slice(0, 10));
+    setReturnDate(String(r.returnDate ?? '').slice(0, 10));
+    setMode(r.mode ?? '');
+    setEstExpense(r.estExpense ?? '');
+    setAdvanceRequested(r.advanceRequested ?? '');
+    setErr('');
+  }
+
+  function cancelTravelEdit() {
+    setEditingId(null);
+    resetTravelForm();
+  }
+
   function submit(e) {
     e.preventDefault();
     setErr('');
-    create.mutate({
+    const body = {
       purpose: purpose || undefined,
       project: project || undefined,
       fromCity: fromCity || undefined,
@@ -332,12 +417,16 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
       mode: mode || undefined,
       estExpense: estExpense === '' ? undefined : Number(estExpense),
       advanceRequested: advanceRequested === '' ? undefined : Number(advanceRequested),
-    });
+    };
+    if (editingId) update.mutate({ id: editingId, body });
+    else create.mutate(body);
   }
+
+  const travelBusy = create.isPending || update.isPending;
 
   return (
     <>
-      <Panel title="New travel request">
+      <Panel title={editingId ? 'Edit travel request' : 'New travel request'}>
         <form onSubmit={submit}>
           <div className="field-grid">
             <div className="form-row">
@@ -365,9 +454,16 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
             <div className="form-row"><label className="form-label">Advance amount requested (₹)</label><input className="form-input" type="number" min="0" value={advanceRequested} onChange={(e) => setAdvanceRequested(e.target.value)} /></div>
           </div>
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-          <button type="submit" className="btn-primary" disabled={create.isPending}>
-            {create.isPending ? 'Submitting…' : 'Submit travel request'}
-          </button>
+          <span style={{ display: 'flex', gap: 10 }}>
+            <button type="submit" className="btn-primary" disabled={travelBusy}>
+              {travelBusy ? 'Saving…' : editingId ? 'Save changes' : 'Submit travel request'}
+            </button>
+            {editingId && (
+              <button type="button" className="approve-btn" onClick={cancelTravelEdit}>
+                Cancel
+              </button>
+            )}
+          </span>
         </form>
       </Panel>
       <Panel title="My travel history">
@@ -392,9 +488,16 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
                 key: 'settle',
                 label: 'Actions',
                 render: (r) => (
-                  <button type="button" className="approve-btn" onClick={() => { setSettleId(r._id ?? r.id); setSettleResult(r.balance != null || r.actualExpense != null ? r : null); }}>
-                    Settle
-                  </button>
+                  <span style={{ display: 'flex', gap: 10, whiteSpace: 'nowrap' }}>
+                    {isEditableRow(r) && (
+                      <button type="button" className="back-link" onClick={() => startTravelEdit(r)}>
+                        Edit
+                      </button>
+                    )}
+                    <button type="button" className="approve-btn" onClick={() => { setSettleId(r._id ?? r.id); setSettleResult(r.balance != null || r.actualExpense != null ? r : null); }}>
+                      Settle
+                    </button>
+                  </span>
                 ),
               },
             ]}
@@ -571,12 +674,47 @@ function SettleModal({ travelId, initialResult, trips, onClose, onDone }) {
   );
 }
 
-function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
+// The approval chain is Team Lead → HR → Finance. A row is actionable only
+// while the due stage matches this role's own stage.
+function dueStage(row) {
+  const stages = row?.flowStages?.length ? row.flowStages : ['tl', 'hr'];
+  for (const k of stages) {
+    const s = row?.stages?.[k]?.status;
+    if (s === 'Rejected') return null;
+    if (s !== 'Approved') return k;
+  }
+  return null;
+}
+
+function canAct(row, myStage) {
+  return !!myStage && dueStage(row) === myStage;
+}
+
+function stageTrail(row) {
+  const stages = row?.flowStages?.length ? row.flowStages : ['tl', 'hr'];
+  const LABEL = { tl: 'TL', hr: 'HR', finance: 'FIN' };
+  return stages
+    .map((k) => {
+      const s = row?.stages?.[k]?.status;
+      const mark = s === 'Approved' ? '✓' : s === 'Rejected' ? '✕' : '•';
+      return `${LABEL[k] ?? k} ${mark}`;
+    })
+    .join('  ');
+}
+
+function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, isHr, isFinance, onDone }) {
   const queryClient = useQueryClient();
   const [remarks, setRemarks] = useState({});
   const [err, setErr] = useState('');
 
-  const decidedQ = useQuery({ queryKey: ['leave-decided'], queryFn: () => leaveApi.list({}) });
+  const myStage = isTeamLead ? 'tl' : isHr ? 'hr' : isFinance ? 'finance' : null;
+
+  // Read-only viewers still get the organisation-wide decision history.
+  const decidedQ = useQuery({
+    queryKey: ['leave-decided'],
+    queryFn: () => leaveApi.list({}),
+    enabled: isHr || roleKey === 'founding_director' || roleKey === 'working_director',
+  });
 
   function setRemark(id, v) {
     setRemarks((p) => ({ ...p, [id]: v }));
@@ -599,6 +737,8 @@ function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
 
   function decideButtons(kind, r) {
     const id = String(r._id ?? r.id);
+    // Read-only roles, and rows whose turn is somebody else's, show no buttons.
+    if (!canDecide || !canAct(r, myStage)) return '—';
     return (
       <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <input
@@ -606,7 +746,7 @@ function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
           style={{ minWidth: 140 }}
           value={remarks[id] ?? ''}
           onChange={(e) => setRemark(id, e.target.value)}
-          placeholder="Remarks (required to reject leave)"
+          placeholder="Remarks (required to reject)"
         />
         <button type="button" className="approve-btn" onClick={() => decide(kind, id, 'Approved')}>Approve</button>
         <button type="button" className="approve-btn" onClick={() => decide(kind, id, 'Rejected')}>Reject</button>
@@ -618,17 +758,40 @@ function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
     ? [e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || '—'
     : '—');
 
+  // Anything no longer in flight has reached a verdict.
   const decisions = useMemo(() => arr(decidedQ.data?.items ?? decidedQ.data)
-    .filter((r) => String(r.status ?? '').toLowerCase() !== 'pending')
+    .filter((r) => !isPending(r.status))
     .sort((a, b) => String(b.decidedAt ?? b.updatedAt ?? '').localeCompare(String(a.decidedAt ?? a.updatedAt ?? '')))
     .slice(0, 50), [decidedQ.data]);
 
-  const scopeSub = ['hr', 'finance', 'admin_billing', 'admin'].includes(roleKey) || SUPER_ROLES.includes(roleKey)
-    ? 'All employees'
-    : `Employees in scope for ${meName || 'you'}`;
+  const scopeSub = isTeamLead
+    ? 'Requests from your team'
+    : isFinance
+      ? 'Finance team leave requests only'
+      : 'Every pending leave request';
+  const travelScopeSub = isFinance
+    ? 'Travel requests across every department'
+    : isTeamLead
+      ? 'Requests from your team'
+      : 'Every pending travel request';
+
+  // Read-only viewers (FD / WD / AD) get no action buttons; the per-panel
+  // matrix below decides which components each role sees.
+
+  // Per-role components: FD → Leave + Recent (read-only);
+  // AD → Leave only (read-only); WD → Travel + Recent (read-only);
+  // TL / HR / Finance → full chain panels with action buttons on their turn.
+  const isFD = roleKey === 'founding_director';
+  const isWD = roleKey === 'working_director';
+  const isAD = roleKey === 'associate_director';
+  const showLeavePanel = isTeamLead || isHr || isFinance || isFD || isAD;
+  const showTravelPanel = isTeamLead || isHr || isFinance || isWD;
+  const showAllowancePanel = isTeamLead || isHr || isFinance;
+  const showRecentPanel = isHr || isFD || isWD;
 
   return (
     <>
+      {showLeavePanel && (
       <Panel title="Leave approvals" sub={scopeSub}>
         {loading ? <EmptyState text="Loading…" /> : error ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>
@@ -643,6 +806,7 @@ function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
               { key: 'to', label: 'To', render: (r) => fmtDate(r.to) },
               { key: 'reason', label: 'Reason', render: (r) => r.reason ?? '—' },
               { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+              { key: 'flow', label: 'Chain', render: (r) => <span className="mono" style={{ fontSize: 12 }}>{stageTrail(r)}</span> },
               { key: 'decide', label: '', render: (r) => decideButtons('leave', r) },
             ]}
             rows={queue.leave}
@@ -650,7 +814,9 @@ function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
           />
         )}
       </Panel>
-      <Panel title="Travel approvals">
+      )}
+      {showTravelPanel && (
+      <Panel title="Travel approvals" sub={travelScopeSub}>
         {loading ? <EmptyState text="Loading…" /> : error ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>
         ) : queue.travel.length === 0 ? (
@@ -661,7 +827,9 @@ function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
               { key: 'employee', label: 'Employee', render: (r) => empNameOf(r.employee) },
               { key: 'route', label: 'Route', render: (r) => `${r.fromCity ?? ''} → ${r.toCity ?? ''}` },
               { key: 'dates', label: 'Dates', render: (r) => `${fmtDate(r.departureDate)} / ${fmtDate(r.returnDate)}` },
+              { key: 'estExpense', label: 'Est. expense', render: (r) => (r.estExpense ? `₹${Number(r.estExpense).toLocaleString('en-IN')}` : '—') },
               { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+              { key: 'flow', label: 'Chain', render: (r) => <span className="mono" style={{ fontSize: 12 }}>{stageTrail(r)}</span> },
               { key: 'decide', label: '', render: (r) => decideButtons('travel', r) },
             ]}
             rows={queue.travel}
@@ -669,7 +837,9 @@ function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
           />
         )}
       </Panel>
-      <Panel title="LA / Cab / Other approvals">
+      )}
+      {showAllowancePanel && (
+      <Panel title="LA / Cab / Other approvals" sub="Local Allowance, cab and other travel expense requests">
         {loading ? <EmptyState text="Loading…" /> : error ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>
         ) : queue.allowance.length === 0 ? (
@@ -681,6 +851,7 @@ function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
               { key: 'reqType', label: 'Type' },
               { key: 'amount', label: 'Amount', render: (r) => `₹${Number(r.amount ?? 0).toLocaleString('en-IN')}` },
               { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+              { key: 'flow', label: 'Chain', render: (r) => <span className="mono" style={{ fontSize: 12 }}>{stageTrail(r)}</span> },
               { key: 'decide', label: '', render: (r) => decideButtons('allowance', r) },
             ]}
             rows={queue.allowance}
@@ -688,7 +859,9 @@ function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
           />
         )}
       </Panel>
+      )}
       {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
+      {showRecentPanel && (
       <Panel title="Recent leave decisions" sub="Every approval and rejection across the organisation, with remarks where rejected">
         {decidedQ.isLoading ? <EmptyState text="Loading…" /> : decidedQ.isError ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{decidedQ.error.message}</div>
@@ -699,6 +872,7 @@ function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
               { key: 'role', label: 'Role', render: (r) => r.employee?.designation ?? '—' },
               { key: 'leaveType', label: 'Leave type' },
               { key: 'status', label: 'Decision', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+              { key: 'flow', label: 'Chain', render: (r) => <span className="mono" style={{ fontSize: 12 }}>{stageTrail(r)}</span> },
               { key: 'remarks', label: 'Remarks', render: (r) => r.remarks ?? '—' },
               { key: 'decidedBy', label: 'Decided by', render: (r) => r.decidedBy?.name ?? r.decidedBy?.email ?? '—' },
               { key: 'decidedAt', label: 'Date', render: (r) => fmtDate(r.decidedAt) },
@@ -708,6 +882,7 @@ function ApprovalsTab({ queue, loading, error, roleKey, meName, onDone }) {
           />
         )}
       </Panel>
+      )}
     </>
   );
 }
@@ -726,14 +901,29 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
   const [billFile, setBillFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // Own request being corrected (only while status is exactly "Pending").
+  const [editingId, setEditingId] = useState(null);
 
   function resetForm() {
+    setEditingId(null);
     setDate('');
     setProject('');
     setAmount('');
     setDays('');
     setPurpose('');
     setBillFile(null);
+  }
+
+  function startEdit(r) {
+    setEditingId(String(r._id ?? r.id));
+    setReqType(r.reqType ?? 'LA');
+    setDate(String(r.date ?? '').slice(0, 10));
+    setProject(String(r.project?._id ?? r.project ?? ''));
+    setAmount(r.amount ?? '');
+    setDays(r.days ?? '');
+    setPurpose(r.purpose ?? r.description ?? '');
+    setBillFile(null);
+    setErr('');
   }
 
   function reqTypeLabel(t) {
@@ -756,6 +946,22 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
     setErr('');
     setBusy(true);
     try {
+      if (editingId) {
+        await allowanceApi.update(editingId, {
+          reqType,
+          date: date || undefined,
+          project: project || undefined,
+          amount: amount === '' ? undefined : Number(amount),
+          days: days === '' ? undefined : Number(days),
+          purpose: purpose || undefined,
+        });
+        if (billFile) {
+          await docsApi.allowanceBill(editingId, billFile);
+        }
+        onDone();
+        resetForm();
+        return;
+      }
       const created = await allowanceApi.create({
         reqType,
         date: date || undefined,
@@ -779,7 +985,7 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
 
   return (
     <>
-      <Panel title="New request" sub="Local Allowance, cab booking or any other travel-related expense, with the bill attached">
+      <Panel title={editingId ? 'Edit request' : 'New request'} sub="Local Allowance, cab booking or any other travel-related expense, with the bill attached">
         <form onSubmit={submit}>
           <div className="field-grid">
             <div className="form-row">
@@ -806,9 +1012,16 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
           <div className="form-row"><label className="form-label">Purpose / remarks</label><input className="form-input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Brief purpose for this expense" /></div>
           <div className="form-row"><label className="form-label">Bill / invoice attachment</label><input type="file" onChange={(e) => setBillFile(e.target.files?.[0] ?? null)} /></div>
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-          <button type="submit" className="btn-primary" disabled={busy}>
-            {busy ? 'Submitting…' : 'Submit request'}
-          </button>
+          <span style={{ display: 'flex', gap: 10 }}>
+            <button type="submit" className="btn-primary" disabled={busy}>
+              {busy ? 'Saving…' : editingId ? 'Save changes' : 'Submit request'}
+            </button>
+            {editingId && (
+              <button type="button" className="approve-btn" onClick={resetForm}>
+                Cancel
+              </button>
+            )}
+          </span>
         </form>
       </Panel>
       <Panel title="My LA / Cab / Other requests">
@@ -826,6 +1039,14 @@ function AllowanceTab({ mine, loading, error, projects, onDone }) {
               { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
               { key: 'remarks', label: 'Remarks', render: (r) => r.remarks ?? '—' },
               { key: 'submitted', label: 'Submitted', render: (r) => fmtDate(r.createdAt) },
+              {
+                key: 'edit',
+                label: '',
+                render: (r) =>
+                  isEditableRow(r) ? (
+                    <button type="button" className="back-link" onClick={() => startEdit(r)}>Edit</button>
+                  ) : null,
+              },
             ]}
             rows={mine}
             emptyText="No requests submitted yet."

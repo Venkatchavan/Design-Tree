@@ -21,7 +21,8 @@ const BASE_PROJECT_TYPES = [
   'Hospitality', 'Retail', 'Mixed-use', 'Infrastructure', 'Interior',
 ];
 const BASE_SERVICES = [
-  'SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS',
+  'STR', 'PHE', 'Electrical', 'HVAC', 'Fire', 'SMEP', 'SMEPF', 'MEP', 'BIM', 'GBS',
+  'Peer review',
 ];
 const BASE_SOURCES = [
   'Referral', 'Direct', 'Tender', 'Repeat Client', 'Marketing', 'Other',
@@ -46,7 +47,7 @@ const BLANK = {
   scopeText: '',
   fee: '',
   hospitality: '',
-  priority: '',
+  jobNumber: '',
   category: '',
   referral: '',
   sourcePerson: '',
@@ -81,6 +82,28 @@ function union(base, live) {
 
 function unionOptions(base, live) {
   return union(base, live);
+}
+
+// Services keep the canonical BASE_SERVICES order; live values not in the
+// base list are appended alphabetically.
+function orderedUnion(base, live) {
+  const seen = new Set();
+  const out = [];
+  for (const v of base) {
+    const t = String(v ?? '').trim();
+    if (!t || seen.has(t.toLowerCase())) continue;
+    seen.add(t.toLowerCase());
+    out.push(t);
+  }
+  const extra = [];
+  for (const v of live) {
+    const t = String(v ?? '').trim();
+    if (!t || seen.has(t.toLowerCase())) continue;
+    seen.add(t.toLowerCase());
+    extra.push(t);
+  }
+  extra.sort((a, b) => a.localeCompare(b));
+  return [...out, ...extra];
 }
 
 function F({ label, children }) {
@@ -227,11 +250,17 @@ export default function NewProjectPage() {
 
   const projectsQ = useQuery({ queryKey: ['projects-new-form'], queryFn: () => projectsApi.list({}) });
 
+  const nextJobQ = useQuery({
+    queryKey: ['next-job-number'],
+    queryFn: () => projectsApi.nextJobNumber(),
+    retry: false,
+  });
+
   const projectRows = projectsQ.data?.items ?? [];
 
   const stateOptions = unionOptions(BASE_STATES, projectRows.map((p) => p.state));
   const projectTypeOptions = unionOptions(BASE_PROJECT_TYPES, projectRows.map((p) => p.projectType));
-  const serviceOptions = unionOptions(BASE_SERVICES, projectRows.flatMap((p) => p.services ?? []));
+  const serviceOptions = orderedUnion(BASE_SERVICES, projectRows.flatMap((p) => p.services ?? []));
   const sourceOptions = unionOptions(BASE_SOURCES, projectRows.map((p) => p.source));
   const entityOptions = unionOptions([], projectRows.map((p) => p.entityName));
 
@@ -283,6 +312,7 @@ export default function NewProjectPage() {
       services: form.services ?? [],
       source: form.source.trim() || undefined,
       entityName: form.entityName.trim() || undefined,
+      jobNumber: form.jobNumber.trim() || undefined,
       location: form.location.label.trim()
         ? {
             label: form.location.label.trim(),
@@ -296,7 +326,6 @@ export default function NewProjectPage() {
       scope: form.scopeText.trim() || fee !== undefined
         ? [{ scope: form.scopeText.trim() || undefined, fee }]
         : [],
-      priority: form.priority || undefined,
       category: form.category || undefined,
       referral: form.referral.trim() || undefined,
       sourcePerson: form.sourcePerson.trim() || undefined,
@@ -412,20 +441,16 @@ export default function NewProjectPage() {
               </div>
             </div>
             <F label="Project Sources">
-              <select
+              <input
                 className="form-input"
+                list="np-sources"
+                placeholder="Type to enter…"
                 value={form.source}
                 onChange={(e) => set('source', e.target.value)}
-              >
-                <option value="">--None--</option>
-                {sourceOptions.map((x) => <option key={x} value={x}>{x}</option>)}
-              </select>
-            </F>
-            <F label="Priority">
-              <select className="form-input" value={form.priority} onChange={(e) => set('priority', e.target.value)}>
-                <option value="">--None--</option>
-                {['High', 'Medium', 'Low'].map((x) => <option key={x} value={x}>{x}</option>)}
-              </select>
+              />
+              <datalist id="np-sources">
+                {sourceOptions.map((x) => <option key={x} value={x} />)}
+              </datalist>
             </F>
             <F label="Category">
               <select className="form-input" value={form.category} onChange={(e) => set('category', e.target.value)}>
@@ -480,6 +505,14 @@ export default function NewProjectPage() {
               </select>
             </F>
             <F label="Work order date"><input type="date" className="form-input" value={form.workOrderDate} onChange={(e) => set('workOrderDate', e.target.value)} /></F>
+            <F label="Job number">
+              <input
+                className="form-input"
+                placeholder={nextJobQ.data?.jobNumber ? `${nextJobQ.data.jobNumber} (auto if blank)` : 'Auto-generated if left blank'}
+                value={form.jobNumber}
+                onChange={(e) => set('jobNumber', e.target.value)}
+              />
+            </F>
             <F label="Work order document"><input className="form-input" placeholder="e.g. WO_PRJ045_signed.pdf" value={form.workOrderDocument} onChange={(e) => set('workOrderDocument', e.target.value)} /></F>
           </div>
         </Panel>

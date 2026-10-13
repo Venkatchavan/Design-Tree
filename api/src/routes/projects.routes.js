@@ -47,6 +47,8 @@ router.get('/next-job-number', denyRoles(...NO_PROJECT_WRITES), requireRole('adm
 router.get('/:id/team', requireAuth, getProjectTeam);
 router.get('/:id/gfc-readiness', requireInternal(), gfcReadiness);
 // SPOC-owned contacts + team leads (admin is read-only on these).
+// Principal team leads may also be entered by the Technical Director
+// per project / service.
 router.put(
   '/:id/spoc-contacts',
   requireRole('coordinator', 'design_mgmt_head'),
@@ -54,7 +56,7 @@ router.put(
 );
 router.put(
   '/:id/team-leads',
-  requireRole('coordinator', 'design_mgmt_head'),
+  requireRole('coordinator', 'design_mgmt_head', 'technical_director'),
   saveTeamLeads,
 );
 router.post('/:id/activate', requireRole('admin_billing'), activateProject);

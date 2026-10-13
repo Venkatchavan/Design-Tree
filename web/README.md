@@ -74,8 +74,8 @@ BrowserRouter
 - Delivery: `team_lead` (my-team + work-progress), `coordinator` (home
   `my-coordination`), `engineer_drafter` (home `my-work`), QS/QA/BIM/GBS/Peer
   (`work-tracking` + update-work-progress), `design_mgmt_head`
-  (design-management), `marketing`, `finance` (finance + finance-occ + travel +
-  revenue + billing-status).
+  (design-management), `marketing`, `finance` (Finance Dashboard + Finance hub
+  with OCC / Revenue inner tabs + travel + billing-status).
 - External `client` / `architect` (home `/portal`): `ClientPortalPage.jsx`
   only (details/stages/revisions/requests/drawings + acknowledge/certificates).
 

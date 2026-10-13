@@ -1068,7 +1068,7 @@ function CoordRfiTab({ myAllocs, activeProjects }) {
 }
 
 export default function MyCoordinationPage({ bootstrap, user }) {
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState('daily');
   const roleKey = bootstrap?.role?.key;
   const isSuper = SUPER_ROLES.includes(roleKey);
   const userName = user?.name ?? user?.email ?? '';
@@ -1115,22 +1115,14 @@ export default function MyCoordinationPage({ bootstrap, user }) {
       <CoordinationKpis myAllocs={myAllocs} />
       <Tabs
         tabs={[
-          { key: 'overview', label: 'Overview' },
-          { key: 'meetings', label: 'Meetings' },
-          { key: 'directory', label: 'Project directory' },
-          { key: 'other', label: 'Other projects' },
           { key: 'daily', label: 'Daily work update' },
+          { key: 'other', label: 'Other projects' },
         ]}
         active={tab}
         onChange={setTab}
       />
-      {tab === 'overview' && (
-        <OverviewTab myAllocs={myAllocs} activeProjects={activeProjects} activeLoading={activeQ.isLoading} />
-      )}
-      {tab === 'meetings' && <CoordinationMeetingsTab />}
-      {tab === 'directory' && <DirectoryTab myAllocs={myAllocs} activeProjects={activeProjects} activeLoading={activeQ.isLoading} />}
-      {tab === 'other' && <OtherProjectsTab myAllocs={myAllocs} activeProjects={activeProjects} activeLoading={activeQ.isLoading} />}
       {tab === 'daily' && <DailyEntryTab myAllocs={myAllocs} activeProjects={activeProjects} />}
+      {tab === 'other' && <OtherProjectsTab myAllocs={myAllocs} activeProjects={activeProjects} activeLoading={activeQ.isLoading} />}
     </>
   );
 }

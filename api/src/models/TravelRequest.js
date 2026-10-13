@@ -1,6 +1,11 @@
 import mongoose from 'mongoose';
+import {
+  FLOW_STATUSES,
+  approvalStagesField,
+  deriveFlowStatus,
+} from '../config/approvalFlow.js';
 
-export const TRAVEL_STATUSES = ['Pending', 'Approved', 'Rejected'];
+export const TRAVEL_STATUSES = FLOW_STATUSES;
 
 const lodgingSchema = new mongoose.Schema(
   {
@@ -49,10 +54,13 @@ const travelRequestSchema = new mongoose.Schema(
     balance: { type: Number, default: 0 },
     settlementStatus: { type: String, trim: true },
     settlementDate: { type: Date },
+    // Which stages this request clears — Team Lead → HR → Finance.
+    flowStages: { type: [String], default: () => ['tl', 'hr'] },
+    stages: { type: approvalStagesField(), default: () => ({}) },
     status: {
       type: String,
       enum: TRAVEL_STATUSES,
-      default: 'Pending',
+      default: FLOW_STATUSES[0],
       index: true,
     },
     decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -84,6 +92,7 @@ travelRequestSchema.pre('validate', function autoBalance() {
   }
   this.hospitality = ticked.size > 0;
   this.balance = (this.advanceReceived ?? 0) - (this.actualExpense ?? 0);
+  this.status = deriveFlowStatus(this.stages, this.flowStages);
 });
 
 export const TravelRequest =

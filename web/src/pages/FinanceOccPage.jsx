@@ -115,6 +115,7 @@ export default function FinanceOccPage({ bootstrap }) {
         employees={employees.data?.items ?? []}
         projects={projects.data?.items ?? []}
         canDecide={canDecide}
+        canDecideLeave={role === 'finance'}
         onCreate={(body) => create.mutate(body)}
         createPending={create.isPending}
         createError={create.error?.message}
@@ -268,7 +269,7 @@ export default function FinanceOccPage({ bootstrap }) {
 }
 
 function DirectorOccView({
-  employees, projects, canDecide,
+  employees, projects, canDecide, canDecideLeave,
   onCreate, createPending, createError,
   onDecide, decidePending, decideError,
   onRemove, onChanged,
@@ -494,7 +495,7 @@ function DirectorOccView({
 
       <Tabs tabs={DIR_TABS} active={tab} onChange={setTab} />
       {tab === 'dashboard' ? (
-        <DirectorFinanceDashboard canDecideLeave={canDecide} />
+        <DirectorFinanceDashboard canDecideLeave={canDecideLeave} />
       ) : (
         <Panel title={DIR_TABS.find((t) => t.key === tab)?.label}>
           <DataTable
@@ -854,7 +855,7 @@ function DirectorFinanceDashboard({ canDecideLeave }) {
 
       <Panel title="Approvals" sub="Approvals are actioned from Leave & Travel → Approvals. Finance approves travel requests from every department. Leave requests from employees working under the Finance department can be approved directly below, without leaving this dashboard.">
         <div className="kpi-grid cols-4">
-          <KpiCard label="Pending Finance team leave" value={financeLeaves.filter((r) => r.status === 'Pending').length} accent="amber" />
+          <KpiCard label="Pending Finance team leave" value={financeLeaves.filter((r) => !['Approved', 'Rejected'].includes(String(r.status ?? ''))).length} accent="amber" />
           <KpiCard label="Pending travel (all depts.)" value={pendingTravel} accent="teal" />
           <KpiCard label="Total travel spend (Aug)" value={inr(travelSpendAug)} accent="violet" />
           <KpiCard label="Pending settlement" value={pendingSettlement} accent="rust" />
@@ -877,7 +878,7 @@ function DirectorFinanceDashboard({ canDecideLeave }) {
             { key: 'to', label: 'To', render: (r) => r.to ? new Date(r.to).toLocaleDateString() : '—' },
             { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
             {
-              key: 'actions', label: 'Action', render: (r) => canDecideLeave && r.status === 'Pending' ? (
+              key: 'actions', label: 'Action', render: (r) => canDecideLeave && !['Approved', 'Rejected'].includes(String(r.status ?? '')) ? (
                 <span style={{ display: 'flex', gap: 8 }}>
                   <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => approveLeave(r._id)}>Approve</button>
                   <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => rejectLeave(r._id)}>Reject</button>
@@ -885,7 +886,7 @@ function DirectorFinanceDashboard({ canDecideLeave }) {
               ) : '—',
             },
           ]}
-          rows={financeLeaves.filter((r) => r.status === 'Pending')}
+          rows={financeLeaves.filter((r) => !['Approved', 'Rejected'].includes(String(r.status ?? '')))}
           emptyText="No pending finance leave requests."
         />
         {(leaveDecisionError || decideLeave.isError) && <div className="login-error" role="alert" style={{ display: 'block' }}>{leaveDecisionError || decideLeave.error.message}</div>}

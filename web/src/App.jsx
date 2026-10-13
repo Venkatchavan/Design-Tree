@@ -24,6 +24,7 @@ import AdminTransmittalPage from './pages/AdminTransmittalPage.jsx'
 import BillingPage from './pages/BillingPage.jsx'
 import CertificatesPage from './pages/CertificatesPage.jsx'
 import FinancePage from './pages/FinancePage.jsx'
+import FinanceHubPage from './pages/FinanceHubPage.jsx'
 import RevenueReportsPage from './pages/RevenueReportsPage.jsx'
 import BillingStatusPage from './pages/BillingStatusPage.jsx'
 import FinanceOccPage from './pages/FinanceOccPage.jsx'
@@ -60,6 +61,7 @@ const VIEW_COMPONENTS = {
   billing: BillingPage,
   certificates: CertificatesPage,
   finance: FinancePage,
+  'finance-hub': FinanceHubPage,
   'revenue-reports': RevenueReportsPage,
   'billing-status': BillingStatusPage,
   'finance-occ': FinanceOccPage,

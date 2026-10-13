@@ -88,6 +88,8 @@ function navIcon(view, label) {
       return Megaphone;
     case 'finance':
       return Wallet;
+    case 'finance-hub':
+      return Wallet;
     case 'finance-occ':
       return Gauge;
     case 'travel-booking':

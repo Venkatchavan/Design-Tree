@@ -14,6 +14,11 @@ export const leaveApi = {
   list: (params = {}) => request(`/api/leave-travel/leave${toQuery(params)}`),
   create: (body) =>
     request('/api/leave-travel/leave', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) =>
+    request(`/api/leave-travel/leave/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   decide: (id, body) =>
     request(`/api/leave-travel/leave/${id}/decision`, {
       method: 'PATCH',
@@ -28,6 +33,11 @@ export const travelApi = {
   list: (params = {}) => request(`/api/leave-travel/travel${toQuery(params)}`),
   create: (body) =>
     request('/api/leave-travel/travel', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) =>
+    request(`/api/leave-travel/travel/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   decide: (id, body) =>
     request(`/api/leave-travel/travel/${id}/decision`, {
       method: 'PATCH',
@@ -45,6 +55,11 @@ export const allowanceApi = {
   list: (params = {}) => request(`/api/leave-travel/allowances${toQuery(params)}`),
   create: (body) =>
     request('/api/leave-travel/allowances', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) =>
+    request(`/api/leave-travel/allowances/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   decide: (id, body) =>
     request(`/api/leave-travel/allowances/${id}/decision`, {
       method: 'PATCH',

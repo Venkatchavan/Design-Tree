@@ -8,7 +8,6 @@ import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill from '../components/StatusPill.jsx';
-import EmptyState from '../components/EmptyState.jsx';
 
 const TABS = [
   { key: 'travel', label: 'Travel expenses' },
@@ -22,7 +21,7 @@ export default function FinancePage({ bootstrap }) {
   const [tab, setTab] = useState('travel');
   const role = bootstrap?.role?.key ?? '';
   const qc = useQueryClient();
-  const canDecideLeave = role === 'finance' || role === 'hr' || role === 'founding_director' || role === 'working_director';
+  const canDecideLeave = role === 'finance';
   const overview = useQuery({ queryKey: ['finance-overview'], queryFn: billingApi.financeOverview });
   const revenue = useQuery({ queryKey: ['revenue-by-project'], queryFn: billingApi.revenueByProject });
   const costs = useQuery({ queryKey: ['project-costs'], queryFn: billingApi.projectCosts });
@@ -197,7 +196,7 @@ export default function FinancePage({ bootstrap }) {
               { key: 'reason', label: 'Reason' },
               { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
               {
-                key: 'actions', label: 'Action',                 render: (r) => canDecideLeave && r.status === 'Pending' ? (
+                key: 'actions', label: 'Action',                 render: (r) => canDecideLeave && !['Approved', 'Rejected'].includes(String(r.status ?? '')) ? (
                   <span style={{ display: 'flex', gap: 8 }}>
                     <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => approveLeave(r._id)}>Approve</button>
                     <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => rejectLeave(r._id)}>Reject</button>

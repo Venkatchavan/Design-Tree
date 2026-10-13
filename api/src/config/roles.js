@@ -73,10 +73,11 @@ export const VIEWS = {
   'transmittal-log': { path: '/transmittals', label: 'Transmittal Log', sub: 'Company transmittal register', phase: 3 },
   'transmittal': { path: '/admin/transmittals', label: 'Transmittal', sub: 'Admin · create and manage transmittals from TL drawing lists', phase: 3, adminOnly: true },
   'design-mgmt': { path: '/design-management', label: 'Design Management', sub: 'Coordination, deliverables and RFI tracking', phase: 4 },
-  'marketing': { path: '/marketing', label: 'Marketing Dashboard', sub: 'Portfolio, collateral requests and contacts', phase: 4 },
+  'marketing': { path: '/marketing', label: 'Marketing', sub: 'Portfolio, collateral requests and contacts', phase: 4 },
   'finance': { path: '/finance', label: 'Finance Dashboard', sub: 'Revenue, billing, cost and travel snapshot', phase: 3 },
-  'finance-occ': { path: '/finance/occ', label: 'Finance Operation Control Center (OCC)', sub: 'DT Finance Operations Control Centre', phase: 3 },
-  'revenue-reports': { path: '/finance/revenue', label: 'Revenue & Financial Reports', sub: 'Service-wise and project-wise financial view', phase: 3 },
+  'finance-hub': { path: '/finance/hub', label: 'Finance', sub: 'Finance operations and revenue reports in one place', phase: 3 },
+  'finance-occ': { path: '/finance/occ', label: 'Finance Operation Control Center (OCC)', sub: 'DT Finance Operations Control Centre', phase: 3, via: 'finance-hub' },
+  'revenue-reports': { path: '/finance/revenue', label: 'Revenue & Financial Reports', sub: 'Service-wise and project-wise financial view', phase: 3, via: 'finance-hub' },
   'billing-status': { path: '/finance/billing-status', label: 'Billing Status', sub: 'Live billing readiness by stage', phase: 3 },
   'qaqc-specs': { path: '/qaqc', label: 'QA/QC Specifications', sub: 'QA/QC overview and approvals', phase: 4 },
   'bim-head': { path: '/bim', label: 'BIM', sub: 'BIM overview and approvals', phase: 4 },
@@ -93,7 +94,7 @@ export const VIEWS = {
   'update-work-progress': { path: '/work/update', label: 'Update Work Progress', sub: 'Hours worked, work done and the daily entry', phase: 2 },
   'admin-work-update': { path: '/work/admin-update', label: 'Update Work Progress', sub: 'Log hours and describe the work done', phase: 2 },  'leave-travel': { path: '/leave-travel', label: 'Leave & Travel', sub: 'Leave, travel and allowance requests', phase: 4 },
   'employee-support': { path: '/support', label: 'Employee support', sub: 'Salary slips, complaints, suggestions, queries', phase: 4, noFinance: true },
-  'management': { path: '/management', label: 'Management & Leadership Dashboard', sub: 'Consolidated delivery, commercial and people overview', phase: 4 },
+  'management': { path: '/management', label: 'Management & Leadership Dashboard', sub: 'Consolidated delivery, commercial and people overview', phase: 4, managementOnly: true },
   'branches': { path: '/branches', label: 'Branches', sub: 'Branch master — add, rename and activate office branches', phase: 4 },
   'my-team': { path: '/my-team', label: 'My team', sub: 'My projects and team', phase: 2 },
   'my-coordination': { path: '/my-coordination', label: 'My coordination', sub: 'Coordinator (SPOC) workspace', phase: 2 },
@@ -113,11 +114,25 @@ const BOARD_ROLES = [
   'technical_director',
 ];
 
+// Management & Leadership Dashboard is restricted to the top three
+// director roles only (FD / WD / ED).
+const MANAGEMENT_ROLES = [
+  'founding_director',
+  'working_director',
+  'executive_director',
+];
+
 // Navigation per role, in Appendix A order. Entries may relabel a view.
 // Directive roles (FD → assoc TD) are view-only for hours: no
-// update-work-progress entry, but work-progress + management stay.
+// update-work-progress entry, but work-progress stays. `management`
+// stays only for FD / WD / ED (see MANAGEMENT_ROLES).
 // Finance Dashboard lives inside the OCC for directors, so `finance`
 // is intentionally absent here (finance role keeps its own nav below).
+// Finance hub (single "Finance" sidebar entry opening one page with OCC +
+// Revenue as inner tabs). Only FD / WD / ED (via FULL_LEADERSHIP_NAV) and the
+// finance role get this entry; all data stays server-driven, no dummy data.
+const FINANCE_HUB_NAV = { view: 'finance-hub', label: 'Finance' };
+
 const FULL_LEADERSHIP_NAV = [
   { view: 'dashboard', label: 'Dashboard' },
   { view: 'dashboard', label: 'Projects' },
@@ -129,14 +144,14 @@ const FULL_LEADERSHIP_NAV = [
   { view: 'transmittal-log' },
   { view: 'design-mgmt' },
   { view: 'marketing' },
-  { view: 'finance-occ' },
-  { view: 'revenue-reports' },
+  FINANCE_HUB_NAV,
   { view: 'billing-status' },
   { view: 'qaqc-specs' },
   { view: 'bim-head' },
   { view: 'gbs-head' },
   { view: 'peer-review-head' },
   { view: 'qs-head' },
+  { view: 'leave-travel' },
   { view: 'employee-support' },
   { view: 'management' },
   { view: 'my-meetings' },
@@ -154,9 +169,8 @@ export const NAV_BY_ROLE = {
     { view: 'certificates', label: 'Completion Certificates' },
     { view: 'teams' },
     { view: 'transmittal-log' },
-    { view: 'billing-status' },
-    { view: 'qs-log' },
     { view: 'meetings' },
+    { view: 'leave-travel' },
     { view: 'employee-support' },
   ],
   technical_director: [
@@ -173,8 +187,8 @@ export const NAV_BY_ROLE = {
     { view: 'qs-head' },
     { view: 'billing-status' },
     { view: 'meetings' },
+    { view: 'leave-travel' },
     { view: 'employee-support' },
-    { view: 'management' },
   ],
   assoc_technical_director: [
     { view: 'dashboard', label: 'Dashboard' },
@@ -185,6 +199,7 @@ export const NAV_BY_ROLE = {
     { view: 'billing-status' },
     { view: 'qs-log' },
     { view: 'meetings' },
+    { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'my-team' },
   ],
@@ -202,6 +217,7 @@ export const NAV_BY_ROLE = {
   { view: 'my-meetings' },
   ],
   // Superuser: employee + login provisioning only (HR employee management).
+  // Superuser provisions employees/logins only — no Leave & Travel.
   superuser: [{ view: 'hr' }],
   hr: [
     { view: 'dashboard', label: 'Dashboard' },
@@ -295,8 +311,7 @@ export const NAV_BY_ROLE = {
   ],
   finance: [
     { view: 'finance' },
-    { view: 'finance-occ' },
-    { view: 'revenue-reports' },
+    FINANCE_HUB_NAV,
     { view: 'billing-status' },
     { view: 'travel-booking' },
     { view: 'update-work-progress' },
@@ -379,15 +394,18 @@ export function canAccess(role, view) {
   // not in the Admin sidebar — §3.3 does not block Admin from HR.
   if (role === 'admin_billing' && view === 'hr') return true;
   const def = VIEWS[view];
-  const inNav = (NAV_BY_ROLE[role] ?? []).some((i) => i.view === view);
+  const flatNav = (NAV_BY_ROLE[role] ?? []).flatMap((i) =>
+    i.children ? i.children : [i],
+  );
+  const inNav = flatNav.some((i) => i.view === view);
   const viaNav =
-    def.via != null &&
-    (NAV_BY_ROLE[role] ?? []).some((i) => i.view === def.via);
+    def.via != null && flatNav.some((i) => i.view === def.via);
   if (!inNav && !viaNav) return false;
   if (def.adminOnly && role !== 'admin_billing') return false;
   if (def.externalOnly && role !== 'client' && role !== 'architect')
     return false;
   if (def.boardOnly && !BOARD_ROLES.includes(role)) return false;
+  if (def.managementOnly && !MANAGEMENT_ROLES.includes(role)) return false;
   if (def.noFinance && role === 'finance') return false;
   return true;
 }

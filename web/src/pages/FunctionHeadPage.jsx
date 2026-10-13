@@ -248,33 +248,6 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     mutationFn: ({ id, body }) => boqApi.update(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['function-boq'] }),
   });
-  const decideLeave = useMutation({
-    mutationFn: ({ id, status, remarks }) =>
-      request(`/api/leave-travel/leave/${id}/decision`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status, remarks: remarks || undefined }),
-      }),
-    onSuccess: () => {
-      setLeaveDecisionError('');
-      qc.invalidateQueries({ queryKey: ['function-qs-leave'] });
-    },
-  });
-  const [leaveRemarks, setLeaveRemarks] = useState('');
-  const [leaveDecisionError, setLeaveDecisionError] = useState('');
-
-  function approveLeave(id) {
-    setLeaveDecisionError('');
-    decideLeave.mutate({ id, status: 'Approved', remarks: leaveRemarks.trim() || undefined });
-  }
-
-  function rejectLeave(id) {
-    if (!leaveRemarks.trim()) {
-      setLeaveDecisionError('A reason is required when rejecting leave.');
-      return;
-    }
-    setLeaveDecisionError('');
-    decideLeave.mutate({ id, status: 'Rejected', remarks: leaveRemarks.trim() });
-  }
 
   const visitRows = arr(visits.data);
   const discRows = arr(discs.data);
@@ -330,9 +303,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     approveVisit.error?.message ??
     approvePeer.error?.message ??
     reviewArea.error?.message ??
-    reviewBoq.error?.message ??
-    leaveDecisionError ??
-    decideLeave.error?.message;
+    reviewBoq.error?.message;
 
   if (isDirector && active === 'qaqc-specs') {
     return (
@@ -793,7 +764,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
               emptyText="No work entries on QS-scope projects yet."
             />
           </Panel>
-          <Panel title="QS leave approvals">
+          <Panel title="QS leave requests">
             <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
               <select className="filter-select" value={qsLeaveFilter} onChange={(e) => setQsLeaveFilter(e.target.value)}>
                 <option value="">All statuses</option>
@@ -801,15 +772,6 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
                 <option value="Approved">Approved</option>
                 <option value="Rejected">Rejected</option>
               </select>
-            </div>
-            <div className="form-row" style={{ marginBottom: 12 }}>
-              <label className="form-label">Decision remarks (required to reject)</label>
-              <input
-                className="form-input"
-                value={leaveRemarks}
-                onChange={(e) => setLeaveRemarks(e.target.value)}
-                placeholder="Reason for approval or rejection"
-              />
             </div>
             {qsLeave.isLoading ? (
               <EmptyState text="Loading leave requests…" />
@@ -823,27 +785,13 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
                   { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName ?? ''} ${r.employee.lastName ?? ''}`.trim() || '—' : '—' },
                   { key: 'dates', label: 'Dates', render: (r) => `${fmtDate(r.from ?? r.startDate)} → ${fmtDate(r.to ?? r.endDate)}` },
                   { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-                  {
-                    key: 'decision',
-                    label: 'Decision',
-                    render: (r) => (
-                      <span style={{ display: 'flex', gap: 8 }}>
-                        <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => approveLeave(r._id ?? r.id)}>
-                          Approve
-                        </button>
-                        <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => rejectLeave(r._id ?? r.id)}>
-                          Reject
-                        </button>
-                      </span>
-                    ),
-                  },
                 ]}
                 rows={qsLeaveRows}
                 emptyText="No QS leave requests found."
               />
             )}
             <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
-              Filtered client-side to the QS department via the employee directory; when no department link exists, all fetched requests are shown.
+              Read-only. Leave approvals now flow Team Lead → HR → Finance in Leave &amp; Travel → Approvals.
             </p>
           </Panel>
         </>

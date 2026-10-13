@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { projectsApi, employeesApi, usersApi } from '../lib/api.js';
-import { areaApi, discApi, drawingAckApi, gbsApi, peerApi, rfiApi, serviceDashboardApi, stageReviewApi, variationApi, visitsApi, weeklyReportApi, workItemApi } from '../lib/functionsApi.js';
+import { spocApi } from '../lib/spocApi.js';
+import { areaApi, discApi, drawingAckApi, gbsApi, peerApi, serviceDashboardApi, stageReviewApi, variationApi, visitsApi, weeklyReportApi, workItemApi } from '../lib/functionsApi.js';
 import { billingApi } from '../lib/phase3Api.js';
 import { deliverablesApi, drawingsApi, revisionsApi } from '../lib/workApi.js';
 import { meetingsApi } from '../lib/phase4bApi.js';
@@ -21,7 +22,6 @@ const COORD_TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'coordination', label: 'Coordination' },
   { key: 'pending', label: 'Pending & follow-up' },
-  { key: 'rfis', label: "RFI's" },
   { key: 'meetings', label: 'Meetings' },
   { key: 'deliverables', label: 'Deliverables & drawings' },
   { key: 'revisions', label: 'Revision logs' },
@@ -192,6 +192,250 @@ function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
   );
 }
 
+const PTL_SERVICES = [
+  'Structural', 'Electrical', 'Mechanical', 'Plumbing', 'Fire',
+  'QS', 'QA/QC', 'BIM', 'GBS', 'Peer review',
+];
+
+function ptlEntries(project) {
+  return (project?.principalTeamLeads ?? []).flatMap((t) => {
+    const names = (t.names ?? []).filter(Boolean);
+    const list = names.length > 0 ? names : [t.name ?? ''];
+    return list.filter(Boolean).map((name) => ({
+      service: t.service ?? '',
+      name,
+      role: t.role ?? '',
+      nominatedBy: t.nominatedBy ?? '',
+      approvalStatus: t.approvalStatus ?? '',
+    }));
+  });
+}
+
+function toPtlPayload(entries) {
+  return entries
+    .map((r) => ({
+      service: (r.service ?? '').trim(),
+      name: (r.name ?? '').trim(),
+      ...(r.role?.trim() ? { role: r.role.trim() } : {}),
+      ...(r.nominatedBy?.trim() ? { nominatedBy: r.nominatedBy.trim() } : {}),
+      ...(r.approvalStatus ? { approvalStatus: r.approvalStatus } : {}),
+    }))
+    .filter((r) => r.service || r.name);
+}
+
+function empLabel(e) {
+  const n = [e?.firstName, e?.lastName].filter(Boolean).join(' ') || e?.empId || e?.email || '—';
+  return e?.designation ? `${n} · ${e.designation}` : n;
+}
+
+function empValue(e) {
+  return [e?.firstName, e?.lastName].filter(Boolean).join(' ') || e?.empId || e?.email || '';
+}
+
+// Technical Director: enter the principal team lead (PTL) for each service
+// on this project. Saved via PUT /api/projects/:id/team-leads.
+function TechnicalPtlPanel({ projectId, project, employees }) {
+  const queryClient = useQueryClient();
+  const [service, setService] = useState('');
+  const [member, setMember] = useState('');
+  const [err, setErr] = useState('');
+  const [ok, setOk] = useState('');
+
+  const rows = ptlEntries(project);
+  const seen = new Set();
+  const serviceOptions = [];
+  for (const s of [...(project?.services ?? []), ...rows.map((r) => r.service), ...PTL_SERVICES]) {
+    const t = String(s ?? '').trim();
+    if (!t || seen.has(t.toLowerCase())) continue;
+    seen.add(t.toLowerCase());
+    serviceOptions.push(t);
+  }
+  const empList = employees.data?.items ?? employees.data ?? [];
+
+  const save = useMutation({
+    mutationFn: (entries) => projectsApi.saveTeamLeads(projectId, { principalTeamLeads: toPtlPayload(entries) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setService('');
+      setMember('');
+      setErr('');
+      setOk('Principal team lead saved.');
+    },
+    onError: (e) => {
+      setErr(e.message);
+      setOk('');
+    },
+  });
+
+  function submit(e) {
+    e.preventDefault();
+    setErr('');
+    setOk('');
+    if (!service) {
+      setErr('Service is required.');
+      return;
+    }
+    if (!member) {
+      setErr('Team member is required.');
+      return;
+    }
+    const next = [...rows];
+    const idx = next.findIndex((r) => r.service === service && r.name === member);
+    const row = { service, name: member, approvalStatus: 'Approved' };
+    if (idx >= 0) next[idx] = { ...next[idx], ...row };
+    else next.push(row);
+    save.mutate(next);
+  }
+
+  function removeRow(target) {
+    setErr('');
+    setOk('');
+    save.mutate(rows.filter((r) => !(r.service === target.service && r.name === target.name)));
+  }
+
+  return (
+    <Panel title="Principal team leads — per service" sub="Enter the PTL for each service on this project.">
+      <DataTable
+        columns={[
+          { key: 'service', label: 'Service' },
+          { key: 'name', label: 'Team member' },
+          { key: 'approvalStatus', label: 'Status', render: (r) => (r.approvalStatus ? <StatusPill status={r.approvalStatus}>{r.approvalStatus}</StatusPill> : '—') },
+          {
+            key: 'actions',
+            label: 'Action',
+            render: (r) => (
+              <button type="button" className="approve-btn" disabled={save.isPending} onClick={() => removeRow(r)}>
+                Remove
+              </button>
+            ),
+          },
+        ]}
+        rows={rows}
+        emptyText="No principal team leads assigned yet."
+      />
+      <div className="section-label" style={{ marginTop: 12 }}>Enter / replace PTL</div>
+      <form onSubmit={submit}>
+        <div className="field-grid">
+          <div className="form-row">
+            <label className="form-label">Service</label>
+            <select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}>
+              <option value="">Select service</option>
+              {serviceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="form-row">
+            <label className="form-label">Team member</label>
+            <select className="filter-select" style={{ width: '100%' }} value={member} onChange={(e) => setMember(e.target.value)}>
+              <option value="">Select member</option>
+              {empList.map((x) => {
+                const v = empValue(x);
+                return <option key={x._id ?? x.id} value={v}>{empLabel(x)}</option>;
+              })}
+            </select>
+          </div>
+        </div>
+        {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
+        {ok && <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>{ok}</p>}
+        <button type="submit" className="btn-primary" disabled={save.isPending} style={{ marginTop: 8 }}>
+          {save.isPending ? 'Saving…' : 'Save PTL'}
+        </button>
+      </form>
+    </Panel>
+  );
+}
+
+// Technical Director: propose the SPOC (coordinator) for this project.
+// Lands as Proposed for the Design Management Head / Admin to approve.
+function TechnicalSpocPanel({ projectId, project, employees }) {
+  const queryClient = useQueryClient();
+  const [coordId, setCoordId] = useState('');
+  const [err, setErr] = useState('');
+  const [ok, setOk] = useState('');
+
+  const allocsQ = useQuery({
+    queryKey: ['spoc-allocations', projectId],
+    queryFn: () => spocApi.allocationsList({ project: projectId }),
+    enabled: !!projectId,
+    retry: false,
+  });
+  const allocs = allocsQ.data?.items ?? [];
+  const empList = employees.data?.items ?? employees.data ?? [];
+  const sorted = [...empList].sort((a, b) => {
+    const ac = /coordinator|spoc/i.test(a?.designation ?? '') ? 0 : 1;
+    const bc = /coordinator|spoc/i.test(b?.designation ?? '') ? 0 : 1;
+    return ac - bc;
+  });
+
+  const propose = useMutation({
+    mutationFn: (body) => spocApi.proposeAllocation(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['spoc-allocations', projectId] });
+      setCoordId('');
+      setErr('');
+      setOk('SPOC proposed — Design Management Head / Admin will approve.');
+    },
+    onError: (e) => {
+      setErr(e.message);
+      setOk('');
+    },
+  });
+
+  function submit(e) {
+    e.preventDefault();
+    setErr('');
+    setOk('');
+    if (!coordId) {
+      setErr('Select a coordinator.');
+      return;
+    }
+    propose.mutate({ project: projectId, coordinator: coordId, services: project?.services ?? [] });
+  }
+
+  const coordName = (c) => {
+    if (!c) return '—';
+    if (typeof c === 'string') return c;
+    return [c.firstName, c.lastName].filter(Boolean).join(' ') || c.empId || '—';
+  };
+
+  return (
+    <Panel title="SPOC for this project" sub="Propose the coordinator (SPOC) — approved by the Design Management Head / Admin.">
+      {allocsQ.isLoading ? (
+        <EmptyState text="Loading…" />
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'coordinator', label: 'Coordinator', render: (r) => coordName(r.coordinator) },
+            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+            { key: 'services', label: 'Services', render: (r) => (r.services ?? []).join(', ') || '—' },
+          ]}
+          rows={allocs}
+          emptyText="No SPOC proposed yet."
+        />
+      )}
+      <div className="section-label" style={{ marginTop: 12 }}>Propose SPOC</div>
+      <form onSubmit={submit}>
+        <div className="form-row" style={{ maxWidth: 360 }}>
+          <label className="form-label">Coordinator</label>
+          <select className="filter-select" style={{ width: '100%' }} value={coordId} onChange={(e) => setCoordId(e.target.value)}>
+            <option value="">Select…</option>
+            {sorted.map((x) => (
+              <option key={x._id ?? x.id} value={x._id ?? x.id}>
+                {empLabel(x)}
+              </option>
+            ))}
+          </select>
+        </div>
+        {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
+        {ok && <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>{ok}</p>}
+        <button type="submit" className="btn-primary" disabled={propose.isPending} style={{ marginTop: 8 }}>
+          {propose.isPending ? 'Saving…' : 'Propose SPOC'}
+        </button>
+      </form>
+    </Panel>
+  );
+}
+
 export default function ProjectDetailPage({ bootstrap }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -206,6 +450,7 @@ export default function ProjectDetailPage({ bootstrap }) {
   const role = bootstrap?.role?.key ?? '';
   const isSuper = role === 'founding_director' || role === 'working_director';
   const isAdmin = role === 'admin_billing' || isSuper;
+  const isTD = role === 'technical_director';
 
   const employees = useQuery({
     queryKey: ['employees-spoc', id],
@@ -224,7 +469,6 @@ export default function ProjectDetailPage({ bootstrap }) {
   const weeklyQ = useQuery({ queryKey: ['project-weekly', id], queryFn: () => weeklyReportApi.list({ project: id }), enabled: !!id, retry: false });
   const gbsQ = useQuery({ queryKey: ['project-gbs', id], queryFn: () => gbsApi.get(id), enabled: !!id, retry: false });
   const teamQ = useQuery({ queryKey: ['project-team', id], queryFn: () => projectsApi.team(id), enabled: !!id, retry: false });
-  const rfisQ = useQuery({ queryKey: ['project-rfis', id], queryFn: () => rfiApi.list({ project: id }), enabled: !!id, retry: false });
   const peersQ = useQuery({ queryKey: ['project-peers', id], queryFn: () => peerApi.list({ project: id }), enabled: !!id, retry: false });
   const discsQ = useQuery({ queryKey: ['project-discs', id], queryFn: () => discApi.list({ project: id }), enabled: !!id, retry: false });
   const variationsQ = useQuery({ queryKey: ['project-variations', id], queryFn: () => variationApi.list({ project: id }), enabled: !!id, retry: false });
@@ -277,7 +521,6 @@ export default function ProjectDetailPage({ bootstrap }) {
   const workItemRows = ofProject(listOf(workItemsQ.data));
   const visitRows = ofProject(visitsQ.data?.items);
   const weeklyRows = ofProject(weeklyQ.data?.items);
-  const rfiRows = ofProject(listOf(rfisQ.data));
   const peerRows = ofProject(listOf(peersQ.data));
   const discRows = ofProject(listOf(discsQ.data));
   const variationRows = ofProject(listOf(variationsQ.data));
@@ -526,6 +769,13 @@ export default function ProjectDetailPage({ bootstrap }) {
         <PortalAccessPanel projectId={id} initialIds={project.portalUsers ?? []} isAdmin={isAdmin} />
       </Panel>
 
+      {(isTD || isSuper) && (
+        <TechnicalPtlPanel projectId={id} project={project} employees={employees} />
+      )}
+      {isTD && project.activation?.status !== 'Activated' && (
+        <TechnicalSpocPanel projectId={id} project={project} employees={employees} />
+      )}
+
       <Tabs tabs={TOP_TABS} active={top} onChange={setTop} />
 
       {top === 'coordinator' && (
@@ -651,25 +901,6 @@ export default function ProjectDetailPage({ bootstrap }) {
             </Panel>
           )}
 
-          {coord === 'rfis' && (
-            <Panel title="RFI's" sub="Requests for information raised on this project">
-              <DataTable
-                columns={[
-                  { key: 'rfiNo', label: 'ID', render: (r) => r.rfiNo ?? String(r._id ?? '').slice(-6) },
-                  { key: 'type', label: 'Type', render: (r) => r.type ?? '—' },
-                  { key: 'description', label: 'Description', render: (r) => r.description ?? '—' },
-                  { key: 'team', label: 'Team', render: (r) => r.team ?? '—' },
-                  { key: 'raisedBy', label: 'Raised by', render: (r) => r.raisedBy?.name ?? r.raisedBy?.email ?? '—' },
-                  { key: 'assignedTo', label: 'Assigned to', render: (r) => r.assignedTo ?? '—' },
-                  { key: 'due', label: 'Due', render: (r) => fmtDate(r.due) },
-                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
-                ]}
-                rows={rfiRows}
-                emptyText="No RFI's raised for this project yet."
-              />
-            </Panel>
-          )}
-
           {coord === 'meetings' && (
             <>
               <Panel title="Meeting log" sub="Meetings for this project, most recent first">
@@ -789,6 +1020,7 @@ export default function ProjectDetailPage({ bootstrap }) {
           employees={listOf(employees.data)}
           discrepancies={discRows}
           drawingAcks={drawingAckIds}
+          meetings={meetings}
         />
       )}
 

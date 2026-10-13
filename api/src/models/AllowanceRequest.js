@@ -1,7 +1,17 @@
 import mongoose from 'mongoose';
+import {
+  FLOW_STATUSES,
+  approvalStagesField,
+  deriveFlowStatus,
+} from '../config/approvalFlow.js';
 
 export const ALLOWANCE_TYPES = ['LA', 'Cab', 'Other'];
-export const ALLOWANCE_STATUSES = ['Pending', 'Approved', 'Rejected', 'Completed', 'Returned for clarification'];
+// Flow statuses plus the two post-approval housekeeping states.
+export const ALLOWANCE_STATUSES = [
+  ...FLOW_STATUSES,
+  'Completed',
+  'Returned for clarification',
+];
 
 const allowanceRequestSchema = new mongoose.Schema(
   {
@@ -29,10 +39,13 @@ const allowanceRequestSchema = new mongoose.Schema(
     description: { type: String, trim: true },
     purpose: { type: String, trim: true },
     bill: { type: String, trim: true },
+    // Which stages this request clears — Team Lead → HR → Finance.
+    flowStages: { type: [String], default: () => ['tl', 'hr'] },
+    stages: { type: approvalStagesField(), default: () => ({}) },
     status: {
       type: String,
       enum: ALLOWANCE_STATUSES,
-      default: 'Pending',
+      default: FLOW_STATUSES[0],
       index: true,
     },
     remarks: { type: String, trim: true },
@@ -42,6 +55,13 @@ const allowanceRequestSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+// status stays derived from the stage decisions so the extra housekeeping
+// states (Completed / Returned for clarification) survive untouched.
+allowanceRequestSchema.pre('validate', function deriveStatus() {
+  if (['Completed', 'Returned for clarification'].includes(this.status)) return;
+  this.status = deriveFlowStatus(this.stages, this.flowStages);
+});
 
 export const AllowanceRequest =
   mongoose.models.AllowanceRequest ??
