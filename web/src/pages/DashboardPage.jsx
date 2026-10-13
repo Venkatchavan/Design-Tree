@@ -116,8 +116,8 @@ export default function DashboardPage({ bootstrap }) {
         <Panel title="Completion progress by branch" sub={coordTotal > 0 ? `Your allotted projects only â€” ${branchName || 'Bengaluru'}` : 'Your allotted projects'}>
           {coordTotal > 0 ? (
             <>
-              <div style={{ fontSize: 13.5, marginBottom: 6 }}><b>{branchName || 'Bengaluru'}</b> — {branchName === 'Bengaluru' ? 'HQ' : 'Branch'}</div>
-              <div style={{ fontSize: 13, marginBottom: 4 }}><b>{coordTotal}</b> projects · <b>{branchAvg}%</b> avg complete</div>
+              <div style={{ fontSize: 13.5, marginBottom: 6 }}><b>{branchName || 'Bengaluru'}</b> â€” {branchName === 'Bengaluru' ? 'HQ' : 'Branch'}</div>
+              <div style={{ fontSize: 13, marginBottom: 4 }}><b>{coordTotal}</b> projects Â· <b>{branchAvg}%</b> avg complete</div>
             </>
           ) : <EmptyState text="No allotted projects to show progress." />}
         </Panel>
