@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 
 const teamSchema = new mongoose.Schema(
   {
+    allocationProject: {type:mongoose.Schema.Types.ObjectId,ref:'Project'},
+    allocationService: String,
     name: { type: String, required: true, trim: true, index: true },
     service: { type: String, required: true, trim: true, index: true },
     branch: { type: String, trim: true },
@@ -22,6 +24,8 @@ const teamSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+teamSchema.index({allocationProject:1,allocationService:1},{unique:true,partialFilterExpression:{allocationProject:{$type:'objectId'}}});
 
 export const Team =
   mongoose.models.Team ?? mongoose.model('Team', teamSchema);

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { meetingAccess } from '../middlewares/meetingAccess.js';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   requireInternal,
@@ -10,6 +11,7 @@ import {
   cancelMeeting,
   createMeeting,
   downloadMom,
+  downloadMeetingFile,
   getMeeting,
   listMeetings,
   markHeld,
@@ -29,12 +31,14 @@ import {
 const router = Router();
 router.use(requireAuth);
 
-const SCHEDULERS = ['coordinator', 'design_mgmt_head'];
+const SCHEDULERS = ['coordinator'];
+const onlySpoc = (req, res, next) => req.user.role === 'coordinator' ? next() : res.status(403).json({ message: 'Only the assigned SPOC schedules meetings.' });
 
 router.get('/', requireInternal(), listMeetings);
 router.get('/absence-log', requireInternal(), absenceLog);
+router.use('/:id', meetingAccess);
 router.get('/:id', requireInternal(), getMeeting);
-router.post('/', requireRole(...SCHEDULERS), createMeeting);
+router.post('/', onlySpoc, requireRole(...SCHEDULERS), createMeeting);
 router.put('/:id', requireRole(...SCHEDULERS), updateMeeting);
 router.patch('/:id/reschedule', requireRole(...SCHEDULERS), rescheduleMeeting);
 router.patch('/:id/held', requireRole(...SCHEDULERS), markHeld);
@@ -58,6 +62,7 @@ router.post(
     ),
 );
 router.get('/:id/mom/download', requireInternal(), downloadMom);
+router.get('/:id/file', requireInternal(), downloadMeetingFile);
 router.post('/:id/actions', requireRole(...SCHEDULERS), addAction);
 // Action owners flip their own items (checked inside); superusers bypass.
 router.patch('/:id/actions/:actionId', requireInternal(), setActionStatus);

@@ -55,8 +55,6 @@ export function momRecorded(m) {
   const mom = m?.mom && typeof m.mom === 'object' ? m.mom : {};
   return Boolean(
     (mom.discussion ?? '').trim() ||
-      (mom.decisions ?? '').trim() ||
-      (mom.followUp ?? '').trim() ||
       m?.momDoc ||
       m?.momDocPath,
   );

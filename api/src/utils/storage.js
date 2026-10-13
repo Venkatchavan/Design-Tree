@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
@@ -16,7 +17,7 @@ export function safeFilename(original) {
     .basename(String(original ?? 'file'))
     .replace(/[^a-zA-Z0-9._-]/g, '_')
     .slice(0, 120);
-  return `${Date.now()}-${base || 'file'}`;
+  return `${Date.now()}-${randomUUID()}-${base || 'file'}`;
 }
 
 export function documentStorage(subdir = '') {

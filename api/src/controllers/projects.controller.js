@@ -1,3 +1,7 @@
+import { Team } from '../models/Team.js';
+import { Employee } from '../models/Employee.js';
+import { User } from '../models/User.js';
+import { expandServices } from '../config/services.js';
 import {
   PROJECT_STATUSES,
   Project,
@@ -222,6 +226,7 @@ export async function getProjectTeam(req, res, next) {
         team: m.team,
       })),
       allocations: (bundle.allocations ?? []).map((a) => ({
+        project: project._id,
         coordinator: a.coordinator,
         services: a.services ?? [],
         status: a.status,
@@ -403,6 +408,7 @@ export async function saveTeamLeads(req, res, next) {
         const single = (t.name ?? '').trim();
         const multi = (t.names ?? []).map((n) => String(n ?? '').trim()).filter(Boolean);
         const extra = {
+          ...(t.employee ? {employee:t.employee} : {}),
           ...(t.role?.trim() ? { role: t.role.trim() } : {}),
           ...(t.nominatedBy?.trim() ? { nominatedBy: t.nominatedBy.trim() } : {}),
           ...(t.approvalStatus ? { approvalStatus: t.approvalStatus } : {}),
@@ -425,12 +431,35 @@ export async function saveTeamLeads(req, res, next) {
     if (Object.keys(set).length === 0) {
       return res.status(400).json({ message: 'Provide principalTeamLeads and/or related.' });
     }
+    for (const row of set.principalTeamLeads ?? []) {
+      if (row.employee) {
+        const employee = await Employee.findById(row.employee);
+        if (!employee) return res.status(400).json({message:'Choose a valid employee.'});
+        row.name = [employee.firstName,employee.lastName].filter(Boolean).join(' ') || employee.empId;
+      }
+    }
     const project = await Project.findByIdAndUpdate(req.params.id, { $set: set }, {
       new: true,
       returnDocument: 'after',
       runValidators: true,
     });
     if (!project) return res.status(404).json({ message: 'Project not found.' });
+    if (set.principalTeamLeads) {
+      const groups = new Map();
+      for (const row of project.principalTeamLeads) {
+        if (!row.employee || row.approvalStatus === 'Proposed') continue;
+        const service = expandServices([row.service]).join(' + ') || row.service;
+        if (!groups.has(service)) groups.set(service, []);
+        groups.get(service).push(row);
+      }
+      for (const [service, rows] of groups) {
+        const ids = [...new Set(rows.map(r=>String(r.employee)))];
+        const leads = await User.find({employee:{$in:ids},role:'team_lead'}).select('employee').lean();
+        const lead = leads[0]?.employee;
+        await Team.findOneAndUpdate({allocationProject:project._id,allocationService:service}, {$set:{name:`${project.code || project.name} - ${service}`,service,branch:project.branch,lead:lead || null,projects:[project._id],members:ids.filter(id=>String(lead)!==id).map(employee=>({employee,allocation:'Approved project allocation'})),active:true}}, {upsert:true,returnDocument:'after',runValidators:true});
+      }
+      await Team.updateMany({allocationProject:project._id,allocationService:{$nin:[...groups.keys()]}},{$set:{active:false,projects:[]}});
+    }
     try {
       const { notify } = await import('../models/Notification.js');
       const names = (project.principalTeamLeads ?? [])

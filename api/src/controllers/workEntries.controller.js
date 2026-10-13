@@ -1,4 +1,4 @@
-import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
+import { canReadProject, narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { nextNumber } from '../models/Counter.js';
 import { Employee } from '../models/Employee.js';
 import { Project } from '../models/Project.js';
@@ -48,6 +48,8 @@ export async function createWorkEntry(req, res, next) {
       const fallback = await Project.findOne({ name: /internal \/ non-billable/i });
       if (fallback) projectId = fallback._id;
     }
+    if (projectId && !await canReadProject(req.user, projectId)) return res.status(403).json({ message: 'Project is not assigned to you.' });
+    for (const row of parsed.data.otherHours ?? []) if (!await canReadProject(req.user, row.project)) return res.status(403).json({ message: 'Other project is not assigned to you.' });
     const project = projectId ? await Project.findById(projectId) : null;
     if (!project) return res.status(404).json({ message: 'Project not found.' });
     // Extra-hours gate: the day's total (existing entries + this one) over
@@ -83,6 +85,7 @@ export async function createWorkEntry(req, res, next) {
       }
     }
     const entry = await WorkEntry.create({
+      createdBy: req.user.id,
       employee: employee._id,
       project: project._id,
       stage: parsed.data.stage ?? project.currentStage,
@@ -149,6 +152,8 @@ export async function decideWorkEntry(req, res, next) {
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid decision.' });
     }
+    const old = await WorkEntry.findById(req.params.id);
+    if (!old || !await canReadProject(req.user,old.project)) return res.status(404).json({message:'Work entry not found.'});
     const entry = await WorkEntry.findByIdAndUpdate(
       req.params.id,
       {

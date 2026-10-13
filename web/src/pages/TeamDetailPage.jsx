@@ -256,7 +256,7 @@ export default function TeamDetailPage({ bootstrap }) {
 
   const team = q.data?.team ?? {};
   const weekEntries = q.data?.weekEntries ?? [];
-  const pending = q.data?.pending ?? [];
+  const pending = Array.isArray(q.data?.pending) ? q.data.pending : [];
   const members = team.members ?? [];
 
   return (
@@ -276,14 +276,14 @@ export default function TeamDetailPage({ bootstrap }) {
           <Field label="Members" value={team.memberCount ?? members.length} />
           <Field label="Week hours" value={team.weekHours} />
         </div>
-        <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+        {bootstrap?.role?.key !== 'founding_director' && <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
           <button type="button" className="approve-btn" onClick={() => setAllocOpen(true)}>
             Edit allocations
           </button>
           <button type="button" className="btn-primary" onClick={() => setLogOpen(true)}>
             Log today's work
           </button>
-        </div>
+        </div>}
       </Panel>
 
       <Panel title="Roster">
@@ -293,6 +293,9 @@ export default function TeamDetailPage({ bootstrap }) {
           <DataTable
             columns={[
               { key: 'employee', label: 'Member', render: memberName },
+              { key: 'experience', label: 'Experience', render:m => m.employee?.experience ?? '—' },
+              { key: 'designation', label: 'Designation', render:m => m.employee?.designation ?? '—' },
+              { key: 'status', label: 'Status', render:m => m.employee?.status ?? '—' },
               { key: 'allocation', label: 'Allocation', render: (m) => (m.allocation ?? '—') },
             ]}
             rows={members}
@@ -301,6 +304,14 @@ export default function TeamDetailPage({ bootstrap }) {
         )}
       </Panel>
 
+      <Panel title="Assigned projects"><DataTable columns={[
+        {key:'name',label:'Project',render:p=><button className="approve-btn" onClick={()=>navigate(`/projects/${p._id}`)}>{p.name}</button>},
+        {key:'status',label:'Status'}, {key:'currentStage',label:'Stage'},
+      ]} rows={team.projects ?? []} emptyText="No projects assigned." /></Panel>
+      <Panel title="Team meetings"><DataTable columns={[
+        {key:'title',label:'Meeting'}, {key:'project',label:'Project',render:m=>m.project?.name ?? '—'},
+        {key:'date',label:'Date',render:m=>m.date?.slice(0,10)}, {key:'status',label:'Status'},
+      ]} rows={q.data?.meetings ?? []} emptyText="No meetings for this team's projects." /></Panel>
       <Panel title="Projects this week">
         {weekEntries.length === 0 ? (
           <EmptyState text="No work logged this week." />

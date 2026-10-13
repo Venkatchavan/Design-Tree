@@ -2,7 +2,7 @@ import { User } from '../models/User.js';
 
 // SPOC, team leads and engineers/drafters only see data for projects they are
 // allocated to. Every other role keeps company-wide access.
-export const PROJECT_SCOPED_ROLES = ['coordinator', 'team_lead', 'engineer_drafter'];
+export const PROJECT_SCOPED_ROLES = ['coordinator', 'team_lead', 'engineer_drafter', 'qs', 'qaqc', 'bim', 'gbs', 'peer_reviewer'];
 
 // null → unrestricted. Array → the only project ids this user may see.
 export async function projectScopeIds(user) {
@@ -12,7 +12,7 @@ export async function projectScopeIds(user) {
   const empId = me.employee;
   if (user.role === 'coordinator') {
     const { SpocAllocation } = await import('../models/SpocAllocation.js');
-    const rows = await SpocAllocation.find({ coordinator: empId }).select('project').lean();
+    const rows = await SpocAllocation.find({ coordinator: empId, status: 'Approved' }).select('project').lean();
     return [...new Set(rows.map((r) => String(r.project)))];
   }
   const { Team } = await import('../models/Team.js');
@@ -36,4 +36,9 @@ export function narrowByProject(filter, field, ids) {
 
 export function projectIdOf(doc) {
   return String(doc?.project?._id ?? doc?.project ?? '');
+}
+
+export async function canReadProject(user, project) {
+  const ids = await projectScopeIds(user);
+  return ids === null || ids.includes(String(project?._id ?? project));
 }

@@ -1,3 +1,4 @@
+import EntryDocuments from '../components/EntryDocuments.jsx';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -381,11 +382,9 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
           {ok && <div style={{ color: 'var(--forest-dark)', fontSize: 13, marginBottom: 10 }}>{ok}</div>}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button type="submit" className="approve-btn" disabled={create.isPending} onClick={(e) => handleSubmit(e, false)}>
-              {create.isPending ? 'Submitting…' : "Submit today's update"}
-            </button>
+
             <button type="submit" className="btn-primary" disabled={create.isPending} onClick={(e) => handleSubmit(e, true)}>
-              {create.isPending ? 'Submitting…' : 'Submit for team lead action'}
+              {create.isPending ? 'Submitting…' : 'Submit'}
             </button>
           </div>
           <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 8 }}>
@@ -400,6 +399,7 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
         ) : (
           <DataTable
             columns={[
+              { key: 'documents', label: 'Documents', render: e => <EntryDocuments entry={e} /> },
               { key: 'wu', label: 'WU no.', render: (e) => wuDisplay(e) },
               { key: 'date', label: 'Date', render: (e) => fmtDate(e.date) },
               ...(isPTL ? [{ key: 'employee', label: 'Employee', render: (e) => empName(e.employee) }] : []),

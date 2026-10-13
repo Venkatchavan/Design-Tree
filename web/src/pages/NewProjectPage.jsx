@@ -20,10 +20,8 @@ const BASE_PROJECT_TYPES = [
   'Residential', 'Commercial', 'Industrial', 'Institutional', 'Healthcare',
   'Hospitality', 'Retail', 'Mixed-use', 'Infrastructure', 'Interior',
 ];
-const BASE_SERVICES = [
-  'STR', 'PHE', 'Electrical', 'HVAC', 'Fire', 'SMEP', 'SMEPF', 'MEP', 'BIM', 'GBS',
-  'Peer review',
-];
+const BASE_SERVICES = ['STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'SMEP', 'SMEPF', 'MEP', 'BIM', 'GBS', 'Peer Review'];
+const SERVICE_LABELS = { STR: 'Str', PHE: 'Phe', ELE: 'Elec', FIRE: 'Fire', SMEP: 'Smep', SMEPF: 'Smepf', MEP: 'Mep', BIM: 'Bim', GBS: 'Gbs' };
 const BASE_SOURCES = [
   'Referral', 'Direct', 'Tender', 'Repeat Client', 'Marketing', 'Other',
 ];
@@ -86,25 +84,6 @@ function unionOptions(base, live) {
 
 // Services keep the canonical BASE_SERVICES order; live values not in the
 // base list are appended alphabetically.
-function orderedUnion(base, live) {
-  const seen = new Set();
-  const out = [];
-  for (const v of base) {
-    const t = String(v ?? '').trim();
-    if (!t || seen.has(t.toLowerCase())) continue;
-    seen.add(t.toLowerCase());
-    out.push(t);
-  }
-  const extra = [];
-  for (const v of live) {
-    const t = String(v ?? '').trim();
-    if (!t || seen.has(t.toLowerCase())) continue;
-    seen.add(t.toLowerCase());
-    extra.push(t);
-  }
-  extra.sort((a, b) => a.localeCompare(b));
-  return [...out, ...extra];
-}
 
 function F({ label, children }) {
   return (
@@ -260,7 +239,7 @@ export default function NewProjectPage() {
 
   const stateOptions = unionOptions(BASE_STATES, projectRows.map((p) => p.state));
   const projectTypeOptions = unionOptions(BASE_PROJECT_TYPES, projectRows.map((p) => p.projectType));
-  const serviceOptions = orderedUnion(BASE_SERVICES, projectRows.flatMap((p) => p.services ?? []));
+  const serviceOptions = BASE_SERVICES;
   const sourceOptions = unionOptions(BASE_SOURCES, projectRows.map((p) => p.source));
   const entityOptions = unionOptions([], projectRows.map((p) => p.entityName));
 
@@ -435,7 +414,7 @@ export default function NewProjectPage() {
                 {serviceOptions.map((s) => (
                   <label key={s} className="form-label" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input type="checkbox" checked={(form.services ?? []).includes(s)} onChange={() => toggleService(s)} />
-                    {s}
+                    {SERVICE_LABELS[s] ?? s}
                   </label>
                 ))}
               </div>

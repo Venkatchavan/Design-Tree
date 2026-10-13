@@ -1,3 +1,4 @@
+import { sendTransmittalPdf } from '../utils/transmittalPdf.js';
 import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import multer from 'multer';
 import XLSX from 'xlsx';
@@ -739,4 +740,14 @@ export async function importUndo(req, res, next) {
   } catch (err) {
     return next(err);
   }
+}
+
+export async function exportPdf(req,res,next) {
+  try {
+    const filter={};
+    if(req.query.status)filter.status=req.query.status;
+    const rows=await Transmittal.find(filter).populate({path:'drawing',populate:{path:'project',select:'name code'}}).sort({date:-1});
+    const visible=rows.filter(r=>(!req.query.project||String(r.drawing?.project?._id)===req.query.project)&&(!req.query.search||[r.trNo,r.drawing?.drawingNo,r.drawing?.title].join(' ').toLowerCase().includes(String(req.query.search).toLowerCase())));
+    return sendTransmittalPdf(res,visible.map(r=>({...r.toObject(),project:r.drawing?.project,service:r.drawing?.service,docType:r.drawing?.stage,rev:r.drawing?.rev,reason:r.remarks})),req.query);
+  }catch(err){return next(err);}
 }

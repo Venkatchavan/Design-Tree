@@ -1,3 +1,7 @@
+import { useSearchParams } from 'react-router-dom';
+import { isUpcoming, momRecorded, displayStatus } from '../lib/meetingsLogic.js';
+import { MeetingDetailModal } from '../components/MeetingsCommon.jsx';
+import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { meApi } from '../lib/api.js';
@@ -9,10 +13,9 @@ import KpiCard from '../components/KpiCard.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
-import Modal from '../components/Modal.jsx';
 
 // Read-only meetings view: only meetings the viewer is invited to.
-// Scheduling stays with coordinators / the Design Management Head.
+// Scheduling stays with coordinators.
 function dayKey(v) {
   if (!v) return '';
   const d = new Date(v);
@@ -45,22 +48,21 @@ function overdueDays(a) {
   return Math.max(0, Math.ceil((Date.now() - d.getTime()) / 86400000));
 }
 
-function hasMom(m) {
-  const mom = m?.mom && typeof m.mom === 'object' ? m.mom : {};
-  return !!((mom.discussion ?? '').trim() || (mom.decisions ?? '').trim() || (mom.followUp ?? '').trim() || m?.momDoc);
+const hasMom = momRecorded;
+const logStatus = displayStatus;
+
+export default function MyMeetingsPage({ viewKey }) {
+  if (viewKey === 'meetings') return <SpocMeetings readOnly />;
+  return <EmployeeMeetings />;
 }
 
-function logStatus(m) {
-  const s = String(m?.status ?? '').toLowerCase();
-  if (s === 'held') return 'Completed';
-  if (s === 'cancelled') return 'Cancelled';
-  return 'Awaiting update';
-}
-
-export default function MyMeetingsPage() {
+function EmployeeMeetings() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState('overview');
-  const [detailId, setDetailId] = useState(null);
+  const [params, setParams] = useSearchParams();
+  const [selectedDetailId, setSelectedDetailId] = useState(null);
+  const detailId = params.get('meeting') || selectedDetailId;
+  function setDetailId(id) { setSelectedDetailId(id); if (params.has('meeting')) { const next = new URLSearchParams(params); next.delete('meeting'); setParams(next, {replace:true}); } }
   const [inviteFilter, setInviteFilter] = useState('upcoming');
   const [logProject, setLogProject] = useState('');
   const [logMom, setLogMom] = useState('');
@@ -72,14 +74,14 @@ export default function MyMeetingsPage() {
   const emp = meQ.data?.user?.employee;
   const myEmpId = emp ? String(typeof emp === 'object' ? (emp._id ?? emp.id ?? '') : emp) : '';
 
-  const listQ = useQuery({ queryKey: ['meetings', 'mine'], queryFn: () => meetingsApi.list({ mine: true }) });
+  const listQ = useQuery({ queryKey: ['meetings', 'mine'], queryFn: () => meetingsApi.list({ mine: true }), refetchInterval: 60000 });
   const meetings = useMemo(() => listQ.data?.items ?? [], [listQ.data]);
 
   const today = dayKey(new Date());
   const myInviteOf = (m) => (m.invites ?? []).find((v) => String(v.employee?._id ?? v.employee ?? '') === String(myEmpId)) ?? null;
   const upcoming = useMemo(
-    () => meetings.filter((m) => (m.date ? dayKey(m.date) >= today : true) && m.status !== 'Cancelled'),
-    [meetings, today],
+    () => meetings.filter(isUpcoming),
+    [meetings],
   );
   const past = useMemo(
     () => meetings.filter((m) => !upcoming.includes(m)),
@@ -89,13 +91,13 @@ export default function MyMeetingsPage() {
   const upcomingRest = useMemo(() => upcoming.filter((m) => dayKey(m.date) !== today), [upcoming, today]);
   // Held meetings plus scheduled ones whose date has passed.
   const logRows = useMemo(
-    () => past.filter((m) => m.status !== 'Cancelled'),
+    () => past,
     [past],
   );
 
   const pendingInvites = useMemo(
     () => upcoming.filter((m) => {
-      if (String(m.status ?? '').toLowerCase() !== 'scheduled') return false;
+      if (!['Scheduled', 'Rescheduled'].includes(m.status)) return false;
       if (!myEmpId) return false;
       const inv = (m.invites ?? []).find((v) => String(v.employee?._id ?? v.employee ?? '') === String(myEmpId));
       return (inv?.response ?? 'Pending') === 'Pending';
@@ -136,12 +138,7 @@ export default function MyMeetingsPage() {
   );
   const overdueActions = useMemo(() => openActions.filter((a) => overdueDays(a) > 0), [openActions]);
 
-  const detailQ = useQuery({
-    queryKey: ['meeting', detailId],
-    queryFn: () => meetingsApi.get(detailId),
-    enabled: !!detailId,
-  });
-  const meeting = detailQ.data?.item ?? detailQ.data ?? null;
+
 
   const actionStatus = useMutation({
     mutationFn: ({ meetingId, actionId, status }) => meetingsApi.actionStatus(meetingId, actionId, { status }),
@@ -195,7 +192,7 @@ export default function MyMeetingsPage() {
 
   function myAttendanceOf(m) {
     const att = (m.attendance ?? []).find((a) => String(a.employee?._id ?? a.employee ?? '') === String(myEmpId)) ?? null;
-    if (att) return att.present ? 'Attended' : `Absent${att.reason ? ` – ${att.reason}` : ''}`;
+    if (att && typeof att.present === 'boolean') return att.present ? 'Attended' : `Absent${att.reason ? ` – ${att.reason}` : ''}`;
     const inv = myInviteOf(m);
     if (inv && inv.response !== 'Pending') return `${inv.response}${inv.reason ? ` – ${inv.reason}` : ''}`;
     return '—';
@@ -204,7 +201,7 @@ export default function MyMeetingsPage() {
   function unavailableOf(m) {
     const out = [];
     for (const a of m.attendance ?? []) {
-      if (!a.present) out.push(`${empName(a.employee)}${a.reason ? ` – ${a.reason}` : ' – Not given'}`);
+      if (a.present === false) out.push(`${empName(a.employee)}${a.reason ? ` – ${a.reason}` : ' – Not given'}`);
     }
     for (const v of m.invites ?? []) {
       if (v.response === 'Not Available' && !out.some((x) => x.startsWith(empName(v.employee)))) {
@@ -220,20 +217,11 @@ export default function MyMeetingsPage() {
     return '—';
   }
 
-  const myActions = useMemo(() => {
-    const actions = meeting?.actions ?? [];
-    if (!myEmpId) return actions.filter((a) => String(a.status ?? '').toLowerCase() !== 'completed');
-    return actions.filter(
-      (a) =>
-        String(a.owner?._id ?? a.owner ?? '') === myEmpId &&
-        String(a.status ?? '').toLowerCase() !== 'completed',
-    );
-  }, [meeting, myEmpId]);
 
   return (
     <>
       <div className="page-head">
-        <div className="page-title">My meetings</div>
+        <div className="page-title">Meetings</div>
         <div className="page-sub">DesignTree · Employee Meeting Dashboard · Meeting invitations and meeting log</div>
       </div>
       {listQ.isError && (
@@ -423,7 +411,7 @@ export default function MyMeetingsPage() {
                 { key: 'text', label: 'Action / task' },
                 { key: 'project', label: 'Project', render: (r) => r._project },
                 { key: 'from', label: 'From meeting', render: (r) => `${r._momNo ? `${r._momNo} · ` : ''}${r._meetingTitle}` },
-                { key: 'priority', label: 'Priority', render: (r) => r.priority ?? '—' },
+
                 {
                   key: 'due', label: 'Due date', render: (r) => {
                     const od = overdueDays(r);
@@ -436,7 +424,6 @@ export default function MyMeetingsPage() {
                 {
                   key: 'update', label: '', render: (r) => {
                     const key = `${r._meetingId}-${r._actionId}`;
-                    const isOpen = String(r.status ?? '').toLowerCase() !== 'completed';
                     return (
                       <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {noteFor === key ? (
@@ -466,16 +453,9 @@ export default function MyMeetingsPage() {
                             Progress update
                           </button>
                         )}
-                        {isOpen && (
-                          <button
-                            type="button"
-                            className="approve-btn"
-                            disabled={actionStatus.isPending}
-                            onClick={() => actionStatus.mutate({ meetingId: r._meetingId, actionId: r._actionId, status: 'Completed' })}
-                          >
-                            Complete
-                          </button>
-                        )}
+                        <select className="filter-select" aria-label="Action status" value={r.status || 'Pending'} disabled={actionStatus.isPending} onChange={e => actionStatus.mutate({ meetingId: r._meetingId, actionId: r._actionId, status: e.target.value })}>
+                          <option>Pending</option><option>In Progress</option><option>Completed</option>
+                        </select>
                       </span>
                     );
                   },
@@ -490,60 +470,7 @@ export default function MyMeetingsPage() {
         </Panel>
       )}
 
-      {detailId && (
-        <Modal title={meeting?.title ?? 'Meeting'} onClose={() => setDetailId(null)} wide>
-          {detailQ.isLoading ? <EmptyState text="Loading…" /> : detailQ.isError ? (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>{detailQ.error.message}</div>
-          ) : meeting ? (
-            <>
-              <div className="field-grid">
-                <div className="form-row"><span className="form-label">Project</span><div>{projLabel(meeting.project)}</div></div>
-                <div className="form-row"><span className="form-label">Date</span><div>{fmtDate(meeting.date)}{meeting.startTime ? `, ${meeting.startTime}` : ''}{meeting.endTime ? `–${meeting.endTime}` : ''}</div></div>
-                <div className="form-row"><span className="form-label">Mode</span><div>{meeting.mode ?? '—'}{meeting.mode === 'Online' && meeting.link ? ` · ${meeting.link}` : ''}{meeting.mode !== 'Online' && meeting.location ? ` · ${meeting.location}` : ''}</div></div>
-                <div className="form-row"><span className="form-label">Status</span><div><StatusPill tone={statusTone(meeting.status)}>{meeting.status ?? '—'}</StatusPill></div></div>
-              </div>
-              {meeting.agenda && <p style={{ fontSize: 13.5 }}>{meeting.agenda}</p>}
-              <div className="section-label">Your response</div>
-              <ResponseBox meeting={meeting} myEmpId={myEmpId} />
-              {meeting?.momDoc && (
-                <p style={{ fontSize: 12.5 }}>
-                  <a href={meetingsApi.momDownloadUrl(meeting._id ?? meeting.id)} download>Download MOM</a>
-                </p>
-              )}
-              {myActions.length > 0 && (
-                <>
-                  <div className="section-label">My open action items</div>
-                  <DataTable
-                    columns={[
-                      { key: 'text', label: 'Action' },
-                      { key: 'due', label: 'Due', render: (a) => fmtDate(a.due) },
-                      { key: 'status', label: 'Status', render: (a) => <StatusPill tone={statusTone(a.status)}>{a.status ?? '—'}</StatusPill> },
-                      {
-                        key: 'done',
-                        label: '',
-                        render: (a) => (
-                          <button
-                            type="button"
-                            className="approve-btn"
-                            disabled={actionStatus.isPending}
-                            onClick={() => actionStatus.mutate({ meetingId: meeting._id ?? meeting.id, actionId: a._id ?? a.id, status: 'Completed' })}
-                          >
-                            Mark done
-                          </button>
-                        ),
-                      },
-                    ]}
-                    rows={myActions}
-                    emptyText="No open actions."
-                  />
-                </>
-              )}
-            </>
-          ) : (
-            <EmptyState text="Meeting not found." />
-          )}
-        </Modal>
-      )}
+      {detailId && <MeetingDetailModal meetingId={detailId} onClose={() => setDetailId(null)} />}
     </>
   );
 }

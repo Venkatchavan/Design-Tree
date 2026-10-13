@@ -51,6 +51,12 @@ export function makeCrud(Model, opts = {}) {
     },
     async create(req, res, next) {
       try {
+        if (opts.scopedByProject) {
+          const ids = await projectScopeIds(req.user);
+          if (ids && !ids.includes(String(req.body?.project ?? ''))) {
+            return res.status(403).json({ message: 'Project is not assigned to you.' });
+          }
+        }
         if (opts.create) {
           const parsed = opts.create.safeParse(req.body);
           if (!parsed.success) {
@@ -71,6 +77,9 @@ export function makeCrud(Model, opts = {}) {
         if (opts.scopedByProject) {
           const visible = await allowedDoc(req, req.params.id);
           if (!visible) return res.status(404).json({ message: 'Not found.' });
+          if (req.body?.project && String(req.body.project) !== projectIdOf(visible)) {
+            return res.status(400).json({ message: 'A record cannot be moved to another project.' });
+          }
         }
         if (opts.update) {
           const parsed = opts.update.safeParse(req.body);

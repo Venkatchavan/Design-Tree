@@ -9,7 +9,9 @@ import {
 } from '../models/Meeting.js';
 import { Project } from '../models/Project.js';
 import { User } from '../models/User.js';
-import { uploadMany } from '../utils/storage.js';
+import { uploadMany, sendDownload } from '../utils/storage.js';
+import { canReadProject } from '../utils/projectScope.js';
+import { applyMeetingAudience } from '../middlewares/meetingAccess.js';
 
 export const meetingFilesUpload = uploadMany('files', 'meetings', 10);
 export const meetingMomUpload = uploadMany('files', 'meetings', 2);
@@ -39,7 +41,7 @@ function meetingLink(doc) {
 
 async function notifyInvitees(doc, title, detail) {
   try {
-    const users = await userIdsForEmployees((doc.invites ?? []).map((i) => i.employee));
+    const users = await userIdsForEmployees([...new Set([...(doc.invites ?? []).map(i => String(i.employee)), ...(doc.participants ?? []).map(i => String(i.employee))])]);
     if (users.length === 0) return;
     await notify({
       users,
@@ -100,19 +102,14 @@ export async function listMeetings(req, res, next) {
       if (req.query.from) filter.date.$gte = new Date(req.query.from);
       if (req.query.to) filter.date.$lte = new Date(req.query.to);
     }
-    if (req.query.mine === 'true') {
-      const empId = await myEmployeeId(req.user.id);
-      if (!empId) return res.status(200).json({ items: [], total: 0 });
-      filter['invites.employee'] = empId;
-    }
+    await applyMeetingAudience(filter, req.user, req.query.mine === 'true');
     const items = await Meeting.find(filter)
       .populate('project', POP_PROJ_FULL)
       .populate('invites.employee', POP_EMP)
       .populate('attendance.employee', POP_EMP)
       .populate('participants.employee', POP_EMP)
       .populate('actions.owner', POP_EMP)
-      .sort({ date: -1 })
-      .limit(200);
+      .sort({ date: -1 });
     for (const m of items) normaliseActionStatuses(m);
     return res.status(200).json({ items, total: items.length });
   } catch (err) {
@@ -131,7 +128,7 @@ async function responsibleFor(projectId, services) {
     const project = await Project.findById(projectId).lean();
     if (!project) throw new Error('no-project');
     const bundle = await projectTeamBundle(project);
-    const committed = services?.length ? services : bundle.committed;
+    const committed = bundle.committed;
     const { resolveResponsible } = await import('../utils/meetingTeam.js');
     const r = resolveResponsible({
       project,
@@ -161,6 +158,13 @@ export async function createMeeting(req, res, next) {
     return res.status(400).json({ message: invalidMessage(parsed) });
   }
   try {
+    if (!parsed.data.project || !await canReadProject(req.user, parsed.data.project)) return res.status(403).json({ message: 'Project is not assigned to you.' });
+    const project = await Project.findById(parsed.data.project).lean();
+    if (!project) return res.status(404).json({ message: 'Project not found.' });
+    const { projectTeamBundle } = await import('../utils/meetingTeam.js');
+    const bundle = await projectTeamBundle(project);
+    const members = new Set(bundle.members.map(m => String(m.employee._id)));
+    if ((parsed.data.participants ?? []).some(p => !p.employee || !members.has(String(p.employee)))) return res.status(400).json({ message: 'Select members of the project team only.' });
     const category = parsed.data.category ?? 'Scheduled';
     const invites = (parsed.data.participants ?? [])
       .map((p) => p.employee)
@@ -185,20 +189,16 @@ export async function createMeeting(req, res, next) {
       );
       momNo = `MOM-${code}-${String(counter.seq).padStart(3, '0')}`;
     }
-    // Auto responsibility (R1) unless the client pinned one.
-    let responsible = parsed.data.responsible;
-    let responsibleRole = parsed.data.responsibleRole;
-    if (!responsible) {
-      const r = await responsibleFor(parsed.data.project, parsed.data.services);
-      responsible = r.name || r.label;
-      responsibleRole = r.role;
-    }
+    const resolved = bundle.responsible;
+    const responsible = resolved.name || resolved.label;
+    const responsibleRole = resolved.role;
     const doc = await Meeting.create({
       ...parsed.data,
       momNo,
       category,
       status: category === 'Sudden' ? 'Held' : 'Scheduled',
       invites: category === 'Scheduled' ? invites : [],
+      history: [{by:req.user.id,action:category === 'Sudden' ? 'Sudden meeting recorded' : 'Meeting scheduled'}],
       // Sudden meetings collect no availability responses (R4).
       attendance: [],
       responsible,
@@ -231,8 +231,12 @@ export async function updateMeeting(req, res, next) {
         .status(422)
         .json({ message: 'Held meetings cannot be reopened.' });
     }
+    if (parsed.data.project && String(parsed.data.project)!==String(doc.project)) return res.status(400).json({message:'A meeting cannot move to another project.'});
+    if (parsed.data.status || parsed.data.date) return res.status(400).json({message:'Use the meeting reschedule, held or cancel action.'});
+    delete parsed.data.responsible; delete parsed.data.responsibleRole;
     Object.assign(doc, parsed.data);
     normaliseActionStatuses(doc);
+    doc.history.push({ by: req.user.id, action: `${req.method} ${req.path}` });
     await doc.save();
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -245,13 +249,14 @@ export async function updateMeeting(req, res, next) {
 export async function rescheduleMeeting(req, res, next) {
   try {
     const { date, startTime, endTime } = req.body ?? {};
-    if (!date) return res.status(400).json({ message: 'New date is required.' });
+    if (!date || Number.isNaN(new Date(date).getTime())) return res.status(400).json({ message: 'A valid new date is required.' });
+    if (startTime && endTime && endTime <= startTime) return res.status(400).json({ message: 'End time must be after start time.' });
     const doc = await Meeting.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Not found.' });
-    if (doc.status === 'Held') {
+    if (doc.status === 'Held' || doc.status === 'Cancelled') {
       return res
         .status(422)
-        .json({ message: 'Only meetings before they are held can be rescheduled.' });
+        .json({ message: 'Only open meetings can be rescheduled.' });
     }
     if (!doc.originalDate) doc.originalDate = doc.date;
     doc.date = new Date(date);
@@ -259,6 +264,7 @@ export async function rescheduleMeeting(req, res, next) {
     if (endTime !== undefined) doc.endTime = endTime;
     doc.status = 'Rescheduled';
     normaliseActionStatuses(doc);
+    doc.history.push({ by: req.user.id, action: `${req.method} ${req.path}` });
     await doc.save();
     notifyInvitees(
       doc,
@@ -279,14 +285,8 @@ export async function markHeld(req, res, next) {
       return res.status(422).json({ message: 'Cancelled meetings cannot be marked held.' });
     }
     doc.status = 'Held';
-    // Seed attendance from invitees; SPOC corrects it afterwards.
-    if (doc.attendance.length === 0 && doc.invites.length > 0) {
-      doc.attendance = doc.invites.map((i) => ({
-        employee: i.employee,
-        present: true,
-      }));
-    }
     normaliseActionStatuses(doc);
+    doc.history.push({ by: req.user.id, action: `${req.method} ${req.path}` });
     await doc.save();
     notifyInvitees(doc, `Meeting held: ${doc.title}`, 'Attendance and MOM follow.').catch(() => {});
     return res.status(200).json({ item: doc });
@@ -304,11 +304,13 @@ export async function cancelMeeting(req, res, next) {
         .status(422)
         .json({ message: 'Held meetings cannot be cancelled.' });
     }
+    if (!req.body?.reason?.trim()) return res.status(400).json({ message: 'Cancellation reason is required.' });
     doc.status = 'Cancelled';
     if (typeof req.body?.reason === 'string' && req.body.reason.trim()) {
       doc.cancelReason = req.body.reason.trim();
     }
     normaliseActionStatuses(doc);
+    doc.history.push({ by: req.user.id, action: `${req.method} ${req.path}` });
     await doc.save();
     notifyInvitees(
       doc,
@@ -340,6 +342,8 @@ export async function saveAttendance(req, res, next) {
     const doc = await Meeting.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Not found.' });
     if (!(await requireHeld(doc, res))) return undefined;
+    const roster = new Set([...(doc.participants ?? []).map(p=>String(p.employee)), ...(doc.invites ?? []).map(p=>String(p.employee))]);
+    if ((parsed.data.attendance ?? []).some(row=>!roster.has(String(row.employee)))) return res.status(400).json({message:'Mark attendance for meeting participants only.'});
     if (parsed.data.attendance !== undefined) doc.attendance = parsed.data.attendance;
     if (parsed.data.additionalParticipants !== undefined) {
       doc.additionalParticipants = parsed.data.additionalParticipants.filter(
@@ -347,6 +351,7 @@ export async function saveAttendance(req, res, next) {
       );
     }
     normaliseActionStatuses(doc);
+    doc.history.push({ by: req.user.id, action: `${req.method} ${req.path}` });
     await doc.save();
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -373,6 +378,7 @@ export async function saveMom(req, res, next) {
     doc.mom = mom;
     if (parsed.data.momDoc !== undefined) doc.momDoc = parsed.data.momDoc;
     normaliseActionStatuses(doc);
+    doc.history.push({ by: req.user.id, action: `${req.method} ${req.path}` });
     await doc.save();
     notifyInvitees(doc, `MOM published: ${doc.title}`, doc.momNo ? `${doc.momNo}` : '').catch(() => {});
     return res.status(200).json({ item: doc });
@@ -390,6 +396,10 @@ export async function addAction(req, res, next) {
     const doc = await Meeting.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Not found.' });
     if (!(await requireHeld(doc, res))) return undefined;
+    const {projectTeamBundle} = await import('../utils/meetingTeam.js');
+    const project = await Project.findById(doc.project).lean();
+    const team = await projectTeamBundle(project);
+    if (!team.members.some(m=>String(m.employee._id)===String(parsed.data.owner))) return res.status(400).json({message:'Assign actions to project team members only.'});
     // Auto-fill service from the owner's team membership when omitted.
     let service = parsed.data.service;
     if (!service && parsed.data.owner) {
@@ -408,6 +418,7 @@ export async function addAction(req, res, next) {
     }
     doc.actions.push({ ...parsed.data, service, status: parsed.data.status ?? 'Pending' });
     normaliseActionStatuses(doc);
+    doc.history.push({ by: req.user.id, action: `${req.method} ${req.path}` });
     await doc.save();
     try {
       const added = doc.actions[doc.actions.length - 1];
@@ -449,8 +460,8 @@ export async function setActionStatus(req, res, next) {
     const empId = await myEmployeeId(req.user.id);
     const mine =
       empId != null && action.owner?.toString?.() === empId.toString();
-    const manager = ['coordinator', 'design_mgmt_head'].includes(req.user.role);
-    if (!mine && !manager && !isSuperRole(req.user.role)) {
+    const manager = req.user.role === 'coordinator';
+    if (!mine && !manager) {
       return res.status(403).json({
         message: 'Only the assigned owner can change this action item.',
       });
@@ -461,6 +472,7 @@ export async function setActionStatus(req, res, next) {
       parsed.data.status === 'Completed' ? new Date() : undefined;
     normaliseActionStatuses(doc);
     action.status = parsed.data.status;
+    doc.history.push({ by: req.user.id, action: `${req.method} ${req.path}` });
     await doc.save();
     try {
       const ownerUsers = action.owner ? await userIdsForEmployees([action.owner]) : [];
@@ -498,14 +510,15 @@ export async function setActionNote(req, res, next) {
     const empId = await myEmployeeId(req.user.id);
     const mine =
       empId != null && action.owner?.toString?.() === empId.toString();
-    const manager = ['coordinator', 'design_mgmt_head'].includes(req.user.role);
-    if (!mine && !manager && !isSuperRole(req.user.role)) {
+    const manager = req.user.role === 'coordinator';
+    if (!mine && !manager) {
       return res.status(403).json({
         message: 'Only the assigned owner can update this action item.',
       });
     }
     action.note = note || undefined;
     normaliseActionStatuses(doc);
+    doc.history.push({ by: req.user.id, action: `${req.method} ${req.path}` });
     await doc.save();
     try {
       const ownerUsers = action.owner ? await userIdsForEmployees([action.owner]) : [];
@@ -541,6 +554,7 @@ export async function uploadRefDocs(req, res, next) {
     }
     doc.refDocs.push(...req.files.map((f) => `meetings/${f.filename}`));
     normaliseActionStatuses(doc);
+    doc.history.push({ by: req.user.id, action: `${req.method} ${req.path}` });
     await doc.save();
     return res.status(200).json({ item: doc });
   } catch (err) {
@@ -566,6 +580,7 @@ export async function uploadMomDoc(req, res, next) {
     doc.momDocPath = `meetings/${f.filename}`;
     doc.momDoc = f.originalname ?? f.filename;
     normaliseActionStatuses(doc);
+    doc.history.push({ by: req.user.id, action: `${req.method} ${req.path}` });
     await doc.save();
     notifyInvitees(doc, `MOM document uploaded: ${doc.title}`, doc.momDoc ?? '').catch(() => {});
     return res.status(200).json({ item: doc });
@@ -606,7 +621,7 @@ export async function downloadMom(req, res, next) {
     if (!doc) return res.status(404).json({ message: 'Not found.' });
     const mom = doc.mom ?? {};
     const hasMom =
-      mom.discussion?.trim() || mom.decisions?.trim() || doc.momDoc;
+      mom.discussion?.trim() || doc.momDoc;
     if (!hasMom) {
       return res.status(404).json({ message: 'MOM not yet shared.' });
     }
@@ -689,7 +704,7 @@ export async function respondInvite(req, res, next) {
   try {
     const doc = await Meeting.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Not found.' });
-    if (doc.status !== 'Scheduled' || doc.category !== 'Scheduled') {
+    if (!['Scheduled', 'Rescheduled'].includes(doc.status) || doc.category !== 'Scheduled' || new Date(doc.date).toISOString().slice(0, 10) < new Date().toISOString().slice(0, 10)) {
       return res.status(422).json({
         message: 'Availability is asked only for upcoming scheduled meetings.',
       });
@@ -698,7 +713,7 @@ export async function respondInvite(req, res, next) {
     const invite = doc.invites.find(
       (i) => i.employee.toString() === String(empId),
     );
-    if (!invite && !isSuperRole(req.user.role)) {
+    if (!invite) {
       return res.status(403).json({ message: 'You are not invited.' });
     }
     const target = invite ?? doc.invites[0];
@@ -710,6 +725,7 @@ export async function respondInvite(req, res, next) {
     target.reason = parsed.data.reason;
     target.note = parsed.data.note;
     target.respondedAt = new Date();
+    doc.history.push({ by: req.user.id, action: `${req.method} ${req.path}` });
     await doc.save();
     try {
       const responders = await Employee.findById(empId).select('firstName lastName').lean();
@@ -767,17 +783,17 @@ export async function absenceLog(req, res, next) {
       if (req.query.from) filter.date.$gte = new Date(req.query.from);
       if (req.query.to) filter.date.$lte = new Date(req.query.to);
     }
+    await applyMeetingAudience(filter, req.user);
     const meetings = await Meeting.find(filter)
       .populate('attendance.employee', 'firstName lastName empId designation department')
       .populate('project', 'name code')
-      .sort({ date: -1 })
-      .limit(200);
+      .sort({ date: -1 });
     const memberFilter = String(req.query.member ?? '').toLowerCase();
     const serviceFilter = String(req.query.service ?? '').toLowerCase();
     const rows = [];
     for (const m of meetings) {
       for (const a of m.attendance ?? []) {
-        if (a.present) continue;
+        if (a.present !== false) continue;
         const emp = a.employee && typeof a.employee === 'object' ? a.employee : null;
         const service = emp?.department ?? '';
         if (serviceFilter && String(service).toLowerCase() !== serviceFilter) continue;
@@ -814,4 +830,13 @@ export async function absenceLog(req, res, next) {
   } catch (err) {
     return next(err);
   }
+}
+
+export async function downloadMeetingFile(req, res, next) {
+  try {
+    const doc = await Meeting.findById(req.params.id);
+    const stored = req.query.mom === 'true' ? doc?.momDocPath : doc?.refDocs?.[Number(req.query.index)];
+    if (!stored) return res.status(404).json({ message: 'File not found.' });
+    return sendDownload(res, stored, next);
+  } catch (err) { return next(err); }
 }

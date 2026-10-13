@@ -576,12 +576,7 @@ function MyMeetingsTab() {
             { key: 'text', label: 'Action / task', render: (a) => <><div>{a.text ?? '—'}</div><div style={{ fontSize: 11.5, color: 'var(--ink-muted)' }}>{a.note ?? ''}</div></> },
             { key: 'project', label: 'Project', render: (a) => a.meetingProject ?? '—' },
             { key: 'meeting', label: 'From meeting', render: (a) => <button type="button" className="approve-btn" onClick={() => setDetailId(a.meetingId)}>{a.meetingMomNo ?? a.meetingTitle ?? 'Open'}</button> },
-            {
-              key: 'priority', label: 'Priority', render: (a) => {
-                const p = a.priority ?? 'Medium';
-                return <StatusPill tone={p === 'High' ? 'rust' : p === 'Low' ? 'neutral' : 'amber'}>{p}</StatusPill>;
-              },
-            },
+
             {
               key: 'due', label: 'Due date', render: (a) => {
                 const over = isOverdueAction(a);

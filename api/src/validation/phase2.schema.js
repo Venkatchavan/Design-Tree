@@ -76,6 +76,7 @@ export const drawingUpdateSchema = drawingSchema.partial();
 
 export const recruitmentSchema = z
   .object({
+    project: objectId.optional(),
     department: z.string().trim().min(1),
     position: z.string().trim().min(1),
     headcount: z.number().min(1),

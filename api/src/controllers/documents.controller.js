@@ -1,3 +1,6 @@
+import { canReadProject, PROJECT_SCOPED_ROLES } from '../utils/projectScope.js';
+import { applyMeetingAudience } from '../middlewares/meetingAccess.js';
+import { Meeting } from '../models/Meeting.js';
 import { AllowanceRequest } from '../models/AllowanceRequest.js';
 import { Drawing } from '../models/Drawing.js';
 import { Employee } from '../models/Employee.js';
@@ -129,10 +132,46 @@ export async function setDrawingProof(req, res, next) {
   }
 }
 
+export function projectDocumentAccess(Model) {
+  return async (req, res, next) => {
+    try {
+      const record = await Model.findById(req.params.id).select('project');
+      if (!record || !await canReadProject(req.user, record.project)) return res.status(404).json({message:'Record not found.'});
+      return next();
+    } catch (err) { return next(err); }
+  };
+}
+export const drawingDocumentAccess = projectDocumentAccess(Drawing);
+export const visitDocumentAccess = projectDocumentAccess(SiteVisit);
+
 // Authenticated download for any stored document (internal roles only).
 export async function downloadStored(req, res, next) {
   try {
     const stored = (req.params.splat ?? []).join('/');
+    if (PROJECT_SCOPED_ROLES.includes(req.user.role)) {
+      if (stored.startsWith('meetings/')) {
+        const filter={ $or:[{refDocs:stored},{momDocPath:stored}] };
+        await applyMeetingAudience(filter,req.user);
+        const meeting=await Meeting.findOne(filter);
+        if (!meeting || !await canReadProject(req.user,meeting.project)) return res.status(404).json({message:'File not found.'});
+      } else {
+        const owner = await User.findById(req.user.id).select('employee').lean();
+        const sources = [
+          [Drawing, { proof: stored }], [SiteVisit, { photos: stored }],
+          [MarketingBrief, { photos: stored }],
+        ];
+        let permitted = false;
+        for (const [Model, query] of sources) {
+          const records = await Model.find(query).select('project').lean();
+          for (const record of records) if (await canReadProject(req.user, record.project)) permitted = true;
+        }
+        if (!permitted && owner?.employee) {
+          permitted = !!await AllowanceRequest.exists({ employee: owner.employee, bill: stored });
+          if (!permitted && stored.startsWith('employees/')) permitted = !!await Employee.exists({ _id: owner.employee, 'documents.file': stored });
+        }
+        if (!permitted) return res.status(404).json({message:'File not found.'});
+      }
+    }
     return sendDownload(res, stored, next);
   } catch (err) {
     return next(err);

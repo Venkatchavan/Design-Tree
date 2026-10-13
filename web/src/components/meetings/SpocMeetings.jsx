@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -10,7 +11,7 @@ import {
   Tooltip,
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
-import { projectsApi } from '../../lib/api.js';
+import { API_BASE, projectsApi, bootstrapApi } from '../../lib/api.js';
 import { UNAVAILABLE_REASONS, meetingsApi } from '../../lib/phase4bApi.js';
 import {
   attendanceSummary,
@@ -29,7 +30,7 @@ import {
   responseSummary,
   serviceCode,
 } from '../../lib/meetingsLogic.js';
-import { empName, projLabel, ScheduleMeetingModal } from '../MeetingsCommon.jsx';
+import { empName, projLabel, ScheduleMeetingModal, MeetingDetailModal } from '../MeetingsCommon.jsx';
 import DataTable from '../DataTable.jsx';
 import EmptyState from '../EmptyState.jsx';
 import KpiCard from '../KpiCard.jsx';
@@ -102,8 +103,8 @@ function DashboardTab({ meetings, onOpen, onFilterType, onFilterService, onOpenA
   const allActions = meetings.flatMap((m) => (m.actions ?? []).map((a) => ({ ...a, meetingId: m._id ?? m.id })));
   const pendingActions = allActions.filter((a) => String(a.status) !== 'Completed').length;
   const overdueActions = allActions.filter((a) => isOverdueAction(a)).length;
-  const absences = meetings.reduce((n, m) => n + (m.attendance ?? []).filter((a) => !a.present).length, 0);
-  const absenceNoReason = meetings.reduce((n, m) => n + (m.attendance ?? []).filter((a) => !a.present && !a.reason).length, 0);
+  const absences = meetings.reduce((n, m) => n + (m.attendance ?? []).filter((a) => a.present === false).length, 0);
+  const absenceNoReason = meetings.reduce((n, m) => n + (m.attendance ?? []).filter((a) => a.present === false && !a.reason).length, 0);
 
   const upcomingList = meetings
     .filter((m) => ['Upcoming', 'Rescheduled'].includes(displayStatus(m)))
@@ -302,7 +303,7 @@ function AllMeetingsTab({ meetings, projects, preset, onOpen }) {
 }
 
 // ---------------- Action items ----------------
-function ActionItemsTab({ meetings, onOpen, notify }) {
+function ActionItemsTab({ meetings, onOpen, notify, readOnly = false }) {
   const [status, setStatus] = useState('Open');
   const [project, setProject] = useState('');
   const queryClient = useQueryClient();
@@ -363,12 +364,7 @@ function ActionItemsTab({ meetings, onOpen, notify }) {
             { key: 'text', label: 'Action / task', render: (a) => a.text ?? '—' },
             { key: 'owner', label: 'Responsible', render: (a) => empName(a.owner) },
             { key: 'svc', label: 'Service', render: (a) => (a.service ? serviceCode(a.service) : '—') },
-            {
-              key: 'pri', label: 'Priority', render: (a) => {
-                const p = a.priority ?? 'Medium';
-                return <StatusPill tone={p === 'High' ? 'rust' : p === 'Low' ? 'neutral' : 'amber'}>{p}</StatusPill>;
-              },
-            },
+
             {
               key: 'due', label: 'Target', render: (a) => {
                 const over = isOverdueAction(a);
@@ -377,7 +373,7 @@ function ActionItemsTab({ meetings, onOpen, notify }) {
             },
             {
               key: 'status', label: 'Status', render: (a) => (
-                <select className="filter-select" value={a.normStatus} onChange={(e) => flip.mutate({ meetingId: a.meetingId, actionId: a._id ?? a.id, st: e.target.value })}>
+                <select disabled={readOnly} className="filter-select" value={a.normStatus} onChange={(e) => flip.mutate({ meetingId: a.meetingId, actionId: a._id ?? a.id, st: e.target.value })}>
                   <option>Pending</option>
                   <option>In Progress</option>
                   <option>Completed</option>
@@ -399,8 +395,8 @@ function ActionItemsTab({ meetings, onOpen, notify }) {
 // ---------------- Absence log ----------------
 const ABS_17 = ['Date', 'Time', 'MOM no.', 'Project', 'Project code', 'Meeting category', 'Meeting type', 'Mode', 'Location / link', 'Conducted by', 'Responsible', 'Services discussed', 'Agenda', 'Absent member', 'Designation', 'Service', 'Reason for absence'];
 
-function AbsenceLogTab({ onOpen, notify }) {
-  const [project, setProject] = useState('');
+function AbsenceLogTab({ onOpen, notify, projectId }) {
+  const [project, setProject] = useState(projectId ?? '');
   const [service, setService] = useState('');
   const [member, setMember] = useState('');
   const [type, setType] = useState('');
@@ -491,7 +487,7 @@ function AbsenceLogTab({ onOpen, notify }) {
     <>
       <Panel title="Absence log filters">
         <div className="field-grid">
-          <div className="form-row"><label className="form-label">Project</label><select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}><option value="">All</option>{projectOptions.map((p) => (<option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>{p.code ? `${p.code} - ` : ''}{p.name}</option>))}</select></div>
+          <div className="form-row"><label className="form-label">Project</label><select className="filter-select" style={{ width: '100%' }} disabled={!!projectId} value={project} onChange={(e) => setProject(e.target.value)}><option value="">All</option>{projectOptions.map((p) => (<option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>{p.code ? `${p.code} - ` : ''}{p.name}</option>))}</select></div>
           <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}><option value="">All</option><option>Structural</option><option>Mechanical</option><option>Electrical</option><option>Plumbing</option><option>Fire</option><option>MEP Coordination</option></select></div>
           <div className="form-row"><label className="form-label">Team member</label><select className="filter-select" style={{ width: '100%' }} value={member} onChange={(e) => setMember(e.target.value)}><option value="">All</option>{memberOptions.map(([id, label]) => (<option key={id} value={id}>{label}</option>))}</select></div>
           <div className="form-row"><label className="form-label">Meeting type</label><select className="filter-select" style={{ width: '100%' }} value={type} onChange={(e) => setType(e.target.value)}><option value="">All</option>{MEETING_TYPES.map((t) => (<option key={t}>{t}</option>))}</select></div>
@@ -606,15 +602,20 @@ function ProjectHistoryTab({ meetings, onOpen }) {
 }
 
 // ---------------- Shell ----------------
-export default function SpocMeetings() {
+export default function SpocMeetings({ projectId, readOnly = false }) {
+  const roleQ = useQuery({ queryKey: ['bootstrap'], queryFn: bootstrapApi });
+  const canManage = !readOnly && roleQ.data?.role?.key === 'coordinator';
   const [tab, setTab] = useState('dashboard');
-  const [detailId, setDetailId] = useState(null);
+  const [params, setParams] = useSearchParams();
+  const [selectedDetailId, setSelectedDetailId] = useState(null);
+  const detailId = params.get('meeting') || selectedDetailId;
+  function setDetailId(id) { setSelectedDetailId(id); if (params.has('meeting')) { const next = new URLSearchParams(params); next.delete('meeting'); setParams(next, {replace:true}); } }
   const [showSchedule, setShowSchedule] = useState(false);
   const [showSudden, setShowSudden] = useState(false);
   const [toast, setToast] = useState('');
   const [preset, setPreset] = useState(null);
 
-  const listQ = useQuery({ queryKey: ['meetings'], queryFn: () => meetingsApi.list({}) });
+  const listQ = useQuery({ queryKey: ['meetings', 'project', projectId], queryFn: () => meetingsApi.list({ project: projectId || undefined }), refetchInterval:60000 });
   const meetings = listQ.data?.items ?? [];
   const overdueCount = useMemo(() => {
     let n = 0;
@@ -642,10 +643,10 @@ export default function SpocMeetings() {
         <div className="page-title">Meetings</div>
         <div className="page-sub">SPOC workspace — schedule, track responses, attendance, MOM and actions.</div>
       </div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      {canManage && <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <button type="button" className="approve-btn" onClick={() => setShowSudden(true)}>+ Add Sudden Meeting</button>
         <button type="button" className="btn-primary" onClick={() => setShowSchedule(true)}>+ Schedule Meeting</button>
-      </div>
+      </div>}
       {listQ.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{listQ.error.message}</div>}
       <Tabs
         tabs={[
@@ -671,25 +672,27 @@ export default function SpocMeetings() {
             />
           )}
           {tab === 'all' && <AllMeetingsTab meetings={meetings} projects={projects} preset={preset} onOpen={setDetailId} />}
-          {tab === 'actions' && <ActionItemsTab meetings={meetings} onOpen={setDetailId} notify={setToast} />}
-          {tab === 'absence' && <AbsenceLogTab onOpen={setDetailId} notify={setToast} />}
+          {tab === 'actions' && <ActionItemsTab readOnly={!canManage} meetings={meetings} onOpen={setDetailId} notify={setToast} />}
+          {tab === 'absence' && <AbsenceLogTab projectId={projectId} onOpen={setDetailId} notify={setToast} />}
           {tab === 'history' && <ProjectHistoryTab meetings={meetings} onOpen={setDetailId} />}
         </>
       )}
       {showSchedule && (
         <ScheduleMeetingModal
+          projectId={projectId}
           onClose={() => setShowSchedule(false)}
           onCreated={(msg, id) => { setShowSchedule(false); setToast(msg); if (id) setDetailId(id); }}
         />
       )}
       {showSudden && (
         <ScheduleMeetingModal
+          projectId={projectId}
           sudden
           onClose={() => setShowSudden(false)}
           onCreated={(msg, id) => { setShowSudden(false); setToast(msg); if (id) setDetailId(id); }}
         />
       )}
-      {detailId && <MeetingDetailPanel meetingId={detailId} onClose={() => setDetailId(null)} notify={setToast} />}
+      {detailId && (canManage ? <MeetingDetailPanel meetingId={detailId} onClose={() => setDetailId(null)} notify={setToast} /> : <MeetingDetailModal meetingId={detailId} onClose={() => setDetailId(null)} />)}
       <Toast msg={toast} onDone={() => setToast('')} />
     </>
   );
@@ -834,7 +837,7 @@ export function MeetingDetailPanel({ meetingId, onClose, notify }) {
                 </div>
                 {meeting.category === 'Sudden' && meeting.reason && <><div className="form-label">Reason for sudden meeting</div><p style={{ fontSize: 13 }}>{meeting.reason}</p></>}
                 {meeting.agenda && <><div className="form-label">Agenda / purpose</div><p style={{ fontSize: 13 }}>{meeting.agenda}</p></>}
-                {(meeting.refDocs ?? []).length > 0 && <><div className="form-label">Reference documents</div><ul style={{ fontSize: 13, paddingLeft: 18 }}>{meeting.refDocs.map((d, i) => (<li key={i}>{String(d).split('/').pop()}</li>))}</ul></>}
+                {(meeting.refDocs ?? []).length > 0 && <><div className="form-label">Reference documents</div><ul style={{ fontSize: 13, paddingLeft: 18 }}>{meeting.refDocs.map((d, i) => (<li key={i}><a href={`${API_BASE}/api/meetings/${idOf(meeting)}/file?index=${i}`} download>{String(d).split('/').pop()}</a></li>))}</ul></>}
               </Panel>
 
               <AvailabilitySection meeting={meeting} />
@@ -877,14 +880,14 @@ function AvailabilitySection({ meeting }) {
 
 function AttendanceSection({ meeting, held, onSaved, notify }) {
   const queryClient = useQueryClient();
-  const invites = meeting?.invites ?? [];
+  const invites = meeting?.category === 'Sudden' ? (meeting?.participants ?? []) : (meeting?.invites ?? []);
   const existing = meeting?.attendance ?? [];
   const [rows, setRows] = useState(null);
   const [extraName, setExtraName] = useState('');
   const [extraOrg, setExtraOrg] = useState('');
   const [err, setErr] = useState('');
 
-  const effective = rows ?? (existing.length > 0 ? existing.map((a) => ({ employee: idOf(a.employee), present: !!a.present, reason: a.reason ?? '' })) : invites.map((v) => ({ employee: idOf(v.employee), present: true, reason: '' })));
+  const effective = rows ?? (existing.length > 0 ? existing.map((a) => ({ employee: idOf(a.employee), present: a.present, reason: a.reason ?? '' })) : invites.map((v) => ({ employee: idOf(v.employee), present: undefined, reason: '' })));
   const attended = effective.filter((r) => r.present).length;
 
   const save = useMutation({
@@ -934,10 +937,10 @@ function AttendanceSection({ meeting, held, onSaved, notify }) {
               <b style={{ fontSize: 13 }}>{empName(inv?.employee) !== '—' ? empName(inv?.employee) : r.employee}</b>
               <span style={{ display: 'flex', gap: 6 }}>
                 <button type="button" className={r.present ? 'btn-primary' : 'approve-btn'} onClick={() => setRow(i, { present: true })}>Attended</button>
-                <button type="button" className={!r.present ? 'btn-primary' : 'approve-btn'} onClick={() => setRow(i, { present: false })}>Not attended</button>
+                <button type="button" className={r.present === false ? 'btn-primary' : 'approve-btn'} onClick={() => setRow(i, { present: false })}>Not attended</button>
               </span>
             </div>
-            {!r.present && (
+            {r.present === false && (
               <input
                 className="form-input"
                 style={{ marginTop: 6 }}
@@ -961,7 +964,7 @@ function AttendanceSection({ meeting, held, onSaved, notify }) {
             const body = {
               additionalParticipants: [...(meeting.additionalParticipants ?? []), { name: extraName.trim(), organisation: extraOrg.trim() }],
             };
-            if (effective.length > 0) body.attendance = effective;
+            if (effective.length > 0) body.attendance = effective.filter(r => typeof r.present === 'boolean');
             addExtra.mutate(body);
           }}
         >
@@ -972,7 +975,7 @@ function AttendanceSection({ meeting, held, onSaved, notify }) {
         <p style={{ fontSize: 12.5 }}>Additional participants: {meeting.additionalParticipants.map((p) => `${p.name ?? ''}${p.organisation ? ` (${p.organisation})` : ''}`).join(', ')}</p>
       )}
       {err && <div className="login-error" style={{ display: 'block' }}>{err}</div>}
-      <button type="button" className="btn-primary" style={{ marginTop: 8 }} disabled={save.isPending || effective.length === 0} onClick={() => save.mutate({ attendance: effective })}>
+      <button type="button" className="btn-primary" style={{ marginTop: 8 }} disabled={save.isPending || effective.length === 0} onClick={() => save.mutate({ attendance: effective.filter(r => typeof r.present === 'boolean') })}>
         {save.isPending ? 'Saving…' : 'Save attendance'}
       </button>
     </Panel>
@@ -1034,7 +1037,7 @@ function MomSection({ meeting, held, onSaved, notify }) {
         <div className="form-row"><label className="form-label">Next / follow-up meeting</label><input className="form-input" type="date" value={nextMeeting} onChange={(e) => setNextMeeting(e.target.value)} /></div>
         <div className="form-row"><label className="form-label">Upload MOM document</label><input type="file" onChange={(e) => setFiles([...(e.target.files ?? [])])} accept=".pdf,.doc,.docx,.xls,.xlsx" />{meeting?.momDoc && <div style={{ fontSize: 11.5 }}>Attached: {meeting.momDoc}</div>}</div>
       </div>
-      {meeting?.momDoc && <p style={{ fontSize: 12.5 }}><a href={meetingsApi.momDownloadUrl(meeting._id ?? meeting.id)} download>Download MOM</a></p>}
+      {meeting?.momDocPath && <p style={{ fontSize: 12.5 }}><a href={`${API_BASE}/api/meetings/${idOf(meeting)}/file?mom=true`} download>Download original MOM</a></p>}
       {err && <div className="login-error" style={{ display: 'block' }}>{err}</div>}
       <button
         type="button"
@@ -1055,7 +1058,7 @@ function PanelActions({ meeting, held, onSaved, notify }) {
   const [text, setText] = useState('');
   const [owner, setOwner] = useState('');
   const [service, setService] = useState('Structural');
-  const [priority, setPriority] = useState('Medium');
+  const priority = 'Medium';
   const [due, setDue] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 7);
@@ -1115,7 +1118,7 @@ function PanelActions({ meeting, held, onSaved, notify }) {
             { key: 'text', label: 'Task', render: (a) => <><div>{a.text}</div>{a.remarks ? <div style={{ fontSize: 11.5, color: 'var(--ink-muted)' }}>{a.remarks}</div> : null}{a.note ? <div style={{ fontSize: 11.5 }}>Update: {a.note}</div> : null}</> },
             { key: 'owner', label: 'Owner', render: (a) => empName(a.owner) },
             { key: 'svc', label: 'Service', render: (a) => (a.service ? serviceCode(a.service) : '—') },
-            { key: 'pri', label: 'Priority', render: (a) => <StatusPill tone={a.priority === 'High' ? 'rust' : a.priority === 'Low' ? 'neutral' : 'amber'}>{a.priority ?? 'Medium'}</StatusPill> },
+
             { key: 'due', label: 'Target', render: (a) => <span style={{ color: isOverdueAction(a) ? 'var(--rust-dark)' : undefined }}>{fmtDay(a.due)}{isOverdueAction(a) ? ` · ${overdueDays(a)}d overdue` : ''}</span> },
             {
               key: 'st', label: 'Status', render: (a) => (
@@ -1138,7 +1141,7 @@ function PanelActions({ meeting, held, onSaved, notify }) {
           <div className="field-grid">
             <div className="form-row"><label className="form-label">Responsible person</label><select className="filter-select" style={{ width: '100%' }} value={owner} onChange={(e) => setOwner(e.target.value)}><option value="">Select</option>{candidates.map((c) => (<option key={c.id} value={c.id}>{c.label}</option>))}</select></div>
             <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}><option>Structural</option><option>Mechanical</option><option>Electrical</option><option>Plumbing</option><option>Fire</option><option>MEP Coordination</option><option>SMEPF</option></select></div>
-            <div className="form-row"><label className="form-label">Priority</label><select className="filter-select" style={{ width: '100%' }} value={priority} onChange={(e) => setPriority(e.target.value)}><option>High</option><option>Medium</option><option>Low</option></select></div>
+
             <div className="form-row"><label className="form-label">Target date</label><input className="form-input" type="date" value={due} onChange={(e) => setDue(e.target.value)} /></div>
           </div>
           <div className="form-row"><label className="form-label">Remarks</label><input className="form-input" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></div>

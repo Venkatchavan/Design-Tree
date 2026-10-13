@@ -1,3 +1,4 @@
+import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -148,11 +149,11 @@ function useBootstrapProp(prop) {
   return prop ?? q.data ?? null;
 }
 
-const COORD_SERVICES = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS'];
+const COORD_SERVICES = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS', 'Peer Review'];
 
-function StageRequestPanel() {
+function StageRequestPanel({ projectId }) {
   const queryClient = useQueryClient();
-  const [project, setProject] = useState('');
+  const [project, setProject] = useState(projectId ?? '');
   const [service, setService] = useState('');
   const [stage, setStage] = useState('');
   const [remark, setRemark] = useState('');
@@ -163,8 +164,8 @@ function StageRequestPanel() {
   const save = useMutation({
     mutationFn: (body) => billingApi.saveStage(body),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['billing-stages'] });
-      setProject(''); setService(''); setStage(''); setRemark(''); setErr('');
+      for(const key of ['billing-stages','project-stages','stage-approvals','billing-status-stages'])queryClient.invalidateQueries({queryKey:[key]});
+      setProject(projectId ?? ''); setService(''); setStage(''); setRemark(''); setErr('');
       setMsg('Stage completion requested — sent to SPOC for final confirm.');
     },
     onError: (e) => { setErr(e.message); setMsg(''); },
@@ -174,7 +175,7 @@ function StageRequestPanel() {
       <div className="field-grid">
         <div className="form-row">
           <label className="form-label">Project</label>
-          <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
+          <select className="filter-select" style={{ width: '100%' }} disabled={!!projectId} value={project} onChange={(e) => setProject(e.target.value)}>
             <option value="">Select project</option>
             {projects.map((p) => <option key={p._id ?? p.id} value={p._id ?? p.id}>{p.name ?? p.code ?? '—'}</option>)}
           </select>
@@ -280,7 +281,7 @@ function ProposeCoordinatorPanel() {
   );
 }
 
-export default function MyTeamPage({ bootstrap: bootstrapProp }) {
+export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace = false }) {
   const bootstrap = useBootstrapProp(bootstrapProp);
   const role = bootstrap?.role?.key ?? '';
   const navigate = useNavigate();
@@ -291,7 +292,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
   const canRevCreate = canRevisionCreateRole(role);
   const canRecruitStatus = canRecruitStatusRole(role);
 
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState(projectWorkspace ? 'overview' : 'assign');
   const [selId, setSelId] = useState('');
   const [allocOpen, setAllocOpen] = useState(false);
   const [decideEntry, setDecideEntry] = useState(null);
@@ -316,8 +317,9 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
     const d = teamsQ.data;
     if (!d) return [];
     if (Array.isArray(d)) return d;
-    return d.items ?? d.teams ?? [];
-  }, [teamsQ.data]);
+    const rows = d.items ?? d.teams ?? [];
+    return projectId ? rows.filter(t => (t.projects ?? []).some(p => idOf(p) === String(projectId))) : rows;
+  }, [teamsQ.data, projectId]);
 
   const selectedTeam = useMemo(() => {
     if (teams.length === 0) return null;
@@ -328,7 +330,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
     return teams[0];
   }, [teams, selId]);
   const selectedId = selectedTeam ? String(selectedTeam._id ?? selectedTeam.id) : '';
-  const teamProjects = selectedTeam?.projects ?? [];
+  const teamProjects = (selectedTeam?.projects ?? []).filter(p => !projectId || idOf(p) === String(projectId));
   const teamProjectIds = useMemo(
     () => new Set(teamProjects.map((p) => String(p._id ?? p.id))),
     [teamProjects],
@@ -336,8 +338,8 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
   const members = selectedTeam?.members ?? [];
 
   const entriesQ = useQuery({
-    queryKey: ['team-work-entries', selectedId],
-    queryFn: () => workEntriesApi.list({ team: selectedId }),
+    queryKey: ['team-work-entries', selectedId, projectId],
+    queryFn: () => workEntriesApi.list({ team: selectedId, project: projectId || undefined }),
     enabled: !!selectedId,
   });
   const entries = entriesQ.data?.items ?? [];
@@ -357,21 +359,21 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
   const revQ = useQuery({ queryKey: ['revisions'], queryFn: () => revisionsApi.list({}) });
   const allRevisions = revQ.data?.items ?? [];
   const teamRevisions = useMemo(() => {
-    if (teamProjectIds.size === 0) return allRevisions;
+    if (teamProjectIds.size === 0) return [];
     return allRevisions.filter((r) => teamProjectIds.has(idOf(r.project)));
   }, [allRevisions, teamProjectIds]);
 
   const delivQ = useQuery({ queryKey: ['deliverables'], queryFn: () => deliverablesApi.list({}) });
   const allDeliverables = delivQ.data?.items ?? [];
   const teamDeliverables = useMemo(() => {
-    if (teamProjectIds.size === 0) return allDeliverables;
+    if (teamProjectIds.size === 0) return [];
     return allDeliverables.filter((d) => teamProjectIds.has(idOf(d.project)));
   }, [allDeliverables, teamProjectIds]);
 
   const drawingsQ = useQuery({ queryKey: ['drawings'], queryFn: () => drawingsApi.list({}) });
   const allDrawings = drawingsQ.data?.items ?? [];
   const teamDrawings = useMemo(() => {
-    if (teamProjectIds.size === 0) return allDrawings;
+    if (teamProjectIds.size === 0) return [];
     return allDrawings.filter((d) => teamProjectIds.has(idOf(d.project)));
   }, [allDrawings, teamProjectIds]);
 
@@ -379,12 +381,12 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
     queryKey: ['recruitment-mine'],
     queryFn: () => recruitmentApi.list({ mine: true }),
   });
-  const myRecruit = recruitQ.data?.items ?? [];
+  const myRecruit = (recruitQ.data?.items ?? []).filter(r => !projectId || idOf(r.project) === String(projectId));
 
   const trQ = useQuery({ queryKey: ['transmittals-team'], queryFn: () => transmittalsApi.teamScope() });
   const teamTransmittals = useMemo(() => {
     const all = trQ.data?.items ?? [];
-    if (teamProjectIds.size === 0) return all;
+    if (teamProjectIds.size === 0) return [];
     return all.filter((t) => {
       const p = t.drawing?.project;
       return teamProjectIds.has(String(p?._id ?? p ?? ''));
@@ -402,13 +404,13 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
   const rfisQ = useQuery({ queryKey: ['rfis-team'], queryFn: () => rfiApi.list({}) });
   const teamRfis = useMemo(() => {
     const all = rfisQ.data?.items ?? [];
-    if (teamProjectIds.size === 0) return all;
+    if (teamProjectIds.size === 0) return [];
     return all.filter((r) => teamProjectIds.has(String(r.project?._id ?? r.project ?? '')));
   }, [rfisQ.data, teamProjectIds]);
   const meetingsQ = useQuery({ queryKey: ['meetings-team'], queryFn: () => meetingsApi.list({}) });
   const teamMeetings = useMemo(() => {
     const all = meetingsQ.data?.items ?? [];
-    if (teamProjectIds.size === 0) return all.slice(0, 50);
+    if (teamProjectIds.size === 0) return [];
     return all.filter((m) => teamProjectIds.has(String(m.project?._id ?? m.project ?? ''))).slice(0, 50);
   }, [meetingsQ.data, teamProjectIds]);
   const openRfis = useMemo(
@@ -552,7 +554,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
     line,
     when: r.createdAt,
   })));
-  const tabs = isTL
+  const workspaceTabs = isTL
     ? [
       { key: 'overview', label: 'Overview' },
       { key: 'team', label: 'Project & team' },
@@ -578,6 +580,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
       { key: 'recruitment', label: 'Recruitment requests' },
     ];
 
+  const tabs = isTL ? (projectWorkspace ? [...workspaceTabs.filter(t => t.key !== 'assign'), { key: 'meetings', label: 'Meetings' }, { key: 'completion', label: 'Stage completion' }] : [{ key: 'assign', label: 'Assign work' }]) : workspaceTabs;
   const activeProjects = useMemo(
     () => teamProjects.filter((p) => String(p.status ?? '') !== 'Completed'),
     [teamProjects],
@@ -593,7 +596,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
   return (
     <>
       <div className="page-head">
-        <div className="page-title">My projects and team</div>
+        <div className="page-title">{projectWorkspace ? 'Project team workspace' : isTL ? 'Assign work' : 'My projects and team'}</div>
         <div className="page-sub">
           {selectedTeam ? `${(selectedTeam.lead && typeof selectedTeam.lead === 'object' ? [selectedTeam.lead.firstName, selectedTeam.lead.lastName].filter(Boolean).join(' ') : selectedTeam.lead) || 'Team Lead'} · ${selectedTeam.service ?? 'Structural'}` : (teamsQ.data?.items?.[0] ? `${(teamsQ.data.items[0].lead && typeof teamsQ.data.items[0].lead === 'object' ? [teamsQ.data.items[0].lead.firstName, teamsQ.data.items[0].lead.lastName].filter(Boolean).join(' ') : teamsQ.data.items[0].lead) || 'Team Lead'} · ${teamsQ.data.items[0].service ?? 'Structural'}` : (me ? `${empName(selfEmployee ?? me.employee ?? me)} · ${bootstrap?.role?.label ?? role}` : (teamsQ.isLoading ? 'Loading…' : `role ${role || '—'}`)))}
         </div>
@@ -620,7 +623,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
           </select>
         </div>
       )}
-      {isTL && (
+      {isTL && projectWorkspace && (
         <div className="kpi-grid cols-5">
           <KpiCard label="Active projects" value={activeProjects.length} accent="blueprint" />
           <KpiCard label="Team members" value={members.length} accent="forest" />
@@ -630,6 +633,9 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
         </div>
       )}
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
+      {isTL && !projectWorkspace && <p>Open an assigned project to view its team, progress, deliverables, revisions, drawings and transmittals.</p>}
+      {tab === 'completion' && <StageRequestPanel projectId={projectId} />}
+      {tab === 'meetings' && <SpocMeetings projectId={projectId} readOnly />}
       <>
           {tab === 'overview' && (
             <>
@@ -831,6 +837,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
               myTasks={myAssignedTasks}
               deliverables={teamDeliverables}
               delivLog={delivLog}
+              assignOnly={isTL && !projectWorkspace}
             />
           )}
 
@@ -1001,7 +1008,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
           )}
 
           {tab === 'recruitment' && (
-            <RecruitmentPanel rows={myRecruit} canSetStatus={canRecruitStatus} />
+            <RecruitmentPanel rows={myRecruit} canSetStatus={canRecruitStatus} projectId={projectId} />
           )}
         </>
 
@@ -1021,7 +1028,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp }) {
 
 const TL_DELIVERABLE_STATUSES = ['Planned', 'In Progress', 'Submitted', 'Approved', 'Overdue'];
 const TL_STAGES = ['CD', 'SD', 'DD', 'TD', 'GFC'];
-const TL_SERVICES = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS'];
+const TL_SERVICES = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS', 'Peer Review'];
 const TL_ISSUED_TO = ['Client', 'Architect', 'PMC', 'Contractor', 'Authority', 'Other'];
 const TL_METHODS = ['Portal', 'Email', 'Courier', 'Hand delivery', 'Transmittal'];
 
@@ -1468,14 +1475,14 @@ function DecideModal({ entry, onClose, decide }) {
   );
 }
 
-function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverables, delivLog }) {
+function AssignWorkPanel({ assignOnly = false, members, roleGroups, teamProjects, myTasks, deliverables, delivLog }) {
   const queryClient = useQueryClient();
   const [selMembers, setSelMembers] = useState([]);
   const [project, setProject] = useState('');
   const [stage, setStage] = useState('');
   const [deliverable, setDeliverable] = useState('');
   const [dueDate, setDueDate] = useState('');
-  const [priority, setPriority] = useState('Normal');
+  const priority = 'Normal';
   const [notes, setNotes] = useState('');
   const [err, setErr] = useState('');
   const [drawProject, setDrawProject] = useState('');
@@ -1704,15 +1711,7 @@ function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverab
               <label className="form-label">Due date</label>
               <input type="date" className="form-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </div>
-            <div className="form-row">
-              <label className="form-label">Priority</label>
-              <select className="filter-select" style={{ width: '100%' }} value={priority} onChange={(e) => setPriority(e.target.value)}>
-                <option value="Low">Low</option>
-                <option value="Normal">Normal</option>
-                <option value="High">High</option>
-                <option value="Urgent">Urgent</option>
-              </select>
-            </div>
+
           </div>
           <div className="form-row">
             <label className="form-label">Deliverable / task *</label>
@@ -1728,6 +1727,7 @@ function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverab
           </button>
         </form>
       </Panel>
+      {!assignOnly && <>
       <Panel title="Upload a list of drawings" sub="Bulk-add multiple drawings to the register at once, instead of one at a time">
         <form onSubmit={(e) => {
           e.preventDefault();
@@ -1867,7 +1867,7 @@ function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverab
               { key: 'stage', label: 'Stage', render: (t) => t.stage ?? '—' },
               { key: 'deliverable', label: 'Deliverable', render: (t) => t.deliverable ?? t.notes ?? '—' },
               { key: 'due', label: 'Due', render: (t) => fmtDate(t.dueDate) },
-              { key: 'priority', label: 'Priority', render: (t) => t.priority ?? '—' },
+
               { key: 'status', label: 'Status', render: (t) => <StatusPill tone={toneFor(t.status)}>{t.status ?? '—'}</StatusPill> },
             ]}
             rows={myTasks}
@@ -1875,6 +1875,7 @@ function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverab
           />
         )}
       </Panel>
+      </>}
     </>
   );
 }
@@ -1989,7 +1990,7 @@ function RevisionEntryPanel({ teamProjects, canCreate }) {
   const [details, setDetails] = useState('');
   const [resubmissionDue, setResubmissionDue] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
-  const [priority, setPriority] = useState('Normal');
+  const priority = 'Normal';
   const [err, setErr] = useState('');
   const [emailLog, setEmailLog] = useState(null);
   const [notifyEmployees, setNotifyEmployees] = useState([]);
@@ -2088,12 +2089,7 @@ function RevisionEntryPanel({ teamProjects, canCreate }) {
           <label className="form-label">Details *</label>
           <textarea className="form-input" value={details} onChange={(e) => setDetails(e.target.value)} />
         </div>
-        <div className="form-row">
-          <label className="form-label">Priority</label>
-          <select className="filter-select" style={{ width: '100%' }} value={priority} onChange={(e) => setPriority(e.target.value)}>
-            {['Normal', 'High', 'Urgent'].map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </div>
+
         <div className="form-row">
           <label className="form-label">Also notify</label>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -2130,7 +2126,7 @@ function RevisionEntryPanel({ teamProjects, canCreate }) {
   );
 }
 
-function RecruitmentPanel({ rows, canSetStatus }) {
+function RecruitmentPanel({ rows, canSetStatus, projectId }) {
   const queryClient = useQueryClient();
   const [department, setDepartment] = useState('');
   const [position, setPosition] = useState('');
@@ -2147,7 +2143,7 @@ function RecruitmentPanel({ rows, canSetStatus }) {
   const [remarks, setRemarks] = useState('');
   const [err, setErr] = useState('');
   const create = useMutation({
-    mutationFn: (body) => recruitmentApi.create(body),
+    mutationFn: (body) => recruitmentApi.create({ ...body, project: projectId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recruitment-mine'] });
       queryClient.invalidateQueries({ queryKey: ['recruitment'] });

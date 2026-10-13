@@ -35,9 +35,11 @@ export const transmittalsApi = {
   confirmImport: (body) => request('/api/transmittals/import/confirm', { method: 'POST', body: JSON.stringify(body) }),
   undoImport: (batchId) => request(`/api/transmittals/import/${batchId}/undo`, { method: 'POST' }),
   export: () => download('/api/transmittals/export', 'transmittal-log.xlsx'),
+  pdf: (params = {}) => download(`/api/transmittals/pdf${toQuery(params)}`, 'transmittal-log.pdf'),
 };
 
 export const transmittalRegisterApi = {
+  pdf: (params = {}) => download(`/api/transmittal-register${toQuery({ ...params, format: 'pdf' })}`, 'transmittal-log.pdf'),
   list: (params = {}) => request(`/api/transmittal-register${toQuery(params)}`),
   create: (body) => request('/api/transmittal-register', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) => request(`/api/transmittal-register/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
@@ -62,6 +64,7 @@ export const billingApi = {
 };
 
 export const certificatesApi = {
+  attachFile: (id, file) => requestMultipart(`/api/certificates/${id}/file`, file),
   list: (params = {}) => request(`/api/certificates${toQuery(params)}`),
   create: (body) => request('/api/certificates', { method: 'POST', body: JSON.stringify(body) }),
   templates: () => request('/api/certificates/templates/all'),

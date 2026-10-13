@@ -1,3 +1,4 @@
+import { sendTransmittalPdf } from '../utils/transmittalPdf.js';
 import { SpocAllocation } from '../models/SpocAllocation.js';
 import { Team } from '../models/Team.js';
 import { TransmittalRecord } from '../models/TransmittalRecord.js';
@@ -15,6 +16,8 @@ const FULL_REGISTER_ROLES = [
   'admin_billing',
   'associate_director',
   'technical_director',
+  'assoc_technical_director',
+  'design_mgmt_head',
 ];
 
 export async function scopedProjectIds(userId) {
@@ -24,7 +27,7 @@ export async function scopedProjectIds(userId) {
     Team.find({
       $or: [{ lead: me.employee }, { 'members.employee': me.employee }],
     }).select('projects'),
-    SpocAllocation.find({ coordinator: me.employee }).select('project'),
+    SpocAllocation.find({ coordinator: me.employee, status: 'Approved' }).select('project'),
   ]);
   const ids = new Set();
   for (const t of teams) {
@@ -50,8 +53,21 @@ export async function listRecords(req, res, next) {
     if (!FULL_REGISTER_ROLES.includes(req.user.role)) {
       const ids = await scopedProjectIds(req.user.id);
       filter.project = { $in: ids };
-    } else if (req.query.project) {
+    }
+    if (req.query.project) {
+      if (filter.project?.$in && !filter.project.$in.includes(req.query.project)) return res.status(200).json({ items: [], total: 0, summary: {} });
       filter.project = req.query.project;
+    }
+    if (req.query.projects) {
+      const selected = String(req.query.projects).split(',').filter(id => /^[a-f0-9]{24}$/i.test(id));
+      const allowed = filter.project?.$in;
+      filter.project = { $in: allowed ? selected.filter(id => allowed.includes(id)) : selected };
+    }
+    for (const key of ['docType', 'print', 'dept']) if (req.query[key]) filter[key] = req.query[key];
+    if (req.query.from || req.query.to) filter.date = { ...(req.query.from ? { $gte: new Date(req.query.from) } : {}), ...(req.query.to ? { $lte: new Date(req.query.to + 'T23:59:59.999Z') } : {}) };
+    if (req.query.format === 'pdf') {
+      const rows = await TransmittalRecord.find(filter).populate('project', 'name code').sort({ date: -1 });
+      return sendTransmittalPdf(res, rows, req.query);
     }
     const [items, total] = await Promise.all([
       TransmittalRecord.find(filter)
@@ -87,6 +103,7 @@ export async function listRecords(req, res, next) {
 }
 
 const crud = makeCrud(TransmittalRecord, {
+  scopedByProject: true,
   create: transmittalRecordSchema,
   update: transmittalRecordUpdateSchema,
   populate: [{ path: 'project', select: 'name code branch' }],

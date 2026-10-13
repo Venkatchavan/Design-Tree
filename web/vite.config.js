@@ -8,9 +8,9 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': 'http://localhost:5000',
+      '/api': 'http://127.0.0.1:5000',
       // Same-origin socket.io in dev (production gateway proxies this path).
-      '/socket.io': { target: 'http://localhost:5000', ws: true },
+      '/socket.io': { target: 'http://127.0.0.1:5000', ws: true },
     },
   },
 })

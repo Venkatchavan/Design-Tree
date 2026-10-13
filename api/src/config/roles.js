@@ -84,7 +84,7 @@ export const VIEWS = {
   'gbs-head': { path: '/gbs', label: 'GBS', sub: 'Green-building overview and approvals', phase: 4 },
   'peer-review-head': { path: '/peer-review', label: 'Peer Review', sub: 'Peer review overview and approvals', phase: 4 },
   'qs-head': { path: '/qs', label: 'QS', sub: 'BOQ work, area settlements and leave approvals for the QS department', phase: 4 },
-  'travel-booking': { path: '/travel-booking', label: 'Travel Booking', sub: 'Travel and hotel bookings across departments', phase: 4 },
+  'travel-booking': { path: '/travel-booking', label: 'Travel Booking', sub: 'Travel and hotel bookings across departments', phase: 4, financeOnly: true },
   'structural': { path: '/departments/structural', label: 'Structural', sub: 'Company-wide Structural dashboard', phase: 4, boardOnly: true },
   'mechanical': { path: '/departments/mechanical', label: 'Mechanical', sub: 'Company-wide Mechanical dashboard', phase: 4, boardOnly: true },
   'electrical': { path: '/departments/electrical', label: 'Electrical', sub: 'Company-wide Electrical dashboard', phase: 4, boardOnly: true },
@@ -99,7 +99,7 @@ export const VIEWS = {
   'my-team': { path: '/my-team', label: 'My team', sub: 'My projects and team', phase: 2 },
   'my-coordination': { path: '/my-coordination', label: 'My coordination', sub: 'Coordinator (SPOC) workspace', phase: 2 },
   'my-work': { path: '/my-work', label: 'My work', sub: 'Engineer / Drafter workspace', phase: 2 },
-  'my-meetings': { path: '/meetings/mine', label: 'Meeting', sub: 'Meeting log of projects under you', phase: 2 },
+  'my-meetings': { path: '/meetings/mine', label: 'Meetings', sub: 'Meeting log of projects under you', phase: 2 },
   'meetings': { path: '/meetings', label: 'Meetings', sub: 'Meeting log of projects under you', phase: 2 },
   'qs-log': { path: '/qs-log', label: 'QS Log', sub: 'BOQ, area settlement and pending review per project', phase: 4 },
   'work-tracking': { path: '/work-tracking', label: 'Work tracking', sub: 'Service work tracking', phase: 2 },
@@ -169,6 +169,8 @@ export const NAV_BY_ROLE = {
     { view: 'certificates', label: 'Completion Certificates' },
     { view: 'teams' },
     { view: 'transmittal-log' },
+    { view: 'billing-status' },
+    { view: 'qs-log' },
     { view: 'meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
@@ -179,12 +181,11 @@ export const NAV_BY_ROLE = {
     { view: 'certificates', label: 'Completion Certificates' },
     { view: 'teams' },
     { view: 'transmittal-log' },
-    { view: 'design-mgmt' },
     { view: 'qaqc-specs' },
     { view: 'bim-head' },
     { view: 'gbs-head' },
     { view: 'peer-review-head' },
-    { view: 'qs-head' },
+    { view: 'qs-log' },
     { view: 'billing-status' },
     { view: 'meetings' },
     { view: 'leave-travel' },
@@ -251,6 +252,7 @@ export const NAV_BY_ROLE = {
     { view: 'my-coordination' },
   ],
   engineer_drafter: [
+    { view: 'dashboard', label: 'Projects' },
     { view: 'transmittal-log' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
@@ -304,6 +306,10 @@ export const NAV_BY_ROLE = {
   ],
   design_mgmt_head: [
     { view: 'design-mgmt' },
+    { view: 'certificates' },
+    { view: 'teams' },
+    { view: 'transmittal-log' },
+    { view: 'billing-status' },
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'meetings' },
@@ -389,10 +395,12 @@ export const INTERNAL_ROLES = ROLE_KEYS.filter(
 // Second-layer page guard (§2.7): nav membership + view flags + superuser.
 export function canAccess(role, view) {
   if (!VIEWS[view]) return false;
+  if (VIEWS[view].financeOnly && role !== 'finance') return false;
+  if (VIEWS[view].adminOnly && role !== 'admin_billing') return false;
   if (isSuperRole(role)) return true;
   // Admin can open the HR view (for user provisioning) even though it is
   // not in the Admin sidebar — §3.3 does not block Admin from HR.
-  if (role === 'admin_billing' && view === 'hr') return true;
+  if (role === 'admin_billing' && ['hr','transmittal-log'].includes(view)) return true;
   const def = VIEWS[view];
   const flatNav = (NAV_BY_ROLE[role] ?? []).flatMap((i) =>
     i.children ? i.children : [i],

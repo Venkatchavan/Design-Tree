@@ -1,3 +1,4 @@
+import { PROJECT_SERVICES } from '../config/services.js';
 import { z } from 'zod';
 import {
   ACTIVATION_STATUSES,
@@ -30,7 +31,7 @@ export const projectSchema = z.object({
   projectType: z.string().trim().optional(),
   branch: z.string().trim().optional(),
   usedFor: z.string().trim().optional(),
-  services: z.array(z.string().trim().min(1)).optional(),
+  services: z.array(z.enum([...PROJECT_SERVICES, 'Structural', 'Mechanical', 'Electrical', 'Plumbing', 'Fire', 'MEP Coordination', 'Peer review'])).optional(),
   source: z.string().trim().optional(),
   entityName: z.string().trim().optional(),
   location: z
@@ -73,6 +74,7 @@ export const projectSchema = z.object({
       z
         .object({
           service: z.string().trim().optional(),
+          employee: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
           name: z.string().trim().optional(),
           names: z.array(z.string().trim()).optional(),
           role: z.string().trim().optional(),
@@ -211,6 +213,7 @@ export const teamLeadsSchema = z
         z
           .object({
             service: z.string().trim().optional(),
+            employee: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
             name: z.string().trim().optional(),
             names: z.array(z.string().trim()).optional(),
             role: z.string().trim().optional(),

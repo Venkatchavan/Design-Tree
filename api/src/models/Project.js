@@ -1,17 +1,7 @@
 import mongoose from 'mongoose';
+import { PROJECT_SERVICES } from '../config/services.js';
 
-export const SERVICES = [
-  'SMEPF',
-  'SMEP',
-  'MEP',
-  'STR',
-  'PHE',
-  'ELE',
-  'HVAC',
-  'FIRE',
-  'BIM',
-  'GBS',
-];
+export const SERVICES = PROJECT_SERVICES;
 // Legacy service labels retained for old scope rows (read-only compat).
 export const LEGACY_SERVICES = [
   'Structural',
@@ -94,6 +84,7 @@ const projectSchema = new mongoose.Schema(
     },
     principalTeamLeads: [
       {
+        employee: {type:mongoose.Schema.Types.ObjectId,ref:'Employee'},
         service: { type: String, trim: true },
         name: { type: String, trim: true },
         // Multiple people per service: either several rows with the same

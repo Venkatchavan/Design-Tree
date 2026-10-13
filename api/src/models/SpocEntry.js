@@ -63,6 +63,7 @@ const spocEntrySchema = new mongoose.Schema(
     revisionStatus: { type: String, enum: SPOC_REVISION_STATUSES },
     revisionRemarks: { type: String, trim: true },
     totalHours: { type: Number, min: 0, default: 0 },
+    documents: [{ name: String, file: String }],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },

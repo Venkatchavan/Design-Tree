@@ -14,6 +14,7 @@ import {
 
 const router = Router();
 router.use(requireAuth);
+router.use((req, res, next) => req.user.role === 'finance' ? next() : res.status(403).json({ message: 'Travel bookings are managed by Finance.' }));
 
 // Finance-only (FD/WD superusers bypass via requireRole).
 const BOOKING_WRITERS = ['finance'];

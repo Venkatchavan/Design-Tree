@@ -48,6 +48,15 @@ export async function createCertificate(req, res, next) {
   }
 }
 
+export async function attachIssuedFile(req, res, next) {
+  try {
+    if (!req.file) return res.status(400).json({message:'Choose a certificate file.'});
+    const doc = await Certificate.findByIdAndUpdate(req.params.id, {file:`certificates/${req.file.filename}`, status:'Issued'}, {returnDocument:'after'});
+    if (!doc) { removeFile(`certificates/${req.file.filename}`); return res.status(404).json({message:'Certificate not found.'}); }
+    return res.status(201).json({item:doc});
+  } catch (err) { if (req.file) removeFile(`certificates/${req.file.filename}`); return next(err); }
+}
+
 export async function listTemplates(_req, res, next) {
   try {
     const items = await CertTemplate.find({}).sort({ category: 1 });

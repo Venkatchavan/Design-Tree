@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { API_BASE, employeesApi, projectsApi } from '../lib/api.js';
+import { API_BASE, request as apiRequest, employeesApi, projectsApi } from '../lib/api.js';
 import { certificatesApi } from '../lib/phase3Api.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -23,6 +23,7 @@ export default function CertificatesPage({ bootstrap }) {
   const [cert, setCert] = useState({ project: '', certType: '', certNo: '', stage: '', issuedBy: '', status: 'Issued' });
   const [req, setReq] = useState({ project: '', category: '' });
   const [category, setCategory] = useState('');
+  const [issuedFile, setIssuedFile] = useState(null);
   const [file, setFile] = useState(null);
   const [message, setMessage] = useState('');
   const qc = useQueryClient();
@@ -31,12 +32,11 @@ export default function CertificatesPage({ bootstrap }) {
   const list = useQuery({ queryKey: ['certificates'], queryFn: () => certificatesApi.list({}) });
   const templates = useQuery({ queryKey: ['certificate-templates'], queryFn: certificatesApi.templates });
   const requests = useQuery({ queryKey: ['certificate-requests'], queryFn: () => certificatesApi.requests({}) });
-  const create = useMutation({ mutationFn: certificatesApi.create, onSuccess: () => { qc.invalidateQueries({ queryKey: ['certificates'] }); setCert({ project: '', certType: '', certNo: '', stage: '', issuedBy: '', status: 'Issued' }); } });
+  const create = useMutation({ mutationFn: async body => { const data = await certificatesApi.create(body); if (issuedFile) await certificatesApi.attachFile(data.item._id, issuedFile); return data; }, onSuccess: () => { qc.invalidateQueries({ queryKey: ['certificates'] }); setCert({ project: '', certType: '', certNo: '', stage: '', issuedBy: '', status: 'Issued' }); setIssuedFile(null); } });
   const requestCert = useMutation({ mutationFn: certificatesApi.request, onSuccess: () => { qc.invalidateQueries({ queryKey: ['certificate-requests'] }); setReq({ project: '', category: '' }); } });
   const allRequests = requests.data?.items ?? [];
   const uploadedCount = allRequests.filter((r) => r.status === 'Uploaded').length;
   const awaitingCount = allRequests.length - uploadedCount;
-  const uploadedRows = allRequests.filter((r) => r.status === 'Uploaded');
   const uploadedFileFor = (r) => {
     const cert = (list.data?.items ?? []).find((c) => c.status === 'Uploaded' && String(c.project?._id ?? c.project ?? '') === String(r.project?._id ?? r.project ?? '') && (c.certType ?? '') === (r.category ?? ''));
     const id = cert?._id ?? cert?.id;
@@ -53,17 +53,15 @@ export default function CertificatesPage({ bootstrap }) {
   const templateCategories = (templates.data?.items ?? []).map((t) => t.category).filter(Boolean);
   const templateFor = (category) => (templates.data?.items ?? []).find((t) => t.category === category);
 
-  function copyLink(url) {
+  async function clientLink(id) {
     try {
-      navigator.clipboard?.writeText(url);
-      setMessage(`Link copied: ${url}`);
-    } catch {
-      setMessage(url);
-    }
+      const data = await apiRequest(`/api/certificates/requests/${id}/link`, { method: 'POST' });
+      const url = `${window.location.origin}${data.path}`;
+      await navigator.clipboard?.writeText(url);
+      setMessage(`Client link: ${url}`);
+    } catch (e) { setMessage(e.message); }
   }
 
-  const certLink = (id) => `${API_BASE}/api/certificates/${id}/file`;
-  const templateLink = (id) => `${API_BASE}/api/certificates/templates/${id}/download`;
 
   async function uploadTemplate(e) {
     e.preventDefault();
@@ -114,7 +112,6 @@ export default function CertificatesPage({ bootstrap }) {
           { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
           { key: 'date', label: 'Date', render: (r) => fmtCertDate(r.date) },
           { key: 'file', label: 'File', render: (r) => r.fileId ? <a href={`${API_BASE}/api/certificates/${r.fileId}/file`} download>{r.fileName ?? 'Download'}</a> : '—' },
-          { key: 'link', label: 'Link', render: (r) => r.fileId ? <button type="button" className="approve-btn" onClick={() => copyLink(certLink(r.fileId))}>Generate link</button> : '—' },
         ]} rows={merged} emptyText="No completion certificates yet." /></Panel>
         {message && <p role="status" style={{ color: 'var(--ink-muted)' }}>{message}</p>}
       </div>
@@ -125,6 +122,14 @@ export default function CertificatesPage({ bootstrap }) {
     return (
       <div id="view-completioncerts">
         <div className="page-head"><div className="page-title">Completion Certificates</div><div className="page-sub">Issued certificates, templates, and client-uploaded certificate requests</div></div>
+        <Panel title="Add issued certificate"><form className="field-grid" onSubmit={e => { e.preventDefault(); create.mutate(cert); }}>
+          <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" value={cert.project} onChange={e => setCert({...cert,project:e.target.value})}><option value="">Select project</option>{(projects.data?.items ?? []).map(p => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
+          <div className="form-row"><label className="form-label">Certificate category *</label><select required className="filter-select" value={cert.certType} onChange={e => setCert({...cert,certType:e.target.value})}><option value="">Select category</option>{templateCategories.map(c => <option key={c}>{c}</option>)}</select></div>
+          <div className="form-row"><label className="form-label">Certificate no.</label><input className="form-input" value={cert.certNo} onChange={e => setCert({...cert,certNo:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">Issued certificate file *</label><input type="file" required onChange={e => setIssuedFile(e.target.files?.[0] ?? null)}/></div>
+          <button type="submit" className="btn-primary" disabled={create.isPending || !issuedFile}>Issue certificate</button>
+          {create.isError && <p role="alert">{create.error.message}</p>}
+        </form></Panel>
         <Panel title="Templates + Request from client (clubbed)" sub="Readily available templates clubbed with client requests. Template list below; client link can be generated per row.">
           <div className="section-label">Add template (entry)</div>
           <form onSubmit={uploadTemplate} className="field-grid">
@@ -133,14 +138,6 @@ export default function CertificatesPage({ bootstrap }) {
             <button type="submit" className="btn-primary" disabled={!file}>Add template</button>
             {message && <p role="status" style={{ color: 'var(--ink-muted)' }}>{message}</p>}
           </form>
-          <div style={{ marginTop: 12 }}>
-            <DataTable columns={[
-              { key: 'category', label: 'Category' }, { key: 'file', label: 'Template file' },
-              { key: 'createdAt', label: 'Uploaded on', render: (r) => fmtCertDate(r.createdAt) },
-              { key: 'download', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => certificatesApi.downloadTemplate(r._id).catch((e) => setMessage(e.message))}>Download</button> },
-              { key: 'link', label: 'Client link', render: (r) => <button type="button" className="approve-btn" onClick={() => copyLink(templateLink(r._id))}>Generate link</button> },
-            ]} rows={templates.data?.items ?? []} emptyText="No certificate templates uploaded." />
-          </div>
           <div className="section-label" style={{ marginTop: 16 }}>Request from client (entry, uses template above)</div>
 
           <form onSubmit={(e) => { e.preventDefault(); requestCert.mutate(req); }} className="field-grid">
@@ -152,12 +149,19 @@ export default function CertificatesPage({ bootstrap }) {
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13 }}>{templateFor(req.category).file ? String(templateFor(req.category).file).split('/').pop() : templateFor(req.category).category}</span>
                   <button type="button" className="approve-btn" onClick={() => certificatesApi.downloadTemplate(templateFor(req.category)._id).catch((e) => setMessage(e.message))}>Download template</button>
-                  <button type="button" className="approve-btn" onClick={() => copyLink(templateLink(templateFor(req.category)._id))}>Generate link</button>
+
                 </div>
               </div>
             )}
             <button type="submit" className="btn-primary" disabled={requestCert.isPending}>{requestCert.isPending ? 'Sending…' : 'Send request to client'}</button>
           </form>
+          <div style={{ marginTop: 12 }}>
+            <DataTable columns={[
+              { key: 'category', label: 'Category' }, { key: 'file', label: 'Template file' },
+              { key: 'createdAt', label: 'Uploaded on', render: (r) => fmtCertDate(r.createdAt) },
+              { key: 'download', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => certificatesApi.downloadTemplate(r._id).catch((e) => setMessage(e.message))}>Download</button> },
+            ]} rows={templates.data?.items ?? []} emptyText="No certificate templates uploaded." />
+          </div>
         </Panel>
         <Panel title="Completion Certificates" sub="Issued on completion of a project stage or discipline scope"><DataTable columns={[
           { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
@@ -166,7 +170,7 @@ export default function CertificatesPage({ bootstrap }) {
           { key: 'issuedDate', label: 'Issued date', render: (r) => fmtCertDate(r.issuedDate) },
           { key: 'issuedBy', label: 'Issued by', render: (r) => r.issuedBy ?? '—' },
         ]} rows={list.data?.items ?? []} emptyText="No certificates issued yet." /></Panel>
-        <Panel title="Client-uploaded certificates" sub={`${allRequests.length} requested · ${uploadedCount} uploaded · ${awaitingCount} awaiting client`}><DataTable columns={[
+        <Panel title="Client certificate requests and uploads" sub={`${allRequests.length} requested · ${uploadedCount} uploaded · ${awaitingCount} awaiting client`}><DataTable columns={[
           { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
           { key: 'category', label: 'Category' },
           { key: 'createdAt', label: 'Requested', render: (r) => fmtCertDate(r.createdAt) },
@@ -180,10 +184,9 @@ export default function CertificatesPage({ bootstrap }) {
             return f ? <a href={`${API_BASE}/api/certificates/${f.id}/file`} download>Download</a> : '—';
           } },
           { key: 'link', label: 'Link', render: (r) => {
-            const f = uploadedFileFor(r);
-            return f ? <button type="button" className="approve-btn" onClick={() => copyLink(certLink(f.id))}>Generate link</button> : '—';
+            return <button type="button" className="approve-btn" onClick={() => clientLink(r._id ?? r.id)}>Generate client link</button>;
           } },
-        ]} rows={uploadedRows} emptyText="No client-uploaded certificates yet." /></Panel>
+        ]} rows={allRequests} emptyText="No client certificate requests yet." /></Panel>
       </div>
     );
   }

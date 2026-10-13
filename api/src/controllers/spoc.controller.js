@@ -1,4 +1,4 @@
-import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
+import { canReadProject, narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { Employee } from '../models/Employee.js';
 import { SpocEntry } from '../models/SpocEntry.js';
 import { User } from '../models/User.js';
@@ -25,6 +25,9 @@ export async function createSpocEntry(req, res, next) {
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid data.' });
     }
+    const me = await User.findById(req.user.id).select('employee');
+    if (parsed.data.employee && String(parsed.data.employee) !== String(me?.employee)) return res.status(403).json({ message: 'Log your own daily work.' });
+    if (!await canReadProject(req.user, parsed.data.project)) return res.status(403).json({ message: 'Project is not assigned to you.' });
     const employee = await resolveEmployee(req, parsed.data.employee);
     if (!employee) {
       return res.status(400).json({
@@ -189,6 +192,7 @@ export async function proposeAllocation(req, res, next) {
         .status(400)
         .json({ message: 'project and coordinator are required.' });
     }
+    if (!await canReadProject(req.user,project)) return res.status(403).json({message:'Project is not assigned to you.'});
     const doc = await SpocAllocation.findOneAndUpdate(
       { project, coordinator },
       {
@@ -218,6 +222,7 @@ export async function recordAllocation(req, res, next) {
         .status(400)
         .json({ message: 'project and coordinator are required.' });
     }
+    if (!await canReadProject(req.user,project)) return res.status(403).json({message:'Project is not assigned to you.'});
     const doc = await SpocAllocation.findOneAndUpdate(
       { project, coordinator },
       {

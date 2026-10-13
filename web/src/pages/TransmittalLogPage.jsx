@@ -16,7 +16,7 @@ const REG_TABS = [
   { key: 'variance', label: 'Area variance' },
 ];
 
-const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director']);
+const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director', 'design_mgmt_head']);
 const DIR_DOC_TYPES = ['GFC', 'AMD', 'SAN', 'ADV', 'DD', 'SUB', 'TENDER', 'BOQ', 'STAB', 'CONCEPT', 'EXEC', 'APR', 'FEAS', 'FIRESAN', 'BWSSB', 'BESCOM', 'REF', 'WORK', 'INFO'];
 const DIR_PRINT_TYPES = ['Blue Prints', 'White Prints', 'Original Tracings', 'CD', 'Document', 'Others'];
 const DIR_SERVICES = ['Sanction', 'BOQ & DBR', 'GFC', 'PHE', 'Electrical', 'FIRE', 'HVAC', 'MEPF'];
@@ -124,7 +124,7 @@ export default function TransmittalLogPage({ bootstrap }) {
               <button type="button" className="approve-btn" onClick={() => downloadCsv(rows, columns.map((c) => ({ key: c.key, label: c.label, value: c.render ? (r) => {
                 if (c.key === 'project') return r.project?.name ?? r.projectName;
                 return r[c.key];
-              } : undefined })), 'transmittal-register.csv')}>Export CSV</button>
+              } : undefined })), 'transmittal-register.csv')}>Export CSV</button><button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => window.alert(e.message))}>Download PDF</button>
             </div>
             {register.isLoading ? <EmptyState text="Loading register…" /> : (
               <DataTable columns={columns} rows={rows} emptyText="No transmittal records yet." />
@@ -292,7 +292,7 @@ function AssignedRegisterView({ roleKey }) {
             if (c.key === 'date') return fmtRegisterDate(r.date);
             if (c.key === 'project') return r.project?.name ?? r.projectName;
             return r[c.key];
-          } : undefined })), 'transmittal-register.csv')}>Export CSV</button>
+          } : undefined })), 'transmittal-register.csv')}>Export CSV</button><button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => window.alert(e.message))}>Download PDF</button>
         </div>
         {loading ? <EmptyState text="Loading register…" /> : register.isError ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{register.error.message}</div>
@@ -390,7 +390,7 @@ function DirectorRegisterView({ scoped = false }) {
             if (c.key === 'date') return fmtRegisterDate(r.date);
             if (c.key === 'project') return r.project?.name ?? r.projectName;
             return r[c.key];
-          } : undefined })), 'transmittal-register.csv')}>Export CSV</button>
+          } : undefined })), 'transmittal-register.csv')}>Export CSV</button><button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => window.alert(e.message))}>Download PDF</button>
         </div>
         {register.isLoading ? <EmptyState text="Loading register…" /> : register.isError ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{register.error.message}</div>

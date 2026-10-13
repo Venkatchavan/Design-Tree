@@ -1,3 +1,4 @@
+import { entryDocumentsUpload, attachEntryDocuments, downloadEntryDocument, spocDocumentAccess } from '../controllers/entryDocuments.controller.js';
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import {
@@ -35,6 +36,8 @@ router.patch(
   requireRole('design_mgmt_head', 'admin_billing'),
   setAllocationStatus,
 );
+router.post('/entries/:id/documents', spocDocumentAccess, entryDocumentsUpload, attachEntryDocuments);
+router.get('/entries/:id/documents/:index', spocDocumentAccess, downloadEntryDocument);
 router.get('/entries', requireInternal(), listSpocEntries);
 router.post(
   '/entries',

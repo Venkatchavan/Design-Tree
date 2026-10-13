@@ -1,3 +1,7 @@
+import MyTeamPage from './MyTeamPage.jsx';
+import StageApprovalPanel from '../components/StageApprovalPanel.jsx';
+import { DirectoryTab } from './MyCoordinationPage.jsx';
+import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -20,12 +24,12 @@ import LocationModal from '../components/LocationModal.jsx';
 
 const COORD_TABS = [
   { key: 'overview', label: 'Overview' },
-  { key: 'coordination', label: 'Coordination' },
-  { key: 'pending', label: 'Pending & follow-up' },
+  { key: 'directory', label: 'Project directory' },
   { key: 'meetings', label: 'Meetings' },
   { key: 'deliverables', label: 'Deliverables & drawings' },
   { key: 'revisions', label: 'Revision logs' },
-  { key: 'reports', label: 'Reports' },
+  { key: 'pending', label: 'Pending & follow-up' },
+  { key: 'coordination', label: 'Coordination' },
 ];
 
 const TOP_TABS = [
@@ -203,6 +207,7 @@ function ptlEntries(project) {
     const list = names.length > 0 ? names : [t.name ?? ''];
     return list.filter(Boolean).map((name) => ({
       service: t.service ?? '',
+      employee: t.employee ? String(t.employee._id ?? t.employee) : undefined,
       name,
       role: t.role ?? '',
       nominatedBy: t.nominatedBy ?? '',
@@ -216,6 +221,7 @@ function toPtlPayload(entries) {
     .map((r) => ({
       service: (r.service ?? '').trim(),
       name: (r.name ?? '').trim(),
+      ...(r.employee ? {employee:r.employee} : {}),
       ...(r.role?.trim() ? { role: r.role.trim() } : {}),
       ...(r.nominatedBy?.trim() ? { nominatedBy: r.nominatedBy.trim() } : {}),
       ...(r.approvalStatus ? { approvalStatus: r.approvalStatus } : {}),
@@ -260,6 +266,7 @@ function TechnicalPtlPanel({ projectId, project, employees }) {
       setService('');
       setMember('');
       setErr('');
+      for(const key of ['project-team','my-teams','teams']) queryClient.invalidateQueries({queryKey:[key]});
       setOk('Principal team lead saved.');
     },
     onError: (e) => {
@@ -281,8 +288,10 @@ function TechnicalPtlPanel({ projectId, project, employees }) {
       return;
     }
     const next = [...rows];
-    const idx = next.findIndex((r) => r.service === service && r.name === member);
-    const row = { service, name: member, approvalStatus: 'Approved' };
+    const selected = empList.find(e=>String(e._id ?? e.id)===member);
+    const name = empValue(selected);
+    const idx = next.findIndex((r) => r.service === service && r.name === name);
+    const row = { service, name, employee:member, approvalStatus: 'Approved' };
     if (idx >= 0) next[idx] = { ...next[idx], ...row };
     else next.push(row);
     save.mutate(next);
@@ -296,6 +305,33 @@ function TechnicalPtlPanel({ projectId, project, employees }) {
 
   return (
     <Panel title="Principal team leads — per service" sub="Enter the PTL for each service on this project.">
+      <div className="section-label" style={{ marginTop: 12 }}>Enter / replace PTL</div>
+      <form onSubmit={submit}>
+        <div className="field-grid">
+          <div className="form-row">
+            <label className="form-label">Service</label>
+            <select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}>
+              <option value="">Select service</option>
+              {serviceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="form-row">
+            <label className="form-label">Team member</label>
+            <select className="filter-select" style={{ width: '100%' }} value={member} onChange={(e) => setMember(e.target.value)}>
+              <option value="">Select member</option>
+              {empList.map((x) => {
+                const v = String(x._id ?? x.id);
+                return <option key={x._id ?? x.id} value={v}>{empLabel(x)}</option>;
+              })}
+            </select>
+          </div>
+        </div>
+        {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
+        {ok && <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>{ok}</p>}
+        <button type="submit" className="btn-primary" disabled={save.isPending} style={{ marginTop: 8 }}>
+          {save.isPending ? 'Saving…' : 'Save PTL'}
+        </button>
+      </form>
       <DataTable
         columns={[
           { key: 'service', label: 'Service' },
@@ -314,33 +350,7 @@ function TechnicalPtlPanel({ projectId, project, employees }) {
         rows={rows}
         emptyText="No principal team leads assigned yet."
       />
-      <div className="section-label" style={{ marginTop: 12 }}>Enter / replace PTL</div>
-      <form onSubmit={submit}>
-        <div className="field-grid">
-          <div className="form-row">
-            <label className="form-label">Service</label>
-            <select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}>
-              <option value="">Select service</option>
-              {serviceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="form-row">
-            <label className="form-label">Team member</label>
-            <select className="filter-select" style={{ width: '100%' }} value={member} onChange={(e) => setMember(e.target.value)}>
-              <option value="">Select member</option>
-              {empList.map((x) => {
-                const v = empValue(x);
-                return <option key={x._id ?? x.id} value={v}>{empLabel(x)}</option>;
-              })}
-            </select>
-          </div>
-        </div>
-        {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-        {ok && <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>{ok}</p>}
-        <button type="submit" className="btn-primary" disabled={save.isPending} style={{ marginTop: 8 }}>
-          {save.isPending ? 'Saving…' : 'Save PTL'}
-        </button>
-      </form>
+
     </Panel>
   );
 }
@@ -400,19 +410,6 @@ function TechnicalSpocPanel({ projectId, project, employees }) {
 
   return (
     <Panel title="SPOC for this project" sub="Propose the coordinator (SPOC) — approved by the Design Management Head / Admin.">
-      {allocsQ.isLoading ? (
-        <EmptyState text="Loading…" />
-      ) : (
-        <DataTable
-          columns={[
-            { key: 'coordinator', label: 'Coordinator', render: (r) => coordName(r.coordinator) },
-            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
-            { key: 'services', label: 'Services', render: (r) => (r.services ?? []).join(', ') || '—' },
-          ]}
-          rows={allocs}
-          emptyText="No SPOC proposed yet."
-        />
-      )}
       <div className="section-label" style={{ marginTop: 12 }}>Propose SPOC</div>
       <form onSubmit={submit}>
         <div className="form-row" style={{ maxWidth: 360 }}>
@@ -432,6 +429,20 @@ function TechnicalSpocPanel({ projectId, project, employees }) {
           {propose.isPending ? 'Saving…' : 'Propose SPOC'}
         </button>
       </form>
+      {allocsQ.isLoading ? (
+        <EmptyState text="Loading…" />
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'coordinator', label: 'Coordinator', render: (r) => coordName(r.coordinator) },
+            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+            { key: 'services', label: 'Services', render: (r) => (r.services ?? []).join(', ') || '—' },
+          ]}
+          rows={allocs}
+          emptyText="No SPOC proposed yet."
+        />
+      )}
+
     </Panel>
   );
 }
@@ -443,13 +454,12 @@ export default function ProjectDetailPage({ bootstrap }) {
   const [modal, setModal] = useState(null);
   const [locOpen, setLocOpen] = useState(false);
   const [spocId, setSpocId] = useState('');
-  const [top, setTop] = useState('coordinator');
+  const [top, setTop] = useState(bootstrap?.role?.key === 'team_lead' ? 'team-workspace' : 'coordinator');
   const [coord, setCoord] = useState('overview');
 
   const q = useQuery({ queryKey: ['project', id], queryFn: () => projectsApi.get(id) });
   const role = bootstrap?.role?.key ?? '';
-  const isSuper = role === 'founding_director' || role === 'working_director';
-  const isAdmin = role === 'admin_billing' || isSuper;
+  const isAdmin = role === 'admin_billing';
   const isTD = role === 'technical_director';
 
   const employees = useQuery({
@@ -640,7 +650,7 @@ export default function ProjectDetailPage({ bootstrap }) {
           <Field label="Code" value={project.code} mono />
           <Field label="Client" value={project.clientName || contactText(contacts.client)} />
           <Field label="Status" value={<StatusPill tone={statusTone(project.status)}>{project.status ?? '—'}</StatusPill>} />
-          <Field label="Priority" value={project.priority} />
+
           <Field label="Current stage" value={project.currentStage} />
           <Field label="Contract completion" value={fmtDate(project.expectedCompletion)} />
         </div>
@@ -684,11 +694,11 @@ export default function ProjectDetailPage({ bootstrap }) {
             <Field label="Description" value={project.description} />
           </div>
         )}
-        <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+        {isAdmin && <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
           <button type="button" className="approve-btn" onClick={() => setModal('owner')}>Change owner</button>
           <button type="button" className="approve-btn" onClick={() => setModal('dates')}>Edit dates</button>
           <button type="button" className="approve-btn" onClick={() => setLocOpen(true)}>Change Location</button>
-        </div>
+        </div>}
       </Panel>
 
       <Panel title="Work order">
@@ -769,19 +779,33 @@ export default function ProjectDetailPage({ bootstrap }) {
         <PortalAccessPanel projectId={id} initialIds={project.portalUsers ?? []} isAdmin={isAdmin} />
       </Panel>
 
-      {(isTD || isSuper) && (
+      {isTD && (
         <TechnicalPtlPanel projectId={id} project={project} employees={employees} />
       )}
-      {isTD && project.activation?.status !== 'Activated' && (
+      {isTD && (
         <TechnicalSpocPanel projectId={id} project={project} employees={employees} />
       )}
 
-      <Tabs tabs={TOP_TABS} active={top} onChange={setTop} />
+      <StageApprovalPanel projectId={id} role={role} />
+      <Tabs tabs={role === 'team_lead' ? [{ key: 'team-workspace', label: 'Team workspace' }, ...TOP_TABS] : TOP_TABS} active={top} onChange={setTop} />
+      {top === 'team-workspace' && <MyTeamPage key={id} bootstrap={bootstrap} projectId={id} projectWorkspace />}
 
       {top === 'coordinator' && (
         <>
           <Tabs tabs={COORD_TABS} active={coord} onChange={setCoord} />
 
+          <Panel title="Assigned SPOC">
+            <p>{(teamQ.data?.allocations ?? []).filter(a => a.status === 'Approved').map(a => empName(a.coordinator)).join(', ') || empName(project.activation?.spoc) || 'Not allocated'}</p>
+          </Panel>
+          {coord === 'directory' && <>
+            <DirectoryTab myAllocs={teamQ.data?.allocations ?? []} activeProjects={[project]} activeLoading={teamQ.isLoading} canEdit={role === 'coordinator'} />
+            <Panel title="Project team"><DataTable columns={[
+              { key: 'service', label: 'Service' }, { key: 'team', label: 'Team' },
+              { key: 'name', label: 'Member', render: r => empName(r.employee) },
+              { key: 'designation', label: 'Designation', render: r => r.employee?.designation ?? '—' },
+              { key: 'experience', label: 'Experience', render: r => r.employee?.experience ?? '—' },
+            ]} rows={teamQ.data?.members ?? []} emptyText="No team members allocated." /></Panel>
+          </>}
           {coord === 'overview' && (
             <>
               <Panel title="Project status" sub="Design-stage timeline">
@@ -901,40 +925,7 @@ export default function ProjectDetailPage({ bootstrap }) {
             </Panel>
           )}
 
-          {coord === 'meetings' && (
-            <>
-              <Panel title="Meeting log" sub="Meetings for this project, most recent first">
-                <DataTable
-                  columns={[
-                    { key: 'date', label: 'Date', render: (m) => fmtDate(m.date) },
-                    { key: 'time', label: 'Time', render: (m) => [m.startTime, m.endTime].filter(Boolean).join('–') || '—' },
-                    { key: 'title', label: 'Meeting', render: (m) => m.title ?? '—' },
-                    { key: 'type', label: 'Type', render: (m) => m.type ?? '—' },
-                    { key: 'mode', label: 'Mode', render: (m) => m.mode ?? '—' },
-                    { key: 'status', label: 'Status', render: (m) => m.status ?? '—' },
-                    { key: 'participants', label: 'Participants', render: (m) => (m.participants ?? []).length },
-                    { key: 'mom', label: 'MOM', render: (m) => (m.mom?.discussion ? 'Recorded' : '—') },
-                  ]}
-                  rows={[...meetings].sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')))}
-                  emptyText="No meetings logged for this project yet."
-                />
-              </Panel>
-              <Panel title="Action items">
-                <DataTable
-                  columns={[
-                    { key: 'text', label: 'Action', render: (a) => a.text ?? '—' },
-                    { key: 'owner', label: 'Owner', render: (a) => (a.owner && typeof a.owner === 'object' ? empName(a.owner) : '—') },
-                    { key: 'service', label: 'Service', render: (a) => a.service ?? '—' },
-                    { key: 'due', label: 'Due', render: (a) => fmtDate(a.due) },
-                    { key: 'status', label: 'Status', render: (a) => a.status ?? '—' },
-                    { key: 'from', label: 'From meeting', render: (a) => a.meetingTitle ?? '—' },
-                  ]}
-                  rows={meetings.flatMap((m) => (m.actions ?? []).map((a) => ({ ...a, meetingTitle: m.title })))}
-                  emptyText="No action items recorded for this project yet."
-                />
-              </Panel>
-            </>
-          )}
+          {coord === 'meetings' && <SpocMeetings projectId={id} readOnly={role !== 'coordinator'} />}
 
           {coord === 'deliverables' && (
             <>

@@ -1,9 +1,13 @@
+import { TeamAllocationPanel } from './MyCoordinationPage.jsx';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { teamsApi } from '../lib/api.js';
+import { projectsApi, employeesApi, teamsApi } from '../lib/api.js';
 import EmptyState from '../components/EmptyState.jsx';
 
-export default function TeamsPage() {
+export default function TeamsPage({bootstrap}) {
+  const canAllocate = bootstrap?.role?.key === 'design_mgmt_head';
+  const projects = useQuery({queryKey:['teams-allocation-projects'],queryFn:()=>projectsApi.list({}),enabled:canAllocate});
+  const employees = useQuery({queryKey:['teams-allocation-employees'],queryFn:()=>employeesApi.list({}),enabled:canAllocate});
   const navigate = useNavigate();
   const q = useQuery({ queryKey: ['teams'], queryFn: teamsApi.list });
   const items = q.data?.items ?? [];
@@ -16,6 +20,7 @@ export default function TeamsPage() {
           {q.isLoading ? 'Loading…' : `${q.data?.total ?? items.length} teams`}
         </div>
       </div>
+      {canAllocate && <TeamAllocationPanel projects={projects.data?.items ?? []} employees={employees.data?.items ?? []} />}
       {q.isError && (
         <div className="login-error" role="alert" style={{ display: 'block' }}>
           {q.error.message}

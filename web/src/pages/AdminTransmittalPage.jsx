@@ -157,6 +157,7 @@ export default function AdminTransmittalPage() {
             <select className="filter-select" value={project} onChange={(e) => setProject(e.target.value)}><option value="">All projects</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select>
             <select className="filter-select" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select>
             <button className="btn-primary" type="button" onClick={openCreate}>Add transmittal</button>
+            <button className="approve-btn" type="button" onClick={() => transmittalsApi.pdf({ project, status, search }).catch(e => setImportError(e.message))}>Download PDF</button>
             <button className="approve-btn" type="button" onClick={() => transmittalsApi.export().catch((e) => setImportError(e.message))}>Export to Excel</button>
             <button className="approve-btn" type="button" onClick={() => transmittalsApi.resync({ project }).then((r) => setImportError(`Checked ${r.checked} entries; ${r.issues.length} source drawing issues.`)).catch((e) => setImportError(e.message))}>Re-sync with TL list</button>
           </div>

@@ -116,6 +116,8 @@ export const stageStatusSchema = z
     spocRemark: strOpt,
     requestCompletion: z.boolean().optional(),
     confirmCompletion: z.boolean().optional(),
+    approveCompletion: z.boolean().optional(),
+    tdRemark: strOpt,
   })
   .strict();
 export const stageStatusUpdateSchema = stageStatusSchema.partial();

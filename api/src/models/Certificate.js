@@ -10,6 +10,7 @@ const certificateSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    request: { type: mongoose.Schema.Types.ObjectId, ref: 'CertRequest' },
     certType: { type: String, required: true, trim: true },
     certNo: { type: String, trim: true },
     stage: { type: String, trim: true },
@@ -38,6 +39,9 @@ const templateSchema = new mongoose.Schema(
 
 const certRequestSchema = new mongoose.Schema(
   {
+    linkHash: { type: String, select: false, index: true },
+    linkExpiresAt: Date,
+    uploadedCertificate: { type: mongoose.Schema.Types.ObjectId, ref: 'Certificate' },
     project: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Project',

@@ -1,3 +1,4 @@
+import { canReadProject } from '../utils/projectScope.js';
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import {
@@ -27,6 +28,12 @@ import {
 
 const router = Router();
 router.use(requireAuth);
+router.use(async (req,res,next) => {
+  try {
+    if (req.body?.project && !await canReadProject(req.user,req.body.project)) return res.status(403).json({message:'Project is not assigned to you.'});
+    return next();
+  }catch(err){return next(err);}
+});
 
 // QS area settlement (QS-owned, no head review)
 router.get('/area-settlements', requireInternal(), areaSettlements.list);

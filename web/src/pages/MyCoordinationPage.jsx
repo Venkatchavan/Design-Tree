@@ -1,3 +1,4 @@
+import EntryDocuments from '../components/EntryDocuments.jsx';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -436,6 +437,7 @@ function teamEntries(project) {
     const list = names.length > 0 ? names : [t.name ?? ''];
     const base = {
       service: t.service ?? '',
+      employee: t.employee ? String(t.employee._id ?? t.employee) : undefined,
       role: t.role ?? '',
       nominatedBy: t.nominatedBy ?? '',
       approvalStatus: t.approvalStatus ?? '',
@@ -449,6 +451,7 @@ function toTeamPayload(entries) {
     .map((r) => ({
       service: (r.service ?? '').trim(),
       name: (r.name ?? '').trim(),
+      ...(r.employee ? {employee:r.employee} : {}),
       ...(r.role?.trim() ? { role: r.role.trim() } : {}),
       ...(r.nominatedBy?.trim() ? { nominatedBy: r.nominatedBy.trim() } : {}),
       ...(r.approvalStatus ? { approvalStatus: r.approvalStatus } : {}),
@@ -522,7 +525,7 @@ function InhouseTeamPanel({ projects, myAllocs, employees, loading }) {
   );
 }
 
-function TeamAllocationPanel({ projects, employees }) {
+export function TeamAllocationPanel({ projects, employees }) {
   const queryClient = useQueryClient();
   const [project, setProject] = useState('');
   const [service, setService] = useState('');
@@ -543,10 +546,13 @@ function TeamAllocationPanel({ projects, employees }) {
       const detail = await projectsApi.get(body.project);
       const p = detail?.project ?? detail ?? {};
       const current = teamEntries(p);
-      const idx = current.findIndex((r) => r.service === body.service && r.name === body.member);
+      const selected = employees.find(e=>String(e._id ?? e.id)===body.member);
+      const name = empName(selected);
+      const idx = current.findIndex((r) => r.service === body.service && r.employee === body.member);
       const row = {
         service: body.service,
-        name: body.member,
+        name,
+        employee:body.member,
         role: body.role,
         nominatedBy: body.nominatedBy,
         approvalStatus: body.status,
@@ -556,7 +562,8 @@ function TeamAllocationPanel({ projects, employees }) {
       return projectsApi.saveTeamLeads(body.project, { principalTeamLeads: toTeamPayload(current) });
     },
     onSuccess: (_data, body) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      for (const key of ['projects','teams','my-teams','teams-allocation-projects']) queryClient.invalidateQueries({queryKey:[key]});
+      queryClient.invalidateQueries({ queryKey: ['project-team', body.project] });
       queryClient.invalidateQueries({ queryKey: ['project', body.project] });
       setProject('');
       setService('');
@@ -599,25 +606,6 @@ function TeamAllocationPanel({ projects, employees }) {
 
   return (
     <Panel title="Team allocation" sub="As nominated by the respective department Directors — record the approved allocation here once confirmed.">
-      {withTeam.length === 0 ? (
-        <EmptyState text="No team allocations recorded yet." />
-      ) : (
-        withTeam.map((p) => (
-          <div key={projectIdOf(p)} style={{ marginBottom: 16 }}>
-            <div className="section-label">{p.name ?? p.code ?? '—'}</div>
-            <DataTable
-              columns={[
-                { key: 'service', label: 'Service' },
-                { key: 'nominatedBy', label: 'Nominated by', render: (r) => r.nominatedBy || '—' },
-                { key: 'name', label: 'Team member' },
-                { key: 'approvalStatus', label: 'Approval status', render: (r) => <StatusPill status={approvalLabel(r.approvalStatus)} /> },
-              ]}
-              rows={teamEntries(p)}
-              emptyText="No team allocations."
-            />
-          </div>
-        ))
-      )}
       <div className="section-label" style={{ marginTop: 12 }}>Record allocation</div>
       <form onSubmit={submit}>
         <div className="field-grid">
@@ -655,7 +643,7 @@ function TeamAllocationPanel({ projects, employees }) {
               <option value="">Select member</option>
               {employees.map((x) => {
                 const n = `${x.firstName ?? ''} ${x.lastName ?? ''}`.trim() || x.empId;
-                return <option key={x._id ?? x.id} value={n}>{n}{x.designation ? ` · ${x.designation}` : ''}</option>;
+                return <option key={x._id ?? x.id} value={x._id ?? x.id}>{n}{x.designation ? ` · ${x.designation}` : ''}</option>;
               })}
             </select>
           </div>
@@ -672,6 +660,26 @@ function TeamAllocationPanel({ projects, employees }) {
           {save.isPending ? 'Saving…' : 'Record allocation'}
         </button>
       </form>
+      {withTeam.length === 0 ? (
+        <EmptyState text="No team allocations recorded yet." />
+      ) : (
+        withTeam.map((p) => (
+          <div key={projectIdOf(p)} style={{ marginBottom: 16 }}>
+            <div className="section-label">{p.name ?? p.code ?? '—'}</div>
+            <DataTable
+              columns={[
+                { key: 'service', label: 'Service' },
+                { key: 'nominatedBy', label: 'Nominated by', render: (r) => r.nominatedBy || '—' },
+                { key: 'name', label: 'Team member' },
+                { key: 'approvalStatus', label: 'Approval status', render: (r) => <StatusPill status={approvalLabel(r.approvalStatus)} /> },
+              ]}
+              rows={teamEntries(p)}
+              emptyText="No team allocations."
+            />
+          </div>
+        ))
+      )}
+
     </Panel>
   );
 }
@@ -723,7 +731,7 @@ function ProjectContactsPanel({ projects, myAllocs, employees, loading }) {
   );
 }
 
-function DirectoryTab({ myAllocs, activeProjects, activeLoading }) {
+export function DirectoryTab({ myAllocs, activeProjects, activeLoading, canEdit = false }) {
   const myIds = useMemo(
     () => new Set(myAllocs.map(allocProjectId).filter(Boolean).map(String)),
     [myAllocs],
@@ -740,8 +748,8 @@ function DirectoryTab({ myAllocs, activeProjects, activeLoading }) {
 
   return (
     <>
+      {canEdit && <TeamAllocationPanel projects={projects} employees={employees} />}
       <InhouseTeamPanel projects={projects} myAllocs={myAllocs} employees={employees} loading={activeLoading} />
-      <TeamAllocationPanel projects={projects} employees={employees} />
       <ProjectContactsPanel projects={projects} myAllocs={myAllocs} employees={employees} loading={activeLoading} />
     </>
   );
@@ -940,6 +948,7 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
               { key: 'project', label: 'Project', render: (r) => r?.project?.name ?? r?.project?.code ?? '—' },
               { key: 'service', label: 'Service' },
               { key: 'totalHours', label: 'Hours', render: (r) => r.totalHours ?? '—' },
+              { key: 'documents', label: 'Documents', render: r => <EntryDocuments entry={r} spoc /> },
             ]}
             rows={recentItems}
             emptyText="No entries saved yet."

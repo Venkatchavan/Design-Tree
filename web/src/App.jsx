@@ -5,6 +5,7 @@ import AppShell from './layout/AppShell.jsx'
 import LoginSkeleton from './components/LoginSkeleton.jsx'
 import ComingSoon from './pages/ComingSoon.jsx'
 import LoginPage from './pages/LoginPage.jsx'
+import PublicCertificatePage from './pages/PublicCertificatePage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import ProjectDetailPage from './pages/ProjectDetailPage.jsx'
 import NewProjectPage from './pages/NewProjectPage.jsx'
@@ -12,6 +13,7 @@ import TeamsPage from './pages/TeamsPage.jsx'
 import TeamDetailPage from './pages/TeamDetailPage.jsx'
 import HRPage from './pages/HRPage.jsx'
 import MyTeamPage from './pages/MyTeamPage.jsx'
+import QSLogPage from './pages/QSLogPage.jsx'
 import MyWorkPage from './pages/MyWorkPage.jsx'
 import WorkProgressPage from './pages/WorkProgressPage.jsx'
 import UpdateWorkProgressPage from './pages/UpdateWorkProgressPage.jsx'
@@ -54,7 +56,7 @@ const VIEW_COMPONENTS = {
   'my-coordination': MyCoordinationPage,
   'my-meetings': MyMeetingsPage,
   meetings: MyMeetingsPage,
-  'qs-log': WorkTrackingPage,
+  'qs-log': QSLogPage,
   'work-tracking': WorkTrackingPage,
   'transmittal-log': TransmittalLogPage,
   transmittal: AdminTransmittalPage,
@@ -205,7 +207,10 @@ function AuthGate() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthGate className="app-watermark"/>
+      <Routes>
+        <Route path="/certificate-request/:token" element={<PublicCertificatePage />} />
+        <Route path="*" element={<AuthGate className="app-watermark" />} />
+      </Routes>
     </BrowserRouter>
   )
 }

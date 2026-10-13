@@ -19,7 +19,7 @@ const STATUSES = ['Pending', 'Ready for billing', 'Billed', 'Flagged'];
 const SERVICES_10 = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS'];
 const STAGES_5 = ['CD', 'SD', 'DD', 'TD', 'GFC'];
 const STAGE_STATUS = ['Not Started', 'In Progress', 'PTL Requested', 'Pending SPOC confirm', 'Completed'];
-const WRITERS = new Set(['founding_director', 'working_director', 'admin_billing', 'executive_director']);
+const WRITERS = new Set([ 'working_director', 'admin_billing', 'executive_director']);
 const STAGE_WRITERS = new Set(['admin_billing', 'executive_director', 'coordinator', 'design_mgmt_head', 'team_lead']);
 const DIRECTOR_READONLY = new Set(['founding_director', 'working_director', 'executive_director']);
 const money = (v) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;

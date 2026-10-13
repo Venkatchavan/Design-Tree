@@ -1,3 +1,4 @@
+import { canReadProject } from '../utils/projectScope.js';
 import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { z } from 'zod';
 import { Deliverable, DeliverableLog } from '../models/Deliverable.js';
@@ -29,6 +30,20 @@ import {
 
 const POP_EMP = 'firstName lastName empId designation';
 const POP_PROJ = 'name code branch';
+
+export async function taskMemberAccess(req,res,next) {
+  try {
+    if (!Array.isArray(req.body?.members)) return next();
+    const existing = req.params.id ? await Task.findById(req.params.id) : null;
+    const project = req.body.project || existing?.project;
+    if (!project || !await canReadProject(req.user,project)) return res.status(403).json({message:'Project is not assigned to you.'});
+    const {Team} = await import('../models/Team.js');
+    const teams = await Team.find({projects:project}).select('lead members').lean();
+    const allowed = new Set(teams.flatMap(t=>[String(t.lead),...t.members.map(m=>String(m.employee))]));
+    if(req.body.members.some(id=>!allowed.has(String(id))))return res.status(400).json({message:'Assign work to members of this project only.'});
+    return next();
+  }catch(err){return next(err);}
+}
 
 export const tasks = makeCrud(Task, {
   scopedByProject: true,
@@ -146,6 +161,8 @@ export const revisions = makeCrud(Revision, {
 export async function deleteDeliverable(req, res, next) {
   try {
     const { Deliverable } = await import('../models/Deliverable.js');
+    const old = await Deliverable.findById(req.params.id);
+    if (!old || !await canReadProject(req.user, old.project)) return res.status(404).json({ message: 'Not found.' });
     const doc = await Deliverable.findByIdAndDelete(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Not found.' });
     return res.status(200).json({ ok: true });
@@ -213,6 +230,8 @@ export async function setRevisionStatus(req, res, next) {
     return res.status(400).json({ message: 'Invalid data.' });
   }
   try {
+    const old = await Revision.findById(req.params.id);
+    if (!old || !await canReadProject(req.user, old.project)) return res.status(404).json({ message: 'Not found.' });
     const patch = { status: parsed.data.status };
     if (parsed.data.status === 'Resubmitted')
       patch.resubmittedAt = new Date();
@@ -273,6 +292,7 @@ export const recruitments = makeCrud(Recruitment, {
   },
   filters: (req) => {
     const f = {};
+    if (req.query.project) f.project = req.query.project;
     if (req.query.status) f.status = req.query.status;
     if (req.query.mine === 'true') f.requestedBy = req.user.id;
     return f;
@@ -293,6 +313,7 @@ export async function createRecruitment(req, res, next) {
     }
   }
   try {
+    if (parsed.data.project && !await canReadProject(req.user,parsed.data.project)) return res.status(403).json({message:'Project is not assigned to you.'});
     const doc = await Recruitment.create({
       ...parsed.data,
       requestedBy: req.user.id,
@@ -331,7 +352,7 @@ export async function setTaskStatus(req, res, next) {
   }
   try {
     const task = await Task.findById(req.params.id);
-    if (!task) return res.status(404).json({ message: 'Not found.' });
+    if (!task || !await canReadProject(req.user, task.project)) return res.status(404).json({ message: 'Not found.' });
     const { User } = await import('../models/User.js');
     const { isSuperRole } = await import('../config/roles.js');
     const me = await User.findById(req.user.id);

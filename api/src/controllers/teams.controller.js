@@ -1,3 +1,6 @@
+import { applyMeetingAudience } from '../middlewares/meetingAccess.js';
+import { projectScopeIds } from '../utils/projectScope.js';
+import { Meeting } from '../models/Meeting.js';
 import { Team } from '../models/Team.js';
 import { WorkEntry } from '../models/WorkEntry.js';
 import { requireActiveBranch } from '../utils/branches.js';
@@ -60,6 +63,8 @@ export async function listTeams(req, res, next) {
     const { service } = req.query;
     const filter = {};
     if (service) filter.service = service;
+    const allowed = await projectScopeIds(req.user);
+    if (allowed) filter.projects = {$in:allowed};
     const teams = await Team.find(filter).sort({ name: 1 });
     const memberIds = teams.flatMap((t) => t.members.map((m) => m.employee));
     const hours = await weekHoursByEmployee(memberIds);
@@ -87,22 +92,31 @@ export async function getTeam(req, res, next) {
   try {
     const team = await Team.findById(req.params.id)
       .populate('lead', 'firstName lastName empId designation')
-      .populate('members.employee', 'firstName lastName empId designation branch department status');
+      .populate('members.employee', 'firstName lastName empId designation branch department status experience')
+      .populate('projects', 'name code status currentStage');
     if (!team) return res.status(404).json({ message: 'Team not found.' });
-    const memberIds = team.members.map((m) => m.employee._id);
+    const allowed = await projectScopeIds(req.user);
+    const projectIds = team.projects.map(p => p._id);
+    if (allowed && !projectIds.some(id => allowed.includes(String(id)))) return res.status(404).json({message:'Team not found.'});
+    const visibleProjects = allowed ? projectIds.filter(id => allowed.includes(String(id))) : projectIds;
+    const memberIds = team.members.filter(m => m.employee).map((m) => m.employee._id);
     const since = new Date(Date.now() - WEEK_MS);
-    const [entries, pending] = await Promise.all([
-      WorkEntry.find({ employee: { $in: memberIds }, date: { $gte: since } })
+    const meetingFilter = {project:{$in:visibleProjects}};
+    await applyMeetingAudience(meetingFilter,req.user);
+    const [entries, pending, meetings] = await Promise.all([
+      WorkEntry.find({ employee: { $in: memberIds }, project:{$in:visibleProjects}, date: { $gte: since } })
         .populate('project', 'name code')
         .populate('employee', 'firstName lastName empId')
         .sort({ date: -1 })
         .limit(100),
-      WorkEntry.countDocuments({
+      WorkEntry.find({
         employee: { $in: memberIds },
+        project: {$in:visibleProjects},
         status: 'Pending',
-      }),
+      }).populate('project','name code').populate('employee','firstName lastName empId'),
+      Meeting.find(meetingFilter).populate('project','name code').sort({date:-1}),
     ]);
-    return res.status(200).json({ team, weekEntries: entries, pending });
+    return res.status(200).json({ team, weekEntries: entries, pending, meetings });
   } catch (err) {
     return next(err);
   }
