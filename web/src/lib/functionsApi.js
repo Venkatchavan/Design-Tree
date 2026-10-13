@@ -74,6 +74,47 @@ export const convApi = {
     }),
 };
 
+export const workItemApi = {
+  list: (params = {}) => request(`/api/work-items${toQuery(params)}`),
+  create: (body) =>
+    request('/api/work-items', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  update: (id, body) =>
+    request(`/api/work-items/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+};
+
+export const drawingAckApi = {
+  list: (params = {}) => request(`/api/drawing-acks${toQuery(params)}`),
+};
+
+export const serviceDashboardApi = {
+  list: (params = {}) => request(`/api/service-dashboards${toQuery(params)}`),
+  save: (body) =>
+    request('/api/service-dashboards', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+};
+
+export const stageReviewApi = {
+  list: (params = {}) => request(`/api/stage-reviews${toQuery(params)}`),
+  create: (body) =>
+    request('/api/stage-reviews', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  update: (id, body) =>
+    request(`/api/stage-reviews/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+};
+
 export const variationApi = {
   list: (params = {}) => request(`/api/variations${toQuery(params)}`),
   create: (body) =>

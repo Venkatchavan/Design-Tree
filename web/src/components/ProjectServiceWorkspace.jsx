@@ -2,17 +2,21 @@ import Panel from './Panel.jsx';
 import DataTable from './DataTable.jsx';
 import KpiCard from './KpiCard.jsx';
 import StatusPill from './StatusPill.jsx';
-import EmptyState from './EmptyState.jsx';
 import VariationsPanel from './VariationsPanel.jsx';
+import ServiceTeamPanel from './ServiceTeamPanel.jsx';
+import StageReviewPanel from './StageReviewPanel.jsx';
+import DesignTeamPanel from './DesignTeamPanel.jsx';
+import QsServicePanel from './QsServicePanel.jsx';
+import QaqcServicePanel from './QaqcServicePanel.jsx';
 
 export const SERVICE_TABS = [
-  { key: 'structural', label: 'Structural', codes: ['STR', 'Structural', 'Structure'], kind: 'design' },
-  { key: 'electrical', label: 'Electrical', codes: ['ELE', 'Electrical'], kind: 'design' },
-  { key: 'mechanical', label: 'Mechanical', codes: ['HVAC', 'MEP', 'Mechanical'], kind: 'design' },
-  { key: 'plumbing', label: 'Plumbing', codes: ['PHE', 'Plumbing'], kind: 'design' },
-  { key: 'fire', label: 'Fire', codes: ['FIRE', 'Fire'], kind: 'design' },
-  { key: 'qs', label: 'QS', codes: ['QS', 'QS/BOQ'], kind: 'qs' },
-  { key: 'qaqc', label: 'QAQC', codes: ['QAQC', 'QA/QC'], kind: 'qaqc' },
+  { key: 'structural', label: 'Structural', codes: ['STR', 'Structural', 'Structure'], kind: 'design', dash: 'STR' },
+  { key: 'electrical', label: 'Electrical', codes: ['ELE', 'Electrical'], kind: 'design', dash: 'ELE' },
+  { key: 'mechanical', label: 'Mechanical', codes: ['HVAC', 'MEP', 'Mechanical'], kind: 'design', dash: 'HVAC' },
+  { key: 'plumbing', label: 'Plumbing', codes: ['PHE', 'Plumbing'], kind: 'design', dash: 'PHE' },
+  { key: 'fire', label: 'Fire', codes: ['FIRE', 'Fire'], kind: 'design', dash: 'FIRE' },
+  { key: 'qs', label: 'QS', codes: ['QS', 'QS/BOQ'], kind: 'qs', dash: 'QS' },
+  { key: 'qaqc', label: 'QAQC', codes: ['QAQC', 'QA/QC'], kind: 'qaqc', dash: 'QAQC' },
   { key: 'gbs', label: 'GBS', codes: ['GBS'], kind: 'gbs' },
   { key: 'bim', label: 'BIM', codes: ['BIM'], kind: 'bim' },
   { key: 'peer', label: 'Peer review', codes: ['PEER', 'Peer Review'], kind: 'peer' },
@@ -123,29 +127,6 @@ function DrawingsPanel({ rows, emptyText }) {
   );
 }
 
-function BimWorkOrderPanel({ project }) {
-  const bwo = project.bimWorkOrder;
-  return (
-    <Panel title="BIM work order" sub="Issued by Admin, kept separate from the work order above">
-      {!bwo ? (
-        <EmptyState text="No BIM work order for this project." />
-      ) : (
-        <DataTable
-          columns={[
-            { key: 'no', label: 'BIM WO No.', render: (r) => r.no || '—' },
-            { key: 'scope', label: 'Scope of work', render: (r) => r.scope || '—' },
-            { key: 'date', label: 'Date', render: (r) => fmtDate(r.date) },
-            { key: 'fee', label: 'Fee / value', render: (r) => (r.fee != null ? `₹${Number(r.fee).toLocaleString('en-IN')}` : '—') },
-            { key: 'status', label: 'Status', render: (r) => r.status || '—' },
-          ]}
-          rows={[bwo]}
-          emptyText="No BIM work order for this project."
-        />
-      )}
-    </Panel>
-  );
-}
-
 function PeerReviewPanel({ rows }) {
   return (
     <Panel title="Peer reviews" sub="Peer review submissions for this project">
@@ -170,8 +151,6 @@ export default function ProjectServiceWorkspace({
   project,
   stages,
   drawings,
-  areaRows,
-  boqRows,
   visitRows,
   weeklyRows,
   gbsItem,
@@ -179,6 +158,12 @@ export default function ProjectServiceWorkspace({
   peerRows = [],
   variations = [],
   role = '',
+  serviceDashboards = [],
+  stageReviews = [],
+  employees = [],
+  discrepancies = [],
+  drawingAcks = new Set(),
+  workItems = [],
 }) {
   const codes = service.codes;
   const svcStages = stages.filter((s) => codes.includes(String(s.service ?? '')));
@@ -193,30 +178,50 @@ export default function ProjectServiceWorkspace({
     return <VariationsPanel projectId={project._id} variations={variations} role={role} />;
   }
 
-  if (kind === 'design' || kind === 'bim' || kind === 'peer') {
-    const active = svcStages.filter((s) => String(s.currentStatus ?? '').toLowerCase() !== 'completed');
-    const delayed = svcStages.filter((s) => Number(s.delayDays ?? 0) > 0);
-    const gfc = svcDrawings.filter((d) => String(d.stage ?? '').toUpperCase() === 'GFC');
+  if (kind === 'design') {
+    const teamMembers = (teamBundle?.members ?? []).filter((m) => codes.includes(String(m.service ?? '')));
+    return (
+      <DesignTeamPanel
+        projectId={project._id}
+        service={service}
+        dashboard={serviceDashboards.find((d) => d.service === service.dash)}
+        principalTeamLeads={project.principalTeamLeads}
+        teamMembers={teamMembers}
+        employees={employees}
+        drawings={svcDrawings}
+        acks={drawingAcks}
+        discrepancies={discrepancies}
+        role={role}
+      />
+    );
+  }
+
+  if (kind === 'bim') {
+    return (
+      <ServiceTeamPanel
+        projectId={project._id}
+        service="BIM"
+        dashboard={serviceDashboards.find((d) => d.service === 'BIM')}
+        principalTeamLeads={project.principalTeamLeads}
+        role={role}
+      />
+    );
+  }
+
+  if (kind === 'peer') {
     const peerOpen = peerRows.filter((p) => p.status !== 'Approved for Issue');
-    const items =
-      kind === 'peer'
-        ? [
+    return (
+      <>
+        <StageReviewPanel projectId={project._id} reviews={stageReviews} role={role} />
+        <KpiRow
+          items={[
             { label: 'Peer reviews', value: peerRows.length, accent: 'blueprint' },
             { label: 'Open reviews', value: peerOpen.length, accent: 'amber' },
             { label: 'Approved for issue', value: peerRows.length - peerOpen.length, accent: 'forest' },
             { label: 'Stages tracked', value: svcStages.length, accent: 'teal' },
-          ]
-        : [
-            { label: 'Stages tracked', value: svcStages.length, accent: 'blueprint' },
-            { label: 'Active stages', value: active.length, accent: 'forest' },
-            { label: 'Delayed stages', value: delayed.length, accent: 'rust' },
-            { label: 'GFC drawings', value: gfc.length, accent: 'teal' },
-          ];
-    return (
-      <>
-        {kind === 'bim' && <BimWorkOrderPanel project={project} />}
-        <KpiRow items={items} />
-        {kind === 'peer' && <PeerReviewPanel rows={peerRows} />}
+          ]}
+        />
+        <PeerReviewPanel rows={peerRows} />
         <TeamPanels service={service} project={project} teamBundle={teamBundle} />
         <StagePanel svcStages={svcStages} />
         <DrawingsPanel rows={svcDrawings} emptyText="No drawings submitted for this service yet." />
@@ -225,113 +230,43 @@ export default function ProjectServiceWorkspace({
   }
 
   if (kind === 'qs') {
-    const total = boqRows.reduce((s, r) => s + Number(r.amount ?? 0), 0);
     return (
-      <>
-        <KpiRow
-          items={[
-            { label: 'BOQ items', value: boqRows.length, accent: 'blueprint' },
-            { label: 'BOQ total', value: total.toLocaleString('en-IN'), accent: 'copper' },
-            { label: 'Area zones', value: areaRows.length, accent: 'forest' },
-          ]}
-        />
-        <Panel title="BOQ">
-          <DataTable
-            columns={[
-              { key: 'itemNo', label: 'Item', render: (r) => r.itemNo ?? '—' },
-              { key: 'description', label: 'Description', render: (r) => r.description ?? '—' },
-              { key: 'unit', label: 'Unit', render: (r) => r.unit ?? '—' },
-              { key: 'qty', label: 'Qty', render: (r) => r.qty ?? '—' },
-              { key: 'rate', label: 'Rate', render: (r) => r.rate ?? '—' },
-              { key: 'amount', label: 'Amount', render: (r) => r.amount ?? '—' },
-              { key: 'status', label: 'Status', render: (r) => r.status ?? '—' },
-            ]}
-            rows={boqRows}
-            emptyText="No BOQ items logged for this project yet."
-          />
-        </Panel>
-        <Panel title="Area settlement">
-          <DataTable
-            columns={[
-              { key: 'zone', label: 'Zone', render: (r) => r.zone ?? '—' },
-              { key: 'initial', label: 'Initial', render: (r) => r.initial ?? '—' },
-              { key: 'revised', label: 'Revised', render: (r) => r.revised ?? '—' },
-              { key: 'variance', label: 'Variance', render: (r) => (r.initial != null && r.revised != null ? Number(r.revised) - Number(r.initial) : '—') },
-              { key: 'status', label: 'Status', render: (r) => r.status ?? '—' },
-              { key: 'remarks', label: 'Remarks', render: (r) => r.remarks ?? '—' },
-            ]}
-            rows={areaRows}
-            emptyText="No area settlements recorded for this project yet."
-          />
-        </Panel>
-      </>
+      <QsServicePanel
+        projectId={project._id}
+        codes={codes}
+        dashboard={serviceDashboards.find((d) => d.service === service.dash)}
+        principalTeamLeads={project.principalTeamLeads}
+        workItems={workItems}
+        role={role}
+      />
     );
   }
 
   if (kind === 'qaqc') {
-    const discrepancies = visitRows.filter((v) => v.discrepancyFound).length;
     return (
-      <>
-        <KpiRow
-          items={[
-            { label: 'Site visits', value: visitRows.length, accent: 'blueprint' },
-            { label: 'Drawing issues found', value: discrepancies, accent: 'rust' },
-            { label: 'Weekly reports', value: weeklyRows.length, accent: 'forest' },
-          ]}
-        />
-        <Panel title="Site visits">
-          <DataTable
-            columns={[
-              { key: 'visitId', label: 'Visit no.', render: (v) => v.visitId ?? '—' },
-              { key: 'phase', label: 'Phase', render: (v) => v.phase ?? '—' },
-              { key: 'type', label: 'Type', render: (v) => v.visitType ?? '—' },
-              { key: 'date', label: 'Date', render: (v) => fmtDate(v.date ?? v.createdAt) },
-              { key: 'issue', label: 'Drawing issue', render: (v) => (v.discrepancyFound ? 'Yes' : 'No') },
-              { key: 'severity', label: 'Severity', render: (v) => v.severity ?? '—' },
-            ]}
-            rows={visitRows}
-            emptyText="No site visits recorded for this project yet."
-          />
-        </Panel>
-        <Panel title="Weekly reports and approval">
-          <DataTable
-            columns={[
-              { key: 'week', label: 'Week', render: (w) => w.weekLabel ?? fmtDate(w.weekStart) },
-              { key: 'status', label: 'Status', render: (w) => w.status ?? '—' },
-              { key: 'approved', label: 'Approved on', render: (w) => fmtDate(w.approvedAt) },
-            ]}
-            rows={weeklyRows}
-            emptyText="No weekly reports submitted for this project yet."
-          />
-        </Panel>
-      </>
+      <QaqcServicePanel
+        projectId={project._id}
+        codes={codes}
+        dashboard={serviceDashboards.find((d) => d.service === service.dash)}
+        principalTeamLeads={project.principalTeamLeads}
+        visits={visitRows}
+        discrepancies={discrepancies}
+        weeklyRows={weeklyRows}
+        role={role}
+      />
     );
   }
 
   if (kind === 'gbs') {
-    const steps = gbsItem?.steps ?? [];
-    const done = steps.filter((s) => s.status === 'Completed').length;
     return (
-      <>
-        <KpiRow
-          items={[
-            { label: 'Certification steps', value: steps.length, accent: 'blueprint' },
-            { label: 'Completed steps', value: done, accent: 'forest' },
-          ]}
-        />
-        <Panel title="Certification steps">
-          <DataTable
-            columns={[
-              { key: 'phase', label: 'Phase', render: (s) => s.phase ?? '—' },
-              { key: 'status', label: 'Status', render: (s) => s.status ?? '—' },
-              { key: 'date', label: 'Date', render: (s) => fmtDate(s.date) },
-              { key: 'remarks', label: 'Remarks', render: (s) => s.remarks ?? '—' },
-            ]}
-            rows={steps}
-            emptyText="No GBS certification steps recorded for this project yet."
-          />
-        </Panel>
-      </>
+      <ServiceTeamPanel
+        projectId={project._id}
+        service="GBS"
+        dashboard={serviceDashboards.find((d) => d.service === 'GBS')}
+        principalTeamLeads={project.principalTeamLeads}
+        role={role}
+        gbsSteps={gbsItem?.steps ?? []}
+      />
     );
   }
 

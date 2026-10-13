@@ -17,6 +17,8 @@ const discrepancySchema = new mongoose.Schema(
       default: 'Construction',
     },
     discipline: { type: String, trim: true },
+    // Other discipline the coordination item is raised with.
+    withDiscipline: { type: String, trim: true },
     severity: { type: String, trim: true },
     issue: { type: String, required: true, trim: true },
     raised: { type: Date, default: Date.now },
@@ -27,6 +29,8 @@ const discrepancySchema = new mongoose.Schema(
       default: 'Open',
       index: true,
     },
+    // Set when raised automatically from a site visit that found a drawing issue.
+    siteVisit: { type: mongoose.Schema.Types.ObjectId, ref: 'SiteVisit', index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },

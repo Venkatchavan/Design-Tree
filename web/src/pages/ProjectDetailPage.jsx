@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { projectsApi, employeesApi, usersApi } from '../lib/api.js';
-import { areaApi, boqApi, discApi, gbsApi, peerApi, rfiApi, variationApi, visitsApi, weeklyReportApi } from '../lib/functionsApi.js';
+import { areaApi, discApi, drawingAckApi, gbsApi, peerApi, rfiApi, serviceDashboardApi, stageReviewApi, variationApi, visitsApi, weeklyReportApi, workItemApi } from '../lib/functionsApi.js';
 import { billingApi } from '../lib/phase3Api.js';
 import { deliverablesApi, drawingsApi, revisionsApi } from '../lib/workApi.js';
 import { meetingsApi } from '../lib/phase4bApi.js';
@@ -210,7 +210,7 @@ export default function ProjectDetailPage({ bootstrap }) {
   const employees = useQuery({
     queryKey: ['employees-spoc', id],
     queryFn: () => employeesApi.list({}),
-    enabled: isAdmin,
+    enabled: !!id,
     retry: false,
   });
   const stagesQ = useQuery({ queryKey: ['project-stages', id], queryFn: () => billingApi.stages({ project: id }), enabled: !!id, retry: false });
@@ -219,7 +219,7 @@ export default function ProjectDetailPage({ bootstrap }) {
   const deliverablesQ = useQuery({ queryKey: ['project-deliverables', id], queryFn: () => deliverablesApi.list({ project: id }), enabled: !!id, retry: false });
   const meetingsQ = useQuery({ queryKey: ['project-meetings', id], queryFn: () => meetingsApi.list({ project: id }), enabled: !!id, retry: false });
   const areaQ = useQuery({ queryKey: ['project-area', id], queryFn: () => areaApi.list({ project: id }), enabled: !!id, retry: false });
-  const boqQ = useQuery({ queryKey: ['project-boq', id], queryFn: () => boqApi.list({ project: id }), enabled: !!id, retry: false });
+  const workItemsQ = useQuery({ queryKey: ['project-work-items', id], queryFn: () => workItemApi.list({ project: id }), enabled: !!id, retry: false });
   const visitsQ = useQuery({ queryKey: ['project-visits', id], queryFn: () => visitsApi.list({ project: id }), enabled: !!id, retry: false });
   const weeklyQ = useQuery({ queryKey: ['project-weekly', id], queryFn: () => weeklyReportApi.list({ project: id }), enabled: !!id, retry: false });
   const gbsQ = useQuery({ queryKey: ['project-gbs', id], queryFn: () => gbsApi.get(id), enabled: !!id, retry: false });
@@ -228,6 +228,9 @@ export default function ProjectDetailPage({ bootstrap }) {
   const peersQ = useQuery({ queryKey: ['project-peers', id], queryFn: () => peerApi.list({ project: id }), enabled: !!id, retry: false });
   const discsQ = useQuery({ queryKey: ['project-discs', id], queryFn: () => discApi.list({ project: id }), enabled: !!id, retry: false });
   const variationsQ = useQuery({ queryKey: ['project-variations', id], queryFn: () => variationApi.list({ project: id }), enabled: !!id, retry: false });
+  const dashboardsQ = useQuery({ queryKey: ['project-service-dashboards', id], queryFn: () => serviceDashboardApi.list({ project: id }), enabled: !!id, retry: false });
+  const stageReviewsQ = useQuery({ queryKey: ['project-stage-reviews', id], queryFn: () => stageReviewApi.list({ project: id }), enabled: !!id, retry: false });
+  const drawingAcksQ = useQuery({ queryKey: ['project-drawing-acks', id], queryFn: () => drawingAckApi.list({ project: id }), enabled: !!id, retry: false });
 
   const activate = useMutation({
     mutationFn: (body) => projectsApi.activate(id, body),
@@ -271,13 +274,16 @@ export default function ProjectDetailPage({ bootstrap }) {
   const deliverables = ofProject(deliverablesQ.data?.items);
   const meetings = ofProject(meetingsQ.data?.items);
   const areaRows = ofProject(areaQ.data?.items);
-  const boqRows = ofProject(boqQ.data?.items);
+  const workItemRows = ofProject(listOf(workItemsQ.data));
   const visitRows = ofProject(visitsQ.data?.items);
   const weeklyRows = ofProject(weeklyQ.data?.items);
   const rfiRows = ofProject(listOf(rfisQ.data));
   const peerRows = ofProject(listOf(peersQ.data));
   const discRows = ofProject(listOf(discsQ.data));
   const variationRows = ofProject(listOf(variationsQ.data));
+  const serviceDashboards = ofProject(listOf(dashboardsQ.data));
+  const stageReviewRows = ofProject(listOf(stageReviewsQ.data));
+  const drawingAckIds = new Set(listOf(drawingAcksQ.data).map((a) => String(a.drawing)));
   const scope = project.scope ?? [];
   const totalFee = scope.reduce((s, r) => s + (Number(r.fee) || 0), 0);
   const contacts = asObj(project.contacts);
@@ -770,8 +776,7 @@ export default function ProjectDetailPage({ bootstrap }) {
           project={project}
           stages={stages}
           drawings={drawings}
-          areaRows={areaRows}
-          boqRows={boqRows}
+          workItems={workItemRows}
           visitRows={visitRows}
           weeklyRows={weeklyRows}
           gbsItem={gbsQ.data?.item}
@@ -779,6 +784,11 @@ export default function ProjectDetailPage({ bootstrap }) {
           peerRows={peerRows}
           variations={variationRows}
           role={role}
+          serviceDashboards={serviceDashboards}
+          stageReviews={stageReviewRows}
+          employees={listOf(employees.data)}
+          discrepancies={discRows}
+          drawingAcks={drawingAckIds}
         />
       )}
 

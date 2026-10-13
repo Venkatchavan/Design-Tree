@@ -155,6 +155,7 @@ export const discrepancySchema = z
   .object({
     project: objectId,
     discipline: strOpt,
+    withDiscipline: strOpt,
     severity: strOpt,
     kind: z.enum(['Construction', 'Drawing']).optional(),
     issue: z.string().trim().min(1),
