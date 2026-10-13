@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { projectsApi } from '../lib/api.js';
+import { employeesApi, projectsApi } from '../lib/api.js';
 import { marketingApi } from '../lib/phase4aApi.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
 import Panel from '../components/Panel.jsx';
@@ -22,16 +22,20 @@ const BASE_PROJECT_TYPES = [
 ];
 const BASE_SERVICES = ['STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'SMEP', 'SMEPF', 'MEP', 'BIM', 'GBS', 'Peer Review'];
 const SERVICE_LABELS = { STR: 'Str', PHE: 'Phe', ELE: 'Elec', FIRE: 'Fire', SMEP: 'Smep', SMEPF: 'Smepf', MEP: 'Mep', BIM: 'Bim', GBS: 'Gbs' };
-const BASE_SOURCES = [
-  'Referral', 'Direct', 'Tender', 'Repeat Client', 'Marketing', 'Other',
+const PRINCIPAL_TEAM_LEAD_SERVICES = [
+  { key: 'Structural', aliases: ['structural', 'str', 'structure'], placeholder: 'e.g. Meera Krishnan' },
+  { key: 'Mechanical', aliases: ['mechanical', 'hvac'], placeholder: 'e.g. Sneha Kulkarni' },
+  { key: 'Electrical', aliases: ['electrical', 'ele', 'elec'], placeholder: 'e.g. Divya Shenoy' },
+  { key: 'Plumbing', aliases: ['plumbing', 'phe'], placeholder: 'e.g. Lakshmi Iyer' },
+  { key: 'Fire', aliases: ['fire'], placeholder: 'e.g. Anjali Pillai' },
 ];
 const CONTACT_KINDS = [
   { key: 'client', label: 'Client Contact', contactType: 'Client' },
   { key: 'architect', label: 'Architect Contact', contactType: 'Architect' },
+  { key: 'pmc', label: 'PMC Contact', contactType: 'PMC' },
+  { key: 'peerReview', label: 'Peer Review Contact', contactType: 'Peer Review' },
   { key: 'billing', label: 'Contact Person for Billing', contactType: 'Client' },
 ];
-// NOTE: PMC and Peer Review contacts are entered by the SPOC after allocation
-// (My coordination → PMC & Peer Review contacts), not here.
 
 const BLANK = {
   name: '',
@@ -39,21 +43,16 @@ const BLANK = {
   projectType: '',
   branch: '',
   services: [],
-  source: '',
   entityName: '',
   location: { label: '', address1: '', address2: '', city: '', state: '', zip: '' },
   scopeText: '',
   fee: '',
   hospitality: '',
   jobNumber: '',
-  category: '',
-  referral: '',
-  sourcePerson: '',
-  clientSpoc: '',
-  workOrderDate: '',
-  workOrderDocument: '',
-  bimWorkOrder: { no: '', date: '', scope: '', fee: '', description: '', status: '' },
-  contacts: { client: null, architect: null, billing: null },
+  principalTeamLeads: {},
+  spoc: '',
+  bimWorkOrder: { scope: '', fee: '', description: '' },
+  contacts: { client: null, architect: null, pmc: null, peerReview: null, billing: null },
 };
 
 function cloneBlank() {
@@ -64,6 +63,19 @@ function numOrUndef(v) {
   if (v === '' || v === null || v === undefined) return undefined;
   const n = Number(v);
   return Number.isNaN(n) ? undefined : n;
+}
+
+function projectContact(contact) {
+  if (!contact || typeof contact !== 'object') return undefined;
+  const normalized = {
+    salutation: contact.salutation || undefined,
+    name: contact.name || undefined,
+    designation: contact.designation || undefined,
+    company: contact.company || contact.organization || undefined,
+    phone: contact.phone || undefined,
+    email: contact.email || undefined,
+  };
+  return normalized.name || normalized.email || normalized.company ? normalized : undefined;
 }
 
 function union(base, live) {
@@ -201,10 +213,13 @@ export default function NewProjectPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [form, setForm] = useState(cloneBlank);
+  const [jobNumberMode, setJobNumberMode] = useState('automatic');
   const [formError, setFormError] = useState('');
   const [saveMode, setSaveMode] = useState('save');
   const [importFile, setImportFile] = useState(null);
   const [importResult, setImportResult] = useState(null);
+  const [teamImportError, setTeamImportError] = useState('');
+  const [teamImporting, setTeamImporting] = useState(false);
   const [locOpen, setLocOpen] = useState(false);
 
   const set = (key, value) => {
@@ -215,6 +230,8 @@ export default function NewProjectPage() {
     setForm((f) => ({ ...f, contacts: { ...f.contacts, [kind]: value } }));
   const setBim = (key, value) =>
     setForm((f) => ({ ...f, bimWorkOrder: { ...f.bimWorkOrder, [key]: value } }));
+  const setPrincipalTeamLead = (service, employeeId) =>
+    setForm((f) => ({ ...f, principalTeamLeads: { ...f.principalTeamLeads, [service]: employeeId } }));
   function toggleService(s) {
     setForm((f) => ({
       ...f,
@@ -234,13 +251,19 @@ export default function NewProjectPage() {
     queryFn: () => projectsApi.nextJobNumber(),
     retry: false,
   });
+  const employeesQ = useQuery({
+    queryKey: ['employees-new-project'],
+    queryFn: () => employeesApi.list({ status: 'Active' }),
+  });
 
   const projectRows = projectsQ.data?.items ?? [];
+  const employees = employeesQ.data?.items ?? employeesQ.data ?? [];
+  const teamLeads = employees.filter((employee) => /team lead|team leader|\btl\b|\bptl\b/i.test(employee.designation ?? ''));
+  const coordinators = employees.filter((employee) => /coordinator|spoc/i.test(employee.designation ?? ''));
 
   const stateOptions = unionOptions(BASE_STATES, projectRows.map((p) => p.state));
   const projectTypeOptions = unionOptions(BASE_PROJECT_TYPES, projectRows.map((p) => p.projectType));
   const serviceOptions = BASE_SERVICES;
-  const sourceOptions = unionOptions(BASE_SOURCES, projectRows.map((p) => p.source));
   const entityOptions = unionOptions([], projectRows.map((p) => p.entityName));
 
   const save = useMutation({
@@ -250,6 +273,8 @@ export default function NewProjectPage() {
       queryClient.invalidateQueries({ queryKey: ['projects-stats'] });
       if (saveMode === 'new') {
         setForm(cloneBlank());
+        setJobNumberMode('automatic');
+        setTeamImportError('');
         setFormError('');
       } else {
         const id = data?.project?._id ?? data?._id;
@@ -289,9 +314,8 @@ export default function NewProjectPage() {
       projectType: form.projectType || undefined,
       branch: form.branch || undefined,
       services: form.services ?? [],
-      source: form.source.trim() || undefined,
       entityName: form.entityName.trim() || undefined,
-      jobNumber: form.jobNumber.trim() || undefined,
+      jobNumber: jobNumberMode === 'manual' ? form.jobNumber.trim() || undefined : undefined,
       location: form.location.label.trim()
         ? {
             label: form.location.label.trim(),
@@ -305,30 +329,86 @@ export default function NewProjectPage() {
       scope: form.scopeText.trim() || fee !== undefined
         ? [{ scope: form.scopeText.trim() || undefined, fee }]
         : [],
-      category: form.category || undefined,
-      referral: form.referral.trim() || undefined,
-      sourcePerson: form.sourcePerson.trim() || undefined,
-      clientSpoc: form.clientSpoc.trim() || undefined,
-      workOrderDate: form.workOrderDate || undefined,
-      workOrderDocument: form.workOrderDocument.trim() || undefined,
+      principalTeamLeads: PRINCIPAL_TEAM_LEAD_SERVICES.flatMap(({ key }) => {
+        const employeeId = form.principalTeamLeads[key];
+        if (!employeeId) return [];
+        const employee = employees.find((item) => String(item._id ?? item.id) === employeeId);
+        if (!employee) return [];
+        const name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId || employee.email;
+        return [{ service: key, employee: employeeId, name, approvalStatus: 'Approved' }];
+      }),
+      activation: form.spoc ? { spoc: form.spoc } : undefined,
       hospitalityByClient: form.hospitality === 'yes' ? true : form.hospitality === 'no' ? false : undefined,
       bimWorkOrder:
-        form.bimWorkOrder.scope.trim() || form.bimWorkOrder.fee !== '' || form.bimWorkOrder.description.trim() || form.bimWorkOrder.no.trim() || form.bimWorkOrder.date || form.bimWorkOrder.status.trim()
+        form.bimWorkOrder.scope.trim() || form.bimWorkOrder.fee !== '' || form.bimWorkOrder.description.trim()
           ? {
-              no: form.bimWorkOrder.no.trim() || undefined,
-              date: form.bimWorkOrder.date || undefined,
               scope: form.bimWorkOrder.scope.trim() || undefined,
               fee: numOrUndef(form.bimWorkOrder.fee),
               description: form.bimWorkOrder.description.trim() || undefined,
-              status: form.bimWorkOrder.status.trim() || undefined,
             }
           : undefined,
       contacts: {
-        client: (form.contacts.client && typeof form.contacts.client === 'object' && (form.contacts.client.name || form.contacts.client.email || form.contacts.client.company)) ? form.contacts.client : undefined,
-        architect: (form.contacts.architect && typeof form.contacts.architect === 'object' && (form.contacts.architect.name || form.contacts.architect.email || form.contacts.architect.company)) ? form.contacts.architect : undefined,
-        billing: (form.contacts.billing && typeof form.contacts.billing === 'object' && (form.contacts.billing.name || form.contacts.billing.email || form.contacts.billing.company)) ? form.contacts.billing : undefined,
+        client: projectContact(form.contacts.client),
+        architect: projectContact(form.contacts.architect),
+        pmc: projectContact(form.contacts.pmc),
+        peerReview: projectContact(form.contacts.peerReview),
+        billing: projectContact(form.contacts.billing),
       },
     };
+  }
+
+  async function importTeamFile(file) {
+    if (!file) return;
+    setTeamImportError('');
+    setTeamImporting(true);
+    try {
+      const XLSX = await import('xlsx');
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!firstSheet) throw new Error('The spreadsheet does not contain a worksheet.');
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+      if (rows.length === 0) throw new Error('The worksheet is empty.');
+
+      const headerKey = (value) => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const headers = Object.keys(rows[0]);
+      const serviceKey = headers.find((header) => headerKey(header) === 'service');
+      const memberKey = headers.find((header) => ['teammember', 'teamlead', 'principalteamlead', 'name', 'employee'].includes(headerKey(header)));
+      if (!serviceKey || !memberKey) {
+        throw new Error('Add header columns named "Service" and "Team member" to the first row.');
+      }
+
+      const normalize = (value) => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const imported = {};
+      const errors = [];
+      for (const [index, row] of rows.entries()) {
+        const serviceValue = normalize(row[serviceKey]);
+        const service = PRINCIPAL_TEAM_LEAD_SERVICES.find((item) => item.aliases.includes(serviceValue));
+        const memberValue = normalize(row[memberKey]);
+        const matches = teamLeads.filter((employee) => {
+          const name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId || employee.email;
+          return [name, employee.empId, employee.email].some((value) => normalize(value) === memberValue);
+        });
+        if (!service || !memberValue || matches.length !== 1) {
+          const reason = !service
+            ? `unknown service "${row[serviceKey]}"`
+            : !memberValue
+              ? 'team member is blank'
+              : matches.length === 0
+                ? `employee "${row[memberKey]}" was not found`
+                : `employee "${row[memberKey]}" is ambiguous`;
+          errors.push(`Row ${index + 2}: ${reason}.`);
+          continue;
+        }
+        imported[service.key] = String(matches[0]._id ?? matches[0].id);
+      }
+      if (errors.length) throw new Error(errors.join(' '));
+      if (Object.keys(imported).length === 0) throw new Error('No team leads were found to import.');
+      setForm((current) => ({ ...current, principalTeamLeads: { ...current.principalTeamLeads, ...imported } }));
+    } catch (error) {
+      setTeamImportError(error.message || 'Unable to import team from this file.');
+    } finally {
+      setTeamImporting(false);
+    }
   }
 
   function handleSubmit(e, mode) {
@@ -337,6 +417,18 @@ export default function NewProjectPage() {
     setSaveMode(mode);
     if (!form.name.trim()) {
       setFormError('Missing required: Project name.');
+      return;
+    }
+    if (!form.entityName.trim()) {
+      setFormError('Missing required: Entity Name.');
+      return;
+    }
+    if (jobNumberMode === 'manual' && !form.jobNumber.trim()) {
+      setFormError('Enter a job number or switch to Automatic.');
+      return;
+    }
+    if (!form.location.label.trim()) {
+      setFormError('Missing required: Project Location.');
       return;
     }
     save.mutate(buildPayload());
@@ -389,6 +481,43 @@ export default function NewProjectPage() {
         <Panel title="Information">
           <div className="field-grid">
             <F label="Project Name"><input className="form-input" placeholder="e.g. Business park - Tower A" value={form.name} onChange={(e) => set('name', e.target.value)} required /></F>
+            <F label="Job Number">
+              <div className="field-grid" style={{ gridTemplateColumns: 'minmax(150px, 0.7fr) minmax(180px, 1fr)', gap: 8 }}>
+                <select
+                  className="form-input"
+                  aria-label="Job number mode"
+                  value={jobNumberMode}
+                  onChange={(e) => {
+                    setJobNumberMode(e.target.value);
+                    if (e.target.value === 'automatic') set('jobNumber', '');
+                  }}
+                >
+                  <option value="automatic">Automatic</option>
+                  <option value="manual">Manual</option>
+                </select>
+                {jobNumberMode === 'manual' ? (
+                  <input className="form-input" placeholder="Enter job number" value={form.jobNumber} onChange={(e) => set('jobNumber', e.target.value)} required />
+                ) : (
+                  <span style={{ color: 'var(--ink-muted)', alignSelf: 'center' }}>
+                    {nextJobQ.data?.jobNumber ? `Next: ${nextJobQ.data.jobNumber}` : 'Generated automatically'}
+                  </span>
+                )}
+              </div>
+            </F>
+            <F label="Entity Name *">
+              <input
+                className="form-input"
+                list="np-entities"
+                placeholder="Search Entities..."
+                value={form.entityName}
+                onChange={(e) => set('entityName', e.target.value)}
+                required
+              />
+              <datalist id="np-entities">
+                {entityOptions.map((x) => <option key={x} value={x} />)}
+              </datalist>
+              <button type="button" className="approve-btn" style={{ marginTop: 6 }} onClick={() => set('entityName', form.entityName.trim())}>Add</button>
+            </F>
             <F label="State">
               <select className="form-input" value={form.state} onChange={(e) => set('state', e.target.value)}>
                 <option value="">--None--</option>
@@ -401,67 +530,18 @@ export default function NewProjectPage() {
                 {projectTypeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </F>
+            <F label="Project Location *">
+              {form.location.label ? <div>{form.location.label}</div> : <span style={{ color: 'var(--ink-muted)' }}>No location set yet.</span>}
+              <button type="button" className="approve-btn" style={{ marginTop: 6 }} onClick={() => setLocOpen(true)}>Add Location</button>
+            </F>
             <F label="Branch Name">
               <select className="form-input" value={form.branch} onChange={(e) => set('branch', e.target.value)}>
                 <option value="">--None--</option>
                 {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
             </F>
-            <F label="Building / Street Address 2"><input className="form-input" value={form.location.address2} onChange={(e) => setLoc('address2', e.target.value)} /></F>
-            <div className="form-row">
-              <label className="form-label">Services</label>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                {serviceOptions.map((s) => (
-                  <label key={s} className="form-label" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <input type="checkbox" checked={(form.services ?? []).includes(s)} onChange={() => toggleService(s)} />
-                    {SERVICE_LABELS[s] ?? s}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <F label="Project Sources">
-              <input
-                className="form-input"
-                list="np-sources"
-                placeholder="Type to enter…"
-                value={form.source}
-                onChange={(e) => set('source', e.target.value)}
-              />
-              <datalist id="np-sources">
-                {sourceOptions.map((x) => <option key={x} value={x} />)}
-              </datalist>
-            </F>
-            <F label="Category">
-              <select className="form-input" value={form.category} onChange={(e) => set('category', e.target.value)}>
-                <option value="">--None--</option>
-                {['Category A', 'Category B', 'Category C'].map((x) => <option key={x} value={x}>{x}</option>)}
-              </select>
-            </F>
-            <F label="Referral"><input className="form-input" value={form.referral} onChange={(e) => set('referral', e.target.value)} /></F>
-            <F label="Source person"><input className="form-input" value={form.sourcePerson} onChange={(e) => set('sourcePerson', e.target.value)} /></F>
-            <F label="Client SPOC"><input className="form-input" value={form.clientSpoc} onChange={(e) => set('clientSpoc', e.target.value)} /></F>
-            <F label="Entity Name">
-              <input
-                className="form-input"
-                list="np-entities"
-                placeholder="Search Entities..."
-                value={form.entityName}
-                onChange={(e) => set('entityName', e.target.value)}
-              />
-              <datalist id="np-entities">
-                {entityOptions.map((x) => <option key={x} value={x} />)}
-              </datalist>
-            </F>
-            <div className="form-row">
-              <button type="button" className="approve-btn" onClick={() => set('entityName', form.entityName.trim())}>Add</button>
-            </div>
-            <F label="Project Location">
-              {form.location.label ? <div>{form.location.label}</div> : <span style={{ color: 'var(--ink-muted)' }}>No location set yet.</span>}
-            </F>
-            <div className="form-row">
-              <button type="button" className="approve-btn" onClick={() => setLocOpen(true)}>Add Location</button>
-            </div>
             <F label="Building / Street Address 1"><input className="form-input" value={form.location.address1} onChange={(e) => setLoc('address1', e.target.value)} /></F>
+            <F label="Building / Street Address 2"><input className="form-input" value={form.location.address2} onChange={(e) => setLoc('address2', e.target.value)} /></F>
             <F label="City and State Zip Code">
               <div style={{ display: 'flex', gap: 8 }}>
                 <input className="form-input" placeholder="City" value={form.location.city} onChange={(e) => setLoc('city', e.target.value)} />
@@ -469,6 +549,17 @@ export default function NewProjectPage() {
                 <input className="form-input" placeholder="ZIP" value={form.location.zip} onChange={(e) => setLoc('zip', e.target.value)} />
               </div>
             </F>
+            <div className="form-row">
+              <label className="form-label">Services</label>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {serviceOptions.map((s) => (
+                  <label key={s} className="form-label" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input type="checkbox" checked={(form.services ?? []).includes(s)} onChange={() => toggleService(s)} />
+                    {(SERVICE_LABELS[s] ?? s).toUpperCase()}
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
         </Panel>
 
@@ -483,33 +574,108 @@ export default function NewProjectPage() {
                 <option value="no">No</option>
               </select>
             </F>
-            <F label="Work order date"><input type="date" className="form-input" value={form.workOrderDate} onChange={(e) => set('workOrderDate', e.target.value)} /></F>
-            <F label="Job number">
-              <input
+          </div>
+        </Panel>
+
+        <Panel
+          title="Principal team leads"
+          sub="Assigning a lead here adds the project to their workload, and makes it searchable by their name"
+        >
+          <div className="field-grid">
+            {PRINCIPAL_TEAM_LEAD_SERVICES.map(({ key, placeholder }) => (
+              <F key={key} label={key}>
+                <select
+                  className="form-input"
+                  aria-label={`${key} team lead`}
+                  value={form.principalTeamLeads[key] ?? ''}
+                  onChange={(event) => setPrincipalTeamLead(key, event.target.value)}
+                  disabled={employeesQ.isLoading || employeesQ.isError}
+                >
+                  <option value="">{employeesQ.isLoading ? 'Loading team leads…' : 'Select team lead'}</option>
+                  {teamLeads.map((employee) => {
+                    const id = String(employee._id ?? employee.id);
+                    const name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId || employee.email;
+                    return (
+                      <option key={id} value={id}>
+                        {name}{employee.designation ? ` · ${employee.designation}` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+                {!employeesQ.isLoading && teamLeads.length === 0 && (
+                  <span className="page-sub">No active team leads available.</span>
+                )}
+                <span className="page-sub">{placeholder}</span>
+              </F>
+            ))}
+            <F label="SPOC">
+              <select
                 className="form-input"
-                placeholder={nextJobQ.data?.jobNumber ? `${nextJobQ.data.jobNumber} (auto if blank)` : 'Auto-generated if left blank'}
-                value={form.jobNumber}
-                onChange={(e) => set('jobNumber', e.target.value)}
-              />
+                aria-label="Project SPOC"
+                value={form.spoc}
+                onChange={(event) => set('spoc', event.target.value)}
+                disabled={employeesQ.isLoading || employeesQ.isError}
+              >
+                <option value="">--Select--</option>
+                {coordinators.map((employee) => {
+                  const id = String(employee._id ?? employee.id);
+                  const name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId || employee.email;
+                  return <option key={id} value={id}>{name}</option>;
+                })}
+              </select>
+              {!employeesQ.isLoading && coordinators.length === 0 && (
+                <span className="page-sub">No active coordinators available.</span>
+              )}
             </F>
-            <F label="Work order document"><input className="form-input" placeholder="e.g. WO_PRJ045_signed.pdf" value={form.workOrderDocument} onChange={(e) => set('workOrderDocument', e.target.value)} /></F>
           </div>
+          {employeesQ.isError && (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>
+              Could not load employees: {employeesQ.error.message}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12 }}>
+            <label className="approve-btn" style={{ cursor: teamImporting ? 'not-allowed' : 'pointer' }}>
+              {teamImporting ? 'Reading team…' : 'Import team from Excel'}
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                disabled={teamImporting || employeesQ.isLoading || employeesQ.isError}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = '';
+                  void importTeamFile(file);
+                }}
+                style={{ display: 'none' }}
+              />
+            </label>
+            <span className="page-sub">Use columns: Service and Team member.</span>
+          </div>
+          {teamImportError && (
+            <div className="login-error" role="alert" style={{ display: 'block', marginTop: 10 }}>{teamImportError}</div>
+          )}
         </Panel>
 
-        <Panel title="BIM Work Order (optional)" sub="Set up a separate BIM work order for this project, kept apart from its regular work order">
-          <F label="BIM scope of work"><textarea className="form-input" placeholder="Not applicable to this project" value={form.bimWorkOrder.scope} onChange={(e) => setBim('scope', e.target.value)} /></F>
+        <Panel
+          title="BIM Work Order (optional)"
+          sub="Set up a separate BIM work order for this project, kept apart from its regular work order"
+        >
+          <F label="BIM scope of work">
+            <textarea className="form-input" placeholder="Not applicable to this project" value={form.bimWorkOrder.scope} onChange={(event) => setBim('scope', event.target.value)} />
+          </F>
           <div className="field-grid">
-            <F label="Fee / value (optional)"><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span>₹</span><input type="number" min="0" className="form-input" value={form.bimWorkOrder.fee} onChange={(e) => setBim('fee', e.target.value)} /></div></F>
+            <F label="Fee / value (optional)">
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span>₹</span>
+                <input type="number" min="0" className="form-input" value={form.bimWorkOrder.fee} onChange={(event) => setBim('fee', event.target.value)} />
+              </div>
+            </F>
           </div>
-          <div className="field-grid">
-            <F label="BIM work order no."><input className="form-input" value={form.bimWorkOrder.no} onChange={(e) => setBim('no', e.target.value)} /></F>
-            <F label="BIM work order date"><input type="date" className="form-input" value={form.bimWorkOrder.date} onChange={(e) => setBim('date', e.target.value)} /></F>
-            <F label="BIM work order status"><input className="form-input" placeholder="e.g. Active" value={form.bimWorkOrder.status} onChange={(e) => setBim('status', e.target.value)} /></F>
-          </div>
-          <F label="Scope description"><textarea className="form-input" placeholder="Describe the BIM deliverable and scope covered" value={form.bimWorkOrder.description} onChange={(e) => setBim('description', e.target.value)} /></F>
+          <F label="Scope description">
+            <textarea className="form-input" placeholder="Describe the BIM deliverable and scope covered" value={form.bimWorkOrder.description} onChange={(event) => setBim('description', event.target.value)} />
+          </F>
         </Panel>
 
-        <Panel title="Contact Details" sub="Client and architect points of contact for this project, and who to reach for billing. PMC and Peer Review contacts are entered by the SPOC.">
+        <Panel title="Contact Details" sub="Client, architect, PMC and peer review points of contact for this project, and who to reach for billing">
           {CONTACT_KINDS.map((c) => (
             <ContactPicker
               key={c.key}

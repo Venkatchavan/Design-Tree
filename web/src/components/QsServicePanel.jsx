@@ -50,10 +50,10 @@ const isSet = (v) => v != null && v !== '';
 const str = (v) => String(v ?? '').trim() || undefined;
 const num = (v) => (v === '' || v == null ? undefined : Number(v));
 
-export default function QsServicePanel({ projectId, codes, dashboard, principalTeamLeads, workItems, role }) {
+export default function QsServicePanel({ projectId, codes, dashboard, principalTeamLeads, workItems, role, readOnly = false }) {
   const d = dashboard ?? {};
-  const canEdit = DASHBOARD_WRITERS.has(role);
-  const canItems = ITEM_WRITERS.has(role);
+  const canEdit = DASHBOARD_WRITERS.has(role) && !readOnly;
+  const canItems = ITEM_WRITERS.has(role) && !readOnly;
   const qc = useQueryClient();
   const [tab, setTab] = useState('overview');
   const [draft, setDraft] = useState(null);
@@ -319,14 +319,7 @@ export default function QsServicePanel({ projectId, codes, dashboard, principalT
           <Field label={`Revised area${d.revisedAreaLabel ? ` (${d.revisedAreaLabel})` : ''}`} value={fmtSq(d.revisedArea)} />
           <Field label="Final area" value={d.areaFinal || 'Pending'} />
         </div>
-        {d.areaAlertSentOn && (
-          <p style={{ fontSize: 13.5, marginTop: 12 }}>
-            Area revision alert sent to project team on {fmtDashDate(d.areaAlertSentOn)}
-          </p>
-        )}
-      </Panel>
-
-      <Panel title="Revision history">
+        <div className="section-label" style={{ marginTop: 12 }}>Revision history</div>
         {revisions.length === 0 ? (
           <p style={{ fontSize: 13.5, color: 'var(--ink-muted)' }}>No area revisions recorded yet.</p>
         ) : (
@@ -342,6 +335,11 @@ export default function QsServicePanel({ projectId, codes, dashboard, principalT
               </div>
             </div>
           ))
+        )}
+        {d.areaAlertSentOn && (
+          <p style={{ fontSize: 13.5, marginTop: 12 }}>
+            Area revision alert sent to project team on {fmtDashDate(d.areaAlertSentOn)}
+          </p>
         )}
       </Panel>
 

@@ -917,13 +917,9 @@ function DirectorQsView({ teamLogCount, areas, leaves, loading, loadError }) {
   );
 }
 
-function DirectorQaqcView({ visits, discs, projects, loading, loadError }) {
+function DirectorQaqcView({ visits, discs, projects, loadError }) {
   const [fProject, setFProject] = useState('');
   const pidOf = (p) => String(p?._id ?? p ?? '');
-  const pnameOf = (p) => {
-    const id = pidOf(p);
-    return projects.find((x) => String(x._id) === id)?.name ?? (p?.name ?? '—');
-  };
   const isOpenDisc = (d) => String(d.status ?? 'Open').toLowerCase() !== 'closed';
   const fVisits = visits.filter((v) => !fProject || pidOf(v.project) === fProject);
   const fDiscs = discs.filter((d) => !fProject || pidOf(d.project) === fProject);
@@ -968,35 +964,6 @@ function DirectorQaqcView({ visits, discs, projects, loading, loadError }) {
           Drawing discrepancy tracking applies to the Structural department only — Mechanical,
           Electrical, PHE and Fire are not tracked here.
         </p>
-        {loading ? <EmptyState text="Loading…" /> : (
-          <>
-            <div className="section-label">Site visits</div>
-            <DataTable
-              columns={[
-                { key: 'project', label: 'Project', render: (r) => pnameOf(r.project) },
-                { key: 'date', label: 'Date', render: (r) => fmtDate(r.visitDate ?? r.date ?? r.createdAt) },
-                { key: 'visitType', label: 'Visit type', render: (r) => r.visitType ?? '—' },
-                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-                { key: 'additional', label: 'Additional', render: (r) => (r.additionalVisit ? 'Yes' : '—') },
-                { key: 'discrepancy', label: 'Discrepancy found', render: (r) => (r.discrepancyFound ? 'Yes' : '—') },
-              ]}
-              rows={fVisits}
-              emptyText="No site visits yet."
-            />
-            <div className="section-label" style={{ marginTop: 14 }}>Discrepancy log</div>
-            <DataTable
-              columns={[
-                { key: 'issue', label: 'Issue', render: (r) => r.issue ?? '—' },
-                { key: 'project', label: 'Project', render: (r) => pnameOf(r.project) },
-                { key: 'discipline', label: 'Discipline', render: (r) => r.discipline ?? '—' },
-                { key: 'severity', label: 'Severity', render: (r) => r.severity ?? '—' },
-                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-              ]}
-              rows={fDiscs}
-              emptyText="No discrepancies logged."
-            />
-          </>
-        )}
       </Panel>
     </>
   );

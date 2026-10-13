@@ -144,15 +144,15 @@ export const rfiApi = {
 };
 
 export const bimApi = {
-  list: (params = {}) => request(`/api/functions/bim-orders${toQuery(params)}`),
+  list: (params = {}) => request(`/api/functions/bim-work-orders${toQuery(params)}`),
   create: (body) =>
-    request('/api/functions/bim-orders', {
+    request('/api/functions/bim-work-orders', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
   update: (id, body) =>
-    request(`/api/functions/bim-orders/${id}`, {
-      method: 'PATCH',
+    request(`/api/functions/bim-work-orders/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(body),
     }),
 };

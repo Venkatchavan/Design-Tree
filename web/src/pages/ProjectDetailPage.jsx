@@ -10,6 +10,7 @@ import { spocApi } from '../lib/spocApi.js';
 import { areaApi, discApi, drawingAckApi, gbsApi, peerApi, serviceDashboardApi, stageReviewApi, variationApi, visitsApi, weeklyReportApi, workItemApi } from '../lib/functionsApi.js';
 import { billingApi } from '../lib/phase3Api.js';
 import { deliverablesApi, drawingsApi, revisionsApi } from '../lib/workApi.js';
+import { summarizeRevisions } from '../lib/revisionSummary.js';
 import { meetingsApi } from '../lib/phase4bApi.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -246,6 +247,7 @@ function TechnicalPtlPanel({ projectId, project, employees }) {
   const [member, setMember] = useState('');
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
+  const [importing, setImporting] = useState(false);
 
   const rows = ptlEntries(project);
   const seen = new Set();
@@ -259,15 +261,15 @@ function TechnicalPtlPanel({ projectId, project, employees }) {
   const empList = employees.data?.items ?? employees.data ?? [];
 
   const save = useMutation({
-    mutationFn: (entries) => projectsApi.saveTeamLeads(projectId, { principalTeamLeads: toPtlPayload(entries) }),
-    onSuccess: () => {
+    mutationFn: ({ entries }) => projectsApi.saveTeamLeads(projectId, { principalTeamLeads: toPtlPayload(entries) }),
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       setService('');
       setMember('');
       setErr('');
       for(const key of ['project-team','my-teams','teams']) queryClient.invalidateQueries({queryKey:[key]});
-      setOk('Principal team lead saved.');
+      setOk(variables.successMessage ?? 'Principal team lead saved.');
     },
     onError: (e) => {
       setErr(e.message);
@@ -294,17 +296,102 @@ function TechnicalPtlPanel({ projectId, project, employees }) {
     const row = { service, name, employee:member, approvalStatus: 'Approved' };
     if (idx >= 0) next[idx] = { ...next[idx], ...row };
     else next.push(row);
-    save.mutate(next);
+    save.mutate({ entries: next });
   }
 
   function removeRow(target) {
     setErr('');
     setOk('');
-    save.mutate(rows.filter((r) => !(r.service === target.service && r.name === target.name)));
+    save.mutate({ entries: rows.filter((r) => !(r.service === target.service && r.name === target.name)) });
+  }
+
+  async function importTeamFile(file) {
+    if (!file) return;
+    setErr('');
+    setOk('');
+    setImporting(true);
+    try {
+      const XLSX = await import('xlsx');
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!firstSheet) throw new Error('The spreadsheet does not contain a worksheet.');
+      const importedRows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+      if (importedRows.length === 0) throw new Error('The worksheet is empty.');
+
+      const headerKey = (value) => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const headers = Object.keys(importedRows[0]);
+      const serviceKey = headers.find((h) => headerKey(h) === 'service');
+      const memberKey = headers.find((h) => ['teammember', 'teamlead', 'principalteamlead', 'name', 'employee'].includes(headerKey(h)));
+      if (!serviceKey || !memberKey) {
+        throw new Error('Add header columns named "Service" and "Team member" to the first row.');
+      }
+
+      const normalize = (value) => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const parseErrors = [];
+      const importedLeads = [];
+      for (const [index, row] of importedRows.entries()) {
+        const serviceName = String(row[serviceKey] ?? '').trim();
+        const memberName = String(row[memberKey] ?? '').trim();
+        const matchedService = serviceOptions.find((item) => normalize(item) === normalize(serviceName));
+        const matchedEmployees = empList.filter((employee) => {
+          const name = empValue(employee);
+          return [name, employee.empId, employee.email].some((value) => normalize(value) === normalize(memberName));
+        });
+        if (!matchedService || !memberName || matchedEmployees.length !== 1) {
+          const reason = !matchedService
+            ? `unknown service "${serviceName}"`
+            : !memberName
+              ? 'team member is blank'
+              : matchedEmployees.length === 0
+                ? `employee "${memberName}" was not found`
+                : `employee "${memberName}" is ambiguous`;
+          parseErrors.push(`Row ${index + 2}: ${reason}.`);
+          continue;
+        }
+        const employee = matchedEmployees[0];
+        importedLeads.push({
+          service: matchedService,
+          name: empValue(employee),
+          employee: String(employee._id ?? employee.id),
+          approvalStatus: 'Approved',
+        });
+      }
+      if (parseErrors.length) throw new Error(parseErrors.join(' '));
+      if (importedLeads.length === 0) throw new Error('No team leads were found to import.');
+
+      const next = [...rows];
+      for (const lead of importedLeads) {
+        const existingIndex = next.findIndex((item) => item.service === lead.service && item.name === lead.name);
+        if (existingIndex >= 0) next[existingIndex] = { ...next[existingIndex], ...lead };
+        else next.push(lead);
+      }
+      save.mutate({ entries: next, successMessage: `Imported ${importedLeads.length} principal team lead${importedLeads.length === 1 ? '' : 's'}.` });
+    } catch (error) {
+      setErr(error.message || 'Unable to import team from this file.');
+    } finally {
+      setImporting(false);
+    }
   }
 
   return (
     <Panel title="Principal team leads — per service" sub="Enter the PTL for each service on this project.">
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+        <label className="approve-btn" style={{ cursor: importing || save.isPending ? 'not-allowed' : 'pointer' }}>
+          {importing ? 'Reading team…' : 'Import team from Excel'}
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            disabled={importing || save.isPending}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              void importTeamFile(file);
+            }}
+            style={{ display: 'none' }}
+          />
+        </label>
+        <span className="page-sub">Use columns: Service and Team member.</span>
+      </div>
       <div className="section-label" style={{ marginTop: 12 }}>Enter / replace PTL</div>
       <form onSubmit={submit}>
         <div className="field-grid">
@@ -553,6 +640,32 @@ export default function ProjectDetailPage({ bootstrap }) {
       .filter((a) => String(a.status ?? '') !== 'Completed')
       .map((a) => ({ ...a, meetingTitle: m.title, meetingDate: m.date })),
   );
+  // Technical Director's Meetings sub-tab reads every action (open + done).
+  const allActions = meetings.flatMap((m) =>
+    (m.actions ?? []).map((a) => ({ ...a, meetingTitle: m.title, meetingDate: m.date })),
+  );
+  const upcomingMeetingsList = [...meetings]
+    .filter((m) => String(m.status ?? '') !== 'Held' && String(m.status ?? '') !== 'Cancelled')
+    .sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')));
+  const heldMeetingsList = [...meetings]
+    .filter((m) => String(m.status ?? '') === 'Held')
+    .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+  const meetingAttendees = (m) => (m.invites ?? [])
+    .map((v) => {
+      const e = v.employee ?? v;
+      return typeof e === 'object' ? ([e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || '') : String(e ?? '');
+    })
+    .filter(Boolean)
+    .join(', ') || '—';
+  const meetingSummary = (m) => {
+    const mom = m.mom && typeof m.mom === 'object' ? m.mom : {};
+    return mom.discussion?.trim() || mom.decisions?.trim() || (typeof m.momDoc === 'string' ? m.momDoc : '') || '—';
+  };
+  const actionOwner = (a) => {
+    const o = a.owner;
+    if (o && typeof o === 'object') return empName(o) ?? '—';
+    return o ?? a.service ?? '—';
+  };
   const last7 = Date.now() - 7 * DAY;
   const revisionsLast7 = revisions.filter((r) => Date.parse(r.dateRaised ?? r.createdAt) >= last7).length;
   const meetingsLast7 = meetings.filter((m) => Date.parse(m.date) >= last7).length;
@@ -564,6 +677,7 @@ export default function ProjectDetailPage({ bootstrap }) {
     stage,
     rows: revisions.filter((r) => (r.stage ?? '') === stage),
   }));
+  const revisionSummary = summarizeRevisions(revisions, drawings, stages, project);
   const daysOpen = (v) => {
     const t = Date.parse(v);
     return Number.isNaN(t) ? '—' : Math.max(0, Math.floor((Date.now() - t) / DAY));
@@ -603,6 +717,21 @@ export default function ProjectDetailPage({ bootstrap }) {
   const coordinationLog = [...meetings]
     .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')))
     .slice(0, 10);
+
+  // Technical Director's Coordination sub-tab: one Coordination log panel
+  // (Date / Channel / Topic / Deadline / Status) built from live revisions.
+  const coordinationRows = [...revisions]
+    .sort((a, b) => String(b.dateRaised ?? b.createdAt ?? '').localeCompare(String(a.dateRaised ?? a.createdAt ?? '')))
+    .map((r) => {
+      const cleared = String(r.status ?? '') === 'Cleared';
+      const due = r.resubmissionDue ? new Date(r.resubmissionDue) : null;
+      const overdue = !cleared && due && !Number.isNaN(due.getTime())
+        && due < new Date(new Date().toISOString().slice(0, 10));
+      return {
+        ...r,
+        coordStatus: cleared ? 'Resolved' : overdue ? 'Overdue - alert sent' : (r.status ?? 'Open'),
+      };
+    });
 
   const revisionLogPanel = (
     <Panel title="Revision logs" sub="By stage, for this project">
@@ -745,8 +874,60 @@ export default function ProjectDetailPage({ bootstrap }) {
 
       <BimSection project={project} />
 
+      {isAdmin ? (
+        <Panel title="Revision Logs">
+          {revisionsQ.isLoading || drawingsQ.isLoading || stagesQ.isLoading ? (
+            <EmptyState text="Loading revision summary…" />
+          ) : revisionsQ.isError || drawingsQ.isError || stagesQ.isError ? (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>
+              {revisionsQ.error?.message ?? drawingsQ.error?.message ?? stagesQ.error?.message}
+            </div>
+          ) : (
+            <>
+              <div className="kpi-grid cols-3">
+                <KpiCard label="Total revisions" value={revisionSummary.total} accent="violet" />
+                <KpiCard label="Within a stage" value={revisionSummary.within} accent="blueprint" />
+                <KpiCard label="After stage completed" value={revisionSummary.after} accent="rust" />
+              </div>
+              <section style={{ marginTop: 20 }}>
+                <div className="section-label">Stage-wise revisions</div>
+                <p style={{ color: 'var(--ink-muted)', fontSize: 13 }}>
+                  Revisions made while a stage was in progress, and revisions made after the stage was completed
+                </p>
+                <DataTable
+                  columns={[
+                    { key: 'stage', label: 'Stage' },
+                    { key: 'within', label: 'Within the stage' },
+                    { key: 'after', label: 'After stage completed' },
+                    { key: 'total', label: 'Total' },
+                  ]}
+                  rows={revisionSummary.stageRows}
+                />
+              </section>
+              <section style={{ marginTop: 20 }}>
+                <div className="section-label">Service-wise revisions</div>
+                <p style={{ color: 'var(--ink-muted)', fontSize: 13 }}>
+                  Revisions by service associated with this project
+                </p>
+                <DataTable
+                  columns={[
+                    { key: 'service', label: 'Service' },
+                    { key: 'stages', label: 'Stages affected', render: (row) => row.stages || '—' },
+                    { key: 'within', label: 'Within the stage' },
+                    { key: 'after', label: 'After stage completed' },
+                    { key: 'total', label: 'Total' },
+                  ]}
+                  rows={revisionSummary.serviceRows}
+                  emptyText="No revisions logged."
+                />
+              </section>
+            </>
+          )}
+        </Panel>
+      ) : (
+        <>
       <Panel title="Open this project for a team">
-        {isAdmin && project.activation?.status !== 'Activated' ? (
+        {(isAdmin || isTD) && project.activation?.status !== 'Activated' ? (
           <>
             <div className="form-row" style={{ maxWidth: 360 }}>
               <label className="form-label" htmlFor="pd-spoc">SPOC (coordinator)</label>
@@ -794,9 +975,11 @@ export default function ProjectDetailPage({ bootstrap }) {
         <>
           <Tabs tabs={COORD_TABS} active={coord} onChange={setCoord} />
 
+          {!isTD && (
           <Panel title="Assigned SPOC">
             <p>{(teamQ.data?.allocations ?? []).filter(a => a.status === 'Approved').map(a => empName(a.coordinator)).join(', ') || empName(project.activation?.spoc) || 'Not allocated'}</p>
           </Panel>
+          )}
           {coord === 'directory' && <>
             <DirectoryTab myAllocs={teamQ.data?.allocations ?? []} activeProjects={[project]} activeLoading={teamQ.isLoading} canEdit={role === 'coordinator'} />
             <Panel title="Project team"><DataTable columns={[
@@ -890,6 +1073,29 @@ export default function ProjectDetailPage({ bootstrap }) {
           )}
 
           {coord === 'coordination' && (
+            isTD ? (
+            <Panel title="Coordination log">
+              <DataTable
+                columns={[
+                  { key: 'date', label: 'Date', render: (r) => fmtDate(r.dateRaised ?? r.createdAt) },
+                  { key: 'channel', label: 'Channel', render: (r) => r.raisedBy ?? '—' },
+                  { key: 'topic', label: 'Topic', render: (r) => r.details ?? r.drawing ?? '—' },
+                  { key: 'deadline', label: 'Deadline', render: (r) => fmtDate(r.resubmissionDue) },
+                  {
+                    key: 'status',
+                    label: 'Status',
+                    render: (r) => (
+                      <StatusPill tone={r.coordStatus === 'Resolved' ? 'forest' : String(r.coordStatus).startsWith('Overdue') ? 'rust' : statusTone(r.coordStatus)}>
+                        {r.coordStatus}
+                      </StatusPill>
+                    ),
+                  },
+                ]}
+                rows={coordinationRows}
+                emptyText="No coordination items logged for this project yet."
+              />
+            </Panel>
+            ) : (
             <Panel title="Open coordination items" sub="Revisions raised by client, architect, PMC or internal teams that are not yet cleared">
               <DataTable
                 columns={[
@@ -904,9 +1110,27 @@ export default function ProjectDetailPage({ bootstrap }) {
                 emptyText="No open coordination items for this project."
               />
             </Panel>
+            )
           )}
 
           {coord === 'pending' && (
+            isTD ? (
+            <Panel title="Pending and follow-up" sub="By source">
+              <DataTable
+                columns={[
+                  { key: 'item', label: 'Item', render: (r) => r.item },
+                  { key: 'source', label: 'Source', render: (r) => r.source },
+                  { key: 'since', label: 'Since', render: (r) => fmtDate(r.since) },
+                  { key: 'days', label: 'Days waiting', render: (r) => daysOpen(r.since) },
+                ]}
+                rows={[
+                  ...openRevisions.map((r) => ({ item: r.details ?? '—', source: r.raisedBy ?? 'Internal', since: r.dateRaised ?? r.createdAt })),
+                  ...openActions.map((a) => ({ item: a.text ?? '—', source: a.service ?? 'Meeting action', since: a.meetingDate })),
+                ]}
+                emptyText="Nothing pending or awaiting follow-up for this project."
+              />
+            </Panel>
+            ) : (
             <Panel title="Pending and follow-up" sub="Open revisions and meeting action items">
               <DataTable
                 columns={[
@@ -923,11 +1147,81 @@ export default function ProjectDetailPage({ bootstrap }) {
                 emptyText="Nothing pending or awaiting follow-up for this project."
               />
             </Panel>
+            )
           )}
 
-          {coord === 'meetings' && <SpocMeetings projectId={id} readOnly={role !== 'coordinator'} />}
+          {coord === 'meetings' && (
+            isTD ? (
+            <>
+              <Panel title="Meeting schedule">
+                <DataTable
+                  columns={[
+                    { key: 'date', label: 'Date', render: (m) => fmtDate(m.date) },
+                    { key: 'time', label: 'Time', render: (m) => [m.startTime, m.endTime].filter(Boolean).join('–') || '—' },
+                    { key: 'topic', label: 'Topic', render: (m) => m.title ?? '—' },
+                    { key: 'attendees', label: 'Attendees', render: (m) => meetingAttendees(m) },
+                    { key: 'join', label: 'Join', render: (m) => (m.link ? <a href={m.link} target="_blank" rel="noreferrer">Join</a> : '—') },
+                  ]}
+                  rows={upcomingMeetingsList}
+                  emptyText="No upcoming meetings."
+                />
+              </Panel>
+              <Panel title="Meeting log / MoM" sub="Outcome recorded once a scheduled meeting concludes">
+                <DataTable
+                  columns={[
+                    { key: 'date', label: 'Date', render: (m) => fmtDate(m.date) },
+                    { key: 'topic', label: 'Topic', render: (m) => m.title ?? '—' },
+                    { key: 'summary', label: 'Summary', render: (m) => meetingSummary(m) },
+                  ]}
+                  rows={heldMeetingsList}
+                  emptyText="No meeting outcomes recorded yet."
+                />
+              </Panel>
+              <Panel title="Action items">
+                <DataTable
+                  columns={[
+                    { key: 'action', label: 'Action', render: (a) => a.text ?? '—' },
+                    { key: 'owner', label: 'Owner', render: (a) => actionOwner(a) },
+                    { key: 'due', label: 'Due', render: (a) => fmtDate(a.due) },
+                    { key: 'status', label: 'Status', render: (a) => <StatusPill tone={statusTone(a.status)}>{a.status ?? '—'}</StatusPill> },
+                  ]}
+                  rows={allActions}
+                  emptyText="No action items for this project."
+                />
+              </Panel>
+            </>
+            ) : (
+            <SpocMeetings projectId={id} readOnly={role !== 'coordinator'} />
+            )
+          )}
 
           {coord === 'deliverables' && (
+            isTD ? (
+            <Panel title="Drawing register" sub="Drawing numbers apply from GFC stage onward - earlier stages are tracked by title">
+              <DataTable
+                columns={[
+                  { key: 'service', label: 'Service', render: (d) => d.service ?? '—' },
+                  { key: 'stage', label: 'Stage', render: (d) => d.stage ?? '—' },
+                  { key: 'drawingNo', label: 'Drawing no.', render: (d) => d.drawingNo ?? '—' },
+                  { key: 'title', label: 'Title', render: (d) => d.title ?? '—' },
+                  { key: 'date', label: 'Date', render: (d) => fmtDate(d.date ?? d.createdAt) },
+                  { key: 'issuedTo', label: 'To', render: (d) => d.issuedTo ?? '—' },
+                  { key: 'method', label: 'Method', render: (d) => d.method ?? '—' },
+                  { key: 'type', label: 'Type', render: (d) => d.submission ?? d.submissionType ?? '—' },
+                  {
+                    key: 'status',
+                    label: 'Status',
+                    render: (d) => {
+                      const s = drawingAckIds.has(String(d._id ?? d.id ?? '')) ? 'Acknowledged' : (d.status ?? '—');
+                      return <StatusPill tone={statusTone(s)}>{s}</StatusPill>;
+                    },
+                  },
+                ]}
+                rows={drawings}
+                emptyText="No drawings submitted for this project yet."
+              />
+            </Panel>
+            ) : (
             <>
               <Panel title="Deliverables">
                 <DataTable
@@ -960,6 +1254,7 @@ export default function ProjectDetailPage({ bootstrap }) {
                 />
               </Panel>
             </>
+            )
           )}
 
           {coord === 'revisions' && revisionLogPanel}
@@ -1013,6 +1308,8 @@ export default function ProjectDetailPage({ bootstrap }) {
           drawingAcks={drawingAckIds}
           meetings={meetings}
         />
+      )}
+        </>
       )}
 
       {modal && (

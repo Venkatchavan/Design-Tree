@@ -3,7 +3,7 @@ import { nextNumber } from '../models/Counter.js';
 import { Employee } from '../models/Employee.js';
 import { Project } from '../models/Project.js';
 import { Team } from '../models/Team.js';
-import { WorkEntry } from '../models/WorkEntry.js';
+import { WORK_ENTRY_STATUSES, WorkEntry } from '../models/WorkEntry.js';
 import { EXTRA_HOURS_THRESHOLD, isAttendanceExemptRole } from '../config/attendance.js';
 import {
   workEntryDecisionSchema,
@@ -132,15 +132,24 @@ export async function listWorkEntries(req, res, next) {
       if (!t) return res.status(404).json({ message: 'Team not found.' });
       filter.employee = { $in: t.members.map((m) => m.employee) };
     }
-    const [items, total] = await Promise.all([
+    const [items, total, ...statusCounts] = await Promise.all([
       WorkEntry.find(filter)
         .populate('employee', 'firstName lastName empId designation department branch')
         .populate('project', 'name code branch')
         .sort({ date: -1 })
         .limit(200),
       WorkEntry.countDocuments(filter),
+      ...(mine === 'true'
+        ? WORK_ENTRY_STATUSES.map((entryStatus) => WorkEntry.countDocuments({ ...filter, status: entryStatus }))
+        : []),
     ]);
-    return res.status(200).json({ items, total });
+    return res.status(200).json({
+      items,
+      total,
+      ...(mine === 'true'
+        ? { statusCounts: Object.fromEntries(WORK_ENTRY_STATUSES.map((entryStatus, index) => [entryStatus, statusCounts[index]])) }
+        : {}),
+    });
   } catch (err) {
     return next(err);
   }

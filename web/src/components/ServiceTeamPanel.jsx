@@ -31,8 +31,8 @@ const COUNT_FIELDS = {
   ],
 };
 
-export default function ServiceTeamPanel({ projectId, service, dashboard, principalTeamLeads, role, gbsSteps = [] }) {
-  const canWrite = WRITER_ROLES.has(role);
+export default function ServiceTeamPanel({ projectId, service, dashboard, principalTeamLeads, role, gbsSteps = [], readOnly = false }) {
+  const canWrite = WRITER_ROLES.has(role) && !readOnly;
   const qc = useQueryClient();
   const [draft, setDraft] = useState(null);
   const d = dashboard ?? {};

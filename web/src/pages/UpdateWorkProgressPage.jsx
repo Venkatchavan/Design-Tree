@@ -1,4 +1,3 @@
-import EntryDocuments from '../components/EntryDocuments.jsx';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -7,7 +6,7 @@ import {
   projectsApi,
   workEntriesApi,
 } from '../lib/api.js';
-import { teamsMineApi } from '../lib/workApi.js';
+import { teamsMineApi, tasksApi } from '../lib/workApi.js';
 import {
   isPendingLogout,
   performLogout,
@@ -70,14 +69,12 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [project, setProject] = useState('');
-  const [category, setCategory] = useState('Assigned Daily Work');
-  const [deliverable, setDeliverable] = useState('');
+  const [assignedId, setAssignedId] = useState('');
   const [taskActivity, setTaskActivity] = useState('');
   const [drawing, setDrawing] = useState('');
-  const [stage, setStage] = useState('');
   const [hours, setHours] = useState('');
-  const [progressPct, setProgressPct] = useState('');
   const [notes, setNotes] = useState('');
+  const [date, setDate] = useState(todayISO());
   const [extraHoursReason, setExtraHoursReason] = useState('');
   const [otherRows, setOtherRows] = useState([]);
   const [err, setErr] = useState('');
@@ -127,6 +124,19 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
   });
   const preview = previewQ.data?.project ?? previewQ.data?.item ?? previewQ.data ?? null;
 
+  const tasksQ = useQuery({
+    queryKey: ['tasks-mine-uwp'],
+    queryFn: tasksApi.mine,
+    retry: false,
+  });
+  const projectTasks = useMemo(
+    () => (tasksQ.data?.items ?? tasksQ.data?.tasks ?? []).filter(
+      (t) => String(t.project?._id ?? t.project?.id ?? t.project ?? '') === project,
+    ),
+    [tasksQ.data, project],
+  );
+  const selectedTask = projectTasks.find((t) => String(t._id ?? t.id) === assignedId) ?? null;
+
   const mineQ = useQuery({
     queryKey: ['my-work-entries'],
     queryFn: () => workEntriesApi.list({ mine: true }),
@@ -151,14 +161,10 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
 
   const create = useMutation({
     mutationFn: (body) => workEntriesApi.create(body),
-    onSuccess: (_data, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-work-entries'] });
       queryClient.invalidateQueries({ queryKey: ['work-entries'] });
-      setOk(
-        variables?._leadAction
-          ? 'Submitted for team lead action.'
-          : "Today's update submitted.",
-      );
+      setOk('Submitted for team lead action.');
       setErr('');
       setExtraHoursReason('');
       if (takePendingLogout()) {
@@ -171,19 +177,18 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
     },
   });
 
-  function buildBody(leadAction) {
+  function buildBody() {
     if (!project) {
       setErr('Select a project.');
       return null;
     }
     const h = Number(hours);
     if (!hours || Number.isNaN(h) || h <= 0) {
-      setErr('Hours must be greater than 0.');
+      setErr('Hourly work handled must be greater than 0.');
       return null;
     }
-    const pct = progressPct === '' ? undefined : Number(progressPct);
-    if (pct !== undefined && (Number.isNaN(pct) || pct < 0 || pct > 100)) {
-      setErr('Progress % must be between 0 and 100.');
+    if (!date) {
+      setErr('Select a date.');
       return null;
     }
     const total = h + otherRows.reduce((s, r) => s + (Number(r.hours) || 0), 0);
@@ -193,35 +198,28 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
     }
     return {
       project,
-      date: todayISO(),
+      date,
       hours: h,
-      stage: stage || undefined,
+      stage: selectedTask?.stage || undefined,
       notes: notes || undefined,
       extraHoursReason: total > EXTRA_HOURS_AT ? extraHoursReason.trim() : undefined,
-      category,
-      deliverable:
-        category === 'Assigned Daily Work' || category === 'Task'
-          ? deliverable || undefined
-          : undefined,
-      taskActivity: category === 'Task' ? taskActivity || undefined : undefined,
-      drawing: category === 'Drawing' ? drawing || undefined : undefined,
-      progressPct: pct,
+      category: selectedTask ? 'Assigned Daily Work' : 'Hourly',
+      deliverable: selectedTask?.deliverable || undefined,
+      taskActivity: taskActivity || undefined,
+      drawing: drawing || undefined,
       otherHours: otherRows
         .filter((r) => r.project && Number(r.hours) > 0)
         .map((r) => ({ project: r.project, hours: Number(r.hours) })),
-      _leadAction: leadAction || undefined,
     };
   }
 
-  function handleSubmit(e, leadAction) {
+  function handleSubmit(e) {
     e.preventDefault();
     setErr('');
     setOk('');
-    const body = buildBody(leadAction);
+    const body = buildBody();
     if (!body) return;
-    const payload = { ...body };
-    delete payload._leadAction;
-    create.mutate(leadAction ? { ...payload, _leadAction: true } : payload);
+    create.mutate(body);
   }
 
   return (
@@ -236,109 +234,77 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
         )}
       </div>
 
-      <Panel title="Log work">
-        <div className="section-label">1. Select project{isPTL ? " — showing only the projects you're on" : ''}</div>
+      <Panel title="1. Select project" sub="Showing only the projects you're on">
         {pendingLogout && (
           <div className="login-error" role="alert" style={{ display: 'block' }}>
             Mandatory hours pending: submitting today&apos;s update will complete sign-out.
           </div>
         )}
-        <form>
-          <div className="form-row">
-            <label className="form-label">Project *</label>
-            <select
-              className="filter-select"
-              style={{ width: '100%' }}
-              value={project}
-              onChange={(e) => setProject(e.target.value)}
-            >
-              <option value="">Select project</option>
-              {projectOptions.map((p) => (
-                <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
-                  {p.name} ({p.code ?? ''})
-                </option>
-              ))}
-            </select>
+        <div className="form-row" style={{ maxWidth: 420 }}>
+          <label className="form-label">Project</label>
+          <select
+            className="filter-select"
+            style={{ width: '100%' }}
+            value={project}
+            onChange={(e) => { setProject(e.target.value); setAssignedId(''); }}
+          >
+            <option value="">Select project</option>
+            {projectOptions.map((p) => (
+              <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
+                {p.name} ({p.code ?? ''})
+              </option>
+            ))}
+          </select>
+        </div>
+        {project && (
+          <div className="field-grid" style={{ marginBottom: 12 }}>
+            <Field label="Job no." value={preview?.jobNumber ?? preview?.job ?? '—'} />
+            <Field label="Client" value={preview?.clientName ?? preview?.client ?? '—'} />
+            <Field label="Branch" value={preview?.branch ?? '—'} />
+            <Field label="Current stage" value={preview?.currentStage ?? preview?.stage ?? '—'} />
+            <Field
+              label="Project team"
+              value={((preview?.principalTeamLeads ?? []).map((t) => `${t.name ?? ''}${t.service ? ` · ${t.service}` : ''}`.trim()).filter((s) => s && s !== '·').join(', ')) || (preview?.team?.name ?? preview?.team ?? '—')}
+            />
           </div>
-          {project && (
-            <div className="field-grid" style={{ marginBottom: 12 }}>
-              <Field label="Job no." value={preview?.jobNumber ?? preview?.job ?? '—'} />
-              <Field label="Client" value={preview?.clientName ?? preview?.client ?? '—'} />
-              <Field label="Branch" value={preview?.branch ?? '—'} />
-              <Field label="Current stage" value={preview?.currentStage ?? preview?.stage ?? '—'} />
-              <Field
-                label="Project team"
-                value={((preview?.principalTeamLeads ?? []).map((t) => `${t.name ?? ''}${t.service ? ` · ${t.service}` : ''}`.trim()).filter((s) => s && s !== '·').join(', ')) || (preview?.team?.name ?? preview?.team ?? '—')}
-              />
-            </div>
-          )}
-          <div className="section-label">2. What are you logging work against?</div>
-          <div className="form-row">
-            <label className="form-label">Log against *</label>
-            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-              {['Assigned Daily Work', 'Hourly', 'Drawing', 'Task'].map((c) => (
-                <label key={c} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
-                  <input
-                    type="radio"
-                    name="uwp-category"
-                    checked={category === c}
-                    onChange={() => setCategory(c)}
-                  />
-                  {c}
-                </label>
-              ))}
-            </div>
-          </div>
-          {(category === 'Assigned Daily Work' || category === 'Task') && (
-            <div className="form-row">
-              <label className="form-label">Deliverable</label>
-              <input className="form-input" value={deliverable} onChange={(e) => setDeliverable(e.target.value)} />
-            </div>
-          )}
-          {category === 'Task' && (
-            <div className="form-row">
-              <label className="form-label">Task activity</label>
-              <input className="form-input" value={taskActivity} onChange={(e) => setTaskActivity(e.target.value)} />
-            </div>
-          )}
-          {category === 'Drawing' && (
-            <div className="form-row">
-              <label className="form-label">Drawing</label>
-              <input className="form-input" value={drawing} onChange={(e) => setDrawing(e.target.value)} />
-            </div>
-          )}
-          <div className="section-label">3. Update work progress</div>
+        )}
+      </Panel>
+
+      <Panel title="2. What are you logging work against?">
+        <div className="form-row" style={{ maxWidth: 420, marginBottom: 0 }}>
+          <label className="form-label">Assigned Daily Work from PTL/TL</label>
+          <select
+            className="filter-select"
+            style={{ width: '100%' }}
+            value={assignedId}
+            disabled={!project}
+            onChange={(e) => setAssignedId(e.target.value)}
+          >
+            <option value="">General / other work — no specific daily assignment for this project</option>
+            {projectTasks.map((t) => (
+              <option key={String(t._id ?? t.id)} value={String(t._id ?? t.id)}>
+                {[t.stage, t.deliverable].filter(Boolean).join(' · ') || 'Assigned task'} (from PTL/TL)
+              </option>
+            ))}
+          </select>
+        </div>
+      </Panel>
+
+      <Panel title="3. Update work progress">
+        <form onSubmit={handleSubmit}>
           <div className="field-grid">
             <div className="form-row">
-              <label className="form-label">Stage</label>
-              <select className="filter-select" style={{ width: '100%' }} value={stage} onChange={(e) => setStage(e.target.value)}>
-                <option value="">Select stage</option>
-                {['CD', 'SD', 'DD', 'TD', 'GFC'].map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <label className="form-label">Hourly work handled</label>
+              <input type="number" min="0" max="16" step="0.5" className="form-input" placeholder="e.g. 4.5" value={hours} onChange={(e) => setHours(e.target.value)} />
             </div>
             <div className="form-row">
-              <label className="form-label">Hours *</label>
-              <input type="number" min="0" step="0.5" className="form-input" value={hours} onChange={(e) => setHours(e.target.value)} />
-            </div>
-            <div className="form-row">
-              <label className="form-label">Progress %</label>
-              <input type="number" min="0" max="100" className="form-input" value={progressPct} onChange={(e) => setProgressPct(e.target.value)} />
+              <label className="form-label">Drawing</label>
+              <input className="form-input" placeholder="e.g. S-302 Column layout, R01" value={drawing} onChange={(e) => setDrawing(e.target.value)} />
             </div>
           </div>
           <div className="form-row">
-            <label className="form-label">Remarks</label>
-            <textarea className="form-input" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-          <div className="form-row">
-            <label className="form-label">
-              Extra hours reason{needsExtraReason ? ' *' : ''}
-            </label>
-            <textarea
-              className="form-input"
-              value={extraHoursReason}
-              onChange={(e) => setExtraHoursReason(e.target.value)}
-              placeholder={needsExtraReason ? `Required — total ${totalHours.toFixed(1)}h exceeds ${EXTRA_HOURS_AT}h` : `Only needed when the day's total exceeds ${EXTRA_HOURS_AT}h`}
-            />
+            <label className="form-label">Task / Activity</label>
+            <input className="form-input" placeholder="e.g. Column layout detailing" value={taskActivity} onChange={(e) => setTaskActivity(e.target.value)} />
           </div>
           <div className="section-label">Worked on other projects too? Add their hours{isPTL ? ' — lists every project under your PTL' : ''}</div>
           {otherRows.map((r, i) => (
@@ -350,7 +316,7 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
                 onChange={(e) => setOtherRows((rs) => rs.map((x, j) => (j === i ? { ...x, project: e.target.value } : x)))}
               >
                 <option value="">Select project</option>
-                {projectOptions.map((p) => (
+                {projectOptions.filter((p) => String(p._id ?? p.id) !== project).map((p) => (
                   <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
                     {p.name}
                   </option>
@@ -377,29 +343,41 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
             style={{ marginBottom: 12 }}
             onClick={() => setOtherRows((rs) => [...rs, { project: '', hours: '' }])}
           >
-            Add other-project row
+            Add other project hours
           </button>
+          <div className="form-row">
+            <label className="form-label">Remarks</label>
+            <textarea className="form-input" placeholder="Describe the work completed in this update" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          {needsExtraReason && (
+            <div className="form-row">
+              <label className="form-label">Extra hours reason *</label>
+              <textarea
+                className="form-input"
+                value={extraHoursReason}
+                onChange={(e) => setExtraHoursReason(e.target.value)}
+                placeholder={`Required — total ${totalHours.toFixed(1)}h exceeds ${EXTRA_HOURS_AT}h`}
+              />
+            </div>
+          )}
+          <div className="form-row" style={{ maxWidth: 250 }}>
+            <label className="form-label">Date</label>
+            <input type="date" className="form-input" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
           {ok && <div style={{ color: 'var(--forest-dark)', fontSize: 13, marginBottom: 10 }}>{ok}</div>}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-
-            <button type="submit" className="btn-primary" disabled={create.isPending} onClick={(e) => handleSubmit(e, true)}>
-              {create.isPending ? 'Submitting…' : 'Submit'}
-            </button>
-          </div>
-          <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 8 }}>
-            Both buttons create work entries only (no task status change).
-          </p>
+          <button type="submit" className="btn-primary" disabled={create.isPending}>
+            {create.isPending ? 'Submitting…' : 'Submit for team lead action'}
+          </button>
         </form>
       </Panel>
 
-      <Panel title={isPTL ? 'My submissions — everyone’s updates logged from this page' : 'My submissions'}>
+      <Panel title="My submissions" sub="Everyone's updates logged from this page, most recent first">
         {mineQ.isLoading || (isPTL && teamEntriesQ.isLoading) ? (
           <EmptyState text="Loading…" />
         ) : (
           <DataTable
             columns={[
-              { key: 'documents', label: 'Documents', render: e => <EntryDocuments entry={e} /> },
               { key: 'wu', label: 'WU no.', render: (e) => wuDisplay(e) },
               { key: 'date', label: 'Date', render: (e) => fmtDate(e.date) },
               ...(isPTL ? [{ key: 'employee', label: 'Employee', render: (e) => empName(e.employee) }] : []),
@@ -409,13 +387,11 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
               { key: 'task', label: 'Task / Activity', render: (e) => e.taskActivity ?? '—' },
               { key: 'drawing', label: 'Drawing', render: (e) => e.drawing ?? '—' },
               { key: 'hours', label: 'Hourly work handled', render: (e) => e.hours ?? '—' },
-              { key: 'progressPct', label: 'Progress %', render: (e) => e.progressPct ?? '—' },
               {
                 key: 'status',
                 label: 'Status',
                 render: (e) => <StatusPill tone={toneFor(e.status)}>{e.status ?? '—'}</StatusPill>,
               },
-              { key: 'followup', label: 'Follow-up', render: (e) => e.followUp ?? e.remarks ?? '—' },
             ]}
             rows={submissionRows}
             emptyText="No work progress submitted yet."

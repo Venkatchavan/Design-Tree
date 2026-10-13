@@ -101,7 +101,7 @@ export const VIEWS = {
   'my-work': { path: '/my-work', label: 'My work', sub: 'Engineer / Drafter workspace', phase: 2 },
   'my-meetings': { path: '/meetings/mine', label: 'Meetings', sub: 'Meeting log of projects under you', phase: 2 },
   'meetings': { path: '/meetings', label: 'Meetings', sub: 'Meeting log of projects under you', phase: 2 },
-  'qs-log': { path: '/qs-log', label: 'QS Log', sub: 'BOQ, area settlement and pending review per project', phase: 4 },
+  'qs-log': { path: '/qs-log', label: 'QS', sub: 'BOQ, area settlement and pending review per project', phase: 4 },
   'work-tracking': { path: '/work-tracking', label: 'Work tracking', sub: 'Service work tracking', phase: 2 },
   'settings': { path: '/settings', label: 'Settings', sub: 'Placeholder — no screen behind it yet', phase: 4 },
 };
@@ -170,7 +170,7 @@ export const NAV_BY_ROLE = {
     { view: 'teams' },
     { view: 'transmittal-log' },
     { view: 'billing-status' },
-    { view: 'qs-log' },
+    { view: 'qs-head' },
     { view: 'meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
@@ -185,7 +185,7 @@ export const NAV_BY_ROLE = {
     { view: 'bim-head' },
     { view: 'gbs-head' },
     { view: 'peer-review-head' },
-    { view: 'qs-log' },
+    { view: 'qs-head' },
     { view: 'billing-status' },
     { view: 'meetings' },
     { view: 'leave-travel' },
@@ -230,6 +230,7 @@ export const NAV_BY_ROLE = {
     { view: 'transmittal-log' },
     { view: 'admin-work-update' },
     { view: 'leave-travel' },
+    { view: 'meetings' },
     { view: 'employee-support' },
   ],
   team_lead: [
@@ -252,7 +253,6 @@ export const NAV_BY_ROLE = {
     { view: 'my-coordination' },
   ],
   engineer_drafter: [
-    { view: 'dashboard', label: 'Projects' },
     { view: 'transmittal-log' },
     { view: 'leave-travel' },
     { view: 'employee-support' },

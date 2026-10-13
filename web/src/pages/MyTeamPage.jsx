@@ -623,15 +623,13 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
           </select>
         </div>
       )}
-      {isTL && projectWorkspace && (
-        <div className="kpi-grid cols-5">
-          <KpiCard label="Active projects" value={activeProjects.length} accent="blueprint" />
-          <KpiCard label="Team members" value={members.length} accent="forest" />
-          <KpiCard label="Pending review" value={pendingEntries.length} accent="amber" />
-          <KpiCard label="Awaiting response" value={openRfis.length} accent="rust" />
-          <KpiCard label="Open revisions" value={openRevisionCount} accent="violet" />
-        </div>
-      )}
+      <div className="kpi-grid cols-5">
+        <KpiCard label="Active projects" value={activeProjects.length} accent="blueprint" />
+        <KpiCard label="Team members" value={members.length} accent="forest" />
+        <KpiCard label="Pending review" value={pendingEntries.length} accent="amber" />
+        <KpiCard label="Awaiting response" value={openRfis.length} accent="rust" />
+        <KpiCard label="Open revisions" value={openRevisionCount} accent="violet" />
+      </div>
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
       {isTL && !projectWorkspace && <p>Open an assigned project to view its team, progress, deliverables, revisions, drawings and transmittals.</p>}
       {tab === 'completion' && <StageRequestPanel projectId={projectId} />}
@@ -639,15 +637,6 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
       <>
           {tab === 'overview' && (
             <>
-              {!isTL && (
-<div className="kpi-grid cols-5">
-                <KpiCard label="Active projects" value={activeProjects.length} accent="blueprint" />
-                <KpiCard label="Team members" value={members.length} accent="forest" />
-                <KpiCard label="Pending review" value={pendingEntries.length} accent="amber" />
-                <KpiCard label="Awaiting response" value={openRfis.length} accent="rust" />
-                <KpiCard label="Open revisions" value={openRevisionCount} accent="violet" />
-              </div>
-              )}
               <Panel title="My projects">
                 {teamProjects.length === 0 ? (
                   <EmptyState text="No projects linked to this team." />
@@ -707,6 +696,18 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
                   roleGroups.map((g) => (
                     <div key={g.key} style={{ marginBottom: 14 }}>
                       <div className="section-label">{g.key} ({g.members.length})</div>
+                      {role === 'assoc_technical_director' ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                          {g.members.map((m, i) => {
+                            const exp = expText(memberEmp(m));
+                            return (
+                              <span key={memberId(m) || i} className="roster-chip" style={{ cursor: 'default' }}>
+                                {memberName(m)}{exp ? ` · ${exp}` : ''}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
                       <ul style={{ fontSize: 13.5, paddingLeft: 18, margin: '6px 0' }}>
                         {g.members.map((m, i) => {
                           const e = memberEmp(m);
@@ -719,6 +720,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
                           );
                         })}
                       </ul>
+                      )}
                     </div>
                   ))
                 )}
@@ -946,14 +948,6 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
                   />
                 )}
               </Panel>
-              {canRevCreate && !isTL && (
-                <details style={{ marginTop: 12 }}>
-                  <summary style={{ fontSize: 13.5, cursor: 'pointer' }}>Log revision</summary>
-                  <div style={{ marginTop: 10 }}>
-                    <RevisionEntryPanel teamProjects={teamProjects} canCreate={canRevCreate} />
-                  </div>
-                </details>
-              )}
             </>
           )}
 
@@ -1881,13 +1875,11 @@ function AssignWorkPanel({ assignOnly = false, members, roleGroups, teamProjects
 }
 
 function DeliverableAddPanel({ teamProjects, members }) {
+  void members;
   const queryClient = useQueryClient();
   const [project, setProject] = useState('');
   const [deliverable, setDeliverable] = useState('');
-  const [specify, setSpecify] = useState('');
   const [stage, setStage] = useState('');
-  const [assignedTo, setAssignedTo] = useState('');
-  const [plannedDate, setPlannedDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [err, setErr] = useState('');
   const create = useMutation({
@@ -1896,12 +1888,13 @@ function DeliverableAddPanel({ teamProjects, members }) {
       queryClient.invalidateQueries({ queryKey: ['deliverables'] });
       setErr('');
       setDeliverable('');
-      setSpecify('');
+      setStage('');
+      setDueDate('');
     },
     onError: (e) => setErr(e.message),
   });
   return (
-    <Panel title="Add deliverable (assoc technical director only)">
+    <Panel title="Add a project deliverable" sub="Based on the Architect's Intent and specific project requirements — tracked through the Design Management workflow">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -1917,10 +1910,7 @@ function DeliverableAddPanel({ teamProjects, members }) {
           create.mutate({
             project,
             deliverable: deliverable.trim(),
-            specify: specify || undefined,
             stage: stage || undefined,
-            assignedTo: assignedTo || undefined,
-            plannedDate: plannedDate || undefined,
             dueDate: dueDate || undefined,
           });
         }}
@@ -1939,30 +1929,11 @@ function DeliverableAddPanel({ teamProjects, members }) {
           </div>
           <div className="form-row">
             <label className="form-label">Deliverable *</label>
-            <input className="form-input" value={deliverable} onChange={(e) => setDeliverable(e.target.value)} />
-          </div>
-          <div className="form-row">
-            <label className="form-label">Specify</label>
-            <input className="form-input" value={specify} onChange={(e) => setSpecify(e.target.value)} />
+            <input className="form-input" value={deliverable} onChange={(e) => setDeliverable(e.target.value)} placeholder="Structural Design Basis Report" />
           </div>
           <div className="form-row">
             <label className="form-label">Stage</label>
-            <input className="form-input" value={stage} onChange={(e) => setStage(e.target.value)} />
-          </div>
-          <div className="form-row">
-            <label className="form-label">Assigned to</label>
-            <select className="filter-select" style={{ width: '100%' }} value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
-              <option value="">—</option>
-              {members.map((m) => (
-                <option key={memberId(m)} value={memberId(m)}>
-                  {memberName(m)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="form-row">
-            <label className="form-label">Planned date</label>
-            <input type="date" className="form-input" value={plannedDate} onChange={(e) => setPlannedDate(e.target.value)} />
+            <input className="form-input" value={stage} onChange={(e) => setStage(e.target.value)} placeholder="CD" />
           </div>
           <div className="form-row">
             <label className="form-label">Due date</label>
@@ -2205,7 +2176,12 @@ function RecruitmentPanel({ rows, canSetStatus, projectId }) {
         <div className="field-grid">
           <div className="form-row">
             <label className="form-label">Department / Team *</label>
-            <input className="form-input" value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="Structural" />
+            <select className="filter-select" style={{ width: '100%' }} value={department} onChange={(e) => setDepartment(e.target.value)}>
+              <option value="">Select department</option>
+              {['Structural', 'Electrical', 'Mechanical', 'Plumbing', 'Fire', 'QS', 'QA/QC', 'BIM', 'GBS', 'Peer Review', 'Coordination', 'Design Management', 'Admin', 'HR', 'Finance', 'Marketing'].map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
           </div>
           <div className="form-row">
             <label className="form-label">Position / Designation *</label>

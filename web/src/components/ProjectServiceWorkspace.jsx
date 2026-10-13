@@ -290,6 +290,24 @@ export default function ProjectServiceWorkspace({
 
   if (kind === 'design') {
     const teamMembers = (teamBundle?.members ?? []).filter((m) => codes.includes(String(m.service ?? '')));
+    // Technical Director sees only the 4 service panels (read-only).
+    if (role === 'technical_director') {
+      return (
+        <DesignTeamPanel
+          projectId={project._id}
+          service={service}
+          dashboard={serviceDashboards.find((d) => d.service === service.dash)}
+          principalTeamLeads={project.principalTeamLeads}
+          teamMembers={teamMembers}
+          employees={employees}
+          drawings={svcDrawings}
+          acks={drawingAcks}
+          discrepancies={discrepancies}
+          role={role}
+          readOnly
+        />
+      );
+    }
     return (
       <>
         <DesignTeamPanel
@@ -311,6 +329,19 @@ export default function ProjectServiceWorkspace({
   }
 
   if (kind === 'bim') {
+    // Technical Director sees only Team + Federated model status (read-only).
+    if (role === 'technical_director') {
+      return (
+        <ServiceTeamPanel
+          projectId={project._id}
+          service="BIM"
+          dashboard={serviceDashboards.find((d) => d.service === 'BIM')}
+          principalTeamLeads={project.principalTeamLeads}
+          role={role}
+          readOnly
+        />
+      );
+    }
     return (
       <>
         <ServiceTeamPanel
@@ -327,6 +358,28 @@ export default function ProjectServiceWorkspace({
   }
 
   if (kind === 'peer') {
+    // Technical Director sees only the cross-discipline review log.
+    if (role === 'technical_director') {
+      return (
+        <Panel title="Review log" sub="Cross-discipline technical directors reviewing each other's stage outputs before client issue.">
+          <DataTable
+            columns={[
+              { key: 'date', label: 'Date', render: (r) => fmtDate(r.createdAt) },
+              { key: 'stage', label: 'Stage reviewed', render: (r) => r.stage || '—' },
+              { key: 'reviewer', label: 'Reviewer', render: (r) => r.reviewer || '—' },
+              {
+                key: 'waiting',
+                label: 'Waiting on',
+                render: (r) => (String(r.status ?? '') === 'Approved for Issue' ? '—' : (r.respEngineer ?? r.discipline ?? '—')),
+              },
+              { key: 'outcome', label: 'Outcome', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+            ]}
+            rows={[...peerRows].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))}
+            emptyText="No peer reviews for this project yet."
+          />
+        </Panel>
+      );
+    }
     const peerOpen = peerRows.filter((p) => p.status !== 'Approved for Issue');
     return (
       <>
@@ -350,6 +403,20 @@ export default function ProjectServiceWorkspace({
   }
 
   if (kind === 'qs') {
+    // Technical Director sees only the QS panels (read-only).
+    if (role === 'technical_director') {
+      return (
+        <QsServicePanel
+          projectId={project._id}
+          codes={codes}
+          dashboard={serviceDashboards.find((d) => d.service === service.dash)}
+          principalTeamLeads={project.principalTeamLeads}
+          workItems={workItems}
+          role={role}
+          readOnly
+        />
+      );
+    }
     return (
       <>
         <QsServicePanel
@@ -378,14 +445,33 @@ export default function ProjectServiceWorkspace({
           discrepancies={discrepancies}
           weeklyRows={weeklyRows}
           role={role}
+          readOnly={role === 'technical_director'}
         />
-        <ServiceMeetingsPanel service={service} meetings={meetings} />
-        <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} />
+        {role !== 'technical_director' && (
+          <ServiceMeetingsPanel service={service} meetings={meetings} />
+        )}
+        {role !== 'technical_director' && (
+          <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} />
+        )}
       </>
     );
   }
 
   if (kind === 'gbs') {
+    // Technical Director sees only Team + Certification status (read-only).
+    if (role === 'technical_director') {
+      return (
+        <ServiceTeamPanel
+          projectId={project._id}
+          service="GBS"
+          dashboard={serviceDashboards.find((d) => d.service === 'GBS')}
+          principalTeamLeads={project.principalTeamLeads}
+          role={role}
+          gbsSteps={gbsItem?.steps ?? []}
+          readOnly
+        />
+      );
+    }
     return (
       <>
         <ServiceTeamPanel

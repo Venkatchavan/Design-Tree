@@ -162,7 +162,7 @@ export default function VariationsPanel({ projectId, variations, role }) {
       )}
 
       <Panel title="Variation log" sub="Additional work and scope changes recorded for this project">
-        {canWrite && !form && (
+        {canWrite && !form && role !== 'technical_director' && (
           <button type="button" className="approve-btn" style={{ marginBottom: 12 }} onClick={() => setForm({ ...EMPTY_FORM })}>
             + Record variation
           </button>

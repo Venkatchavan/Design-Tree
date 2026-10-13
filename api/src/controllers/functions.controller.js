@@ -163,6 +163,7 @@ export const rfis = makeCrud(Rfi, {
   filters: (req) => {
     const f = byProject(req);
     if (req.query.status) f.status = req.query.status;
+    if (req.query.mine === 'true') f.raisedBy = req.user.id;
     return f;
   },
   // raisedBy role powers the Management "Awaiting responses" source labels

@@ -10,7 +10,6 @@ import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
-import Modal from '../components/Modal.jsx';
 
 function fmtDate(v) {
   if (!v) return '—';
@@ -38,6 +37,13 @@ function isEditableRow(r) {
 
 const LEAVE_TYPES = ['Casual leave', 'Sick leave', 'Earned leave', 'Unpaid leave', 'Other'];
 const TRAVEL_MODES = ['Train', 'Flight', 'Bus', 'Taxi', 'Car', 'Other'];
+const TRAVEL_PURPOSES = [
+  'Site visit',
+  'Client meeting',
+  'Design coordination',
+  'QA/QC inspection',
+  'Internal review',
+];
 
 export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
   void user;
@@ -136,10 +142,17 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
         <div className="page-title">Leave & Travel</div>
         <div className="page-sub">Submit and track your own leave and travel requests</div>
       </div>
-      <div className="kpi-grid cols-3">
+      <div className={`kpi-grid cols-${isTeamLead ? 4 : 3}`}>
         <KpiCard label="My leave balance" value={`${leaveBalance} days`} accent="forest" />
         <KpiCard label="My pending requests" value={leaveMineQ.isLoading ? '…' : myPending} accent="amber" />
         <KpiCard label="Travel this quarter" value={travelMineQ.isLoading ? '…' : `${travelQuarter} trips`} accent="blueprint" />
+        {isTeamLead && (
+          <KpiCard
+            label="Awaiting my approval"
+            value={queueQ.isLoading ? '…' : filteredQueue.leave.length + filteredQueue.travel.length + filteredQueue.allowance.length}
+            accent="rust"
+          />
+        )}
       </div>
       <Tabs
         tabs={[
@@ -350,7 +363,6 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
   const [advanceRequested, setAdvanceRequested] = useState('');
   const [err, setErr] = useState('');
   const [settleId, setSettleId] = useState(null);
-  const [settleResult, setSettleResult] = useState(null);
   // Own request being corrected (only while status is exactly "Pending").
   const [editingId, setEditingId] = useState(null);
 
@@ -438,7 +450,13 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
                 ))}
               </select>
             </div>
-            <div className="form-row"><label className="form-label">Purpose</label><input className="form-input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Site visit" /></div>
+            <div className="form-row">
+              <label className="form-label">Purpose of visit</label>
+              <select className="filter-select" style={{ width: '100%' }} value={purpose} onChange={(e) => setPurpose(e.target.value)}>
+                <option value="">Select purpose</option>
+                {TRAVEL_PURPOSES.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </div>
             <div className="form-row"><label className="form-label">From city</label><input className="form-input" value={fromCity} onChange={(e) => setFromCity(e.target.value)} placeholder="Departure city" /></div>
             <div className="form-row"><label className="form-label">To city</label><input className="form-input" value={toCity} onChange={(e) => setToCity(e.target.value)} placeholder="Destination city" /></div>
             <div className="form-row"><label className="form-label">Departure date</label><input className="form-input" type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} /></div>
@@ -466,6 +484,13 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
           </span>
         </form>
       </Panel>
+      <SettleTravelPanel
+        key={settleId ?? 'new-settlement'}
+        tripId={settleId}
+        trips={mine}
+        onTripChange={(id) => setSettleId(id || null)}
+        onDone={onDone}
+      />
       <Panel title="My travel history">
         {loading ? <EmptyState text="Loading…" /> : error ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>
@@ -494,7 +519,7 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
                         Edit
                       </button>
                     )}
-                    <button type="button" className="approve-btn" onClick={() => { setSettleId(r._id ?? r.id); setSettleResult(r.balance != null || r.actualExpense != null ? r : null); }}>
+                    <button type="button" className="approve-btn" onClick={() => setSettleId(String(r._id ?? r.id))}>
                       Settle
                     </button>
                   </span>
@@ -506,43 +531,58 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
           />
         )}
       </Panel>
-      {settleId && (
-        <SettleModal
-          travelId={settleId}
-          initialResult={settleResult}
-          trips={mine}
-          onClose={() => { setSettleId(null); setSettleResult(null); }}
-          onDone={onDone}
-        />
-      )}
     </>
   );
 }
 
 const SETTLE_LINES = [
-  { key: 'fare', label: 'Travel fare' },
-  { key: 'lodgingAmount', label: 'Lodging' },
-  { key: 'foodPerDiem', label: 'Food & per diem' },
-  { key: 'localConveyance', label: 'Local conveyance' },
-  { key: 'misc', label: 'Miscellaneous' },
+  { key: 'fare', amountKey: 'fare', label: 'Travel fare' },
+  { key: 'lodging', amountKey: 'lodgingAmount', label: 'Lodging' },
+  { key: 'foodPerDiem', amountKey: 'foodPerDiem', label: 'Food & per diem' },
+  { key: 'localConveyance', amountKey: 'localConveyance', label: 'Local conveyance' },
+  { key: 'misc', amountKey: 'misc', label: 'Miscellaneous' },
 ];
 const SETTLE_STATUSES = ['Settled', 'Pending'];
 
-function SettleModal({ travelId, initialResult, trips, onClose, onDone }) {
-  const [tripId, setTripId] = useState(travelId);
-  const trip = (trips ?? []).find((t) => String(t._id ?? t.id) === String(tripId)) ?? initialResult ?? null;
-  const advanceReceived = trip?.advanceReceived != null ? String(trip.advanceReceived) : '';
-  const [amounts, setAmounts] = useState({ fare: '', lodgingAmount: '', foodPerDiem: '', localConveyance: '', misc: '' });
-  const [ticked, setTicked] = useState([]);
-  const [hotel, setHotel] = useState('');
-  const [location, setLocation] = useState('');
-  const [checkIn, setCheckIn] = useState('');
-  const [checkOut, setCheckOut] = useState('');
-  const [nights, setNights] = useState('');
-  const [status, setStatus] = useState('Settled');
-  const [settlementDate, setSettlementDate] = useState(new Date().toISOString().slice(0, 10));
+function localDateValue(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function SettleTravelPanel({ tripId, trips, onTripChange, onDone }) {
+  const trip = (trips ?? []).find((t) => String(t._id ?? t.id) === String(tripId)) ?? null;
+  const hasSettlement = Boolean(trip?.settlementStatus || trip?.settlementDate);
+  const [amounts, setAmounts] = useState(() => ({
+    fare: hasSettlement ? String(trip?.fare ?? '') : '',
+    lodgingAmount: hasSettlement ? String(trip?.lodgingAmount ?? '') : '',
+    foodPerDiem: hasSettlement ? String(trip?.foodPerDiem ?? '') : '',
+    localConveyance: hasSettlement ? String(trip?.localConveyance ?? '') : '',
+    misc: hasSettlement ? String(trip?.misc ?? '') : '',
+  }));
+  const [ticked, setTicked] = useState(() => (hasSettlement ? trip?.hospitalityLines ?? [] : []));
+  const [hotel, setHotel] = useState(trip?.lodging?.hotel ?? '');
+  const [location, setLocation] = useState(trip?.lodging?.location ?? '');
+  const [checkIn, setCheckIn] = useState(trip?.lodging?.checkIn ?? '');
+  const [checkOut, setCheckOut] = useState(trip?.lodging?.checkOut ?? '');
+  const [nights, setNights] = useState(trip?.lodging?.nights != null ? String(trip.lodging.nights) : '');
+  const [advanceReceivedStatus, setAdvanceReceivedStatus] = useState(
+    Number(trip?.advanceReceived) > 0 ? 'yes' : 'no',
+  );
+  const [advanceReceivedAmount, setAdvanceReceivedAmount] = useState(
+    trip?.advanceReceived != null && Number(trip.advanceReceived) > 0
+      ? String(trip.advanceReceived)
+      : '',
+  );
+  const [status, setStatus] = useState(trip?.settlementStatus ?? 'Settled');
+  const [settlementDate, setSettlementDate] = useState(() =>
+    localDateValue(trip?.settlementDate ?? new Date()),
+  );
   const [err, setErr] = useState('');
-  const [result, setResult] = useState(initialResult);
+  const [result, setResult] = useState(null);
 
   const settle = useMutation({
     mutationFn: (body) => travelApi.settle(tripId, body),
@@ -574,15 +614,21 @@ function SettleModal({ travelId, initialResult, trips, onClose, onDone }) {
   }
 
   const num = (v) => (v === '' || v == null ? 0 : Number(v) || 0);
-  const untickedTotal = SETTLE_LINES.filter((l) => !ticked.includes(l.key)).reduce((s, l) => s + num(amounts[l.key]), 0);
-  const tickedTotal = SETTLE_LINES.filter((l) => ticked.includes(l.key)).reduce((s, l) => s + num(amounts[l.key]), 0);
-  const previewBalance = num(advanceReceived) - untickedTotal;
+  const untickedTotal = SETTLE_LINES.filter((l) => !ticked.includes(l.key)).reduce((s, l) => s + num(amounts[l.amountKey]), 0);
+  const tickedTotal = SETTLE_LINES.filter((l) => ticked.includes(l.key)).reduce((s, l) => s + num(amounts[l.amountKey]), 0);
+  const receivedAdvance = advanceReceivedStatus === 'yes' ? num(advanceReceivedAmount) : 0;
+  const previewBalance = receivedAdvance - untickedTotal;
 
   function submit(e) {
     e.preventDefault();
     setErr('');
+    if (!tripId) return;
+    if (advanceReceivedStatus === 'yes' && receivedAdvance <= 0) {
+      setErr('Enter the advance amount received.');
+      return;
+    }
     const body = {
-      advanceReceived: advanceReceived === '' ? undefined : Number(advanceReceived),
+      advanceReceived: receivedAdvance,
       fare: amounts.fare === '' ? undefined : Number(amounts.fare),
       lodging: {
         hotel: hotel || undefined,
@@ -603,15 +649,12 @@ function SettleModal({ travelId, initialResult, trips, onClose, onDone }) {
   }
 
   return (
-    <Modal title="Settle travel expense" onClose={onClose} wide>
-      <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>
-        Complete this once the trip is done, to reconcile advance vs. actual spend
-      </p>
+    <Panel title="Settle travel expense" sub="Complete this once the trip is done, to reconcile advance vs. actual spend">
       <form onSubmit={submit}>
         <div className="field-grid">
           <div className="form-row">
             <label className="form-label">Trip to settle</label>
-            <select className="filter-select" style={{ width: '100%' }} value={tripId ?? ''} onChange={(e) => setTripId(e.target.value)}>
+            <select className="filter-select" style={{ width: '100%' }} value={tripId ?? ''} onChange={(e) => onTripChange(e.target.value)}>
               <option value="">Select a trip…</option>
               {(trips ?? []).map((t) => (
                 <option key={String(t._id ?? t.id)} value={String(t._id ?? t.id)}>
@@ -620,7 +663,33 @@ function SettleModal({ travelId, initialResult, trips, onClose, onDone }) {
               ))}
             </select>
           </div>
-          <div className="form-row"><label className="form-label">Advance amount received?</label><div style={{ fontSize: 13.5 }}>{trip?.advanceReceived ? `₹${Number(trip.advanceReceived).toLocaleString('en-IN')}` : 'No'}</div></div>
+          <div className="form-row">
+            <label className="form-label">Advance amount received?</label>
+            <select
+              className="filter-select"
+              style={{ width: '100%' }}
+              value={advanceReceivedStatus}
+              onChange={(e) => setAdvanceReceivedStatus(e.target.value)}
+            >
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
+            {advanceReceivedStatus === 'yes' && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+                <span className="mono">₹</span>
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  required
+                  aria-label="Advance amount received"
+                  value={advanceReceivedAmount}
+                  onChange={(e) => setAdvanceReceivedAmount(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
         </div>
         <div className="section-label">Expense split</div>
         <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
@@ -629,9 +698,10 @@ function SettleModal({ travelId, initialResult, trips, onClose, onDone }) {
         <div className="field-grid">
           {SETTLE_LINES.map((l) => (
             <div className="form-row" key={l.key}>
-              <label className="form-label">{l.label} (₹)</label>
+              <label className="form-label">{l.label}</label>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input className="form-input" type="number" min="0" value={amounts[l.key]} onChange={(e) => setAmount(l.key, e.target.value)} style={{ flex: 1 }} />
+                <span className="mono">₹</span>
+                <input className="form-input" type="number" min="0" value={amounts[l.amountKey]} onChange={(e) => setAmount(l.amountKey, e.target.value)} style={{ flex: 1 }} />
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5, whiteSpace: 'nowrap' }}>
                   <input type="checkbox" checked={ticked.includes(l.key)} onChange={() => toggleTick(l.key)} />
                   Client arranged
@@ -670,7 +740,7 @@ function SettleModal({ travelId, initialResult, trips, onClose, onDone }) {
           {settle.isPending ? 'Saving…' : 'Save settlement'}
         </button>
       </form>
-    </Modal>
+    </Panel>
   );
 }
 
@@ -788,6 +858,95 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
   const showTravelPanel = isTeamLead || isHr || isFinance || isWD;
   const showAllowancePanel = isTeamLead || isHr || isFinance;
   const showRecentPanel = isHr || isFD || isWD;
+
+  // Team Lead sees only Leave + Travel approvals (no Chain column, no
+  // allowance / decision-log panels). Reject prompts for the required reason.
+  async function decideDirect(kind, id, status) {
+    setErr('');
+    let remarks;
+    if (status === 'Rejected') {
+      const v = window.prompt('Reason for rejecting (required, shown to the requester):', '');
+      if (v == null) return;
+      remarks = v.trim();
+      if (!remarks) {
+        setErr('A reason is required when rejecting.');
+        return;
+      }
+    }
+    try {
+      if (kind === 'leave') await leaveApi.decide(id, { status, remarks });
+      else await travelApi.decide(id, { status, remarks });
+      onDone();
+      queryClient.invalidateQueries({ queryKey: ['leave-decided'] });
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  function decideSimpleButtons(kind, r) {
+    const id = String(r._id ?? r.id);
+    if (!canDecide || !canAct(r, myStage)) return '—';
+    return (
+      <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button type="button" className="approve-btn" onClick={() => decideDirect(kind, id, 'Approved')}>Approve</button>
+        <button type="button" className="approve-btn" onClick={() => decideDirect(kind, id, 'Rejected')}>Reject</button>
+      </span>
+    );
+  }
+
+  const travelProjectOf = (r) => (r.project && typeof r.project === 'object'
+    ? (r.project.name ?? r.project.code ?? '—')
+    : (r.project ?? '—'));
+
+  if (isTeamLead) {
+    return (
+      <>
+        <Panel title="Leave approvals" sub={scopeSub}>
+          {loading ? <EmptyState text="Loading…" /> : error ? (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>
+          ) : queue.leave.length === 0 ? (
+            <EmptyState text="Nothing pending." />
+          ) : (
+            <DataTable
+              columns={[
+                { key: 'employee', label: 'Employee', render: (r) => empNameOf(r.employee) },
+                { key: 'leaveType', label: 'Type' },
+                { key: 'from', label: 'From', render: (r) => fmtDate(r.from) },
+                { key: 'to', label: 'To', render: (r) => fmtDate(r.to) },
+                { key: 'reason', label: 'Reason', render: (r) => r.reason ?? '—' },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+                { key: 'decide', label: '', render: (r) => decideSimpleButtons('leave', r) },
+              ]}
+              rows={queue.leave}
+              emptyText="Nothing pending."
+            />
+          )}
+        </Panel>
+        <Panel title="Travel approvals" sub={travelScopeSub}>
+          {loading ? <EmptyState text="Loading…" /> : error ? (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>
+          ) : queue.travel.length === 0 ? (
+            <EmptyState text="Nothing pending." />
+          ) : (
+            <DataTable
+              columns={[
+                { key: 'employee', label: 'Employee', render: (r) => empNameOf(r.employee) },
+                { key: 'project', label: 'Project', render: (r) => travelProjectOf(r) },
+                { key: 'route', label: 'Route', render: (r) => `${r.fromCity ?? ''} → ${r.toCity ?? ''}` },
+                { key: 'dates', label: 'Dates', render: (r) => `${fmtDate(r.departureDate)} / ${fmtDate(r.returnDate)}` },
+                { key: 'estExpense', label: 'Est. expense', render: (r) => (r.estExpense ? `₹${Number(r.estExpense).toLocaleString('en-IN')}` : '—') },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+                { key: 'decide', label: '', render: (r) => decideSimpleButtons('travel', r) },
+              ]}
+              rows={queue.travel}
+              emptyText="Nothing pending."
+            />
+          )}
+        </Panel>
+        {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
+      </>
+    );
+  }
 
   return (
     <>

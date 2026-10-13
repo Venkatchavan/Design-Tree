@@ -43,8 +43,8 @@ export const fromDrawingsSchema = z
   .object({
     drawingIds: z.array(objectId).min(1),
     date: dateOpt,
-    issuedTo: z.enum(TRANSMITTAL_RECIPIENTS),
-    method: z.enum(TRANSMITTAL_METHODS),
+    issuedTo: z.enum(TRANSMITTAL_RECIPIENTS).optional(),
+    method: z.enum(TRANSMITTAL_METHODS).optional(),
     remarks: strOpt,
   })
   .strict();

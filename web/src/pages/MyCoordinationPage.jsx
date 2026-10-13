@@ -756,7 +756,7 @@ export function DirectoryTab({ myAllocs, activeProjects, activeLoading, canEdit 
 }
 
 function blankAreas() {
-  return AREA_KEYS.map((key) => ({ key, update: '', hours: '' }));
+  return AREA_KEYS.map((key) => ({ key, selected: false, update: '', hours: '' }));
 }
 
 function DailyEntryTab({ myAllocs, activeProjects }) {
@@ -793,7 +793,7 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
   );
 
   const total = useMemo(
-    () => areas.reduce((sum, a) => sum + (parseFloat(a.hours) || 0), 0),
+    () => areas.reduce((sum, a) => sum + (a.selected ? parseFloat(a.hours) || 0 : 0), 0),
     [areas],
   );
 
@@ -831,11 +831,16 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
       setErr('Service is required.');
       return;
     }
+    const selectedAreas = areas.filter((area) => area.selected);
+    if (selectedAreas.length === 0) {
+      setErr('Select at least one work area.');
+      return;
+    }
     save.mutate({
       date,
       project,
       service,
-      areas: areas.map((a) => ({
+      areas: selectedAreas.map((a) => ({
         key: a.key,
         update: a.update || undefined,
         hours: a.hours === '' ? undefined : Number(a.hours),
@@ -888,7 +893,26 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
             <tbody>
               {areas.map((a, i) => (
                 <tr key={a.key}>
-                  <td>{a.key}<div style={{ fontSize: 11.5, color: 'var(--ink-muted)' }}>{AREA_DESCRIPTIONS[a.key] ?? ''}</div></td>
+                  <td>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={a.selected}
+                        onChange={(e) => setArea(i, {
+                          selected: e.target.checked,
+                          update: e.target.checked ? a.update : '',
+                          hours: e.target.checked ? a.hours : '',
+                        })}
+                        aria-label={`Select ${a.key} work area`}
+                      />
+                      <span>
+                        {a.key}
+                        <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-muted)' }}>
+                          {AREA_DESCRIPTIONS[a.key] ?? ''}
+                        </span>
+                      </span>
+                    </label>
+                  </td>
                   <td>
                     <input
                       className="form-input"
@@ -896,6 +920,7 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
                       onChange={(e) => setArea(i, { update: e.target.value })}
                       placeholder="Update"
                       aria-label={`${a.key} update`}
+                      disabled={!a.selected}
                     />
                   </td>
                   <td>
@@ -907,6 +932,7 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
                       value={a.hours}
                       onChange={(e) => setArea(i, { hours: e.target.value })}
                       aria-label={`${a.key} hours`}
+                      disabled={!a.selected}
                     />
                   </td>
                 </tr>

@@ -21,6 +21,10 @@ const TABS = [
 
 function drawingOf(row) { return row.drawing ?? {}; }
 function projectName(row) { return drawingOf(row).project?.name ?? '—'; }
+function localDateInputValue() {
+  const date = new Date();
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
 
 export default function AdminTransmittalPage() {
   const qc = useQueryClient();
@@ -29,6 +33,7 @@ export default function AdminTransmittalPage() {
   const [project, setProject] = useState('');
   const [status, setStatus] = useState('');
   const [selected, setSelected] = useState([]);
+  const [batchDate, setBatchDate] = useState(localDateInputValue);
   const [modalOpen, setModalOpen] = useState(false);
   const [issuedTo, setIssuedTo] = useState('Client');
   const [method, setMethod] = useState('Portal');
@@ -69,13 +74,12 @@ export default function AdminTransmittalPage() {
   const batchCreate = useMutation({
     mutationFn: () => transmittalsApi.createFromDrawings({
       drawingIds: selected,
-      date: new Date().toISOString().slice(0, 10),
-      issuedTo,
-      method,
+      date: batchDate,
       remarks: remarks || undefined,
     }),
     onSuccess: () => {
       setSelected([]);
+      setRemarks('');
       qc.invalidateQueries({ queryKey: ['transmittals'] });
       qc.invalidateQueries({ queryKey: ['tl-drawings'] });
     },
@@ -168,37 +172,58 @@ export default function AdminTransmittalPage() {
       )}
 
       {tab === 'drawings' && (
-        <Panel title="Drawing lists shared by Team Leads" sub="Tick the drawings to send, then create their transmittal entries below. Drawings already in the log show their status.">
-          <div style={{ fontSize: 12.5, color: 'var(--ink-muted)', marginBottom: 8 }}>All projects · Transmittals are issued only for drawings at GFC stage. Drawings at other stages are listed for reference but cannot be selected.</div>
-          <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 12 }}>
-            <select className="filter-select" value={project} onChange={(e) => setProject(e.target.value)}><option value="">All projects</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select>
-            <button className="approve-btn" type="button" onClick={() => setSelected(drawingRows.filter((d) => d.gfc && !d.transmitted).map((d) => d.id))}>Select all awaiting</button>
-            <button className="approve-btn" type="button" onClick={() => setSelected([])}>Clear selection</button>
-          </div>
-          <DataTable columns={[
-            { key: 'select', label: 'Select', render: (d) => d.gfc && !d.transmitted ? <input type="checkbox" checked={selected.includes(d.id)} onChange={(e) => setSelected((s) => e.target.checked ? [...s, d.id] : s.filter((x) => x !== d.id))} /> : '—' },
-            { key: 'project', label: 'Project', render: (d) => d.project?.name ?? '—' },
-            { key: 'drawingNo', label: 'Drawing no.' },
-            { key: 'title', label: 'Title' },
-            { key: 'rev', label: 'Rev' },
-            { key: 'service', label: 'Service' },
-            { key: 'stage', label: 'Stage', render: (d) => <StatusPill status={d.gfc ? 'GFC' : 'Not at GFC stage'}>{d.stage ?? '—'}</StatusPill> },
-            { key: 'sharedBy', label: 'Shared by TL', render: (d) => d.sharedBy?.name ?? d.sharedBy ?? '—' },
-            { key: 'date', label: 'Date shared', render: (d) => d.date ? new Date(d.date).toLocaleDateString() : '—' },
-            { key: 'transmitted', label: 'Transmittal status', render: (d) => d.transmitted ? `Acknowledged ${d.trNo ?? '—'}` : d.gfc ? 'Awaiting transmittal' : 'Not at GFC stage' },
-          ]} rows={drawingRows} emptyText="No drawings have been shared by Team Leads yet." />
-          <Panel title="Create transmittal from selected drawings" sub={selected.length === 0 ? 'No drawings selected' : `${selected.length} drawing(s) selected`}>
-            <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginBottom: 10 }}>Transmittal no. Auto-generated (one per project & recipient) · Date 12-10-2026 · Issued to Use each drawing's recipient · Method Use each drawing's method</div>
-            <div className="field-grid" style={{ gap: 10, display: 'flex', flexWrap: 'wrap' }}>
-              <div style={{ flex: '1 1 240px', minWidth: 220 }}><label className="form-label">Remarks — Optional note carried to every entry</label><input className="form-input" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional note" /></div>
+        <>
+          <Panel title="Drawing lists shared by Team Leads" sub="Tick the drawings to send, then create their transmittal entries below. Drawings already in the log show their status.">
+            <div style={{ fontSize: 12.5, color: 'var(--ink-muted)', marginBottom: 8 }}>Transmittals are issued only for drawings at GFC stage. Drawings at other stages are listed for reference but cannot be selected.</div>
+            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 12 }}>
+              <select className="filter-select" value={project} onChange={(e) => setProject(e.target.value)}><option value="">All projects</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select>
+              <button className="approve-btn" type="button" onClick={() => setSelected(drawingRows.filter((d) => d.gfc && !d.transmitted).map((d) => d.id))}>Select all awaiting</button>
+              <button className="approve-btn" type="button" onClick={() => setSelected([])}>Clear selection</button>
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button className="btn-primary" type="button" disabled={batchCreate.isPending || selected.length === 0} onClick={() => batchCreate.mutate()}>{batchCreate.isPending ? 'Creating…' : `Create transmittal entries (${selected.length})`}</button>
-            </div>
+            <DataTable columns={[
+              { key: 'select', label: 'Select', render: (d) => d.gfc && !d.transmitted ? <input type="checkbox" aria-label={`Select ${d.drawingNo}`} checked={selected.includes(d.id)} onChange={(e) => setSelected((s) => e.target.checked ? (s.includes(d.id) ? s : [...s, d.id]) : s.filter((x) => x !== d.id))} /> : '—' },
+              { key: 'project', label: 'Project', render: (d) => d.project?.name ?? '—' },
+              { key: 'drawingNo', label: 'Drawing no.' },
+              { key: 'title', label: 'Title' },
+              { key: 'rev', label: 'Rev' },
+              { key: 'service', label: 'Service' },
+              { key: 'stage', label: 'Stage', render: (d) => <StatusPill status={d.gfc ? 'GFC' : 'Not at GFC stage'}>{d.stage ?? '—'}</StatusPill> },
+              { key: 'sharedBy', label: 'Shared by TL', render: (d) => d.sharedBy?.name ?? d.sharedBy ?? '—' },
+              { key: 'date', label: 'Date shared', render: (d) => d.date ? new Date(d.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '—' },
+              { key: 'transmitted', label: 'Transmittal status', render: (d) => d.transmittal ? `${d.transmittal.status} ${d.transmittal.trNo}` : d.gfc ? 'Awaiting transmittal' : 'Not at GFC stage' },
+            ]} rows={drawingRows} emptyText="No drawings have been shared by Team Leads yet." />
           </Panel>
-          {batchCreate.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{batchCreate.error.message}</div>}
-          {batchCreate.isSuccess && <p style={{ color: 'var(--forest-dark)', marginTop: 10 }}>Transmittal entries created. The Team Lead notification was recorded.</p>}
-        </Panel>
+
+          <Panel title="Create transmittal from selected drawings" sub={selected.length === 0 ? 'No drawings selected' : `${selected.length} drawing(s) selected`}>
+            <div className="field-grid">
+              <div className="form-row">
+                <label className="form-label">Transmittal no.</label>
+                <div className="form-input" style={{ color: 'var(--ink-muted)' }}>Auto-generated (one per project & recipient)</div>
+              </div>
+              <div className="form-row">
+                <label className="form-label" htmlFor="tl-batch-date">Date</label>
+                <input id="tl-batch-date" type="date" className="form-input" value={batchDate} onChange={(e) => setBatchDate(e.target.value)} />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Issued to</label>
+                <div className="form-input" style={{ color: 'var(--ink-muted)' }}>Use each drawing's recipient</div>
+              </div>
+              <div className="form-row">
+                <label className="form-label">Method</label>
+                <div className="form-input" style={{ color: 'var(--ink-muted)' }}>Use each drawing's method</div>
+              </div>
+              <div className="form-row" style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label" htmlFor="tl-batch-remarks">Remarks</label>
+                <input id="tl-batch-remarks" className="form-input" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional note carried to every entry" />
+              </div>
+            </div>
+            <button className="btn-primary" type="button" disabled={batchCreate.isPending || selected.length === 0} onClick={() => batchCreate.mutate()}>
+              {batchCreate.isPending ? 'Creating…' : 'Create transmittal entries'}
+            </button>
+            {batchCreate.isError && <div className="login-error" role="alert" style={{ display: 'block', marginTop: 10 }}>{batchCreate.error.message}</div>}
+            {batchCreate.isSuccess && <p style={{ color: 'var(--forest-dark)', marginTop: 10 }}>Transmittal entries created. The Team Lead notification was recorded.</p>}
+          </Panel>
+        </>
       )}
 
       {tab === 'import' && (

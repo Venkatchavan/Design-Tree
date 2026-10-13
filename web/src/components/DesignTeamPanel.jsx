@@ -25,11 +25,11 @@ const COORD_STATUSES = ['Open', 'In Progress', 'Closed'];
 const COORD_LABELS = { Open: 'Open', 'In Progress': 'In Progress', Closed: 'Resolved' };
 const WITH_OPTIONS = ['Structural', 'Electrical', 'Mechanical', 'Plumbing', 'Fire', 'QS', 'QAQC', 'GBS', 'BIM', 'Peer review', 'Architect', 'Client'];
 
-export default function DesignTeamPanel({ projectId, service, dashboard, principalTeamLeads, teamMembers, employees, drawings, acks, discrepancies, role }) {
+export default function DesignTeamPanel({ projectId, service, dashboard, principalTeamLeads, teamMembers, employees, drawings, acks, discrepancies, role, readOnly = false }) {
   const codes = service.codes;
   const d = dashboard ?? {};
-  const canEdit = DASHBOARD_WRITERS.has(role);
-  const canRecord = COORDINATION_WRITERS.has(role);
+  const canEdit = DASHBOARD_WRITERS.has(role) && !readOnly;
+  const canRecord = COORDINATION_WRITERS.has(role) && !readOnly;
   const qc = useQueryClient();
   const [draft, setDraft] = useState(null);
   const [coordForm, setCoordForm] = useState(null);
@@ -186,8 +186,30 @@ export default function DesignTeamPanel({ projectId, service, dashboard, princip
           <Field label="Designers" value={d.designers} />
           <Field label="Drafters" value={d.drafters} />
         </div>
+        {readOnly && (
+          <>
+            <div className="section-label" style={{ marginTop: 12 }}>Project team members</div>
+            {(teamMembers ?? []).length === 0 ? (
+              <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>No team members allocated for this service.</p>
+            ) : (
+              (teamMembers ?? []).map((m, i) => {
+                const e = m.employee && typeof m.employee === 'object' ? m.employee : {};
+                const name = [e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || '—';
+                const id = String(m.employee?._id ?? m.employee ?? '');
+                const exp = m.employee?.experience ?? expById.get(id);
+                return (
+                  <div key={id || i} style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 14 }}>{name}</div>
+                    <div style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>{exp ? `${exp} exp.` : '—'}</div>
+                  </div>
+                );
+              })
+            )}
+          </>
+        )}
       </Panel>
 
+      {!readOnly && (
       <Panel title="Project team members">
         <DataTable
           columns={[
@@ -205,6 +227,7 @@ export default function DesignTeamPanel({ projectId, service, dashboard, princip
           emptyText="No team members allocated for this service."
         />
       </Panel>
+      )}
 
       <Panel title="Scope status">
         <div className="field-grid">

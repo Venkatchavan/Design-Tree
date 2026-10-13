@@ -13,6 +13,7 @@ import {
 import { Bar } from 'react-chartjs-2';
 import { projectsApi } from '../lib/api.js';
 import { spocApi } from '../lib/spocApi.js';
+import { projectsByStageChart } from '../lib/projectsByStage.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -30,6 +31,8 @@ const STATUS_KPIS = [
   { key: 'onHold', label: 'On hold', accent: 'amber' },
   { key: 'completed', label: 'Completed', accent: 'violet' },
 ];
+const EMPTY_STAGE_COUNTS = [];
+const EMPTY_BRANCH_STAGE_COUNTS = {};
 
 export default function DashboardPage({ bootstrap }) {
   const navigate = useNavigate();
@@ -57,7 +60,8 @@ export default function DashboardPage({ bootstrap }) {
   const stats = statsQuery.data;
   const counts = stats?.counts ?? {};
   const branches = stats?.branches ?? [];
-  const byStage = stats?.byStage ?? [];
+  const byStage = stats?.byStage ?? EMPTY_STAGE_COUNTS;
+  const byBranchStage = stats?.byBranchStage ?? EMPTY_BRANCH_STAGE_COUNTS;
   const services = stats?.services ?? [];
   const totals = stats?.totals ?? {};
   const filters = filtersQuery.data;
@@ -66,17 +70,8 @@ export default function DashboardPage({ bootstrap }) {
   const branchCount = totals.branches ?? branches.length ?? 0;
 
   const stageChart = useMemo(
-    () => ({
-      labels: byStage.map((s) => s.stage ?? '—'),
-      datasets: [
-        {
-          label: 'Projects',
-          data: byStage.map((s) => s.count ?? 0),
-          backgroundColor: '#1D68D6',
-        },
-      ],
-    }),
-    [byStage],
+    () => projectsByStageChart(byStage, byBranchStage, branch),
+    [byStage, byBranchStage, branch],
   );
 
   const items = (listQuery.data?.items ?? []).filter((p) => {
@@ -216,7 +211,7 @@ export default function DashboardPage({ bootstrap }) {
       </Panel>
 
       <Panel title="Projects by stage">
-        {byStage.length === 0 ? (
+        {stageChart.labels.length === 0 ? (
           <EmptyState text="No stage data yet." />
         ) : (
           <div className="chart-wrap">
@@ -233,6 +228,7 @@ export default function DashboardPage({ bootstrap }) {
         )}
       </Panel>
 
+      {roleKey !== 'hr' && (
       <Panel title={`Projects (${total})`}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
           <input
@@ -318,6 +314,7 @@ export default function DashboardPage({ bootstrap }) {
           />
         )}
       </Panel>
+      )}
     </>
   );
 }

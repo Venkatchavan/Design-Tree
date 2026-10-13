@@ -1612,6 +1612,10 @@ function HrSupportTab() {
       setEdits({});
     },
   });
+  const uploadSlip = useMutation({
+    mutationFn: ({ id, file }) => supportApi.salarySlip(id, file),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['hr-support'] }),
+  });
   const rows = q.data?.items ?? [];
   const editFor = (id) => edits[id] ?? {};
   const setEdit = (id, patch) => setEdits((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...patch } }));
@@ -1671,6 +1675,20 @@ function HrSupportTab() {
                       value={ed.remark ?? ''}
                       onChange={(e) => setEdit(id, { remark: e.target.value })}
                     />
+                    {r.kind === 'salary-slip' && (
+                      <input
+                        className="form-input"
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg"
+                        aria-label={`Upload salary slip for ${r.month ?? 'requested month'}`}
+                        disabled={uploadSlip.isPending}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) uploadSlip.mutate({ id, file });
+                          e.target.value = '';
+                        }}
+                      />
+                    )}
                     <button
                       type="button"
                       className="approve-btn"
@@ -1689,6 +1707,7 @@ function HrSupportTab() {
         />
       )}
       {save.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{save.error.message}</div>}
+      {uploadSlip.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{uploadSlip.error.message}</div>}
     </Panel>
   );
 }

@@ -121,7 +121,7 @@ test('meeting invitation reaches an already-open employee dashboard live',async(
 });
 
 test('director QS screen shows real BOQ quantities and pending area review',async({page})=>{
-  await signIn(page,'td');await page.goto('/qs-log');await page.locator('select').selectOption(fixture.project);await expect(page.getByText('BOQ acceptance item',{exact:true}).first()).toBeVisible();await expect(page.getByText('Acceptance zone',{exact:true}).first()).toBeVisible();await expect(page.getByText('10',{exact:true}).first()).toBeVisible();
+  await signIn(page,'atd');await page.goto('/qs-log');await page.locator('select').selectOption(fixture.project);await expect(page.getByText('BOQ acceptance item',{exact:true}).first()).toBeVisible();await expect(page.getByText('Acceptance zone',{exact:true}).first()).toBeVisible();await expect(page.getByText('10',{exact:true}).first()).toBeVisible();
 });
 
 test('SPOC counts, bundle chart and combined filters match stored meetings',async({page})=>{

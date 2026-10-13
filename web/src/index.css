@@ -5028,6 +5028,14 @@ table.data tr.row-click:hover {
     font-weight: 500;
     white-space: nowrap;
 }
+.btn-primary,
+.approve-btn {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    justify-self: start;
+    width: fit-content;
+    max-width: 100%;
+}
 .btn-primary:hover {
     background: var(--blueprint-dark);
 }
@@ -6655,4 +6663,3 @@ table.data tr.row-click:hover {
 /* Draggable responsive sidebar + entry-top tables */
 .nav [draggable]{touch-action:pan-y}
 @media (max-width: 760px){.field-grid{grid-template-columns:1fr !important}.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr)) !important}table.data{display:block;overflow-x:auto;white-space:nowrap}.sidebar{max-width:86vw}}
-

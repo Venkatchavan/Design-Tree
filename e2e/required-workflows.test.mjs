@@ -69,8 +69,12 @@ test('director QS logs reflect project BOQ and pending area settlements',async()
 test('Finance alone can access bookings; role navigation reflects requirements', async () => {
   for (const role of ['md', 'td', 'associate', 'atd', 'dmh', 'tl', 'spoc', 'engineer']) assert.equal((await call(role, '/api/travel-bookings')).status, 403, role);
   assert.equal((await call('finance', '/api/travel-bookings')).status, 200);
-  for (const role of ['td', 'associate', 'atd']) {
+  for (const role of ['td', 'associate']) {
     const nav = (await call(role, '/api/meta/bootstrap')).data.nav.map(n => n.view);
+    assert(!nav.includes('design-mgmt')); assert(nav.includes('billing-status')); assert(nav.includes('qs-head')); assert(!nav.includes('qs-log'));
+  }
+  {
+    const nav = (await call('atd', '/api/meta/bootstrap')).data.nav.map(n => n.view);
     assert(!nav.includes('design-mgmt')); assert(nav.includes('billing-status')); assert(nav.includes('qs-log'));
   }
   const nav = (await call('dmh', '/api/meta/bootstrap')).data.nav.map(n => n.view);

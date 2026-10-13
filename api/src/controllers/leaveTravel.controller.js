@@ -511,6 +511,24 @@ export function decideAllowance(req, res, next) {
   });
 }
 
+// Finance marks an approved LA / Cab / Other request completed once it is
+// reimbursed. Only Approved requests can transition; the model hook keeps
+// the Completed state untouched on save.
+export async function completeAllowance(req, res, next) {
+  try {
+    const doc = await AllowanceRequest.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Not found.' });
+    if (doc.status !== 'Approved') {
+      return res.status(409).json({ message: 'Only approved requests can be marked completed.' });
+    }
+    doc.status = 'Completed';
+    await doc.save();
+    return res.status(200).json({ item: doc });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Self-service edit: a requester may correct their own request, but only
 // while it still sits at the very start of the chain. Once any stage has

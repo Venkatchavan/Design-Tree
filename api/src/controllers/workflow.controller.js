@@ -275,8 +275,12 @@ export const drawings = makeCrud(Drawing, {
     const f = {};
     if (req.query.project) f.project = req.query.project;
     if (req.query.stage) f.stage = req.query.stage;
+    if (req.query.mine === 'true') f.sharedBy = req.user.id;
     return f;
   },
+  decorate: (data, req) => req.method === 'POST'
+    ? { ...data, sharedBy: req.user.id }
+    : data,
   populate: [{ path: 'project', select: POP_PROJ }],
 });
 

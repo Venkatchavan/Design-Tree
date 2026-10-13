@@ -40,20 +40,11 @@ export default function BillingStatusPage({ bootstrap }) {
           ? 'Live from Billing\u2019s stage tracker — which stages are billed, ready for billing, or still pending, service by service'
           : 'Live billing readiness from the stage tracker.'}</div>
       </div>
-      {isDirector ? (
       <div className="kpi-grid cols-3">
         <KpiCard label="Billed" value={billed} accent="forest" />
         <KpiCard label="Ready for billing" value={ready} accent="teal" />
         <KpiCard label="Pending (stage in progress)" value={pending} accent="amber" />
       </div>
-      ) : (
-      <div className="kpi-grid cols-4">
-        <KpiCard label="Stages tracked" value={rows.length} accent="blueprint" />
-        <KpiCard label="Billed" value={billed} accent="forest" />
-        <KpiCard label="Ready for billing" value={ready} accent="teal" />
-        <KpiCard label="Pending (stage in progress)" value={pending} accent="amber" />
-      </div>
-      )}
       <Panel title="Billing status by stage" sub="PTL request → SPOC approval → TD approval → Admin billing.">
         <div style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center' }}>
           {isDirector && <span className="form-label">Filter by billing status</span>}

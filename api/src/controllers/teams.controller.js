@@ -1,6 +1,7 @@
 import { applyMeetingAudience } from '../middlewares/meetingAccess.js';
 import { projectScopeIds } from '../utils/projectScope.js';
 import { Meeting } from '../models/Meeting.js';
+import { Project } from '../models/Project.js';
 import { Team } from '../models/Team.js';
 import { WorkEntry } from '../models/WorkEntry.js';
 import { requireActiveBranch } from '../utils/branches.js';
@@ -42,7 +43,8 @@ export async function myTeams(req, res, next) {
     // scoped path) so My Team reflects instead of rendering "No team assigned".
     if (role === 'associate_director' || role === 'assoc_technical_director') {
       const teams = await Team.find({})
-        .populate('projects', 'name code branch currentStage status')
+        .populate('projects', 'name code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services')
+        .populate('lead', memberSelect)
         .populate('members.employee', memberSelect);
       return res.status(200).json({ items: teams, total: teams.length });
     }
@@ -50,7 +52,8 @@ export async function myTeams(req, res, next) {
     const teams = await Team.find({
       $or: [{ lead: me.employee }, { 'members.employee': me.employee }],
     })
-      .populate('projects', 'name code branch currentStage status')
+      .populate('projects', 'name code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services')
+      .populate('lead', memberSelect)
       .populate('members.employee', memberSelect);
     return res.status(200).json({ items: teams, total: teams.length });
   } catch (err) {
@@ -100,23 +103,53 @@ export async function getTeam(req, res, next) {
     if (allowed && !projectIds.some(id => allowed.includes(String(id)))) return res.status(404).json({message:'Team not found.'});
     const visibleProjects = allowed ? projectIds.filter(id => allowed.includes(String(id))) : projectIds;
     const memberIds = team.members.filter(m => m.employee).map((m) => m.employee._id);
-    const since = new Date(Date.now() - WEEK_MS);
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
     const meetingFilter = {project:{$in:visibleProjects}};
     await applyMeetingAudience(meetingFilter,req.user);
-    const [entries, pending, meetings] = await Promise.all([
-      WorkEntry.find({ employee: { $in: memberIds }, project:{$in:visibleProjects}, date: { $gte: since } })
+    const weekFilter = {
+      employee: { $in: memberIds },
+      project: { $in: visibleProjects },
+      date: { $gte: weekStart, $lte: now },
+    };
+    const [entries, pending, meetings, projectHourRows] = await Promise.all([
+      WorkEntry.find(weekFilter)
         .populate('project', 'name code')
-        .populate('employee', 'firstName lastName empId')
+        .populate('employee', 'firstName lastName empId designation')
         .sort({ date: -1 })
-        .limit(100),
+        .limit(500),
       WorkEntry.find({
         employee: { $in: memberIds },
-        project: {$in:visibleProjects},
+        project: { $in: visibleProjects },
         status: 'Pending',
-      }).populate('project','name code').populate('employee','firstName lastName empId'),
+        date: { $gte: weekStart, $lte: now },
+      }).populate('project','name code').populate('employee','firstName lastName empId designation').sort({ date: -1 }).limit(500),
       Meeting.find(meetingFilter).populate('project','name code').sort({date:-1}),
+      WorkEntry.aggregate([
+        { $match: weekFilter },
+        { $group: { _id: '$project', hours: { $sum: '$hours' } } },
+        { $sort: { hours: -1 } },
+      ]),
     ]);
-    return res.status(200).json({ team, weekEntries: entries, pending, meetings });
+    const projectsById = new Map(
+      (await Project.find({ _id: { $in: projectHourRows.map((row) => row._id) } }).select('name code'))
+        .map((project) => [String(project._id), project]),
+    );
+    const projectHours = projectHourRows.map((row) => ({
+      project: projectsById.get(String(row._id)) ?? { _id: row._id },
+      hours: row.hours,
+    }));
+    return res.status(200).json({
+      team,
+      weekEntries: entries,
+      pending,
+      meetings,
+      projectHours,
+      weekStart,
+      weekEnd: now,
+    });
   } catch (err) {
     return next(err);
   }

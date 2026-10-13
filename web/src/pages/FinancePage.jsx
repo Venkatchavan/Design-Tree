@@ -124,18 +124,18 @@ export default function FinancePage({ bootstrap }) {
 
       {/* Primary KPI Grid */}
       <div className="kpi-grid cols-6">
-        <KpiCard label="Total contract value" value="₹3,70,00,000" accent="blueprint" />
-        <KpiCard label="Invoiced to date" value="₹2,07,10,000" accent="copper" />
-        <KpiCard label="Received to date" value="₹1,84,10,000" accent="forest" />
-        <KpiCard label="% collected (of invoiced)" value="89%" accent="teal" />
-        <KpiCard label="Pending approvals" value={o.pendingApprovals ?? 4} accent="amber" />
-        <KpiCard label="Travel spend (all depts.)" value="₹25,100" accent="violet" />
+        <KpiCard label="Total contract value" value={overview.isLoading ? '…' : inr(o.contractValue)} accent="blueprint" />
+        <KpiCard label="Invoiced to date" value={overview.isLoading ? '…' : inr(o.invoiced)} accent="copper" />
+        <KpiCard label="Received to date" value={overview.isLoading ? '…' : inr(o.received)} accent="forest" />
+        <KpiCard label="% collected (of invoiced)" value={overview.isLoading ? '…' : `${o.pctCollected ?? 0}%`} accent="teal" />
+        <KpiCard label="Pending approvals" value={overview.isLoading ? '…' : (o.pendingApprovals ?? 0)} accent="amber" />
+        <KpiCard label="Travel spend (all depts.)" value={travels.isLoading ? '…' : inr(travelSpendAll)} accent="violet" />
       </div>
       <div className="kpi-grid cols-4">
-        <KpiCard label="Hours logged today" value="6483" accent="violet" />
-        <KpiCard label="Projects at risk / delayed" value={o.atRisk ?? 2} accent="rust" />
-        <KpiCard label="Ready for billing" value={o.ready ?? 0} accent="forest" />
-        <KpiCard label="Billing pending" value={o.pending ?? 1} accent="amber" />
+        <KpiCard label="Hours logged today" value={overview.isLoading ? '…' : totalHoursToday} accent="violet" />
+        <KpiCard label="Projects at risk / delayed" value={overview.isLoading ? '…' : (o.atRisk ?? 0)} accent="rust" />
+        <KpiCard label="Ready for billing" value={overview.isLoading ? '…' : (o.ready ?? 0)} accent="forest" />
+        <KpiCard label="Billing pending" value={overview.isLoading ? '…' : (o.pending ?? 0)} accent="amber" />
       </div>
 
       {/* Revenue by Project Panel */}
@@ -197,7 +197,7 @@ export default function FinancePage({ bootstrap }) {
         <KpiCard label="Pending Finance team leave" value={pendingFinanceLeave} accent="amber" />
         <KpiCard label="Pending travel (all depts.)" value={pendingTravel} accent="blueprint" />
         <KpiCard label="Total travel spend (Aug)" value={inr(travelSpendAll)} accent="violet" />
-        <KpiCard label="Pending settlement" value="0" accent="teal" />
+        <KpiCard label="Pending settlement" value={pendingSettlement} accent="teal" />
       </div>
 
       {/* Subtabs */}

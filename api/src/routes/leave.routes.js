@@ -10,6 +10,7 @@ import { FLOW_APPROVER_ROLES } from '../config/approvalFlow.js';
 import {
   allowances,
   approvalQueue,
+  completeAllowance,
   createAllowance,
   createLeave,
   createTravel,
@@ -68,6 +69,7 @@ router.get('/allowances', requireInternal(), allowances.list);
 router.post('/allowances', requireInternal(), createAllowance);
 router.patch('/allowances/:id', requireInternal(), editAllowance);
 router.patch('/allowances/:id/decision', ...decisionGuards, decideAllowance);
+router.patch('/allowances/:id/complete', requireRole('finance'), completeAllowance);
 
 // Review scope helper + pending queue for approvers
 router.get('/scope', requireInternal(), teamScopeIds);

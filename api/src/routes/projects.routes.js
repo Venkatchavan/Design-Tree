@@ -60,7 +60,7 @@ router.put(
   requireRole('coordinator', 'design_mgmt_head', 'technical_director'),
   saveTeamLeads,
 );
-router.post('/:id/activate', requireRole('admin_billing'), activateProject);
+router.post('/:id/activate', requireRole('admin_billing', 'technical_director'), activateProject);
 router.put(
   '/:id/team-confirmation',
   requireRole('design_mgmt_head'),

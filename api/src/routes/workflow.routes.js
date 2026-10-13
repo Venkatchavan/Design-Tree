@@ -66,7 +66,7 @@ router.get('/revisions', requireInternal(), revisions.list);
 router.get('/revisions/:id', requireInternal(), revisions.get);
 router.post(
   '/revisions',
-  requireRole(...TL_CHAIN, 'qaqc', 'peer_reviewer'),
+  requireRole(...TL_CHAIN, 'qaqc', 'peer_reviewer', 'engineer_drafter'),
   createRevision,
 );
 router.put('/revisions/:id', requireRole(...TL_CHAIN), revisions.update);

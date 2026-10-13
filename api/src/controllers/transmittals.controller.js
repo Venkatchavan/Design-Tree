@@ -272,8 +272,15 @@ export async function tlDrawingLists(req, res, next) {
       .sort({ createdAt: -1 })
       .limit(500);
     const ids = drawings.map((d) => d._id);
-    const sent = await Transmittal.distinct('drawing', { drawing: { $in: ids } });
-    const sentSet = new Set(sent.map((s) => s.toString()));
+    const transmittals = await Transmittal.find({ drawing: { $in: ids } })
+      .select('drawing trNo status createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+    const latestByDrawing = new Map();
+    for (const transmittal of transmittals) {
+      const drawingId = String(transmittal.drawing);
+      if (!latestByDrawing.has(drawingId)) latestByDrawing.set(drawingId, transmittal);
+    }
     return res.status(200).json({
       items: drawings.map((d) => ({
         id: d._id.toString(),
@@ -285,7 +292,10 @@ export async function tlDrawingLists(req, res, next) {
         stage: d.stage,
         sharedBy: d.sharedBy,
         date: d.date,
-        transmitted: sentSet.has(d._id.toString()),
+        issuedTo: d.issuedTo,
+        method: d.method,
+        transmitted: latestByDrawing.has(d._id.toString()),
+        transmittal: latestByDrawing.get(d._id.toString()) ?? null,
         gfc: d.stage === 'GFC',
       })),
       total: drawings.length,
@@ -311,14 +321,16 @@ export async function createFromDrawings(req, res, next) {
     // One TR number per project + recipient.
     const groups = new Map();
     for (const d of gfc) {
-      const key = `${d.project?._id ?? 'none'}|${parsed.data.issuedTo}`;
+      const issuedTo = d.issuedTo || parsed.data.issuedTo || 'Client';
+      const method = d.method || parsed.data.method || 'Portal';
+      const key = `${d.project?._id ?? 'none'}|${issuedTo}`;
       if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(d);
+      groups.get(key).push({ drawing: d, issuedTo, method });
     }
     const created = [];
     for (const list of groups.values()) {
       const trNo = await nextNumber('tr', 'TR');
-      for (const d of list) {
+      for (const { drawing: d, issuedTo, method } of list) {
         const exists = await Transmittal.findOne({
           drawing: d._id,
           rev: d.rev,
@@ -330,8 +342,8 @@ export async function createFromDrawings(req, res, next) {
           date: parsed.data.date ?? new Date(),
           drawing: d._id,
           rev: d.rev,
-          issuedTo: parsed.data.issuedTo,
-          method: parsed.data.method,
+          issuedTo,
+          method,
           status: 'Pending',
           remarks: parsed.data.remarks,
           source: 'tl-list',
@@ -350,7 +362,7 @@ export async function createFromDrawings(req, res, next) {
       roles: ['team_lead'],
       link: { view: 'transmittal' },
       title: `${created.length} transmittal entries created`,
-      detail: `From TL drawing lists (${parsed.data.issuedTo})`,
+      detail: 'From TL drawing lists; recipient and method taken from each drawing.',
       type: 'transmittal',
     }).catch(() => {});
     return res.status(201).json({ created, skipped });

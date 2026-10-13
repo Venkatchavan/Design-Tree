@@ -65,6 +65,10 @@ export const allowanceApi = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+  complete: (id) =>
+    request(`/api/leave-travel/allowances/${id}/complete`, {
+      method: 'PATCH',
+    }),
 };
 
 export const holidaysApi = {
@@ -81,6 +85,22 @@ export const supportApi = {
     request('/api/support', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) =>
     request(`/api/support/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  salarySlip: async (id, file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_BASE}/api/support/${id}/salary-slip`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.message ?? 'Salary slip upload failed.');
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  },
 };
 
 export const meetingsApi = {

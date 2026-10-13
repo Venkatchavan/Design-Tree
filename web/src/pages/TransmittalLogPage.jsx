@@ -92,6 +92,10 @@ export default function TransmittalLogPage({ bootstrap }) {
     return <DirectorRegisterView scoped />;
   }
 
+  if (roleKey === 'hr') {
+    return <DirectorRegisterView hr />;
+  }
+
   if (isSpoc || isPTL || isEng) {
     return <AssignedRegisterView roleKey={roleKey} />;
   }
@@ -309,7 +313,7 @@ function AssignedRegisterView({ roleKey }) {
   );
 }
 
-function DirectorRegisterView({ scoped = false }) {
+function DirectorRegisterView({ scoped = false, hr = false }) {
   const [search, setSearch] = useState('');
   const [docType, setDocType] = useState('');
   const [printType, setPrintType] = useState('');
@@ -370,13 +374,15 @@ function DirectorRegisterView({ scoped = false }) {
           Showing transmittals for your assigned projects only. Founding/Working Directors, the Executive Director, Admin/Billing and Associate/Technical Directors can see the complete company register.
         </p>
       )}
+      {!hr && (
       <div className="kpi-grid cols-4">
         <KpiCard label="Transmittals" value={rows.length} accent="blueprint" />
         <KpiCard label="Sheets issued" value={sheets} accent="copper" />
         <KpiCard label="Projects" value={projects.size} accent="forest" />
         <KpiCard label="Revisions issued (R1+)" value={revisions} accent="violet" />
       </div>
-      <Panel title="Transmittal Log">
+      )}
+      <Panel title={hr ? `${registerLabel} register` : 'Transmittal Log'}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--ink-muted)', marginBottom: 12, paddingLeft: 4 }}>
           <span>Date</span> · <span>Project</span> · <span>Dept</span> · <span>Print</span> · <span>Document Type</span> · <span>Service</span> · <span>Team</span> · <span>TR No.</span> · <span>Drawing</span> · <span>Sheets</span> · <span>Revision</span>
         </div>
@@ -385,12 +391,12 @@ function DirectorRegisterView({ scoped = false }) {
           <select className="filter-select" value={docType} onChange={(e) => setDocType(e.target.value)}><option value="">All document types</option>{DIR_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           <select className="filter-select" value={printType} onChange={(e) => setPrintType(e.target.value)}><option value="">All print types</option>{DIR_PRINT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           <select className="filter-select" value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{DIR_SERVICES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-          {scoped && <button type="button" className="btn-primary" onClick={() => setLogOpen(true)}>Log transmittal</button>}
+          {(scoped || hr) && <button type="button" className="btn-primary" onClick={() => setLogOpen(true)}>Log transmittal</button>}
           <button type="button" className="approve-btn" onClick={() => downloadCsv(rows, columns.map((c) => ({ key: c.key, label: c.label, value: c.render ? (r) => {
             if (c.key === 'date') return fmtRegisterDate(r.date);
             if (c.key === 'project') return r.project?.name ?? r.projectName;
             return r[c.key];
-          } : undefined })), 'transmittal-register.csv')}>Export CSV</button><button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => window.alert(e.message))}>Download PDF</button>
+          } : undefined })), 'transmittal-register.csv')}>Export CSV</button>{!hr && <button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => window.alert(e.message))}>Download PDF</button>}
         </div>
         {register.isLoading ? <EmptyState text="Loading register…" /> : register.isError ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{register.error.message}</div>
@@ -398,7 +404,7 @@ function DirectorRegisterView({ scoped = false }) {
           <DataTable columns={columns} rows={rows} emptyText="No transmittals match these filters." />
         )}
       </Panel>
-      {scoped && logOpen && (
+      {(scoped || hr) && logOpen && (
         <Modal title="Log transmittal" onClose={() => setLogOpen(false)} wide>
           <LogTransmittalForm onDone={() => setLogOpen(false)} />
         </Modal>

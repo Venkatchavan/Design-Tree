@@ -22,6 +22,7 @@ router.post('/', requireInternal(), createWorkEntry);
 router.patch(
   '/:id/decision',
   requireRole(
+    'admin_billing',
     'team_lead',
     'assoc_technical_director',
     'technical_director',

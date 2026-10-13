@@ -34,6 +34,42 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+async function syncProjectLeadTeams(project) {
+  const groups = new Map();
+  for (const row of project.principalTeamLeads ?? []) {
+    if (!row.employee || row.approvalStatus === 'Proposed') continue;
+    const service = expandServices([row.service]).join(' + ') || row.service;
+    if (!groups.has(service)) groups.set(service, []);
+    groups.get(service).push(row);
+  }
+  for (const [service, rows] of groups) {
+    const ids = [...new Set(rows.map((row) => String(row.employee)))];
+    const leads = await User.find({ employee: { $in: ids }, role: 'team_lead' }).select('employee').lean();
+    const lead = leads[0]?.employee;
+    await Team.findOneAndUpdate(
+      { allocationProject: project._id, allocationService: service },
+      {
+        $set: {
+          name: `${project.code || project.name} - ${service}`,
+          service,
+          branch: project.branch,
+          lead: lead || null,
+          projects: [project._id],
+          members: ids
+            .filter((id) => String(lead) !== id)
+            .map((employee) => ({ employee, allocation: 'Approved project allocation' })),
+          active: true,
+        },
+      },
+      { upsert: true, returnDocument: 'after', runValidators: true },
+    );
+  }
+  await Team.updateMany(
+    { allocationProject: project._id, allocationService: { $nin: [...groups.keys()] } },
+    { $set: { active: false, projects: [] } },
+  );
+}
+
 // Admin-only sequential identifiers for the New Project form, initialized
 // above the highest existing value for the year so collisions are avoided.
 async function nextSequence(name, usedCodes) {
@@ -130,6 +166,7 @@ export async function projectStats(req, res, next) {
     const counts = { active: 0, completed: 0, onHold: 0 };
     const byBranch = new Map();
     const byStage = new Map();
+    const byBranchStage = new Map();
     const byService = new Map();
     for (const p of projects) {
       if (p.status === 'Active') counts.active += 1;
@@ -140,6 +177,11 @@ export async function projectStats(req, res, next) {
       b.completionSum += p.completion ?? 0;
       byBranch.set(p.branch, b);
       byStage.set(p.currentStage, (byStage.get(p.currentStage) ?? 0) + 1);
+      if (p.branch) {
+        const branchStages = byBranchStage.get(p.branch) ?? new Map();
+        branchStages.set(p.currentStage, (branchStages.get(p.currentStage) ?? 0) + 1);
+        byBranchStage.set(p.branch, branchStages);
+      }
       for (const s of p.scope ?? []) {
         if (s.service) byService.set(s.service, (byService.get(s.service) ?? 0) + 1);
       }
@@ -159,6 +201,12 @@ export async function projectStats(req, res, next) {
         stage,
         count,
       })),
+      byBranchStage: Object.fromEntries(
+        [...byBranchStage.entries()].map(([branch, stages]) => [
+          branch,
+          [...stages.entries()].map(([stage, count]) => ({ stage, count })),
+        ]),
+      ),
       services: [...byService.entries()].map(([service, projects]) => ({
         service,
         projects,
@@ -260,6 +308,16 @@ export async function createProject(req, res, next) {
         return res.status(err.status ?? 400).json({ message: err.message });
       }
     }
+    for (const row of parsed.data.principalTeamLeads ?? []) {
+      if (!row.employee) continue;
+      const employee = await Employee.findById(row.employee);
+      if (!employee) return res.status(400).json({ message: 'Choose a valid team lead.' });
+      row.name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId;
+    }
+    const selectedSpoc = parsed.data.activation?.spoc;
+    if (selectedSpoc && !(await Employee.exists({ _id: selectedSpoc }))) {
+      return res.status(400).json({ message: 'Choose a valid SPOC.' });
+    }
     const code = (parsed.data.code?.trim() || await generateProjectCode()).toUpperCase();
     const jobNumber = parsed.data.jobNumber?.trim() || await generateJobNumber();
     const activationStatus = parsed.data.activation?.status ?? 'Pending';
@@ -276,6 +334,23 @@ export async function createProject(req, res, next) {
           : {}),
       },
     });
+    if (project.principalTeamLeads?.some((row) => row.employee && row.approvalStatus !== 'Proposed')) {
+      await syncProjectLeadTeams(project);
+    }
+    if (selectedSpoc) {
+      const { SpocAllocation } = await import('../models/SpocAllocation.js');
+      await SpocAllocation.findOneAndUpdate(
+        { project: project._id, coordinator: selectedSpoc },
+        {
+          project: project._id,
+          coordinator: selectedSpoc,
+          services: parsed.data.services ?? [],
+          status: 'Proposed',
+          createdBy: req.user.id,
+        },
+        { upsert: true, new: true, returnDocument: 'after', runValidators: true },
+      );
+    }
     // Best-effort post-creation wiring: seed the 16-step design workflow
     // so the Design Management Head has something to open, and notify the
     // DMH + Technical Directors that a new project needs review.
@@ -444,22 +519,7 @@ export async function saveTeamLeads(req, res, next) {
       runValidators: true,
     });
     if (!project) return res.status(404).json({ message: 'Project not found.' });
-    if (set.principalTeamLeads) {
-      const groups = new Map();
-      for (const row of project.principalTeamLeads) {
-        if (!row.employee || row.approvalStatus === 'Proposed') continue;
-        const service = expandServices([row.service]).join(' + ') || row.service;
-        if (!groups.has(service)) groups.set(service, []);
-        groups.get(service).push(row);
-      }
-      for (const [service, rows] of groups) {
-        const ids = [...new Set(rows.map(r=>String(r.employee)))];
-        const leads = await User.find({employee:{$in:ids},role:'team_lead'}).select('employee').lean();
-        const lead = leads[0]?.employee;
-        await Team.findOneAndUpdate({allocationProject:project._id,allocationService:service}, {$set:{name:`${project.code || project.name} - ${service}`,service,branch:project.branch,lead:lead || null,projects:[project._id],members:ids.filter(id=>String(lead)!==id).map(employee=>({employee,allocation:'Approved project allocation'})),active:true}}, {upsert:true,returnDocument:'after',runValidators:true});
-      }
-      await Team.updateMany({allocationProject:project._id,allocationService:{$nin:[...groups.keys()]}},{$set:{active:false,projects:[]}});
-    }
+    if (set.principalTeamLeads) await syncProjectLeadTeams(project);
     try {
       const { notify } = await import('../models/Notification.js');
       const names = (project.principalTeamLeads ?? [])
@@ -483,8 +543,8 @@ export async function saveTeamLeads(req, res, next) {
   }
 }
 
-// POST /api/projects/:id/activate — Admin activates the project and assigns
-// the confirmed SPOC. Idempotent: re-activation re-confirms/assigns.
+// POST /api/projects/:id/activate — Admin or Technical Director activates the
+// project and assigns the confirmed SPOC. Idempotent: re-activation re-confirms/assigns.
 export async function activateProject(req, res, next) {
   try {
     const parsed = activateProjectSchema.safeParse(req.body ?? {});
@@ -495,9 +555,9 @@ export async function activateProject(req, res, next) {
     if (!project) return res.status(404).json({ message: 'Project not found.' });
 
     let allocation = null;
-    if (parsed.data.coordinator) {
-      const { Employee } = await import('../models/Employee.js');
-      const coordinator = await Employee.findById(parsed.data.coordinator);
+    const coordinatorId = parsed.data.coordinator ?? project.activation?.spoc?.toString();
+    if (coordinatorId) {
+      const coordinator = await Employee.findById(coordinatorId);
       if (!coordinator) {
         return res.status(400).json({ message: 'Coordinator not found.' });
       }
@@ -507,7 +567,7 @@ export async function activateProject(req, res, next) {
         {
           project: project._id,
           coordinator: coordinator._id,
-          services: parsed.data.services ?? [],
+          services: parsed.data.services ?? project.services ?? [],
           status: 'Approved',
           createdBy: req.user.id,
         },
@@ -521,14 +581,14 @@ export async function activateProject(req, res, next) {
       status: 'Activated',
       activatedBy: req.user.id,
       activatedAt: new Date(),
-      spoc: parsed.data.coordinator ?? project.activation?.spoc,
+      spoc: coordinatorId ?? project.activation?.spoc,
     };
     await project.save();
 
     try {
       const { notify, userIdsForEmployees } = await import('../models/Notification.js');
-      const users = parsed.data.coordinator
-        ? await userIdsForEmployees([parsed.data.coordinator])
+      const users = coordinatorId
+        ? await userIdsForEmployees([coordinatorId])
         : [];
       await notify({
         roles: ['design_mgmt_head', 'coordinator'],
