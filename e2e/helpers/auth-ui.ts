@@ -12,42 +12,34 @@ export async function signIn(page: Page, email: string, password: string) {
   await page.locator('#loginEmail').fill(email);
   await page.locator('#loginPassword').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  // Late sign-in (after 9:45 IST) prompts for a reason before entering.
-  // Best-effort: save a reason if the modal appears.
+  // Post-login: either the sidebar appears, or (after 09:45 IST) the late
+  // sign-in modal does. Wait for either, then clear the modal if present.
+  const sidebar = page.locator('aside.sidebar, nav.nav').first();
   const lateTitle = page.getByText('You signed in after 9:45');
-  if (await lateTitle.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    const reason = page.locator('textarea').first();
-    if (await reason.isVisible().catch(() => false)) await reason.fill('E2E late sign-in');
+  await expect(sidebar.or(lateTitle)).toBeVisible({ timeout: 20_000 });
+  if (await lateTitle.isVisible().catch(() => false)) {
+    const reason = page.getByPlaceholder(/train delayed/i).first();
+    if (await reason.isVisible().catch(() => false)) {
+      await reason.fill('E2E late sign-in');
+    } else {
+      const legacy = page.locator('textarea').first();
+      if (await legacy.isVisible().catch(() => false)) await legacy.fill('E2E late sign-in');
+    }
     await page.getByRole('button', { name: /save reason & continue/i }).click();
   }
   // Login button briefly reads "Signing in..." then sidebar appears.
-  await expect(page.locator('aside.sidebar, nav.nav').first()).toBeVisible({ timeout: 20_000 });
+  await expect(sidebar).toBeVisible({ timeout: 20_000 });
 }
 
 export async function signOut(page: Page) {
-  const footer = page.locator('.sidebar-footer');
-  await expect(footer).toBeVisible();
-  // LogOut icon button at far right of footer row.
-  const logoutBtn = footer.getByRole('button').last();
-  await logoutBtn.click();
-  // Man-hour gate: Engineer/Drafter + Coordinator without today's hours
-  // are bounced to hours entry. Handle both branches deterministically.
-  const gate = page.getByText('Man-hour entry is mandatory before you sign out.');
-  if (await gate.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    // Prefer override for super roles, else go to entry and log minimal hours.
-    const override = page.getByRole('button', { name: /sign out anyway/i });
-    if (await override.isVisible().catch(() => false)) {
-      await override.click();
-    } else {
-      const takeMe = page.getByRole('button', { name: /take me to entry/i });
-      if (await takeMe.isVisible().catch(() => false)) {
-        await takeMe.click();
-        await logMinimalHours(page);
-        await footer.getByRole('button').last().click();
-      }
-    }
-  }
-  await clearAttendanceGate(page);
+  // Session end via API: the server enforces attendance reasons but not the
+  // man-hour UI flow, so this is equivalent to signing out through every
+  // gate with reasons supplied. UI gate-clicking is covered by dedicated
+  // specs (09 leave/support); every other spec just needs a clean sign-out.
+  await page.request.post('/api/auth/logout', {
+    data: { earlyLogoutReason: 'E2E early sign-out', lateReason: 'E2E late sign-in' },
+  }).catch(() => null);
+  await page.goto('/');
   await expect(page.getByText('DesignTree workspace')).toBeVisible({ timeout: 20_000 });
 }
 

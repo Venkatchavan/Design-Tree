@@ -24,12 +24,13 @@ export interface CastMember {
 /**
  * Role dropdown values must match api/src/config/roles.js ROLE_KEYS labels
  * as rendered by the HR form. Verified keys:
- * admin_billing, design_mgmt_head, team_lead, coordinator,
+ * admin_billing, design_mgmt_head, technical_director, team_lead, coordinator,
  * engineer_drafter, qs, qaqc, bim, client, architect.
  */
 export const CAST: CastMember[] = [
   { key: 'admin', firstName: 'Vikram', lastName: 'Rao', designation: 'Administrator', department: 'Admin', branch: 'Bengaluru HQ', dateOfJoining: '2023-04-01', email: 'admin@designtree.test', role: 'admin_billing' },
   { key: 'dmh', firstName: 'Divya', lastName: 'Nair', designation: 'Design Management Head', department: 'Design Management', branch: 'Bengaluru HQ', dateOfJoining: '2023-04-01', email: 'design.head@designtree.test', role: 'design_mgmt_head' },
+  { key: 'td', firstName: 'Rajesh', lastName: 'Iyer', designation: 'Technical Director', department: 'Technical', branch: 'Bengaluru HQ', dateOfJoining: '2023-04-01', email: 'td@designtree.test', role: 'technical_director' },
   { key: 'tlStruct', firstName: 'Arjun', lastName: 'Reddy', designation: 'Team Lead, Structural', department: 'Structural', branch: 'Bengaluru HQ', dateOfJoining: '2023-06-01', email: 'tl.struct@designtree.test', role: 'team_lead' },
   { key: 'spoc', firstName: 'Ananya', lastName: 'Rao', designation: 'Coordinator (SPOC)', department: 'MEP Coordination', branch: 'Bengaluru HQ', dateOfJoining: '2023-06-01', email: 'spoc@designtree.test', role: 'coordinator' },
   { key: 'engStruct', firstName: 'Karthik', lastName: 'Nair', designation: 'Senior Structural Engineer', department: 'Structural', branch: 'Bengaluru HQ', dateOfJoining: '2024-01-10', email: 'eng.struct@designtree.test', role: 'engineer_drafter' },

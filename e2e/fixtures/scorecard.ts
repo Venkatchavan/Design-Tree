@@ -8,7 +8,7 @@ export interface ScoreRow {
 }
 
 export const SCORECARD: ScoreRow[] = [
-  { id: 1, control: 'HR Add employee x11', expected: '11 rows; all sign in', spec: '01-cast-creation' },
+  { id: 1, control: 'HR Add employee x10 + 2 external logins', expected: '12 logins; all sign in', spec: '01-cast-creation' },
   { id: 2, control: 'Row click Employee profile', expected: 'All fields + Linked login shown', spec: '01-cast-creation' },
   { id: 3, control: 'Dashboard New project + Save', expected: 'Detail opens; Active +1', spec: '02-admin-create-project' },
   { id: 4, control: 'DM tabs', expected: 'Scope/fees match §2, no errors', spec: '03-design-head-review' },

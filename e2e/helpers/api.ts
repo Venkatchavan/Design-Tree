@@ -48,6 +48,24 @@ export async function ensureProjectViaApi(
   return { id: project._id, code: project.code };
 }
 
+export async function ensureBranchViaApi(
+  request: APIRequestContext,
+  name: string,
+): Promise<void> {
+  // Idempotent: reuse existing active branch if present.
+  const list = await request.get(`${apiUrl()}/api/branches`);
+  if (list.ok()) {
+    const body = await list.json();
+    const items: Array<{ name: string; isActive?: boolean }> =
+      body.branches ?? body.items ?? body ?? [];
+    if (items.some((b) => b.name === name && b.isActive !== false)) return;
+  }
+  const created = await request.post(`${apiUrl()}/api/branches`, {
+    data: { name },
+  });
+  expect(created.ok(), `branch create failed: ${await created.text()}`).toBeTruthy();
+}
+
 export async function ensureTeamsViaApi(
   request: APIRequestContext,
   projectId: string,

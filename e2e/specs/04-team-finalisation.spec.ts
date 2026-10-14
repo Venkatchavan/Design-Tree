@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { byKey, TEST_PASSWORD } from '../fixtures/roles';
 import { signIn, signOut } from '../helpers/auth-ui';
-import { apiLogin, apiLogout, ensureProjectViaApi, getEmployeeIdMap, ensureTeamsViaApi, apiUrl } from '../helpers/api';
+import { apiLogin, apiLogout, ensureBranchViaApi, ensureProjectViaApi, getEmployeeIdMap, ensureTeamsViaApi, apiUrl } from '../helpers/api';
 import { PROJECT } from '../fixtures/project';
 
 /**
@@ -28,6 +28,7 @@ test.describe.serial('04 team finalisation', () => {
       scope: [...PROJECT.scope],
     });
     const ids = await getEmployeeIdMap(request);
+    await ensureBranchViaApi(request, 'Bengaluru HQ');
     // Fallback if directory lookup is empty (fresh DB without §1 UI run):
     // teams still creatable with lead/projects only.
     await ensureTeamsViaApi(request, projectId, {

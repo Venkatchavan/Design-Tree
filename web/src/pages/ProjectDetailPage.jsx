@@ -499,8 +499,8 @@ function TechnicalSpocPanel({ projectId, project, employees }) {
       <div className="section-label" style={{ marginTop: 12 }}>Propose SPOC</div>
       <form onSubmit={submit}>
         <div className="form-row" style={{ maxWidth: 360 }}>
-          <label className="form-label">Coordinator</label>
-          <select className="filter-select" style={{ width: '100%' }} value={coordId} onChange={(e) => setCoordId(e.target.value)}>
+          <label className="form-label" htmlFor="td-spoc-coord">Coordinator</label>
+          <select id="td-spoc-coord" className="filter-select" style={{ width: '100%' }} value={coordId} onChange={(e) => setCoordId(e.target.value)}>
             <option value="">Select…</option>
             {sorted.map((x) => (
               <option key={x._id ?? x.id} value={x._id ?? x.id}>

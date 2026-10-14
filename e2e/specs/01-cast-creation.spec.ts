@@ -18,7 +18,7 @@ const SU_PASSWORD = process.env.E2E_SU_PASSWORD ?? '';
 
 test.describe.serial('01 cast creation', () => {
   test.setTimeout(300_000);
-  test('S1.1-S1.4 create 11 employees via Add employee', async ({ page }) => {
+  test('S1.1-S1.4 create 12 logins (10 employees + client/architect externals)', async ({ page }) => {
     test.skip(!SU_PASSWORD, 'Set E2E_SU_PASSWORD to the api SEED_PASSWORD to run §1.');
     await signIn(page, SUPERUSER.email, SU_PASSWORD);
 
