@@ -27,7 +27,8 @@ router.use(requireAuth);
 router.use((req, res, next) => ['founding_director', 'working_director', 'executive_director'].includes(req.user.role) && req.method !== 'GET' ? res.status(403).json({ message: 'Directors view billing and approval results only.' }) : next());
 
 const BILLING_WRITERS = ['admin_billing', 'executive_director'];
-// Stage completion progresses PTL → SPOC → TD before Admin can bill.
+// Stage completion progresses PTL → SPOC → TD/ATD before Admin can bill.
+// TD + ATD share director approval from the individual project view.
 const STAGE_WRITERS = [
   'admin_billing',
   'executive_director',
@@ -35,6 +36,7 @@ const STAGE_WRITERS = [
   'design_mgmt_head',
   'team_lead',
   'technical_director',
+  'assoc_technical_director',
 ];
 // Finance reads claims/stages live in Billing Status + Revenue (§4.15).
 const BILLING_READERS = [
