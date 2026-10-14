@@ -52,7 +52,7 @@ router.get('/:id/gfc-readiness', requireInternal(), gfcReadiness);
 // per project / service.
 router.put(
   '/:id/spoc-contacts',
-  requireRole('coordinator', 'design_mgmt_head'),
+  requireRole('coordinator', 'design_mgmt_head', 'technical_director'),
   saveSpocContacts,
 );
 router.put(
@@ -63,7 +63,7 @@ router.put(
 router.post('/:id/activate', requireRole('admin_billing', 'technical_director'), activateProject);
 router.put(
   '/:id/team-confirmation',
-  requireRole('design_mgmt_head'),
+  requireRole('design_mgmt_head', 'technical_director'),
   saveTeamConfirmation,
 );
 router.post(

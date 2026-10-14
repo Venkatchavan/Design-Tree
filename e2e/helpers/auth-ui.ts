@@ -7,8 +7,8 @@ import { expect, type Page } from '@playwright/test';
 
 export async function signIn(page: Page, email: string, password: string) {
   await page.goto('/');
-  await expect(page.getByText('Sign in to DesignTree')).toBeVisible();
-  await expect(page.getByText('Enter your work email and password to continue.')).toBeVisible();
+  await expect(page.getByText('DesignTree workspace')).toBeVisible();
+  await expect(page.getByText('Sign in with your work account to continue.')).toBeVisible();
   await page.locator('#loginEmail').fill(email);
   await page.locator('#loginPassword').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -48,7 +48,7 @@ export async function signOut(page: Page) {
     }
   }
   await clearAttendanceGate(page);
-  await expect(page.getByText('Sign in to DesignTree')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('DesignTree workspace')).toBeVisible({ timeout: 20_000 });
 }
 
 async function clearAttendanceGate(page: Page) {

@@ -875,7 +875,7 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
   }
 
   const I = (k, props = {}) => (
-    <input className="form-input" value={f[k] ?? ''} onChange={(e) => set(k, e.target.value)} {...props} />
+    <input id={`hr-${k}`} className="form-input" value={f[k] ?? ''} onChange={(e) => set(k, e.target.value)} {...props} />
   );
 
   return (
@@ -893,9 +893,9 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
       <div className="field-grid">
         <div className="form-row"><label className="form-label">Emp ID (blank = auto)</label>{I('empId')}</div>
         <div className="form-row"><label className="form-label">Salutation</label>{I('salutation')}</div>
-        <div className="form-row"><label className="form-label">First name {isCreate ? '*' : ''}</label>{I('firstName', { required: isCreate })}</div>
+        <div className="form-row"><label className="form-label" htmlFor="hr-firstName">First name {isCreate ? '*' : ''}</label>{I('firstName', { required: isCreate })}</div>
         <div className="form-row"><label className="form-label">Middle name</label>{I('middleName')}</div>
-        <div className="form-row"><label className="form-label">Last name</label>{I('lastName')}</div>
+        <div className="form-row"><label className="form-label" htmlFor="hr-lastName">Last name</label>{I('lastName')}</div>
         <div className="form-row"><label className="form-label">Short name</label>{I('shortName')}</div>
         <div className="form-row"><label className="form-label">Father name</label>{I('fatherName')}</div>
         <div className="form-row"><label className="form-label">Mother name</label>{I('motherName')}</div>
@@ -906,22 +906,22 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
       </div>
       <div className="section-label">Employment</div>
       <div className="field-grid">
-        <div className="form-row"><label className="form-label">Designation</label>
-          <select className="form-input" value={f.designation ?? ''} onChange={(e) => set('designation', e.target.value)}>
+        <div className="form-row"><label className="form-label" htmlFor="hr-designation">Designation</label>
+          <select id="hr-designation" className="form-input" value={f.designation ?? ''} onChange={(e) => set('designation', e.target.value)}>
             <option value="">—</option>
             {designationChoices.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
         <div className="form-row"><label className="form-label">Qualification</label>{I('qualification')}</div>
-        <div className="form-row"><label className="form-label">Department</label>
-          <select className="form-input" value={f.department ?? ''} onChange={(e) => set('department', e.target.value)}>
+        <div className="form-row"><label className="form-label" htmlFor="hr-department">Department</label>
+          <select id="hr-department" className="form-input" value={f.department ?? ''} onChange={(e) => set('department', e.target.value)}>
             <option value="">—</option>
             {departmentChoices.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
         <div className="form-row"><label className="form-label">Reporting manager</label>{I('reportingManager')}</div>
-        <div className="form-row"><label className="form-label">Branch</label>
-          <select className="form-input" value={f.branch ?? ''} onChange={(e) => set('branch', e.target.value)}>
+        <div className="form-row"><label className="form-label" htmlFor="hr-branch">Branch</label>
+          <select id="hr-branch" className="form-input" value={f.branch ?? ''} onChange={(e) => set('branch', e.target.value)}>
             <option value="">—</option>
             {branchChoices.map((b) => (
               <option key={b} value={b}>{b}</option>
@@ -930,7 +930,7 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
         </div>
         <div className="form-row"><label className="form-label">Division</label>{I('division')}</div>
         <div className="form-row"><label className="form-label">Salary structure</label>{I('salaryStructure')}</div>
-        <div className="form-row"><label className="form-label">Date of joining</label>{I('dateOfJoining', { type: 'date' })}</div>
+        <div className="form-row"><label className="form-label" htmlFor="hr-dateOfJoining">Date of joining</label>{I('dateOfJoining', { type: 'date' })}</div>
         <div className="form-row"><label className="form-label">Salary from</label>{I('salaryFrom', { type: 'date' })}</div>
         <div className="form-row"><label className="form-label">Leaving date</label>{I('leavingDate', { type: 'date' })}</div>
         <div className="form-row"><label className="form-label">Leaving reason</label>{I('leavingReason')}</div>
@@ -980,11 +980,11 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
         <>
           <div className="section-label">Login (restricted)</div>
           <div className="field-grid">
-            <div className="form-row"><label className="form-label">Login email {isCreate ? '*' : ''}</label>{I('loginEmail', { type: 'email', required: isCreate })}</div>
-            <div className="form-row"><label className="form-label">Password {isCreate ? '*' : ''}</label>{I('loginPassword', { type: 'password', required: isCreate, minLength: 8 })}</div>
+            <div className="form-row"><label className="form-label" htmlFor="hr-loginEmail">Login email {isCreate ? '*' : ''}</label>{I('loginEmail', { type: 'email', required: isCreate })}</div>
+            <div className="form-row"><label className="form-label" htmlFor="hr-loginPassword">Password {isCreate ? '*' : ''}</label>{I('loginPassword', { type: 'password', required: isCreate, minLength: 8 })}</div>
             <div className="form-row">
-              <label className="form-label">Role {isCreate ? '*' : ''}</label>
-              <select className="filter-select" style={{ width: '100%' }} value={f.loginRole ?? ''} onChange={(e) => set('loginRole', e.target.value)} required={isCreate}>
+              <label className="form-label" htmlFor="hr-loginRole">Role {isCreate ? '*' : ''}</label>
+              <select id="hr-loginRole" className="filter-select" style={{ width: '100%' }} value={f.loginRole ?? ''} onChange={(e) => set('loginRole', e.target.value)} required={isCreate}>
                 <option value="">Select role</option>
                 {(bootstrap?.roles ?? []).map((r) => (
                   <option key={r.key ?? r.value ?? r} value={r.key ?? r.value ?? r}>

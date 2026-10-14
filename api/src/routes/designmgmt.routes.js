@@ -15,7 +15,7 @@ router.use(requireAuth);
 
 router.get('/meta', requireInternal(), workflowMeta);
 router.get('/', requireInternal(), getWorkflow);
-// Only the Design Management Head (or superusers) updates steps (§4.11).
-router.put('/', requireRole('design_mgmt_head'), saveWorkflow);
+// Design Management Head and Technical Director update steps (additive: DMH keeps access).
+router.put('/', requireRole('design_mgmt_head', 'technical_director'), saveWorkflow);
 
 export default router;

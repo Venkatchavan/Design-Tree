@@ -181,6 +181,7 @@ export const NAV_BY_ROLE = {
     { view: 'certificates', label: 'Completion Certificates' },
     { view: 'teams' },
     { view: 'transmittal-log' },
+    { view: 'design-mgmt' },
     { view: 'qaqc-specs' },
     { view: 'bim-head' },
     { view: 'gbs-head' },
