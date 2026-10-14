@@ -7,7 +7,6 @@ import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
-import StatusPill from '../components/StatusPill.jsx';
 
 const SUBTABS = [
   { key: 'travel', label: 'Travel expenses' },
@@ -25,8 +24,6 @@ export default function FinancePage({ bootstrap }) {
 
   // Core finance overview
   const overview = useQuery({ queryKey: ['finance-overview'], queryFn: billingApi.financeOverview });
-  const revenue = useQuery({ queryKey: ['revenue-by-project'], queryFn: billingApi.revenueByProject });
-  const costs = useQuery({ queryKey: ['project-costs'], queryFn: billingApi.projectCosts });
   const stages = useQuery({ queryKey: ['billing-stages'], queryFn: () => billingApi.stages({}) });
 
   // Travel and leave data
@@ -131,66 +128,10 @@ export default function FinancePage({ bootstrap }) {
         <KpiCard label="Pending approvals" value={overview.isLoading ? '…' : (o.pendingApprovals ?? 0)} accent="amber" />
         <KpiCard label="Travel spend (all depts.)" value={travels.isLoading ? '…' : inr(travelSpendAll)} accent="violet" />
       </div>
-      <div className="kpi-grid cols-4">
+      <div className="kpi-grid cols-2">
         <KpiCard label="Hours logged today" value={overview.isLoading ? '…' : totalHoursToday} accent="violet" />
         <KpiCard label="Projects at risk / delayed" value={overview.isLoading ? '…' : (o.atRisk ?? 0)} accent="rust" />
-        <KpiCard label="Ready for billing" value={overview.isLoading ? '…' : (o.ready ?? 0)} accent="forest" />
-        <KpiCard label="Billing pending" value={overview.isLoading ? '…' : (o.pending ?? 0)} accent="amber" />
       </div>
-
-      {/* Revenue by Project Panel */}
-      <Panel title="Revenue by project" sub="Contract value, invoiced and % collected">
-        <DataTable
-          columns={[
-            { key: 'name', label: 'Project', render: (r) => <><b>{r.name}</b><br /><span className="proj-code">{r.code}</span></> },
-            { key: 'contract', label: 'Contract value', render: (r) => inr(r.contract) },
-            { key: 'invoiced', label: 'Invoiced', render: (r) => inr(r.invoiced) },
-            { key: 'pct', label: '% collected', render: (r) => `${r.pct ?? 0}%` },
-          ]}
-          rows={revenue.data?.items ?? []}
-          emptyText="No revenue data yet."
-        />
-        <a href="/finance/revenue" style={{ fontSize: 12.5 }}>Full report →</a>
-      </Panel>
-
-      {/* Billing Status Panel */}
-      <Panel title="Billing status" sub="Stage-wise, across every tracked project">
-        <DataTable
-          columns={[
-            { key: 'name', label: 'Project' },
-            { key: 'invoiced', label: 'Invoiced', render: (r) => inr(r.invoiced) },
-            { key: 'outstanding', label: 'Outstanding', render: (r) => inr(r.outstanding) },
-          ]}
-          rows={revenue.data?.items ?? []}
-          emptyText="No billing data yet."
-        />
-        <a href="/finance/billing-status" style={{ fontSize: 12.5 }}>View all →</a>
-      </Panel>
-
-      {/* Project Cost & Performance Snapshot Panel */}
-      <Panel title="Project cost & performance snapshot" sub="Quoted fee, actual margin and delay — tracked projects">
-        <DataTable
-          columns={[
-            { key: 'name', label: 'Project' },
-            { key: 'status', label: 'Status', render: (r) => r.delayed ? <StatusPill status="Delayed">Delayed</StatusPill> : <StatusPill status="On track">On track</StatusPill> },
-            { key: 'budget', label: 'Quoted fee', render: (r) => inr(r.budget) },
-            { key: 'utilizedPct', label: 'Budget utilised', render: (r) => `${r.utilizedPct}%` },
-            { key: 'variance', label: 'Cost variance', render: (r) => inr(r.variance) },
-          ]}
-          rows={costs.data?.items ?? []}
-          emptyText="No cost data yet."
-        />
-        <a href="/finance/revenue" style={{ fontSize: 12.5 }}>Open tracker →</a>
-      </Panel>
-
-      {/* Finance OCC Panel */}
-      <Panel title="Finance Operation Control Center (OCC)" sub="Purchase orders, travel advances and hospitality / reimbursement claims, tracked end-to-end with their own workflow, bill verification checklist and audit trail">
-        <a href="/finance/occ" className="btn-primary" style={{ marginRight: 8 }}>Open Finance Operation Control Center (OCC) →</a>
-        <span style={{ fontSize: 13, color: 'var(--ink-muted)' }}>
-          Approvals are actioned from Leave &amp; Travel → Approvals. Finance approves travel requests from every department.
-          {' '}Leave requests from employees working under the Finance department can be approved directly below, without leaving this dashboard.
-        </span>
-      </Panel>
 
       {/* Pending Finance Team Leave KPIs */}
       <div className="kpi-grid cols-4" style={{ marginTop: 16 }}>
