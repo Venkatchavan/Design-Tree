@@ -3,8 +3,11 @@ import { CAST, SUPERUSER, TEST_PASSWORD } from '../fixtures/roles';
 import { signIn, signOut, gotoNav } from '../helpers/auth-ui';
 
 /**
- * §1 CAST CREATION — superuser creates all logins (HR -> Employee management).
- * Scorecard #1 (11 rows; all sign in), #2 (Employee profile modal).
+ * §1 CAST CREATION — superuser creates all logins.
+ * Internal cast via HR -> Employee management (Add employee);
+ * client/architect via HR -> External access (Create external login —
+ * externals never get employee records).
+ * Scorecard #1 (11 logins; all sign in), #2 (Employee profile modal).
  *
  * Precondition: api seeded with superuser only (npm run seed), empty DB.
  * Superuser password comes from api/.env SEED_PASSWORD — pass via E2E_SU_PASSWORD
@@ -25,7 +28,7 @@ test.describe.serial('01 cast creation', () => {
     });
     await expect(page.getByRole('button', { name: 'Add employee' })).toBeVisible();
 
-    for (const person of CAST) {
+    for (const person of CAST.filter((p) => p.role !== 'client' && p.role !== 'architect')) {
       await page.getByRole('button', { name: 'Add employee' }).click();
       await expect(page.getByText(/Payroll form.*all sections/i)).toBeVisible();
 
@@ -38,10 +41,14 @@ test.describe.serial('01 cast creation', () => {
         if (!(await el.isVisible().catch(() => false))) return;
         const tag = await el.evaluate((n) => n.tagName).catch(() => '');
         if (tag === 'SELECT') {
-          await el.selectOption({ label: value }).catch(() => {});
-        } else {
-          await el.fill(value);
+          // Fast path: only select on exact option-text match, never wait.
+          const texts = await el.locator('option').allTextContents().catch(() => []);
+          if (texts.some((t) => t.trim() === value)) {
+            await el.selectOption({ label: value });
+          }
+          return;
         }
+        await el.fill(value);
       }
       const first = page.getByLabel(/first name/i).first();
       if (await first.isVisible().catch(() => false)) {
@@ -72,6 +79,21 @@ test.describe.serial('01 cast creation', () => {
       // Modal closes on success.
       await expect(page.getByText(/Payroll form.*all sections/i)).toBeHidden({ timeout: 20_000 });
       await expect(page.getByRole('cell', { name: `${person.firstName} ${person.lastName}` }).first()).toBeVisible();
+    }
+
+    // Client + Architect have no employee records — provision portal logins
+    // under HR -> External access.
+    await page.getByRole('tab', { name: /external access/i }).click().catch(async () => {
+      await page.getByRole('button', { name: /external access/i }).click();
+    });
+    await expect(page.getByText('New external login')).toBeVisible();
+    for (const person of CAST.filter((p) => p.role === 'client' || p.role === 'architect')) {
+      await page.getByLabel('Role').selectOption(person.role);
+      await page.getByLabel('Name *').fill(`${person.firstName} ${person.lastName}`);
+      await page.getByLabel('Email *').fill(person.email);
+      await page.getByLabel(/Password \* \(min 8 characters\)/i).fill(TEST_PASSWORD);
+      await page.getByRole('button', { name: /create external login/i }).click();
+      await expect(page.getByRole('cell', { name: person.email }).first()).toBeVisible({ timeout: 20_000 });
     }
 
     await signOut(page);

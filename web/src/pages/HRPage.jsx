@@ -2174,8 +2174,8 @@ function ExternalAccessTab() {
         <form onSubmit={submit}>
           <div className="field-grid">
             <div className="form-row">
-              <label className="form-label">Role</label>
-              <select className="filter-select" style={{ width: '100%' }} value={f.role} onChange={set('role')}>
+              <label className="form-label" htmlFor="ext-role">Role</label>
+              <select id="ext-role" className="filter-select" style={{ width: '100%' }} value={f.role} onChange={set('role')}>
                 <option value="client">Client</option>
                 <option value="architect">Architect</option>
               </select>
@@ -2209,12 +2209,12 @@ function ExternalAccessTab() {
             </div>
           )}
           <div className="field-grid">
-            <div className="form-row"><label className="form-label">Name *</label><input className="form-input" value={f.name} onChange={set('name')} /></div>
-            <div className="form-row"><label className="form-label">Email *</label><input className="form-input" type="email" value={f.email} onChange={set('email')} /></div>
+            <div className="form-row"><label className="form-label" htmlFor="ext-name">Name *</label><input id="ext-name" className="form-input" value={f.name} onChange={set('name')} /></div>
+            <div className="form-row"><label className="form-label" htmlFor="ext-email">Email *</label><input id="ext-email" className="form-input" type="email" value={f.email} onChange={set('email')} /></div>
           </div>
           <div className="form-row" style={{ maxWidth: 320 }}>
-            <label className="form-label">Password * (min 8 characters)</label>
-            <input className="form-input" type="password" value={f.password} onChange={set('password')} />
+            <label className="form-label" htmlFor="ext-password">Password * (min 8 characters)</label>
+            <input id="ext-password" className="form-input" type="password" value={f.password} onChange={set('password')} />
           </div>
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
           <button type="submit" className="btn-primary" disabled={create.isPending}>
