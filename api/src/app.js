@@ -16,6 +16,7 @@ import certificatesRoutes from './routes/certificates.routes.js';
 import designmgmtRoutes from './routes/designmgmt.routes.js';
 import documentsRoutes from './routes/documents.routes.js';
 import employeesRoutes from './routes/employees.routes.js';
+import employeeMeetingsRoutes from './routes/employeeMeetings.routes.js';
 import leaveRoutes from './routes/leave.routes.js';
 import marketingRoutes from './routes/marketing.routes.js';
 import meetingsRoutes from './routes/meetings.routes.js';
@@ -56,6 +57,7 @@ export function createApp() {
   app.use('/api/branches', branchesRoutes);
   app.use('/api/projects', projectsRoutes);
   app.use('/api/employees', employeesRoutes);
+  app.use('/api/employee-meetings', employeeMeetingsRoutes);
   app.use('/api/users', usersRoutes);
   app.use('/api/teams', teamsRoutes);
   app.use('/api/work', workflowRoutes);

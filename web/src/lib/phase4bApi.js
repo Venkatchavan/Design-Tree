@@ -188,6 +188,15 @@ export const meetingsApi = {
   absenceLog: (params = {}) => request(`/api/meetings/absence-log${toQuery(params)}`),
 };
 
+export const employeeMeetingsApi = {
+  list: (params = {}) => request(`/api/employee-meetings${toQuery(params)}`),
+  create: (body) =>
+    request('/api/employee-meetings', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+};
+
 export const portalApi = {
   mine: () => request('/api/portal/mine'),
   acknowledge: (body) =>

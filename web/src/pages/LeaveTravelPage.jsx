@@ -177,7 +177,7 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
         />
       )}
       {tab === 'travel' && (
-        <TravelTab mine={travelMine} loading={travelMineQ.isLoading} error={travelMineQ.error} projects={projects} onDone={invalidateAll} />
+        <TravelTab mine={travelMine} loading={travelMineQ.isLoading} error={travelMineQ.error} projects={projects} onDone={invalidateAll} hideSettle={isHr} />
       )}
       {tab === 'allowance' && (
         <AllowanceTab mine={allowMine} loading={allowMineQ.isLoading} error={allowMineQ.error} projects={projects} onDone={invalidateAll} />
@@ -351,7 +351,7 @@ function LeaveTab({ mine, loading, error, holidays, employee, onDone }) {
   );
 }
 
-function TravelTab({ mine, loading, error, projects, onDone }) {
+function TravelTab({ mine, loading, error, projects, onDone, hideSettle = false }) {
   const [purpose, setPurpose] = useState('');
   const [project, setProject] = useState('');
   const [fromCity, setFromCity] = useState('');
@@ -484,6 +484,7 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
           </span>
         </form>
       </Panel>
+      {!hideSettle && (
       <SettleTravelPanel
         key={settleId ?? 'new-settlement'}
         tripId={settleId}
@@ -491,6 +492,7 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
         onTripChange={(id) => setSettleId(id || null)}
         onDone={onDone}
       />
+      )}
       <Panel title="My travel history">
         {loading ? <EmptyState text="Loading…" /> : error ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>
@@ -519,9 +521,11 @@ function TravelTab({ mine, loading, error, projects, onDone }) {
                         Edit
                       </button>
                     )}
+                    {!hideSettle && (
                     <button type="button" className="approve-btn" onClick={() => setSettleId(String(r._id ?? r.id))}>
                       Settle
                     </button>
+                    )}
                   </span>
                 ),
               },
@@ -834,7 +838,7 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
     .sort((a, b) => String(b.decidedAt ?? b.updatedAt ?? '').localeCompare(String(a.decidedAt ?? a.updatedAt ?? '')))
     .slice(0, 50), [decidedQ.data]);
 
-  const scopeSub = isTeamLead
+  const scopeSub = (isTeamLead || isHr)
     ? 'Requests from your team'
     : isFinance
       ? 'Finance team leave requests only'
@@ -855,11 +859,11 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
   const isWD = roleKey === 'working_director';
   const isAD = roleKey === 'associate_director';
   const showLeavePanel = isTeamLead || isHr || isFinance || isFD || isAD;
-  const showTravelPanel = isTeamLead || isHr || isFinance || isWD;
-  const showAllowancePanel = isTeamLead || isHr || isFinance;
-  const showRecentPanel = isHr || isFD || isWD;
+  const showTravelPanel = isTeamLead || isFinance || isWD;
+  const showAllowancePanel = isTeamLead || isFinance;
+  const showRecentPanel = isFD || isWD;
 
-  // Team Lead sees only Leave + Travel approvals (no Chain column, no
+  // Team Lead and HR see only their panels (no Chain column, no
   // allowance / decision-log panels). Reject prompts for the required reason.
   async function decideDirect(kind, id, status) {
     setErr('');
@@ -898,7 +902,7 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
     ? (r.project.name ?? r.project.code ?? '—')
     : (r.project ?? '—'));
 
-  if (isTeamLead) {
+  if (isTeamLead || isHr) {
     return (
       <>
         <Panel title="Leave approvals" sub={scopeSub}>
@@ -922,6 +926,7 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
             />
           )}
         </Panel>
+        {isTeamLead && (
         <Panel title="Travel approvals" sub={travelScopeSub}>
           {loading ? <EmptyState text="Loading…" /> : error ? (
             <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>
@@ -943,6 +948,7 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
             />
           )}
         </Panel>
+        )}
         {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
       </>
     );

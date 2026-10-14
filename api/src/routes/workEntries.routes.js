@@ -23,6 +23,7 @@ router.patch(
   '/:id/decision',
   requireRole(
     'admin_billing',
+    'hr',
     'team_lead',
     'assoc_technical_director',
     'technical_director',

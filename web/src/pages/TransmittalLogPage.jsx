@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { transmittalRegisterApi, downloadCsv } from '../lib/phase3Api.js';
+import { areaApi } from '../lib/functionsApi.js';
 import { employeesApi, projectsApi } from '../lib/api.js';
 import { teamsMineApi } from '../lib/workApi.js';
 import { spocApi } from '../lib/spocApi.js';
@@ -8,6 +9,7 @@ import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
+import StatusPill from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Modal from '../components/Modal.jsx';
 
@@ -93,7 +95,7 @@ export default function TransmittalLogPage({ bootstrap }) {
   }
 
   if (roleKey === 'hr') {
-    return <DirectorRegisterView hr />;
+    return <HrTransmittalView />;
   }
 
   if (isSpoc || isPTL || isEng) {
@@ -313,7 +315,7 @@ function AssignedRegisterView({ roleKey }) {
   );
 }
 
-function DirectorRegisterView({ scoped = false, hr = false }) {
+function DirectorRegisterView({ scoped = false }) {
   const [search, setSearch] = useState('');
   const [docType, setDocType] = useState('');
   const [printType, setPrintType] = useState('');
@@ -374,15 +376,13 @@ function DirectorRegisterView({ scoped = false, hr = false }) {
           Showing transmittals for your assigned projects only. Founding/Working Directors, the Executive Director, Admin/Billing and Associate/Technical Directors can see the complete company register.
         </p>
       )}
-      {!hr && (
       <div className="kpi-grid cols-4">
         <KpiCard label="Transmittals" value={rows.length} accent="blueprint" />
         <KpiCard label="Sheets issued" value={sheets} accent="copper" />
         <KpiCard label="Projects" value={projects.size} accent="forest" />
         <KpiCard label="Revisions issued (R1+)" value={revisions} accent="violet" />
       </div>
-      )}
-      <Panel title={hr ? `${registerLabel} register` : 'Transmittal Log'}>
+      <Panel title="Transmittal Log">
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--ink-muted)', marginBottom: 12, paddingLeft: 4 }}>
           <span>Date</span> · <span>Project</span> · <span>Dept</span> · <span>Print</span> · <span>Document Type</span> · <span>Service</span> · <span>Team</span> · <span>TR No.</span> · <span>Drawing</span> · <span>Sheets</span> · <span>Revision</span>
         </div>
@@ -391,12 +391,12 @@ function DirectorRegisterView({ scoped = false, hr = false }) {
           <select className="filter-select" value={docType} onChange={(e) => setDocType(e.target.value)}><option value="">All document types</option>{DIR_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           <select className="filter-select" value={printType} onChange={(e) => setPrintType(e.target.value)}><option value="">All print types</option>{DIR_PRINT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           <select className="filter-select" value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{DIR_SERVICES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-          {(scoped || hr) && <button type="button" className="btn-primary" onClick={() => setLogOpen(true)}>Log transmittal</button>}
+          {scoped && <button type="button" className="btn-primary" onClick={() => setLogOpen(true)}>Log transmittal</button>}
           <button type="button" className="approve-btn" onClick={() => downloadCsv(rows, columns.map((c) => ({ key: c.key, label: c.label, value: c.render ? (r) => {
             if (c.key === 'date') return fmtRegisterDate(r.date);
             if (c.key === 'project') return r.project?.name ?? r.projectName;
             return r[c.key];
-          } : undefined })), 'transmittal-register.csv')}>Export CSV</button>{!hr && <button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => window.alert(e.message))}>Download PDF</button>}
+          } : undefined })), 'transmittal-register.csv')}>Export CSV</button><button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => window.alert(e.message))}>Download PDF</button>
         </div>
         {register.isLoading ? <EmptyState text="Loading register…" /> : register.isError ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{register.error.message}</div>
@@ -404,7 +404,142 @@ function DirectorRegisterView({ scoped = false, hr = false }) {
           <DataTable columns={columns} rows={rows} emptyText="No transmittals match these filters." />
         )}
       </Panel>
-      {(scoped || hr) && logOpen && (
+      {scoped && logOpen && (
+        <Modal title="Log transmittal" onClose={() => setLogOpen(false)} wide>
+          <LogTransmittalForm onDone={() => setLogOpen(false)} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+const HR_TABS = [
+  { key: 'register', label: 'Transmittal Log' },
+  { key: 'variance', label: 'Area Variance' },
+];
+
+const varianceTone = (s) => (s === 'Needs review' ? 'amber' : s === 'Settled' ? 'forest' : 'neutral');
+const varianceLabel = (s) => (s === 'Pending' ? 'Needs review' : s === 'Approved' ? 'Settled' : (s ?? '—'));
+const fmtInt = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN'));
+const fmtSigned = (n) => {
+  if (n == null) return '—';
+  const v = Number(n);
+  return `${v > 0 ? '+' : v < 0 ? '-' : ''}${Math.abs(v).toLocaleString('en-IN')}`;
+};
+
+function HrTransmittalView() {
+  const [tab, setTab] = useState('register');
+  const [search, setSearch] = useState('');
+  const [docType, setDocType] = useState('');
+  const [printType, setPrintType] = useState('');
+  const [service, setService] = useState('');
+  const [logOpen, setLogOpen] = useState(false);
+  const register = useQuery({
+    queryKey: ['transmittal-register-all'],
+    queryFn: () => transmittalRegisterApi.list({}),
+  });
+  const areas = useQuery({
+    queryKey: ['area-settlements-all'],
+    queryFn: () => areaApi.list({}),
+    retry: false,
+  });
+  const items = register.data?.items ?? [];
+  const rows = useMemo(
+    () =>
+      (register.data?.items ?? []).filter((r) => {
+        const projName = String(r.project?.name ?? r.projectName ?? '').toLowerCase();
+        return (
+          (!docType || r.docType === docType) &&
+          (!printType || r.print === printType) &&
+          (!service || r.service === service) &&
+          (!search.trim() || projName.includes(search.trim().toLowerCase()))
+        );
+      }),
+    [register.data, docType, printType, service, search],
+  );
+  const sheets = rows.reduce((sum, r) => sum + Number(r.total ?? 0), 0);
+  const revisions = rows.filter((r) => /^R[1-9]/.test(String(r.rev ?? ''))).length;
+  const projectCount = new Set(rows.map((r) => String(r.project?._id ?? r.project ?? r.projectName ?? '—'))).size;
+  const registerLabel = monthYearOf(items);
+  const variances = useMemo(
+    () => [...(areas.data?.items ?? [])].sort((a, b) =>
+      String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''))),
+    [areas.data],
+  );
+  const columns = [
+    { key: 'date', label: 'Date', render: (r) => fmtRegisterDate(r.date) },
+    { key: 'project', label: 'Project', render: (r) => r.project?.name ?? r.projectName ?? '—' },
+    { key: 'dept', label: 'Dept', render: (r) => r.dept ?? '—' },
+    { key: 'print', label: 'Print', render: (r) => r.print ?? '—' },
+    { key: 'docType', label: 'Document Type', render: (r) => r.docType ?? '—' },
+    { key: 'service', label: 'Service', render: (r) => r.service ?? '—' },
+    { key: 'team', label: 'Team', render: (r) => r.team ?? '—' },
+    { key: 'trNo', label: 'TR No.', render: (r) => <span className="mono">{r.trNo ?? '—'}</span> },
+    { key: 'qty', label: 'Qty', render: (r) => r.qty ?? 0 },
+    { key: 'sets', label: 'Set', render: (r) => r.sets ?? 0 },
+    { key: 'total', label: 'Total', render: (r) => r.total ?? 0 },
+    { key: 'rev', label: 'Rev', render: (r) => r.rev ?? '—' },
+    { key: 'reason', label: 'Reason for revision', render: (r) => r.reason ?? '—' },
+  ];
+  return (
+    <div id="view-transmittals">
+      <div className="page-head">
+        <div className="page-title">Transmittal Log</div>
+        <div className="page-sub">{`Your assigned projects · ${registerLabel} · ${projectCount} projects`}</div>
+      </div>
+      <div className="kpi-grid cols-4">
+        <KpiCard label="Transmittals" value={rows.length} accent="blueprint" />
+        <KpiCard label="Sheets issued" value={sheets} accent="copper" />
+        <KpiCard label="Projects" value={projectCount} accent="forest" />
+        <KpiCard label="Revisions issued (R1+)" value={revisions} accent="violet" />
+      </div>
+      <Tabs tabs={HR_TABS} active={tab} onChange={setTab} />
+      {tab === 'register' && (
+      <Panel title={`${registerLabel} register`}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--ink-muted)', marginBottom: 12, paddingLeft: 4 }}>
+          <span>Date</span> · <span>Project</span> · <span>Dept</span> · <span>Print</span> · <span>Document Type</span> · <span>Service</span> · <span>Team</span> · <span>TR No.</span> · <span>Drawing</span> · <span>Sheets</span> · <span>Revision</span>
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+          <input className="form-input" style={{ maxWidth: 170 }} placeholder="Search project" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <select className="filter-select" value={docType} onChange={(e) => setDocType(e.target.value)}><option value="">All document types</option>{DIR_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+          <select className="filter-select" value={printType} onChange={(e) => setPrintType(e.target.value)}><option value="">All print types</option>{DIR_PRINT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+          <select className="filter-select" value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{DIR_SERVICES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+          <button type="button" className="btn-primary" onClick={() => setLogOpen(true)}>Log transmittal</button>
+          <button type="button" className="approve-btn" onClick={() => downloadCsv(rows, columns.map((c) => ({ key: c.key, label: c.label, value: c.render ? (r) => {
+            if (c.key === 'date') return fmtRegisterDate(r.date);
+            if (c.key === 'project') return r.project?.name ?? r.projectName;
+            return r[c.key];
+          } : undefined })), 'transmittal-register.csv')}>Export CSV</button>
+        </div>
+        {register.isLoading ? <EmptyState text="Loading register…" /> : register.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{register.error.message}</div>
+        ) : (
+          <DataTable columns={columns} rows={rows} emptyText="No transmittals match these filters." />
+        )}
+      </Panel>
+      )}
+      {tab === 'variance' && (
+      <Panel title="Area Variance" sub="Initial vs. revised built-up area, as reconciled by QS">
+        {areas.isLoading ? <EmptyState text="Loading…" /> : areas.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{areas.error.message}</div>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
+              { key: 'zone', label: 'Zone / block', render: (r) => r.zone ?? '—' },
+              { key: 'initial', label: 'Initial (sqft)', render: (r) => fmtInt(r.initial) },
+              { key: 'revised', label: 'Revised (sqft)', render: (r) => fmtInt(r.revised) },
+              { key: 'variance', label: 'Variance', render: (r) => fmtSigned(Number(r.revised) - Number(r.initial)) },
+              { key: 'status', label: 'Status', render: (r) => <StatusPill tone={varianceTone(varianceLabel(r.status))}>{varianceLabel(r.status)}</StatusPill> },
+              { key: 'remarks', label: 'Remarks', render: (r) => r.remarks ?? '—' },
+            ]}
+            rows={variances}
+            emptyText="No area settlements yet."
+          />
+        )}
+      </Panel>
+      )}
+      {logOpen && (
         <Modal title="Log transmittal" onClose={() => setLogOpen(false)} wide>
           <LogTransmittalForm onDone={() => setLogOpen(false)} />
         </Modal>

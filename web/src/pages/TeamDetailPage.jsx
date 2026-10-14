@@ -377,7 +377,7 @@ export default function TeamDetailPage({ bootstrap }) {
         )}
       </Panel>
 
-      {isAdmin && (
+      {(isAdmin || role === 'hr') && (
         <Panel
           title="Weekly approval"
           sub={`${q.data?.weekStart ? `Week of ${weekDate(q.data.weekStart)}–${weekDate(q.data.weekEnd)}` : 'This week'} · ${approvalFirst}–${approvalLast} of ${weekEntries.length} shown`}

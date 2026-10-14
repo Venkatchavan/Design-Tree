@@ -1,10 +1,20 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  Legend,
+  LinearScale,
+  Title,
+  Tooltip,
+} from 'chart.js';
+import { Bar } from 'react-chartjs-2';
 import * as XLSX from 'xlsx';
 import { employeesApi, meApi, request, teamsApi, usersApi, workEntriesApi } from '../lib/api.js';
 import { attendanceApi } from '../lib/api.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
-import { leaveApi, travelApi, holidaysApi, meetingsApi, supportApi } from '../lib/phase4bApi.js';
+import { leaveApi, travelApi, holidaysApi, meetingsApi, employeeMeetingsApi, supportApi } from '../lib/phase4bApi.js';
 import { marketingApi } from '../lib/phase4aApi.js';
 import { docsApi, fileUrl } from '../lib/docsApi.js';
 import Panel from '../components/Panel.jsx';
@@ -15,6 +25,8 @@ import Modal from '../components/Modal.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Field from '../components/Field.jsx';
 import KpiCard from '../components/KpiCard.jsx';
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 const LOGIN_ROLES = new Set(['founding_director', 'hr', 'admin_billing', 'superuser']);
 
@@ -114,80 +126,96 @@ function empToForm(emp = {}) {
 }
 
 function OverviewTab() {
+  const today = new Date().toISOString().slice(0, 10);
   const dir = useQuery({ queryKey: ['employees-dir'], queryFn: () => employeesApi.list({}) });
+  const leaves = useQuery({ queryKey: ['hr-leaves'], queryFn: () => leaveApi.list({}) });
+  const todayAttendance = useQuery({
+    queryKey: ['hr-attendance', today],
+    queryFn: () => attendanceApi.list({ date: today }),
+  });
+  const travels = useQuery({ queryKey: ['hr-travels'], queryFn: () => travelApi.list({}) });
+  const weekEnd = new Date(new Date(`${today}T00:00:00Z`).getTime() + 7 * 86400000).toISOString().slice(0, 10);
   const items = dir.data?.items ?? [];
   const total = dir.data?.total ?? items.length;
+  const onLeave = (leaves.data?.items ?? []).filter((r) => {
+    if (r.status !== 'Approved') return false;
+    const from = String(r.from ?? '').slice(0, 10);
+    const to = String(r.to ?? '').slice(0, 10);
+    return from <= today && today <= to;
+  });
+  const attendanceRows = todayAttendance.data?.items ?? [];
+  const present = new Set(attendanceRows.map((r) => String(r.employee?._id ?? r.employee ?? '')).filter(Boolean)).size;
+  const travelWeek = (travels.data?.items ?? []).filter((r) => {
+    if (r.status !== 'Approved') return false;
+    const departure = String(r.departureDate ?? '').slice(0, 10);
+    return departure >= today && departure <= weekEnd;
+  });
+  const pct = total > 0 ? Math.round((present / total) * 100) : 0;
+  const upcoming = (travels.data?.items ?? [])
+    .filter((r) => r.status === 'Approved' && String(r.returnDate ?? r.departureDate ?? '') >= today)
+    .sort((a, b) => String(a.departureDate ?? '').localeCompare(String(b.departureDate ?? '')));
+  const fmtDay = (v) => {
+    if (!v) return '—';
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return String(v);
+    return `${d.getDate()}-${d.toLocaleString('en-GB', { month: 'short' })}`;
+  };
+  const fmtRange = (r) => {
+    const dep = r.departureDate ? new Date(r.departureDate) : null;
+    const ret = r.returnDate ? new Date(r.returnDate) : null;
+    if (!dep || Number.isNaN(dep.getTime())) return fmtDay(r.departureDate);
+    if (!ret || Number.isNaN(ret.getTime()) || dep.toDateString() === ret.toDateString()) return fmtDay(r.departureDate);
+    if (dep.getMonth() === ret.getMonth()) return `${dep.getDate()}-${ret.getDate()} ${ret.toLocaleString('en-GB', { month: 'short' })}`;
+    return `${fmtDay(r.departureDate)} – ${fmtDay(r.returnDate)}`;
+  };
 
-  const byStatus = useMemo(() => {
-    const c = { active: 0, leave: 0, exited: 0 };
-    for (const e of items) {
-      const s = String(e.status ?? 'active').toLowerCase();
-      if (['active', 'working', 'present'].includes(s)) c.active += 1;
-      else if (['leave', 'on-leave', 'onleave'].includes(s)) c.leave += 1;
-      else if (['exited', 'relieved', 'resigned', 'terminated', 'inactive'].includes(s)) c.exited += 1;
-      else c.active += 1;
-    }
-    return c;
-  }, [items]);
-
-  const byBranch = useMemo(() => {
-    const m = new Map();
-    for (const e of items) {
-      const k = e.branch || '—';
-      m.set(k, (m.get(k) ?? 0) + 1);
-    }
-    return [...m.entries()];
-  }, [items]);
-
-  const byDept = useMemo(() => {
-    const m = new Map();
-    for (const e of items) {
-      const k = e.department || '—';
-      m.set(k, (m.get(k) ?? 0) + 1);
-    }
-    return [...m.entries()];
-  }, [items]);
-
-  if (dir.isError) {
-    return <div className="login-error" role="alert" style={{ display: 'block' }}>{dir.error.message}</div>;
+  const queryError = [dir, leaves, todayAttendance, travels].find((query) => query.isError);
+  if (queryError) {
+    return <div className="login-error" role="alert" style={{ display: 'block' }}>{queryError.error.message}</div>;
   }
 
   return (
     <>
-      <div className="kpi-grid cols-5">
-        <KpiCard label="Total headcount" value={total} accent="blueprint" />
-        <KpiCard label="Active" value={byStatus.active} accent="forest" />
-        <KpiCard label="On leave" value={byStatus.leave} accent="amber" />
-        <KpiCard label="Exited" value={byStatus.exited} accent="rust" />
+      <div className="kpi-grid cols-4">
+        <KpiCard label="Total employees" value={dir.isLoading ? '…' : total} accent="blueprint" />
+        <KpiCard label="Present today" value={todayAttendance.isLoading ? '…' : present} accent="forest" />
+        <KpiCard label="On leave today" value={leaves.isLoading ? '…' : onLeave.length} accent="amber" />
+        <KpiCard label="Travel this week" value={travels.isLoading ? '…' : travelWeek.length} accent="violet" />
       </div>
-      <div className="two-col">
-        <Panel title="By branch">
-          {byBranch.length === 0 ? (
-            <EmptyState text={dir.isLoading ? 'Loading…' : 'No branch breakdown yet.'} />
-          ) : (
-            <table className="data">
-              <thead><tr><th>Branch</th><th>Headcount</th></tr></thead>
-              <tbody>
-                {byBranch.map(([b, n]) => (<tr key={b}><td>{b}</td><td className="mono">{n}</td></tr>))}
-              </tbody>
-            </table>
-          )}
-        </Panel>
-        <Panel title="By department / service">
-          {byDept.length === 0 ? (
-            <EmptyState text={dir.isLoading ? 'Loading…' : 'No department breakdown yet.'} />
-          ) : (
-            <table className="data">
-              <thead><tr><th>Department</th><th>Headcount</th></tr></thead>
-              <tbody>
-                {byDept.map(([d, n]) => (<tr key={d}><td>{d}</td><td className="mono">{n}</td></tr>))}
-              </tbody>
-            </table>
-          )}
-        </Panel>
-      </div>
-      <AttendancePanel />
-      <TravelPanel />
+      <Panel title="Attendance today" sub={`${present} of ${total} present (${pct}%)`}>
+        <div className="deliv-bar" style={{ height: 8 }}>
+          <div className="deliv-fill" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="deliv-label" style={{ marginBottom: 14 }}>{`${present} of ${total} present (${pct}%)`}</div>
+        <div className="field-grid">
+          <div className="field"><div className="field-label">On leave</div><div className="field-value mono">{leaves.isLoading ? '…' : onLeave.length}</div></div>
+        </div>
+      </Panel>
+      <Panel title="Upcoming travel">
+        {travels.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : travels.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{travels.error.message}</div>
+        ) : upcoming.length === 0 ? (
+          <EmptyState text="No upcoming approved travel." />
+        ) : (
+          upcoming.map((t) => {
+            const e = t.employee && typeof t.employee === 'object' ? t.employee : {};
+            const name = [e.firstName, e.lastName].filter(Boolean).join(' ') || '—';
+            const proj = t.project && typeof t.project === 'object' ? (t.project.name ?? '') : String(t.project ?? '');
+            const topic = [t.purpose, proj].filter(Boolean).join(' - ') || '—';
+            return (
+              <div key={String(t._id ?? t.id)} className="mom-item">
+                <div className="mom-top">
+                  <span className="mono" style={{ fontSize: 12, color: 'var(--ink-faint)' }}>{fmtRange(t)}</span>
+                  <span className="mom-teams">{name}</span>
+                </div>
+                <div className="mom-topic">{topic}</div>
+              </div>
+            );
+          })
+        )}
+      </Panel>
     </>
   );
 }
@@ -226,6 +254,18 @@ function fmtTime(v) {
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return String(v);
   return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function fmtMeetingDate(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: '2-digit',
+    timeZone: 'UTC',
+  });
 }
 
 function SignInOutPanel() {
@@ -1290,15 +1330,24 @@ function EmployeeDocuments({ empId, docs }) {
   );
 }
 
-function TrackTab() {
-  const [empSearch, setEmpSearch] = useState('');
-  const [selectedId, setSelectedId] = useState(null);
+function fmtDoj(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  const day = String(d.getDate()).padStart(2, '0');
+  const mon = d.toLocaleString('en-GB', { month: 'short' });
+  return `${day}-${mon}-${d.getFullYear()}`;
+}
 
-  const searchQ = useQuery({
-    queryKey: ['employees-track-search', empSearch],
-    queryFn: () => employeesApi.list({ search: empSearch }),
-    enabled: empSearch.trim().length > 0,
+function TrackTab() {
+  const [selectedId, setSelectedId] = useState('');
+
+  const allQ = useQuery({
+    queryKey: ['employees-track-all'],
+    queryFn: () => employeesApi.list({}),
+    retry: false,
   });
+  const employees = allQ.data?.items ?? [];
   const detailQ = useQuery({
     queryKey: ['employee', selectedId],
     queryFn: () => employeesApi.get(selectedId),
@@ -1307,11 +1356,6 @@ function TrackTab() {
   const teamsQ = useQuery({
     queryKey: ['teams'],
     queryFn: teamsApi.list,
-    enabled: !!selectedId,
-  });
-  const workQ = useQuery({
-    queryKey: ['work-entries', { employee: selectedId }],
-    queryFn: () => workEntriesApi.list({ employee: selectedId }),
     enabled: !!selectedId,
   });
   const leaveQ = useQuery({
@@ -1324,8 +1368,21 @@ function TrackTab() {
     queryFn: () => travelApi.list({ employee: selectedId }),
     enabled: !!selectedId,
   });
+  const holidaysQ = useQuery({
+    queryKey: ['holidays-track'],
+    queryFn: () => holidaysApi.list({}),
+    retry: false,
+    enabled: !!selectedId,
+  });
+  const employeeMeetingsQ = useQuery({
+    queryKey: ['hr-employee-meetings', selectedId],
+    queryFn: () => employeeMeetingsApi.list({ employee: selectedId }),
+    enabled: !!selectedId,
+  });
 
   const emp = detailQ.data?.employee ?? null;
+  const empName = emp ? ([emp.firstName, emp.lastName].filter(Boolean).join(' ') || emp.empId) : '';
+  const teams = teamsQ.data?.items ?? [];
   const memberships = useMemo(() => {
     if (!selectedId || !teamsQ.data?.items) return [];
     return teamsQ.data.items.filter((t) =>
@@ -1335,35 +1392,70 @@ function TrackTab() {
       }),
     );
   }, [teamsQ.data, selectedId]);
+  const leadTeams = useMemo(() => {
+    if (!selectedId || !teamsQ.data?.items) return [];
+    return teamsQ.data.items.filter((t) => {
+      const lead = t.lead;
+      const lid = typeof lead === 'object' ? (lead?._id ?? lead?.id) : lead;
+      return String(lid) === String(selectedId);
+    });
+  }, [teamsQ.data, selectedId]);
+  const currentTeam = leadTeams[0] ?? memberships[0] ?? null;
+  const currentTeamLabel = currentTeam
+    ? leadTeams.length > 0
+      ? `Leads own team, ${currentTeam.service ?? currentTeam.name ?? ''}`.trim()
+      : `${(() => {
+        const lead = currentTeam.lead;
+        const name = typeof lead === 'object'
+          ? ([lead.firstName, lead.lastName].filter(Boolean).join(' ') || '')
+          : String(lead ?? '');
+        return name ? `${name}'s team, ${currentTeam.service ?? currentTeam.name ?? ''}` : (currentTeam.name ?? '');
+      })()}`
+    : '—';
+  const activeProject = currentTeam?.projects?.[0];
+  const activeProjectLabel = typeof activeProject === 'object'
+    ? (activeProject?.name ?? activeProject?.code ?? '—')
+    : (activeProject ?? '—');
 
-  const workItems = workQ.data?.items ?? [];
+  const empLeaves = leaveQ.data?.items ?? [];
+  const year = String(new Date().getFullYear());
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const upcomingHolidays = (holidaysQ.data?.items ?? []).filter((h) => {
+    const d = String(h.date ?? '').slice(0, 10);
+    return d && d.slice(0, 4) === year && d >= todayKey;
+  }).length;
+  const usedLeaveDays = empLeaves
+    .filter((r) => String(r.status ?? '').toLowerCase() === 'approved' && String(r.from ?? r.createdAt ?? '').slice(0, 4) === year)
+    .reduce((s, r) => s + (Number(r.days) || 0), 0);
+  const leaveBalance = `${Math.max(0, upcomingHolidays - usedLeaveDays)} days`;
+
+  const empTravels = travelQ.data?.items ?? [];
+  const lastTravel = [...empTravels].sort((a, b) =>
+    String(b.departureDate ?? b.createdAt ?? '').localeCompare(String(a.departureDate ?? a.createdAt ?? '')))[0] ?? null;
+  const lastTravelLabel = lastTravel
+    ? ([lastTravel.fromCity, lastTravel.toCity].filter(Boolean).join(' → ') || lastTravel.purpose || lastTravel.mode || '—')
+    : 'None on record';
 
   return (
     <>
       <div className="form-row" style={{ maxWidth: 360 }}>
-        <label className="form-label">Employee picker</label>
-        <input
-          className="form-input"
-          placeholder="Type a name to search"
-          value={empSearch}
-          onChange={(e) => setEmpSearch(e.target.value)}
-        />
-        {(searchQ.data?.items ?? []).length > 0 && (
-          <div className="search-results">
-            {searchQ.data.items.map((e) => (
-              <div
-                key={e._id ?? e.id}
-                className="search-result-row"
-                onClick={() => {
-                  setSelectedId(e._id ?? e.id);
-                  setEmpSearch('');
-                }}
-              >
-                {empFullName(e)} · {e.designation ?? ''}
-              </div>
-            ))}
-          </div>
-        )}
+        <label className="form-label">Employee</label>
+        <select
+          className="filter-select"
+          style={{ width: '100%' }}
+          value={selectedId}
+          onChange={(e) => setSelectedId(e.target.value)}
+        >
+          <option value="">Select employee</option>
+          {employees.map((e) => {
+            const name = [e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || '—';
+            return (
+              <option key={String(e._id ?? e.id)} value={String(e._id ?? e.id)}>
+                {name}{e.empId ? ` — ${e.empId}` : ''}
+              </option>
+            );
+          })}
+        </select>
       </div>
       {!selectedId ? (
         <EmptyState text="Pick an employee to see their track record." />
@@ -1373,84 +1465,59 @@ function TrackTab() {
         <div className="login-error" role="alert" style={{ display: 'block' }}>{detailQ.error.message}</div>
       ) : (
         <>
-          <Panel title="Joining & role">
+          <Panel title="Joining and role">
             <div className="field-grid">
-              <Field label="Name" value={empFullName(emp)} />
+              <Field label="Joining date" value={emp?.dateOfJoining ? fmtDoj(emp.dateOfJoining) : null} />
               <Field label="Designation" value={emp?.designation} />
-              <Field label="Department" value={emp?.department} />
-              <Field label="Date of joining" value={emp?.dateOfJoining} />
-              <Field label="Branch" value={emp?.branch} />
-              <Field label="Status" value={emp?.status} />
+              <Field
+                label="Branch / service"
+                value={[emp?.branch, emp?.department].filter(Boolean).join(' / ') || null}
+              />
+              <Field label="Reporting manager" value={emp?.reportingManager} />
             </div>
           </Panel>
-          <Panel title="Team memberships">
-            {!teamsQ.data ? (
-              <EmptyState text="Loading teams…" />
-            ) : memberships.length === 0 ? (
-              <EmptyState text="No team memberships found for this employee." />
-            ) : (
-              <DataTable
-                columns={[{ key: 'name', label: 'Team' }, { key: 'service', label: 'Service' }, { key: 'branch', label: 'Branch' }]}
-                rows={memberships}
-                emptyText="No team memberships found for this employee."
-              />
-            )}
+          <Panel title="Team and project history">
+            <div className="field-grid">
+              <Field label="Current team" value={teamsQ.isLoading ? 'Loading…' : currentTeamLabel} />
+              <Field label="Active project" value={teamsQ.isLoading ? 'Loading…' : activeProjectLabel} />
+              <Field label="Transfers / promotions" value="None on record" />
+            </div>
           </Panel>
-          <Panel title="Work history">
-            {workQ.isLoading ? (
-              <EmptyState text="Loading…" />
-            ) : workQ.isError ? (
-              <EmptyState text="Work history is unavailable (the work-entries API does not support an employee filter yet)." />
-            ) : workItems.length === 0 ? (
-              <EmptyState text="No work entries found for this employee." />
-            ) : (
-              <>
-                <p style={{ fontSize: 13, marginBottom: 10 }}>{workItems.length} entr(ies) found (filtered by employee).</p>
-                <DataTable
-                  columns={[
-                    { key: 'project', label: 'Project', render: (w) => w.project?.name ?? w.project ?? '—' },
-                    { key: 'hours', label: 'Hours' },
-                    { key: 'date', label: 'Date' },
-                    { key: 'status', label: 'Status', render: (w) => <StatusPill tone={statusTone(w.status)}>{w.status ?? '—'}</StatusPill> },
-                  ]}
-                  rows={workItems}
-                  emptyText="No work entries found for this employee."
-                />
-              </>
-            )}
+          <Panel title="Performance">
+            <div className="field-grid">
+              <Field label="Performance record" value={null} />
+            </div>
           </Panel>
-          <Panel title="Leave">
-            {leaveQ.isLoading ? (
+          <Panel title="Meeting history">
+            {employeeMeetingsQ.isLoading ? (
               <EmptyState text="Loading…" />
+            ) : employeeMeetingsQ.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{employeeMeetingsQ.error.message}</div>
             ) : (
               <DataTable
                 columns={[
-                  { key: 'leaveType', label: 'Type' },
-                  { key: 'from', label: 'From', render: (r) => String(r.from ?? '').slice(0, 10) },
-                  { key: 'to', label: 'To', render: (r) => String(r.to ?? '').slice(0, 10) },
-                  { key: 'days', label: 'Days' },
-                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                  { key: 'date', label: 'Date', render: (r) => fmtMeetingDate(r.date) },
+                  { key: 'type', label: 'Type' },
+                  { key: 'topic', label: 'Topic' },
+                  { key: 'conductedBy', label: 'Conducted by' },
+                  { key: 'notes', label: 'Notes' },
                 ]}
-                rows={leaveQ.data?.items ?? []}
-                emptyText="No leave history for this employee."
+                rows={employeeMeetingsQ.data?.items ?? []}
+                emptyText="No meetings recorded for this employee."
               />
             )}
           </Panel>
-          <Panel title="Travel">
-            {travelQ.isLoading ? (
-              <EmptyState text="Loading…" />
-            ) : (
-              <DataTable
-                columns={[
-                  { key: 'route', label: 'Route', render: (r) => `${r.fromCity ?? '—'} → ${r.toCity ?? '—'}` },
-                  { key: 'dates', label: 'Dates', render: (r) => `${r.departureDate ? String(r.departureDate).slice(0, 10) : '—'} → ${r.returnDate ? String(r.returnDate).slice(0, 10) : '—'}` },
-                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-                  { key: 'settlement', label: 'Settlement', render: (r) => r.settlementStatus ?? '—' },
-                ]}
-                rows={travelQ.data?.items ?? []}
-                emptyText="No travel history for this employee."
+          <Panel title="Leave and travel history">
+            <div className="field-grid">
+              <Field
+                label="Leave balance"
+                value={(leaveQ.isLoading || holidaysQ.isLoading) ? 'Loading…' : leaveBalance}
               />
-            )}
+              <Field
+                label="Last travel"
+                value={travelQ.isLoading ? 'Loading…' : lastTravelLabel}
+              />
+            </div>
           </Panel>
         </>
       )}
@@ -1571,39 +1638,191 @@ function HrAttendanceLeaveTab() {
 }
 
 function HrMeetingLogTab() {
-  const q = useQuery({ queryKey: ['hr-meetings'], queryFn: () => meetingsApi.list({}) });
+  const queryClient = useQueryClient();
+  const [employeeFilter, setEmployeeFilter] = useState('');
+  const [form, setForm] = useState({
+    employee: '',
+    date: new Date().toISOString().slice(0, 10),
+    type: '1:1 check-in',
+    topic: '',
+    conductedBy: '',
+    notes: '',
+  });
+  const employeesQ = useQuery({ queryKey: ['employees-dir'], queryFn: () => employeesApi.list({}) });
+  const meQ = useQuery({ queryKey: ['me'], queryFn: meApi });
+  const q = useQuery({
+    queryKey: ['hr-employee-meeting-log', employeeFilter],
+    queryFn: () => employeeMeetingsApi.list(employeeFilter ? { employee: employeeFilter } : {}),
+  });
+  const currentUserName = meQ.data?.user?.name ?? '';
+  const save = useMutation({
+    mutationFn: (body) => employeeMeetingsApi.create(body),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['hr-employee-meeting-log'] }),
+        queryClient.invalidateQueries({ queryKey: ['hr-employee-meetings', form.employee] }),
+      ]);
+      setForm({
+        employee: '',
+        date: new Date().toISOString().slice(0, 10),
+        type: '1:1 check-in',
+        topic: '',
+        conductedBy: '',
+        notes: '',
+      });
+    },
+  });
   const rows = q.data?.items ?? [];
   return (
-    <Panel title="Meeting log">
-      {q.isLoading ? (
-        <EmptyState text="Loading…" />
-      ) : q.isError ? (
-        <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
-      ) : (
-        <DataTable
-          columns={[
-            { key: 'title', label: 'Meeting', render: (r) => r.title ?? '—' },
-            { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-            { key: 'date', label: 'Date', render: (r) => r.date ? String(r.date).slice(0, 10) : '—' },
-            { key: 'mode', label: 'Mode', render: (r) => r.mode ?? '—' },
-            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-          ]}
-          rows={rows}
-          emptyText="No meetings yet."
-        />
-      )}
-    </Panel>
+    <>
+      <Panel title="Log a meeting" sub="Recorded against the employee's record — visible in Track record too">
+        {employeesQ.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{employeesQ.error.message}</div>
+        ) : (
+          <form
+            className="field-grid"
+            onSubmit={(e) => {
+              e.preventDefault();
+              save.mutate({ ...form, conductedBy: form.conductedBy || currentUserName });
+            }}
+          >
+            <div className="form-row">
+              <label className="form-label" htmlFor="hr-meeting-employee">Employee</label>
+              <select
+                id="hr-meeting-employee"
+                className="filter-select"
+                value={form.employee}
+                onChange={(e) => setForm((prev) => ({ ...prev, employee: e.target.value }))}
+                required
+              >
+                <option value="">Select employee</option>
+                {(employeesQ.data?.items ?? []).map((employee) => (
+                  <option key={employee._id ?? employee.id} value={employee._id ?? employee.id}>
+                    {empFullName(employee)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-row">
+              <label className="form-label" htmlFor="hr-meeting-date">Meeting date</label>
+              <input
+                id="hr-meeting-date"
+                className="form-input"
+                type="date"
+                value={form.date}
+                onChange={(e) => setForm((prev) => ({ ...prev, date: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="form-row">
+              <label className="form-label" htmlFor="hr-meeting-type">Meeting type</label>
+              <select
+                id="hr-meeting-type"
+                className="filter-select"
+                value={form.type}
+                onChange={(e) => setForm((prev) => ({ ...prev, type: e.target.value }))}
+              >
+                {['1:1 check-in', 'Team meeting', 'Disciplinary', 'Performance review'].map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-row">
+              <label className="form-label" htmlFor="hr-meeting-conducted-by">Conducted by</label>
+              <input
+                id="hr-meeting-conducted-by"
+                className="form-input"
+                value={form.conductedBy || currentUserName}
+                onChange={(e) => setForm((prev) => ({ ...prev, conductedBy: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="form-row">
+              <label className="form-label" htmlFor="hr-meeting-topic">Topic / agenda</label>
+              <input
+                id="hr-meeting-topic"
+                className="form-input"
+                placeholder="e.g. Quarterly performance check-in"
+                value={form.topic}
+                onChange={(e) => setForm((prev) => ({ ...prev, topic: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="form-row">
+              <label className="form-label" htmlFor="hr-meeting-notes">Notes / outcome</label>
+              <textarea
+                id="hr-meeting-notes"
+                className="form-input"
+                placeholder="Key discussion points and outcome"
+                value={form.notes}
+                onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+                required
+                rows={3}
+              />
+            </div>
+            {save.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{save.error.message}</div>}
+            <button type="submit" className="btn-primary" disabled={save.isPending}>
+              {save.isPending ? 'Logging…' : 'Log meeting'}
+            </button>
+          </form>
+        )}
+      </Panel>
+      <Panel title="Meeting log">
+        <div className="form-row" style={{ maxWidth: 320 }}>
+          <label className="form-label" htmlFor="hr-meeting-filter">Employee</label>
+          <select
+            id="hr-meeting-filter"
+            className="filter-select"
+            value={employeeFilter}
+            onChange={(e) => setEmployeeFilter(e.target.value)}
+          >
+            <option value="">All employees</option>
+            {(employeesQ.data?.items ?? []).map((employee) => (
+              <option key={employee._id ?? employee.id} value={employee._id ?? employee.id}>
+                {empFullName(employee)}
+              </option>
+            ))}
+          </select>
+        </div>
+        {q.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : q.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'date', label: 'Date', render: (r) => fmtMeetingDate(r.date) },
+              { key: 'employee', label: 'Employee', render: (r) => r.employee ? empFullName(r.employee) : '—' },
+              { key: 'type', label: 'Type' },
+              { key: 'topic', label: 'Topic' },
+              { key: 'conductedBy', label: 'Conducted by' },
+              { key: 'notes', label: 'Notes' },
+            ]}
+            rows={rows}
+            emptyText="No meetings logged yet."
+          />
+        )}
+      </Panel>
+    </>
   );
+}
+
+function fmtShort(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return String(d);
+  const day = String(dt.getDate()).padStart(2, '0');
+  const mon = dt.toLocaleString('en-GB', { month: 'short' });
+  return `${day} ${mon} ${String(dt.getFullYear()).slice(2)}`;
 }
 
 function HrSupportTab() {
   const qc = useQueryClient();
-  const [kind, setKind] = useState('');
-  const [status, setStatus] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const [edits, setEdits] = useState({});
   const q = useQuery({
-    queryKey: ['hr-support', kind, status],
-    queryFn: () => supportApi.list({ ...(kind ? { kind } : {}), ...(status ? { status } : {}) }),
+    queryKey: ['hr-support'],
+    queryFn: () => supportApi.list({}),
   });
   const save = useMutation({
     mutationFn: ({ id, body }) => supportApi.update(id, body),
@@ -1612,167 +1831,270 @@ function HrSupportTab() {
       setEdits({});
     },
   });
-  const uploadSlip = useMutation({
-    mutationFn: ({ id, file }) => supportApi.salarySlip(id, file),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['hr-support'] }),
-  });
-  const rows = q.data?.items ?? [];
+  const items = q.data?.items ?? [];
+  const byRecent = [...items].sort((a, b) =>
+    String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
+  const slips = byRecent.filter((r) => r.kind === 'salary-slip');
+  const others = byRecent.filter((r) =>
+    r.kind !== 'salary-slip' && (!typeFilter || r.kind === typeFilter));
   const editFor = (id) => edits[id] ?? {};
   const setEdit = (id, patch) => setEdits((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...patch } }));
+  const empNameOf = (e) => (e && typeof e === 'object'
+    ? ([e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || '—')
+    : '—');
+  const kindLabel = (k) => (k ? k.charAt(0).toUpperCase() + k.slice(1) : '—');
   return (
-    <Panel title="Employee support tickets">
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-        <select className="filter-select" value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="">All kinds</option>
-          <option value="salary-slip">Salary slip</option>
-          <option value="complaint">Complaint</option>
-          <option value="suggestion">Suggestion</option>
-          <option value="query">Query</option>
-        </select>
-        <select className="filter-select" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
-          <option>Open</option>
-          <option>In Progress</option>
-          <option>Resolved</option>
-          <option>Issued</option>
-        </select>
-      </div>
-      {q.isLoading ? (
-        <EmptyState text="Loading…" />
-      ) : q.isError ? (
-        <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
-      ) : (
-        <DataTable
-          columns={[
-            { key: 'subject', label: 'Subject', render: (r) => r.subject ?? r.title ?? '—' },
-            { key: 'kind', label: 'Kind', render: (r) => r.kind ?? '—' },
-            { key: 'date', label: 'Raised', render: (r) => r.createdAt ? String(r.createdAt).slice(0, 10) : '—' },
-            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-            {
-              key: 'handle', label: 'Handle', render: (r) => {
-                const id = String(r._id ?? r.id);
-                const ed = editFor(id);
-                return (
-                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <select
-                      className="filter-select"
-                      value={ed.status ?? r.status ?? ''}
-                      onChange={(e) => setEdit(id, { status: e.target.value })}
-                    >
-                      {['Open', 'In Progress', 'Resolved', 'Issued'].map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <input
-                      className="form-input"
-                      style={{ maxWidth: 140 }}
-                      placeholder="Assignee"
-                      value={ed.assignedTo ?? r.assignedTo ?? ''}
-                      onChange={(e) => setEdit(id, { assignedTo: e.target.value })}
-                    />
-                    <input
-                      className="form-input"
-                      style={{ maxWidth: 160 }}
-                      placeholder="Remark"
-                      value={ed.remark ?? ''}
-                      onChange={(e) => setEdit(id, { remark: e.target.value })}
-                    />
-                    {r.kind === 'salary-slip' && (
-                      <input
-                        className="form-input"
-                        type="file"
-                        accept=".pdf,.png,.jpg,.jpeg"
-                        aria-label={`Upload salary slip for ${r.month ?? 'requested month'}`}
-                        disabled={uploadSlip.isPending}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) uploadSlip.mutate({ id, file });
-                          e.target.value = '';
-                        }}
-                      />
-                    )}
+    <>
+      <Panel title="Salary slip requests" sub="Process and issue salary slips requested by employees">
+        {q.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : q.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'employee', label: 'Employee', render: (r) => empNameOf(r.employee) },
+              { key: 'role', label: 'Role', render: (r) => r.employee?.designation ?? r.employee?.department ?? '—' },
+              { key: 'month', label: 'Month', render: (r) => r.month ?? '—' },
+              { key: 'requested', label: 'Requested on', render: (r) => fmtShort(r.createdAt) },
+              { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+              { key: 'issued', label: 'Issued on', render: (r) => fmtShort(r.issuedAt) },
+              {
+                key: 'action',
+                label: '',
+                render: (r) => r.status === 'Issued'
+                  ? <span style={{ color: 'var(--ink-faint)', fontSize: 12 }}>Done</span>
+                  : (
                     <button
                       type="button"
                       className="approve-btn"
-                      disabled={save.isPending || Object.keys(ed).length === 0}
-                      onClick={() => save.mutate({ id, body: { status: ed.status, assignedTo: ed.assignedTo, remark: ed.remark || undefined } })}
+                      disabled={save.isPending}
+                      onClick={() => save.mutate({ id: String(r._id ?? r.id), body: { status: 'Issued' } })}
                     >
-                      Save
+                      Mark issued
                     </button>
-                  </span>
-                );
+                  ),
               },
-            },
-          ]}
-          rows={rows}
-          emptyText="No support tickets yet."
-        />
-      )}
+            ]}
+            rows={slips}
+            emptyText="No salary slip requests yet."
+          />
+        )}
+      </Panel>
+      <Panel title="Complaints, suggestions & queries" sub="Categorize, assign to the concerned person/team, update status and add remarks — full history is kept per ticket">
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+          <select className="filter-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+            <option value="">All types</option>
+            <option value="complaint">Complaint</option>
+            <option value="suggestion">Suggestion</option>
+            <option value="query">Query</option>
+          </select>
+        </div>
+        {q.isLoading ? (
+          <EmptyState text="Loading…" />
+        ) : q.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'id', label: 'ID', render: (r) => String(r._id ?? r.id ?? '').slice(-6).toUpperCase() || '—' },
+              { key: 'type', label: 'Type', render: (r) => kindLabel(r.kind) },
+              { key: 'employee', label: 'Employee', render: (r) => empNameOf(r.employee) },
+              { key: 'category', label: 'Category', render: (r) => r.category ?? '—' },
+              { key: 'subject', label: 'Subject', render: (r) => r.subject ?? r.details ?? '—' },
+              { key: 'submitted', label: 'Submitted', render: (r) => fmtShort(r.createdAt) },
+              { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+              { key: 'assigned', label: 'Assigned to', render: (r) => r.assignedTo ?? '—' },
+              {
+                key: 'remark',
+                label: 'Latest remark',
+                render: (r) => (r.remarks ?? []).length > 0 ? r.remarks[r.remarks.length - 1].text ?? '—' : '—',
+              },
+              {
+                key: 'add', label: '', render: (r) => {
+                  const id = String(r._id ?? r.id);
+                  const ed = editFor(id);
+                  return (
+                    <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <select
+                        className="filter-select"
+                        value={ed.status ?? r.status ?? ''}
+                        onChange={(e) => setEdit(id, { status: e.target.value })}
+                      >
+                        {['Open', 'In Progress', 'Resolved'].map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <input
+                        className="form-input"
+                        style={{ maxWidth: 140 }}
+                        placeholder="Assignee"
+                        value={ed.assignedTo ?? r.assignedTo ?? ''}
+                        onChange={(e) => setEdit(id, { assignedTo: e.target.value })}
+                      />
+                      <input
+                        className="form-input"
+                        style={{ maxWidth: 160 }}
+                        placeholder="Remark"
+                        value={ed.remark ?? ''}
+                        onChange={(e) => setEdit(id, { remark: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className="approve-btn"
+                        disabled={save.isPending || Object.keys(ed).length === 0}
+                        onClick={() => save.mutate({ id, body: { status: ed.status, assignedTo: ed.assignedTo, remark: ed.remark || undefined } })}
+                      >
+                        Add remark
+                      </button>
+                    </span>
+                  );
+                },
+              },
+            ]}
+            rows={others}
+            emptyText="No complaints, suggestions or queries yet."
+          />
+        )}
+      </Panel>
       {save.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{save.error.message}</div>}
-      {uploadSlip.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{uploadSlip.error.message}</div>}
-    </Panel>
+    </>
   );
 }
 
+const CAPACITY_SERVICES = ['Structural', 'Electrical', 'Mechanical', 'Plumbing', 'Fire', 'QS'];
+const deptKey = (d) => {
+  const k = String(d ?? '').trim().toLowerCase();
+  if (k === 'phe' || k === 'plumbing') return 'plumbing';
+  return String(d ?? '').trim() || '—';
+};
+const capacityTone = (c) => (c === 'Overloaded' ? 'rust' : c === 'Busy' ? 'amber' : 'forest');
+
 function HrReportsTab() {
   const dir = useQuery({ queryKey: ['employees-dir'], queryFn: () => employeesApi.list({}) });
-  const leaves = useQuery({ queryKey: ['hr-leaves'], queryFn: () => leaveApi.list({}) });
-  const travels = useQuery({ queryKey: ['hr-travels'], queryFn: () => travelApi.list({}) });
   const entries = useQuery({ queryKey: ['hr-work-entries'], queryFn: () => workEntriesApi.list({}) });
-  const meetings = useQuery({ queryKey: ['hr-meetings'], queryFn: () => meetingsApi.list({}) });
-  const today = new Date().toISOString().slice(0, 10);
+  const recruits = useQuery({ queryKey: ['recruitment-reports'], queryFn: () => request('/api/work/recruitment'), retry: false });
   const items = dir.data?.items ?? [];
   const total = dir.data?.total ?? items.length;
-  const onLeave = (leaves.data?.items ?? []).filter((r) => {
-    if (r.status !== 'Approved') return false;
-    const from = String(r.from ?? '').slice(0, 10);
-    const to = String(r.to ?? '').slice(0, 10);
-    return from <= today && today <= to;
-  });
-  const present = Math.max(0, total - onLeave.length);
-  const leaveRows = leaves.data?.items ?? [];
-  const leaveByStatus = ['Pending', 'Approved', 'Rejected'].map((s) => ({
-    status: s,
-    count: leaveRows.filter((r) => r.status === s).length,
-  }));
-  const travelRows = (travels.data?.items ?? []).filter((r) => r.status === 'Approved');
-  const travelSpend = travelRows.reduce((s, r) => {
-    const actual = Number(r.actualExpense ?? 0);
-    return s + (actual > 0 ? actual : Number(r.estExpense ?? 0));
-  }, 0);
-  const hoursLogged = (entries.data?.items ?? []).reduce((s, e) => s + Number(e.hours ?? 0), 0);
+  const now = Date.now();
+  const year = new Date().getFullYear();
+
+  const tenures = items
+    .map((e) => (e.dateOfJoining ? (now - new Date(e.dateOfJoining).getTime()) / (365.25 * 86400000) : null))
+    .filter((t) => t != null && !Number.isNaN(t) && t >= 0);
+  const avgTenure = tenures.length > 0 ? tenures.reduce((s, t) => s + t, 0) / tenures.length : 0;
+  const exitedYtd = items.filter((e) => {
+    const s = String(e.status ?? '').toLowerCase();
+    if (!['exited', 'relieved', 'resigned', 'terminated', 'inactive'].includes(s)) return false;
+    const lv = e.leavingDate ? new Date(e.leavingDate).getFullYear() : null;
+    return lv == null || lv === year;
+  }).length;
+  const attrition = total > 0 ? (exitedYtd / total) * 100 : 0;
+  const openPositions = (recruits.data?.items ?? [])
+    .filter((r) => ['Submitted', 'Under Review'].includes(r.status))
+    .reduce((s, r) => s + (Number(r.headcount) || 0), 0);
+
+  const byBranch = useMemo(() => {
+    const m = new Map();
+    for (const e of items) {
+      const k = e.branch || '—';
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [dir.data]);
+  const byService = useMemo(() => {
+    const m = new Map();
+    for (const e of items) {
+      const k = e.department || '—';
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [dir.data]);
+
+  const deptOf = useMemo(() => {
+    const m = new Map(items.map((e) => [String(e._id ?? e.id), deptKey(e.department)]));
+    return m;
+  }, [dir.data]);
+  const weekAgo = now - 7 * 86400000;
+  const monthAgo = now - 30 * 86400000;
+  const capacityRows = useMemo(() => {
+    const all = entries.data?.items ?? [];
+    return CAPACITY_SERVICES.map((svc) => {
+      const key = deptKey(svc);
+      const headcount = items.filter((e) => deptKey(e.department) === key).length;
+      const recent = all.filter((en) => {
+        if (deptOf.get(String(en.employee?._id ?? en.employee ?? '')) !== key) return false;
+        const t = en.date ? new Date(en.date).getTime() : NaN;
+        return !Number.isNaN(t) && t >= monthAgo;
+      });
+      const weekHours = recent
+        .filter((en) => {
+          const t = en.date ? new Date(en.date).getTime() : NaN;
+          return !Number.isNaN(t) && t >= weekAgo;
+        })
+        .reduce((s, en) => s + (Number(en.hours) || 0), 0);
+      const activeProjects = new Set(
+        recent.map((en) => String(en.project?._id ?? en.project ?? '')).filter(Boolean),
+      ).size;
+      const load = headcount > 0 ? weekHours / headcount : 0;
+      const capacity = load >= 7 ? 'Overloaded' : load >= 5.5 ? 'Busy' : 'Balanced';
+      return { service: svc, headcount, activeProjects, load: Number(load.toFixed(1)), capacity };
+    });
+  }, [entries.data, deptOf, items, weekAgo, monthAgo]);
+
+  const barOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+  };
   if (dir.isError) {
     return <div className="login-error" role="alert" style={{ display: 'block' }}>{dir.error.message}</div>;
   }
   return (
     <>
-      <div className="kpi-grid cols-4">
-        <KpiCard label="Total employees" value={total} accent="blueprint" />
-        <KpiCard label="Present today" value={present} accent="forest" />
-        <KpiCard label="On leave today" value={onLeave.length} accent="amber" />
-        <KpiCard label="Hours logged" value={Number(hoursLogged.toFixed(1))} accent="violet" />
+      <div className="kpi-grid cols-3">
+        <KpiCard label="Average tenure" value={dir.isLoading ? '…' : `${avgTenure.toFixed(1)} yrs`} accent="blueprint" />
+        <KpiCard label="Attrition (ytd)" value={dir.isLoading ? '…' : `${attrition.toFixed(1)}%`} accent="amber" />
+        <KpiCard label="Open positions" value={recruits.isLoading ? '…' : openPositions} accent="violet" />
       </div>
-      <div className="two-col">
-        <Panel title="Leave by status">
-          {leaves.isLoading ? <EmptyState text="Loading…" /> : (
-            <table className="data">
-              <thead><tr><th>Status</th><th>Requests</th></tr></thead>
-              <tbody>
-                {leaveByStatus.map((r) => (<tr key={r.status}><td>{r.status}</td><td className="mono">{r.count}</td></tr>))}
-              </tbody>
-            </table>
-          )}
-        </Panel>
-        <Panel title="Travel summary">
-          {travels.isLoading ? <EmptyState text="Loading…" /> : (
-            <table className="data">
-              <tbody>
-                <tr><td>Approved trips</td><td className="mono">{travelRows.length}</td></tr>
-                <tr><td>Travel spend</td><td className="mono">{fmtSpend(travelSpend)}</td></tr>
-                <tr><td>Meetings tracked</td><td className="mono">{(meetings.data?.items ?? []).length}</td></tr>
-              </tbody>
-            </table>
-          )}
-        </Panel>
-      </div>
+      <Panel title="Headcount by branch">
+        {dir.isLoading ? <EmptyState text="Loading…" /> : byBranch.length === 0 ? (
+          <EmptyState text="No branch breakdown yet." />
+        ) : (
+          <div className="chart-wrap">
+            <Bar
+              data={{ labels: byBranch.map(([b]) => b), datasets: [{ data: byBranch.map(([, n]) => n) }] }}
+              options={barOptions}
+            />
+          </div>
+        )}
+      </Panel>
+      <Panel title="Headcount by service">
+        {dir.isLoading ? <EmptyState text="Loading…" /> : byService.length === 0 ? (
+          <EmptyState text="No service breakdown yet." />
+        ) : (
+          <div className="chart-wrap">
+            <Bar
+              data={{ labels: byService.map(([s]) => s), datasets: [{ data: byService.map(([, n]) => n) }] }}
+              options={barOptions}
+            />
+          </div>
+        )}
+      </Panel>
+      <Panel title="Team-wise capacity" sub="Headcount against active project load, for hiring and allocation planning">
+        {dir.isLoading || entries.isLoading ? <EmptyState text="Loading…" /> : (
+          <DataTable
+            columns={[
+              { key: 'service', label: 'Service' },
+              { key: 'headcount', label: 'Headcount', render: (r) => r.headcount },
+              { key: 'activeProjects', label: 'Active projects', render: (r) => r.activeProjects },
+              { key: 'load', label: 'Load / person', render: (r) => r.load },
+              { key: 'capacity', label: 'Capacity', render: (r) => <StatusPill tone={capacityTone(r.capacity)}>{r.capacity}</StatusPill> },
+            ]}
+            rows={capacityRows}
+            emptyText="No capacity data yet."
+          />
+        )}
+      </Panel>
     </>
   );
 }
