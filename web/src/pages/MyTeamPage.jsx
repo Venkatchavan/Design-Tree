@@ -547,6 +547,9 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
   const [showAllWeekly, setShowAllWeekly] = useState(false);
 
   const isTL = role === 'team_lead';
+  useEffect(() => {
+    if (isTL && !projectWorkspace) setTab('overview');
+  }, [isTL, projectWorkspace]);
   const emailRows = teamRevisions.flatMap((r) => (r.emailLog ?? []).map((line, i) => ({
     key: `${String(r._id ?? '')}-${i}`,
     revision: r.drawing ?? r.details ?? '—',
@@ -580,7 +583,17 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
       { key: 'recruitment', label: 'Recruitment requests' },
     ];
 
-  const tabs = isTL ? (projectWorkspace ? [...workspaceTabs.filter(t => t.key !== 'assign'), { key: 'meetings', label: 'Meetings' }, { key: 'completion', label: 'Stage completion' }] : [{ key: 'assign', label: 'Assign work' }]) : workspaceTabs;
+  const tabs = isTL ? (projectWorkspace ? [...workspaceTabs.filter(t => t.key !== 'assign'), { key: 'meetings', label: 'Meetings' }, { key: 'completion', label: 'Stage completion' }] : [
+      { key: 'overview', label: 'Overview' },
+      { key: 'team', label: 'Project & team' },
+      { key: 'monitoring', label: 'Team work monitoring' },
+      { key: 'assign', label: 'Assign work' },
+      { key: 'deliverables', label: 'Deliverables' },
+      { key: 'awaiting', label: 'Awaiting response' },
+      { key: 'revisions', label: 'Revision log' },
+      { key: 'drawings', label: 'Drawing register' },
+      { key: 'recruitment', label: 'Recruitment requests' },
+    ]) : workspaceTabs;
   const activeProjects = useMemo(
     () => teamProjects.filter((p) => String(p.status ?? '') !== 'Completed'),
     [teamProjects],
@@ -631,8 +644,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
         <KpiCard label="Open revisions" value={openRevisionCount} accent="violet" />
       </div>
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
-      {isTL && !projectWorkspace && <p>Open an assigned project to view its team, progress, deliverables, revisions, drawings and transmittals.</p>}
-      {tab === 'completion' && <StageRequestPanel projectId={projectId} />}
+      {tab === 'completion' && projectWorkspace && <StageRequestPanel projectId={projectId} />}
       {tab === 'meetings' && <SpocMeetings projectId={projectId} readOnly />}
       <>
           {tab === 'overview' && (
@@ -839,7 +851,6 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
               myTasks={myAssignedTasks}
               deliverables={teamDeliverables}
               delivLog={delivLog}
-              assignOnly={isTL && !projectWorkspace}
             />
           )}
 
@@ -867,11 +878,14 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
 
           {tab === 'deliverables' && (
             <>
-              {isTL && <DeliverableListPanel teamProjects={teamProjects} members={members} />}
+              {isTL && projectWorkspace && <DeliverableListPanel teamProjects={teamProjects} members={members} />}
+              {(isTL && !projectWorkspace) && (
+                <DeliverableAddPanel teamProjects={teamProjects} members={members} />
+              )}
               {!isTL && (canDeliverAdd || role === 'team_lead') && (
                 <DeliverableAddPanel teamProjects={teamProjects} members={members} />
               )}
-              {!isTL && <Panel title="My project deliverables" sub="Also visible on the Design Management deliverables tracker">
+              {(!isTL || !projectWorkspace) && <Panel title="My project deliverables" sub="Also visible on the Design Management deliverables tracker">
                 <DataTable
                   columns={[
                     { key: 'project', label: 'Project', render: (d) => projLabel(d.project) },
@@ -1469,14 +1483,14 @@ function DecideModal({ entry, onClose, decide }) {
   );
 }
 
-function AssignWorkPanel({ assignOnly = false, members, roleGroups, teamProjects, myTasks, deliverables, delivLog }) {
+function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverables, delivLog }) {
   const queryClient = useQueryClient();
   const [selMembers, setSelMembers] = useState([]);
   const [project, setProject] = useState('');
   const [stage, setStage] = useState('');
   const [deliverable, setDeliverable] = useState('');
   const [dueDate, setDueDate] = useState('');
-  const priority = 'Normal';
+  const [priority, setPriority] = useState('Medium');
   const [notes, setNotes] = useState('');
   const [err, setErr] = useState('');
   const [drawProject, setDrawProject] = useState('');
@@ -1517,6 +1531,7 @@ function AssignWorkPanel({ assignOnly = false, members, roleGroups, teamProjects
       setErr('');
       setSelMembers([]);
       setDeliverable('');
+      setPriority('Medium');
       setNotes('');
     },
     onError: (e) => setErr(e.message),
@@ -1705,6 +1720,12 @@ function AssignWorkPanel({ assignOnly = false, members, roleGroups, teamProjects
               <label className="form-label">Due date</label>
               <input type="date" className="form-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </div>
+            <div className="form-row">
+              <label className="form-label">Priority</label>
+              <select className="filter-select" style={{ width: '100%' }} value={priority} onChange={(e) => setPriority(e.target.value)}>
+                {['Low', 'Medium', 'High', 'Urgent'].map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
 
           </div>
           <div className="form-row">
@@ -1721,7 +1742,6 @@ function AssignWorkPanel({ assignOnly = false, members, roleGroups, teamProjects
           </button>
         </form>
       </Panel>
-      {!assignOnly && <>
       <Panel title="Upload a list of drawings" sub="Bulk-add multiple drawings to the register at once, instead of one at a time">
         <form onSubmit={(e) => {
           e.preventDefault();
@@ -1861,7 +1881,7 @@ function AssignWorkPanel({ assignOnly = false, members, roleGroups, teamProjects
               { key: 'stage', label: 'Stage', render: (t) => t.stage ?? '—' },
               { key: 'deliverable', label: 'Deliverable', render: (t) => t.deliverable ?? t.notes ?? '—' },
               { key: 'due', label: 'Due', render: (t) => fmtDate(t.dueDate) },
-
+              { key: 'priority', label: 'Priority', render: (t) => t.priority ?? '—' },
               { key: 'status', label: 'Status', render: (t) => <StatusPill tone={toneFor(t.status)}>{t.status ?? '—'}</StatusPill> },
             ]}
             rows={myTasks}
@@ -1869,7 +1889,6 @@ function AssignWorkPanel({ assignOnly = false, members, roleGroups, teamProjects
           />
         )}
       </Panel>
-      </>}
     </>
   );
 }
