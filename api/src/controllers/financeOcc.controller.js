@@ -11,6 +11,7 @@ const POPULATE = [
   { path: 'employee', select: 'firstName lastName empId designation department' },
   { path: 'project', select: 'name code' },
   { path: 'linkedTravel', select: 'purpose location amount status' },
+  { path: 'verification.verifiedBy', select: 'name email' },
 ];
 
 export const financeOcc = makeCrud(FinanceOccEntry, {
@@ -100,6 +101,10 @@ export async function decideFinanceOcc(req, res, next) {
         doc.verification.missing = parsed.data.verification.missing;
       }
       doc.verification.completed = verificationComplete(checks);
+      if (doc.verification.completed && !doc.verification.verifiedAt) {
+        doc.verification.verifiedBy = req.user.id;
+        doc.verification.verifiedAt = new Date();
+      }
     }
     const gated = ['Verified', 'Approved', 'Paid'].includes(parsed.data.status);
     if (gated && !doc.verification?.completed && doc.kind !== 'po') {
