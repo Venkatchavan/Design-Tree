@@ -120,7 +120,7 @@ export default function CertificatesPage({ bootstrap }) {
   if (isReadonly) {
     return (
       <div id="view-completioncerts">
-        <div className="page-head"><div className="page-title">Completion Certificates</div></div>
+        <div className="page-head"><div className="page-title">Completion Certificates</div><div className="page-sub">Issued certificates, templates, and client-uploaded certificate requests</div></div>
         <Panel title="Completion Certificates" sub="Issued on completion of a project stage or discipline scope">
           {list.isLoading ? <p>Loading certificates…</p> : list.isError ? (
             <div className="login-error" role="alert" style={{ display: 'block' }}>{list.error.message}</div>
