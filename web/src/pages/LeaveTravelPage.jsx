@@ -53,9 +53,9 @@ export default function LeaveTravelPage({ bootstrap, user, viewKey }) {
   const roleKey = bootstrap?.role?.key ?? '';
 
   // Approvals sub-tab. Team Lead / HR / Finance act on the chain
-  // (TL → HR → Finance); FD / WD / AD get a read-only view of it.
+  // (TL → HR → Finance); FD / WD / ED / AD get a read-only view of it.
   const canDecide = ['team_lead', 'hr', 'finance'].includes(roleKey);
-  const showApprovals = canDecide || ['founding_director', 'working_director', 'associate_director'].includes(roleKey);
+  const showApprovals = canDecide || ['founding_director', 'working_director', 'executive_director', 'associate_director'].includes(roleKey);
   const isHr = roleKey === 'hr';
   const isFinance = roleKey === 'finance';
   const isTeamLead = roleKey === 'team_lead';
@@ -787,7 +787,7 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
   const decidedQ = useQuery({
     queryKey: ['leave-decided'],
     queryFn: () => leaveApi.list({}),
-    enabled: isHr || roleKey === 'founding_director' || roleKey === 'working_director',
+    enabled: isHr || roleKey === 'founding_director' || roleKey === 'working_director' || roleKey === 'executive_director',
   });
 
   function setRemark(id, v) {
@@ -849,19 +849,21 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
       ? 'Requests from your team'
       : 'Every pending travel request';
 
-  // Read-only viewers (FD / WD / AD) get no action buttons; the per-panel
+  // Read-only viewers (FD / WD / ED / AD) get no action buttons; the per-panel
   // matrix below decides which components each role sees.
 
-  // Per-role components: FD → Leave + Recent (read-only);
-  // AD → Leave only (read-only); WD → Travel + Recent (read-only);
+  // Per-role components: FD / WD / ED → Leave + Recent (read-only);
+  // AD → Leave only (read-only);
   // TL / HR / Finance → full chain panels with action buttons on their turn.
   const isFD = roleKey === 'founding_director';
   const isWD = roleKey === 'working_director';
+  const isED = roleKey === 'executive_director';
   const isAD = roleKey === 'associate_director';
-  const showLeavePanel = isTeamLead || isHr || isFinance || isFD || isAD;
-  const showTravelPanel = isTeamLead || isFinance || isWD;
+  const isDirector = isFD || isWD || isED;
+  const showLeavePanel = isTeamLead || isHr || isFinance || isDirector || isAD;
+  const showTravelPanel = isTeamLead || isFinance;
   const showAllowancePanel = isTeamLead || isFinance;
-  const showRecentPanel = isFD || isWD;
+  const showRecentPanel = isDirector;
 
   // Team Lead and HR see only their panels (no Chain column, no
   // allowance / decision-log panels). Reject prompts for the required reason.

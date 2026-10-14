@@ -18,9 +18,9 @@ import {
 const router = Router();
 router.use(requireAuth);
 
-const MARKETING = ['marketing', 'founding_director', 'working_director'];
+const MARKETING = ['marketing', 'founding_director', 'working_director', 'executive_director'];
 // Directors view the portfolio, briefs and contacts alongside Marketing.
-const MARKETING_READERS = [...MARKETING, 'executive_director'];
+const MARKETING_READERS = [...MARKETING];
 
 router.get('/portfolio', requireRole(...MARKETING_READERS), portfolio);
 router.get('/brief', requireRole(...MARKETING_READERS), getBrief);

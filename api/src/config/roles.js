@@ -3,7 +3,7 @@
 // §3.3 (access rules), §3.4 (FD/WD full access). Served to the client via
 // GET /api/meta/bootstrap so there is exactly one copy of this config.
 
-export const SUPER_ROLES = ['founding_director', 'working_director'];
+export const SUPER_ROLES = ['founding_director', 'working_director', 'executive_director'];
 
 // Directive roles (founding director → assoc technical director): exempt from
 // own man-hour entry + sign-out gate, view-only for others' hours.
@@ -170,8 +170,12 @@ export const NAV_BY_ROLE = {
     { view: 'teams' },
     { view: 'transmittal-log' },
     { view: 'billing-status' },
+    { view: 'qaqc-specs' },
+    { view: 'bim-head' },
+    { view: 'gbs-head' },
+    { view: 'peer-review-head' },
     { view: 'qs-head' },
-    { view: 'meetings' },
+    { view: 'my-meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
   ],
@@ -186,7 +190,7 @@ export const NAV_BY_ROLE = {
     { view: 'gbs-head' },
     { view: 'peer-review-head' },
     { view: 'qs-head' },
-    { view: 'meetings' },
+    { view: 'my-meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
   ],
@@ -196,8 +200,12 @@ export const NAV_BY_ROLE = {
     { view: 'certificates', label: 'Completion Certificates' },
     { view: 'teams' },
     { view: 'transmittal-log' },
-    { view: 'qs-log' },
-    { view: 'meetings' },
+    { view: 'qaqc-specs' },
+    { view: 'bim-head' },
+    { view: 'gbs-head' },
+    { view: 'peer-review-head' },
+    { view: 'qs-head' },
+    { view: 'my-meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'my-team' },

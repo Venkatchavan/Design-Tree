@@ -24,7 +24,7 @@ import {
 
 const router = Router();
 router.use(requireAuth);
-router.use((req, res, next) => req.user.role === 'founding_director' && req.method !== 'GET' ? res.status(403).json({ message: 'MD views billing and approval results only.' }) : next());
+router.use((req, res, next) => ['founding_director', 'working_director', 'executive_director'].includes(req.user.role) && req.method !== 'GET' ? res.status(403).json({ message: 'Directors view billing and approval results only.' }) : next());
 
 const BILLING_WRITERS = ['admin_billing', 'executive_director'];
 // Stage completion progresses PTL → SPOC → TD before Admin can bill.

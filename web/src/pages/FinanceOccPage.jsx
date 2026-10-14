@@ -256,7 +256,7 @@ function readLegacy() {
 
 export default function FinanceOccPage({ bootstrap }) {
   const role = bootstrap?.role?.key ?? '';
-  const canDecide = role === 'finance' || role === 'founding_director' || role === 'working_director';
+  const canDecide = role === 'finance' || role === 'founding_director' || role === 'working_director' || role === 'executive_director';
   const qc = useQueryClient();
 
   const [tab, setTab] = useState('overview');

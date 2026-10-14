@@ -21,7 +21,7 @@ const DASHBOARD_WRITERS = new Set([
   'associate_director',
   'executive_director',
 ]);
-const ALERT_WRITERS = new Set(['founding_director', 'working_director', 'qaqc', 'team_lead']);
+const ALERT_WRITERS = new Set(['founding_director', 'working_director', 'executive_director', 'qaqc', 'team_lead']);
 
 const QAQC_TABS = [
   { key: 'overview', label: 'Overview' },

@@ -130,9 +130,10 @@ export function stageForRole(role) {
 
 export const FLOW_APPROVER_ROLES = ['team_lead', 'hr', 'finance'];
 
-// Roles allowed to open the Approvals tab at all (the last three read-only).
+// Roles allowed to open the Approvals tab at all (the last ones read-only).
 export const FLOW_OVERSIGHT_ROLES = [
   'founding_director',
   'working_director',
+  'executive_director',
   'associate_director',
 ];

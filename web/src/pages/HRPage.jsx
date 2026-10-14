@@ -28,7 +28,7 @@ import KpiCard from '../components/KpiCard.jsx';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-const LOGIN_ROLES = new Set(['founding_director', 'hr', 'admin_billing', 'superuser']);
+const LOGIN_ROLES = new Set(['founding_director', 'working_director', 'executive_director', 'hr', 'admin_billing', 'superuser']);
 
 const EMP_STATUSES = ['Active', 'On Leave', 'Exited'];
 
@@ -1553,7 +1553,7 @@ function RecruitmentTab({ bootstrap }) {
     onError: (e) => setErr(e.message),
   });
 
-  if (!['hr', 'founding_director', 'working_director'].includes(roleKey)) {
+  if (!['hr', 'founding_director', 'working_director', 'executive_director'].includes(roleKey)) {
     return <EmptyState text="Recruitment requests are visible to HR and directors only." />;
   }
 

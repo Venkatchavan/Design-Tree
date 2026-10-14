@@ -37,7 +37,7 @@ const VIEWERS = [
 ];
 
 router.get('/templates/all', requireRole(...VIEWERS), listTemplates);
-router.post('/templates', (req,res,next) => ['admin_billing', 'hr'].includes(req.user.role) ? next() : res.status(403).json({message:'Admin manages certificate requests and templates.'}), (req, res, next) =>
+router.post('/templates', (req,res,next) => req.user.role === 'admin_billing' ? next() : res.status(403).json({message:'Admin manages certificate requests and templates.'}), (req, res, next) =>
   uploadTemplateFile(req, res, (err) =>
     err ? next(err) : addTemplate(req, res, next),
   ),
@@ -45,7 +45,7 @@ router.post('/templates', (req,res,next) => ['admin_billing', 'hr'].includes(req
 router.get('/templates/:id/download', requireRole(...VIEWERS), downloadTemplate);
 
 router.get('/requests/all', requireRole(...VIEWERS), certRequests.list);
-router.post('/requests', (req,res,next) => ['admin_billing', 'hr'].includes(req.user.role) ? next() : res.status(403).json({message:'Admin manages certificate requests and templates.'}), createCertRequest);
+router.post('/requests', (req,res,next) => req.user.role === 'admin_billing' ? next() : res.status(403).json({message:'Admin manages certificate requests and templates.'}), createCertRequest);
 
 router.get('/', requireRole(...VIEWERS), certificates.list);
 router.post('/', (req,res,next) => req.user.role === 'admin_billing' ? next() : res.status(403).json({message:'Admin issues certificates.'}), createCertificate);

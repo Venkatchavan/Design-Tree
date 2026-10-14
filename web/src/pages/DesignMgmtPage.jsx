@@ -12,7 +12,7 @@ import StatusPill from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import { DesignKpiRow, TeamClientUpdates } from '../components/design/DesignHeadUpdates.jsx';
 
-const SUPER = new Set(['founding_director', 'working_director']);
+const SUPER = new Set(['founding_director', 'working_director', 'executive_director']);
 const STEP_STATUSES = ['Not Started', 'In Progress', 'Completed', 'On Hold'];
 const TEAM_SERVICES = [
   'SMEPF',

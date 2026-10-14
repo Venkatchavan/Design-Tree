@@ -34,7 +34,7 @@ import { setPortalUsers } from '../controllers/portal.controller.js';
 const router = Router();
 
 router.use(requireAuth);
-router.use((req,res,next)=>req.user.role==='founding_director' && req.method!=='GET' ? res.status(403).json({message:'MD views projects only.'}) : next());
+router.use((req,res,next)=>['founding_director','working_director','executive_director'].includes(req.user.role) && req.method!=='GET' ? res.status(403).json({message:'Directors view projects only.'}) : next());
 // Directors are read-only on projects: deny create/update/import even
 // though FD/WD would otherwise pass requireRole via the superuser bypass.
 const NO_PROJECT_WRITES = ['founding_director', 'working_director', 'executive_director'];

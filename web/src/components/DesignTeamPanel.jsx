@@ -18,7 +18,7 @@ const DASHBOARD_WRITERS = new Set([
   'executive_director',
 ]);
 // Mirrors the write list on the discrepancy API; superusers pass server-side.
-const COORDINATION_WRITERS = new Set(['founding_director', 'working_director', 'team_lead', 'qaqc']);
+const COORDINATION_WRITERS = new Set(['founding_director', 'working_director', 'executive_director', 'team_lead', 'qaqc']);
 
 const SCOPE_STATUSES = ['Not Started', 'In Progress', 'Completed', 'On Hold'];
 const COORD_STATUSES = ['Open', 'In Progress', 'Closed'];

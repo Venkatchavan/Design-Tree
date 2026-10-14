@@ -18,7 +18,7 @@ const REG_TABS = [
   { key: 'variance', label: 'Area variance' },
 ];
 
-const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director', 'design_mgmt_head']);
+const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director', 'design_mgmt_head']);
 const DIR_DOC_TYPES = ['GFC', 'AMD', 'SAN', 'ADV', 'DD', 'SUB', 'TENDER', 'BOQ', 'STAB', 'CONCEPT', 'EXEC', 'APR', 'FEAS', 'FIRESAN', 'BWSSB', 'BESCOM', 'REF', 'WORK', 'INFO'];
 const DIR_PRINT_TYPES = ['Blue Prints', 'White Prints', 'Original Tracings', 'CD', 'Document', 'Others'];
 const DIR_SERVICES = ['Sanction', 'BOQ & DBR', 'GFC', 'PHE', 'Electrical', 'FIRE', 'HVAC', 'MEPF'];
@@ -47,7 +47,6 @@ function monthYearOf(items) {
 export default function TransmittalLogPage({ bootstrap }) {
   const roleKey = bootstrap?.role?.key ?? '';
   const isDirector = DIRECTOR_ROLES.has(roleKey);
-  const isAssocTD = roleKey === 'assoc_technical_director';
   const isSpoc = roleKey === 'coordinator';
   const isPTL = roleKey === 'team_lead';
   const isEng = roleKey === 'engineer_drafter';
@@ -88,10 +87,6 @@ export default function TransmittalLogPage({ bootstrap }) {
 
   if (isDirector) {
     return <DirectorRegisterView />;
-  }
-
-  if (isAssocTD) {
-    return <DirectorRegisterView scoped />;
   }
 
   if (roleKey === 'hr') {

@@ -16,8 +16,9 @@ const TABS = [
 
 export default function CertificatesPage({ bootstrap }) {
   const roleKey = bootstrap?.role?.key ?? '';
-  // Read-only log view for directors + AssocTD + DMH (Admin reflection, no inputs).
-  const isReadonly = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director', 'design_mgmt_head']).has(roleKey);
+  // Read-only log view for directors + AssocTD + DMH + HR (Admin reflection, no inputs).
+  // Only admin_billing has write access on this page.
+  const isReadonly = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director', 'design_mgmt_head', 'hr']).has(roleKey);
   const isAdmin = roleKey === 'admin_billing';
   const [tab, setTab] = useState('issued');
   const [cert, setCert] = useState({ project: '', certType: '', certNo: '', stage: '', issuedBy: '', status: 'Issued' });
@@ -245,79 +246,6 @@ export default function CertificatesPage({ bootstrap }) {
             return <button type="button" className="approve-btn" onClick={() => clientLink(r._id ?? r.id)}>Generate client link</button>;
           } },
         ]} rows={allRequests} emptyText="No client certificate requests yet." /></Panel>
-      </div>
-    );
-  }
-
-  if (roleKey === 'hr') {
-    const submitHrRequest = (e) => {
-      e.preventDefault();
-      requestCert.mutate(req, {
-        onSuccess: () => setMessage('Request sent to the client.'),
-      });
-    };
-    return (
-      <div id="view-completioncerts">
-        <div className="page-head"><div className="page-title">Completion Certificates</div><div className="page-sub">Issued certificates, templates, and client-uploaded certificate requests</div></div>
-        <Panel title="Completion Certificates" sub="Issued on completion of a project stage or discipline scope">
-          {list.isLoading ? <p>Loading certificates…</p> : list.isError ? (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>{list.error.message}</div>
-          ) : <DataTable columns={[
-            { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-            { key: 'certType', label: 'Certificate type', render: (r) => r.certType ?? '—' },
-            { key: 'stage', label: 'Stage' },
-            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
-            { key: 'issuedDate', label: 'Issued date', render: (r) => fmtCertDate(r.issuedDate) },
-            { key: 'issuedBy', label: 'Issued by', render: (r) => r.issuedBy ?? '—' },
-          ]} rows={list.data?.items ?? []} emptyText="No completion certificates yet." />}
-        </Panel>
-        <Panel title="Completion certificate templates" sub="Upload a blank template per category — shown to the client as the format to follow, and available as a category when requesting a certificate">
-          <form onSubmit={uploadTemplate} className="field-grid">
-            <div className="form-row"><label className="form-label">Certificate category</label><input className="form-input" required placeholder="e.g. HVAC Completion Certificate" value={category} onChange={(e) => setCategory(e.target.value)} /></div>
-            <div className="form-row"><label className="form-label">Upload template file</label><input type="file" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></div>
-            <button type="submit" className="btn-primary" disabled={!file}>Add template</button>
-            {message && <p role="status" style={{ color: 'var(--ink-muted)' }}>{message}</p>}
-          </form>
-          <div style={{ marginTop: 12 }}>
-            <DataTable columns={[
-              { key: 'category', label: 'Category' },
-              { key: 'file', label: 'Template file', render: (r) => r.file ? String(r.file).split('/').pop() : '—' },
-              { key: 'createdAt', label: 'Uploaded on', render: (r) => fmtCertDate(r.createdAt) },
-              { key: 'download', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => certificatesApi.downloadTemplate(r._id).catch((e) => setMessage(e.message))}>Download</button> },
-            ]} rows={templates.data?.items ?? []} emptyText="No certificate templates uploaded." />
-          </div>
-        </Panel>
-        <Panel title="Request completion certificate from client" sub="Sent to the client to upload; the uploaded file can then be downloaded here">
-          <form onSubmit={submitHrRequest} className="field-grid">
-            <div className="form-row"><label className="form-label">Project</label><select required className="filter-select" style={{ width: '100%' }} value={req.project} onChange={(e) => setReq({ ...req, project: e.target.value })}><option value="">Select project</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select></div>
-            <div className="form-row"><label className="form-label">Certificate category</label><select required className="filter-select" style={{ width: '100%' }} value={req.category} onChange={(e) => setReq({ ...req, category: e.target.value })}><option value="">Select category from templates</option>{templateCategories.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
-            <button type="submit" className="btn-primary" disabled={requestCert.isPending}>{requestCert.isPending ? 'Sending…' : 'Send request to client'}</button>
-          </form>
-          {requestCert.isError && <div className="login-error" role="alert" style={{ display: 'block', marginTop: 10 }}>{requestCert.error.message}</div>}
-        </Panel>
-        <Panel
-          title="Client-uploaded certificates"
-          sub={`${allRequests.length} requested · ${uploadedCount} uploaded · ${awaitingCount} awaiting client`}
-        >
-          {requests.isLoading || list.isLoading ? <p>Loading client certificate requests…</p> : requests.isError ? (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>{requests.error.message}</div>
-          ) : list.isError ? (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>{list.error.message}</div>
-          ) : <DataTable columns={[
-            { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-            { key: 'category', label: 'Category', render: (r) => r.category ?? '—' },
-            { key: 'createdAt', label: 'Requested', render: (r) => fmtCertDate(r.createdAt) },
-            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
-            { key: 'file', label: 'Uploaded file', render: (r) => {
-              const f = uploadedFileFor(r);
-              return f ? <a href={`${API_BASE}/api/certificates/${f.id}/file`} download>{f.name}</a> : '—';
-            } },
-            { key: 'download', label: '', render: (r) => {
-              const f = uploadedFileFor(r);
-              return f ? <a href={`${API_BASE}/api/certificates/${f.id}/file`} download>Download</a> : '—';
-            } },
-          ]} rows={allRequests} emptyText="No client certificate requests yet." />}
-        </Panel>
       </div>
     );
   }

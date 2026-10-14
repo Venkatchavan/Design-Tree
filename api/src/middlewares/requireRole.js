@@ -6,7 +6,7 @@ import {
 } from '../config/roles.js';
 
 // requireRole('hr', 'admin_billing', ...)
-// Founding/Working Directors bypass every check (§3.4 full access).
+// Founding/Working/Executive Directors bypass every check (§3.4 full access).
 export function requireRole(...allowed) {
   return (req, res, next) => {
     const role = req.user?.role;

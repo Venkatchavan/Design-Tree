@@ -11,7 +11,7 @@ function pathForLink(link, role) {
   if (!link?.view) return null;
   switch (link.view) {
     case 'meeting':
-      return `${role === 'coordinator' ? '/meetings' : ['technical_director','associate_director','assoc_technical_director','design_mgmt_head','founding_director','working_director','executive_director'].includes(role) ? '/meetings' : '/meetings/mine'}${link.id ? `?meeting=${link.id}` : ''}`;
+      return `${['coordinator','design_mgmt_head'].includes(role) ? '/meetings' : '/meetings/mine'}${link.id ? `?meeting=${link.id}` : ''}`;
     case 'leave':
     case 'travel':
     case 'allowance':

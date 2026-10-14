@@ -2,7 +2,7 @@ import { logoutApi } from './api.js';
 import { disconnectSocket } from './realtime.js';
 
 export const PENDING_LOGOUT_KEY = 'datum-pending-logout';
-export const SUPER_ROLES = ['founding_director', 'working_director'];
+export const SUPER_ROLES = ['founding_director', 'working_director', 'executive_director'];
 
 // Directive roles (founding director → assoc technical director): no own
 // man-hour entry required, sign out directly, view-only for others' hours.
