@@ -197,12 +197,6 @@ export default function DashboardPage({ bootstrap }) {
                     <span className="branch-stat-value">{b.projects ?? 0}</span>
                     <span className="branch-stat-label">Projects</span>
                   </div>
-                  <div>
-                    <span className="branch-stat-value">
-                      {b.avgCompletion != null ? `${b.avgCompletion}%` : '—'}
-                    </span>
-                    <span className="branch-stat-label">Avg completion</span>
-                  </div>
                 </div>
               </div>
             ))}

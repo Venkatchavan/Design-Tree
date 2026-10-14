@@ -7,7 +7,7 @@ import DataTable from '../components/DataTable.jsx';
 import StatusPill from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 
-const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director']);
+const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director']);
 
 function fmtShortDate(v) {
   if (!v) return '—';

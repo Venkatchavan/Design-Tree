@@ -143,9 +143,16 @@ function ShellRoutes({ user }) {
     })
     // Belt-and-braces: Associate/Technical Directors never mount HR, even
     // from a stale or forged bootstrap nav (server canAccess is already false).
+    // Technical/Assoc-Technical Directors also never mount design-mgmt or
+    // billing-status.
     .filter((v) => {
-      if (v !== 'hr') return true
-      return user?.role !== 'associate_director' && user?.role !== 'technical_director'
+      if (v === 'hr') {
+        return user?.role !== 'associate_director' && user?.role !== 'technical_director'
+      }
+      if (v === 'design-mgmt' || v === 'billing-status') {
+        return user?.role !== 'technical_director' && user?.role !== 'assoc_technical_director'
+      }
+      return true
     })
   const homePath = bootstrap.views[bootstrap.home].path
 
