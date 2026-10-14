@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { projectsApi, employeesApi, usersApi } from '../lib/api.js';
 import { spocApi } from '../lib/spocApi.js';
-import { areaApi, discApi, drawingAckApi, gbsApi, peerApi, serviceDashboardApi, stageReviewApi, variationApi, visitsApi, weeklyReportApi, workItemApi } from '../lib/functionsApi.js';
+import { discApi, drawingAckApi, gbsApi, peerApi, serviceDashboardApi, stageReviewApi, variationApi, visitsApi, weeklyReportApi, workItemApi } from '../lib/functionsApi.js';
 import { billingApi } from '../lib/phase3Api.js';
 import { deliverablesApi, drawingsApi, revisionsApi } from '../lib/workApi.js';
 import { summarizeRevisions } from '../lib/revisionSummary.js';
@@ -38,7 +38,6 @@ const TOP_TABS = [
   ...SERVICE_TABS.map((s) => ({ key: s.key, label: s.label })),
 ];
 
-const PROJECT_STAGE_CODES = ['CD', 'SD', 'DD', 'TD', 'GFC'];
 const STAGE_ORDER = ['Preliminary concept', 'Concept', 'Schematic', 'Design development', 'Tender', 'GFC'];
 
 const DAY = 86400000;
@@ -560,7 +559,6 @@ export default function ProjectDetailPage({ bootstrap }) {
   const revisionsQ = useQuery({ queryKey: ['project-revisions', id], queryFn: () => revisionsApi.list({ project: id }), enabled: !!id, retry: false });
   const deliverablesQ = useQuery({ queryKey: ['project-deliverables', id], queryFn: () => deliverablesApi.list({ project: id }), enabled: !!id, retry: false });
   const meetingsQ = useQuery({ queryKey: ['project-meetings', id], queryFn: () => meetingsApi.list({ project: id }), enabled: !!id, retry: false });
-  const areaQ = useQuery({ queryKey: ['project-area', id], queryFn: () => areaApi.list({ project: id }), enabled: !!id, retry: false });
   const workItemsQ = useQuery({ queryKey: ['project-work-items', id], queryFn: () => workItemApi.list({ project: id }), enabled: !!id, retry: false });
   const visitsQ = useQuery({ queryKey: ['project-visits', id], queryFn: () => visitsApi.list({ project: id }), enabled: !!id, retry: false });
   const weeklyQ = useQuery({ queryKey: ['project-weekly', id], queryFn: () => weeklyReportApi.list({ project: id }), enabled: !!id, retry: false });
@@ -614,7 +612,6 @@ export default function ProjectDetailPage({ bootstrap }) {
   const revisions = ofProject(revisionsQ.data?.items);
   const deliverables = ofProject(deliverablesQ.data?.items);
   const meetings = ofProject(meetingsQ.data?.items);
-  const areaRows = ofProject(areaQ.data?.items);
   const workItemRows = ofProject(listOf(workItemsQ.data));
   const visitRows = ofProject(visitsQ.data?.items);
   const weeklyRows = ofProject(weeklyQ.data?.items);
@@ -632,7 +629,6 @@ export default function ProjectDetailPage({ bootstrap }) {
   const pmc = asObj(contacts.pmc);
   const billing = asObj(contacts.billing);
   const loc = asObj(project.location);
-  const ptls = project.principalTeamLeads ?? [];
 
   const openRevisions = revisions.filter((r) => String(r.status ?? '') !== 'Cleared');
   const openActions = meetings.flatMap((m) =>
@@ -688,36 +684,6 @@ export default function ProjectDetailPage({ bootstrap }) {
   const mapsUrl = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}` : null;
   const locationText = [loc.label, loc.city, loc.state].filter(Boolean).join(', ');
 
-  const timeline = PROJECT_STAGE_CODES.map((code, i) => {
-    const cur = PROJECT_STAGE_CODES.indexOf(project.currentStage ?? 'CD');
-    const status = i < cur ? 'Completed' : i === cur ? 'In progress' : 'Not started';
-    return { code, status };
-  });
-
-  const areaInitial = areaRows.reduce((s, r) => s + Number(r.initial ?? 0), 0);
-  const areaRevised = areaRows.reduce((s, r) => s + Number(r.revised ?? 0), 0);
-  const areaDelta = areaRevised - areaInitial;
-  const flags = [
-    {
-      flag: 'Work order',
-      detail: project.jobNumber
-        ? `${project.jobNumber} logged${project.workOrderDate ? ` on ${fmtDate(project.workOrderDate)}` : ''}`
-        : 'No work order number recorded',
-    },
-    {
-      flag: 'Area variance',
-      detail: areaRows.length === 0
-        ? 'No area statement recorded'
-        : areaDelta === 0
-          ? 'No change from the initial area statement'
-          : `${areaInitial.toLocaleString('en-IN')} → ${areaRevised.toLocaleString('en-IN')} (${areaDelta > 0 ? '+' : ''}${areaDelta.toLocaleString('en-IN')}) against the initial area statement`,
-    },
-  ];
-
-  const coordinationLog = [...meetings]
-    .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')))
-    .slice(0, 10);
-
   // Technical Director's Coordination sub-tab: one Coordination log panel
   // (Date / Channel / Topic / Deadline / Status) built from live revisions.
   const coordinationRows = [...revisions]
@@ -734,7 +700,7 @@ export default function ProjectDetailPage({ bootstrap }) {
     });
 
   const revisionLogPanel = (
-    <Panel title="Revision logs" sub="By stage, for this project">
+    <Panel title="Revision logs" sub="By stage · client and architect revisions are the ones eligible for additional billing">
       {revisionGroups.map((g) => (
         <div key={g.stage} style={{ marginBottom: 16 }}>
           <div className="section-label">{g.stage}</div>
@@ -746,9 +712,6 @@ export default function ProjectDetailPage({ bootstrap }) {
                 { key: 'date', label: 'Date', render: (r) => fmtDate(r.dateRaised ?? r.createdAt) },
                 { key: 'desc', label: 'Description', render: (r) => r.details ?? '—' },
                 { key: 'reason', label: 'Reason', render: (r) => r.raisedBy ?? '—' },
-                { key: 'drawing', label: 'Drawing', render: (r) => r.drawing ?? '—' },
-                { key: 'rev', label: 'Rev', render: (r) => r.revNo ?? '—' },
-                { key: 'status', label: 'Status', render: (r) => r.status ?? '—' },
               ]}
               rows={g.rows}
               emptyText="No revisions logged."
@@ -757,6 +720,91 @@ export default function ProjectDetailPage({ bootstrap }) {
         </div>
       ))}
     </Panel>
+  );
+
+  // Coordinator → Overview shows exactly 5 components for every internal role.
+  const overviewProgress = (s) => {
+    const status = String(s?.currentStatus ?? '');
+    const lower = status.toLowerCase();
+    if (lower === 'completed') return `100% · completed ${fmtDate(s.updatedAt ?? s.plannedCompletion)}`;
+    if (s?.reason) return s.reason;
+    if (lower === 'in progress' || lower === 'inprogress' || lower === 'ongoing') {
+      return `In progress since ${fmtDate(s.createdAt)}`;
+    }
+    if (lower === 'on hold' || lower === 'onhold' || lower === 'paused') {
+      return `Paused since ${fmtDate(s.updatedAt ?? s.createdAt)}`;
+    }
+    if (lower === 'revision' || lower === 'revision requested') {
+      return `Revision requested ${fmtDate(s.updatedAt ?? s.createdAt)}`;
+    }
+    return status || '—';
+  };
+
+  const overviewDelay = (s) => {
+    const lower = String(s?.currentStatus ?? '').toLowerCase();
+    if (lower === 'on hold' || lower === 'onhold' || lower === 'paused') return 'On hold — awaiting input';
+    if (lower === 'revision' || lower === 'revision requested') return 'Awaiting resubmission';
+    const n = Number(s?.delayDays ?? 0);
+    return n > 0 ? `Tracking ${n} days behind` : 'On time';
+  };
+
+  // Reconciled 5-stage schedule: durations derived live from StageStatus
+  // (createdAt → plannedCompletion = planned days, createdAt → updatedAt = actual days).
+  const RECONCILED_SCHEDULE = ['Concept', 'Schematic', 'Tender', 'GFC - sub structure', 'GFC - super structure'];
+  const reconciledMatches = (slot, raw) => {
+    const v = String(raw ?? '').trim().toLowerCase();
+    if (slot === 'Concept') return ['concept', 'cd', 'preliminary concept'].includes(v);
+    if (slot === 'Schematic') return ['schematic', 'sd'].includes(v);
+    if (slot === 'Tender') return ['tender', 'td', 'design development', 'dd'].includes(v);
+    if (slot === 'GFC - sub structure') return v.includes('gfc') && (v.includes('sub') || v === 'gfc');
+    if (slot === 'GFC - super structure') return v.includes('gfc') && (v.includes('super') || v === 'gfc');
+    return false;
+  };
+  const daysBetween = (a, b) => {
+    const t1 = Date.parse(a);
+    const t2 = Date.parse(b);
+    if (Number.isNaN(t1) || Number.isNaN(t2)) return null;
+    return Math.round((t2 - t1) / DAY);
+  };
+  const median = (nums) => {
+    if (nums.length === 0) return null;
+    const sorted = [...nums].sort((x, y) => x - y);
+    return sorted[Math.floor(sorted.length / 2)];
+  };
+  const stageTimingRows = RECONCILED_SCHEDULE.map((slot) => {
+    const rows = stages.filter((s) => reconciledMatches(slot, s.stage));
+    if (rows.length === 0) return { stage: slot, planned: '—', actual: 'Not started', variance: '—' };
+    const plannedDurations = rows
+      .map((s) => daysBetween(s.createdAt, s.plannedCompletion))
+      .filter((n) => n != null && n >= 0);
+    const completedDurations = rows
+      .filter((s) => String(s.currentStatus ?? '').toLowerCase() === 'completed')
+      .map((s) => daysBetween(s.createdAt, s.updatedAt ?? s.plannedCompletion))
+      .filter((n) => n != null && n >= 0);
+    const plannedMedian = median(plannedDurations);
+    const actualMedian = median(completedDurations);
+    const planned = plannedMedian != null ? `${plannedMedian} days` : '—';
+    let actual = 'Not started';
+    let variance = '—';
+    if (actualMedian != null && plannedMedian != null) {
+      actual = `${actualMedian} days`;
+      const diff = actualMedian - plannedMedian;
+      variance = diff === 0 ? 'On time' : `${diff > 0 ? '+' : ''}${diff} days`;
+    } else if (actualMedian != null) {
+      actual = `${actualMedian} days`;
+    } else if (rows.some((s) => ['in progress', 'inprogress', 'ongoing', 'revision', 'on hold'].includes(String(s.currentStatus ?? '').toLowerCase()))) {
+      actual = 'Ongoing';
+    }
+    return { stage: slot, planned, actual, variance };
+  });
+
+  // Coordination log — schematic and tender only.
+  const schematicTenderLog = [...meetings]
+    .filter((m) => ['schematic', 'tender', 'sd', 'td'].includes(String(m.stage ?? '').trim().toLowerCase()))
+    .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+
+  const clashRows = [...discRows].sort((a, b) =>
+    String(b.raised ?? b.createdAt ?? '').localeCompare(String(a.raised ?? a.createdAt ?? '')),
   );
 
   const activeService = SERVICE_TABS.find((s) => s.key === top) ?? null;
@@ -975,7 +1023,7 @@ export default function ProjectDetailPage({ bootstrap }) {
         <>
           <Tabs tabs={COORD_TABS} active={coord} onChange={setCoord} />
 
-          {!isTD && (
+          {(!isTD && coord !== 'overview') && (
           <Panel title="Assigned SPOC">
             <p>{(teamQ.data?.allocations ?? []).filter(a => a.status === 'Approved').map(a => empName(a.coordinator)).join(', ') || empName(project.activation?.spoc) || 'Not allocated'}</p>
           </Panel>
@@ -991,83 +1039,61 @@ export default function ProjectDetailPage({ bootstrap }) {
           </>}
           {coord === 'overview' && (
             <>
-              <Panel title="Project status" sub="Design-stage timeline">
-                <DataTable
-                  columns={[
-                    { key: 'stage', label: 'Stage', render: (r) => r.code },
-                    { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-                  ]}
-                  rows={timeline}
-                />
-              </Panel>
-
-              <Panel title="Stage & Service-wise Status" sub="Live project status, progress & completion, and delay / submission status — by service and stage">
+              <Panel title="Stage & Service-wise Status" sub="Live project status, progress & completion, and delay / submission status — by service and stage, covering every service tracked on the Board & Leadership dashboard">
                 <DataTable
                   columns={[
                     { key: 'service', label: 'Service', render: (s) => s.service ?? '—' },
                     { key: 'stage', label: 'Stage', render: (s) => s.stage ?? '—' },
                     { key: 'live', label: 'Live status', render: (s) => s.currentStatus ?? '—' },
-                    { key: 'progress', label: 'Progress / completion', render: (s) => (String(s.currentStatus ?? '').toLowerCase() === 'completed' ? 'Completed' : '—') },
-                    { key: 'delay', label: 'Delay / submission status', render: (s) => (Number(s.delayDays ?? 0) > 0 ? `${s.delayDays} day(s) late` : 'On time') },
+                    { key: 'progress', label: 'Progress / completion', render: (s) => overviewProgress(s) },
+                    { key: 'delay', label: 'Delay / submission status', render: (s) => overviewDelay(s) },
                   ]}
                   rows={stages}
                   emptyText="No stage status recorded for this project yet."
                 />
               </Panel>
 
-              <Panel title="Flags" sub="Work order and area statement">
+              <Panel title="Stage timing" sub="Planned vs. actual, per the reconciled 5-stage schedule">
                 <DataTable
                   columns={[
-                    { key: 'flag', label: 'Flag', render: (r) => r.flag },
-                    { key: 'detail', label: 'Detail', render: (r) => r.detail },
+                    { key: 'stage', label: 'Stage' },
+                    { key: 'planned', label: 'Planned' },
+                    { key: 'actual', label: 'Actual' },
+                    { key: 'variance', label: 'Variance' },
                   ]}
-                  rows={flags}
-                />
-              </Panel>
-
-              <Panel title="Coordination log" sub="Meetings and coordination actions for this project">
-                <DataTable
-                  columns={[
-                    { key: 'date', label: 'Date', render: (m) => fmtDate(m.date) },
-                    { key: 'services', label: 'Disciplines', render: (m) => (m.services ?? []).join(' / ') || '—' },
-                    { key: 'title', label: 'Meeting', render: (m) => m.title ?? '—' },
-                    { key: 'action', label: 'Action', render: (m) => m.actions?.[0]?.text ?? '—' },
-                    { key: 'status', label: 'Status', render: (m) => m.status ?? '—' },
-                  ]}
-                  rows={coordinationLog}
-                  emptyText="No coordination meetings logged for this project yet."
-                />
-              </Panel>
-
-              <Panel title="Clash log" sub="Construction and drawing discrepancies raised on this project">
-                <DataTable
-                  columns={[
-                    { key: 'date', label: 'Date', render: (d) => fmtDate(d.raised ?? d.createdAt) },
-                    { key: 'kind', label: 'Type', render: (d) => d.kind ?? '—' },
-                    { key: 'discipline', label: 'Discipline', render: (d) => d.discipline ?? '—' },
-                    { key: 'issue', label: 'Issue', render: (d) => d.issue ?? '—' },
-                    { key: 'status', label: 'Status', render: (d) => <StatusPill status={d.status}>{d.status ?? '—'}</StatusPill> },
-                  ]}
-                  rows={discRows}
-                  emptyText="No clashes or discrepancies logged for this project."
+                  rows={stageTimingRows}
+                  emptyText="No stage timing recorded for this project yet."
                 />
               </Panel>
 
               {revisionLogPanel}
 
-              <Panel title="Principal team leads">
-                {ptls.length === 0 ? (
-                  <EmptyState text="No principal team leads assigned yet." />
-                ) : (
-                  <DataTable
-                    columns={[
-                      { key: 'service', label: 'Service' },
-                      { key: 'name', label: 'Name(s)', render: (r) => [r.name, ...((r.names ?? []).filter(Boolean))].filter(Boolean).join(', ') || '—' },
-                    ]}
-                    rows={ptls}
-                    emptyText="No principal team leads assigned yet."
-                  />
-                )}
+              <Panel title="Coordination log - schematic and tender">
+                <DataTable
+                  columns={[
+                    { key: 'date', label: 'Date', render: (m) => fmtDate(m.date) },
+                    { key: 'stage', label: 'Stage', render: (m) => m.stage ?? '—' },
+                    { key: 'services', label: 'Disciplines', render: (m) => (m.services ?? []).join(' · ') || '—' },
+                    { key: 'issue', label: 'Issue', render: (m) => m.title ?? '—' },
+                    { key: 'action', label: 'Action', render: (m) => m.actions?.[0]?.text ? `Action: ${m.actions[0].text}` : '—' },
+                  ]}
+                  rows={schematicTenderLog}
+                  emptyText="No schematic / tender coordination logged for this project yet."
+                />
+              </Panel>
+
+              <Panel title="Clash log" sub="All stages">
+                <DataTable
+                  columns={[
+                    { key: 'date', label: 'Date', render: (d) => fmtDate(d.raised ?? d.createdAt) },
+                    { key: 'stage', label: 'Stage', render: (d) => d.stage ?? '—' },
+                    { key: 'disciplines', label: 'Disciplines', render: (d) => [d.discipline, d.withDiscipline].filter(Boolean).join(' / ') || '—' },
+                    { key: 'issue', label: 'Issue', render: (d) => d.issue ?? '—' },
+                    { key: 'status', label: 'Status', render: (d) => <StatusPill status={d.status}>{d.status ?? '—'}</StatusPill> },
+                  ]}
+                  rows={clashRows}
+                  emptyText="No clashes or discrepancies logged for this project."
+                />
               </Panel>
             </>
           )}
