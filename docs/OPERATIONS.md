@@ -12,7 +12,7 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
 | Update to a new build | backup first → `git pull` → `docker compose up -d --build` → smoke-test |
 | Re-seed superuser login | `docker compose run --rm api npm run seed` (upsert — safe to re-run) |
 | Rotate app secret | set new `JWT_SECRET` in `.env` → `up -d` (logs everyone out, by design) |
-| Change dbadmin password | regenerate `gateway/.htpasswd` line → `docker compose restart gateway` |
+| Change dbadmin password | set new `ME_CONFIG_BASICAUTH_PASSWORD` in `.env` → `docker compose up -d --no-deps mongo-express` (only dbadmin restarts, no app downtime) |
 
 ## Access map
 
@@ -22,8 +22,12 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
 - Topbar project search appears for roles with dashboard access (≥2 chars,
   top 8 hits).
 - Health: `https://<server>/api/health` → `{"ok":true}` (first check when anything looks wrong).
-- DB admin: `https://<server>/dbadmin` — nginx password, then express login.
-  Reachable only from allowlisted IPs; everyone else gets `403`.
+- DB admin: `http://127.0.0.1:18081/dbadmin/` on the server itself (express login
+  with `ME_CONFIG_BASICAUTH_*` from root `.env`). Loopback-bound only — LAN/WAN
+  cannot reach it. FD remote: `ssh -N -L 18081:127.0.0.1:18081 <user>@192.168.1.50`
+  then open the same URL locally. `https://<server>/dbadmin` via gateway stays
+  `403` (Docker Desktop NAT masks all clients as `172.18.0.1`, so its nginx
+  `allow` never matches — closed by design).
 - MongoDB port is **not published** — there is no direct DB access from the LAN.
 
 ## Troubleshooting
@@ -39,7 +43,7 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
 | Sign-out blocked (man-hour / attendance reason) | Engineer/Drafter + Coordinator need today's hours (`My work` / `My coordination`); late (>09:45) or short (<8h) days need a reason on the sign-out modal — not an error |
 | Uploaded file 404 after redeploy | Uploads bind broken (`HOST_UPLOADS_DIR` wrong / `D:\` unshared) — files went to the container layer; fix mount, restore from backup |
 | `mongo` unhealthy | Wrong `MONGO_ROOT_*` (special chars must be URL-encoded); check `docker compose logs mongo` |
-| `/dbadmin` 403 on FD PC | PC address changed (DHCP) → update `allow` line in `gateway/nginx.conf`, rebuild gateway |
+| `/dbadmin` 403 via gateway | Expected: nginx `allow` cannot see real IPs under Docker Desktop NAT (all clients appear as `172.18.0.1`) → use loopback `http://127.0.0.1:18081/dbadmin/` on the server or SSH tunnel |
 | `/dbadmin` asks twice | Normal: nginx basic-auth first, express login second — three gates total |
 | `down -v` was run | Database volume DELETED (named volume, not a bind) — restore from the newest backup pair per `BACKUP_RESTORE.md`. Uploads (host bind) survive; the DB does not. Never run `down -v` / `volume prune` again without a verified backup |
 | Backup/restore aborts on `CLIENT_ORIGIN` | Root `.env` holds development (`localhost`) values — likely copied from `api/.env`; refill it from `.env.example` with production values |

@@ -129,8 +129,14 @@ services:
     image: mongo-express:1
     container_name: designtree-dbadmin
     restart: unless-stopped
-    # NO ports published: reachable only through gateway /dbadmin/
-    # (IP allowlist + basic-auth) on the frontend network.
+    # Permanent loopback-only direct access (no app downtime to enable):
+    # http://127.0.0.1:18081/dbadmin/ on the server itself + SSH tunnel
+    # (ssh -N -L 18081:127.0.0.1:18081 <user>@server) for FD remote.
+    # Bound to 127.0.0.1 so LAN/WAN cannot reach it. Gateway /dbadmin/
+    # stays closed (Docker Desktop NAT masks all clients as 172.18.0.1,
+    # so its allow 127.0.0.1/192.168.1.50 never matches -> 403 by design).
+    ports:
+      - "127.0.0.1:18081:8081"
     environment:
       ME_CONFIG_MONGODB_URL: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       ME_CONFIG_BASICAUTH: "true"
