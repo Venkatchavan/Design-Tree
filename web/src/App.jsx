@@ -39,6 +39,7 @@ import ClientPortalPage from './pages/ClientPortalPage.jsx'
 import LeaveTravelPage from './pages/LeaveTravelPage.jsx'
 import EmployeeSupportPage from './pages/EmployeeSupportPage.jsx'
 import BranchesPage from './pages/BranchesPage.jsx'
+import OfflineGate from './components/OfflineGate.jsx'
 import TravelBookingPage from './pages/TravelBookingPage.jsx'
 
 const VIEW_COMPONENTS = {
@@ -213,11 +214,13 @@ function AuthGate() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/certificate-request/:token" element={<PublicCertificatePage />} />
-        <Route path="*" element={<AuthGate className="app-watermark" />} />
-      </Routes>
-    </BrowserRouter>
+    <OfflineGate>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/certificate-request/:token" element={<PublicCertificatePage />} />
+          <Route path="*" element={<AuthGate className="app-watermark" />} />
+        </Routes>
+      </BrowserRouter>
+    </OfflineGate>
   )
 }
