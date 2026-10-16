@@ -4,6 +4,7 @@ import { RECRUITMENT_STATUSES } from '../models/Recruitment.js';
 import { REVISION_STATUSES } from '../models/Revision.js';
 import { SPOC_REVISION_STATUSES, SPOC_SERVICES, SPOC_WORK_AREAS } from '../models/SpocEntry.js';
 import { TASK_PRIORITIES, TASK_STATUSES } from '../models/Task.js';
+import { WEEKLY_REPORT_STATUSES } from '../models/WeeklyReport.js';
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
 const strOpt = z.string().trim().optional();
@@ -49,6 +50,8 @@ export const revisionSchema = z
     resubmissionDue: dateOpt,
     details: z.string().trim().min(1),
     notify: z.boolean().optional(),
+    priority: z.enum(['Normal', 'High', 'Urgent']).optional(),
+    notifyEmployees: z.array(objectId).optional(),
   })
   .strict();
 export const revisionUpdateSchema = revisionSchema.partial();
@@ -73,9 +76,11 @@ export const drawingUpdateSchema = drawingSchema.partial();
 
 export const recruitmentSchema = z
   .object({
+    project: objectId.optional(),
     department: z.string().trim().min(1),
     position: z.string().trim().min(1),
     headcount: z.number().min(1),
+    branch: strOpt,
     fresherExperienced: strOpt,
     experience: strOpt,
     timeline: strOpt,
@@ -101,6 +106,7 @@ export const areaSettlementSchema = z
     initial: z.number().min(0),
     revised: z.number().min(0),
     remarks: strOpt,
+    status: z.enum(['Pending', 'Approved', 'Rejected']).optional(),
   })
   .strict();
 export const areaSettlementReviewSchema = z
@@ -120,13 +126,13 @@ export const boqItemSchema = z
     rate: z.number().min(0).optional(),
     amount: z.number().min(0).optional(),
     remarks: strOpt,
-    status: z.enum(['Draft', 'Submitted']).optional(),
+    status: z.enum(['Draft', 'Submitted', 'Approved']).optional(),
   })
   .strict();
 export const boqItemUpdateSchema = boqItemSchema.partial();
 export const boqReviewSchema = z
   .object({
-    status: z.enum(['Submitted', 'Approved']),
+    status: z.enum(['Draft', 'Submitted', 'Approved']),
     remarks: strOpt,
   })
   .strict();
@@ -136,6 +142,7 @@ export const siteVisitSchema = z
     project: objectId,
     visitType: z.string().trim().min(1),
     date: dateOpt,
+    phase: strOpt,
     photos: z.array(z.string().trim()).optional(),
     remarksClient: strOpt,
     remarksDesigner: strOpt,
@@ -149,7 +156,9 @@ export const discrepancySchema = z
   .object({
     project: objectId,
     discipline: strOpt,
+    withDiscipline: strOpt,
     severity: strOpt,
+    kind: z.enum(['Construction', 'Drawing']).optional(),
     issue: z.string().trim().min(1),
     raised: dateOpt,
     due: dateOpt,
@@ -157,6 +166,18 @@ export const discrepancySchema = z
   })
   .strict();
 export const discrepancyUpdateSchema = discrepancySchema.partial();
+
+export const weeklyReportSchema = z
+  .object({
+    project: objectId,
+    weekStart: z.coerce.date(),
+    weekEnd: dateOpt,
+    weekLabel: strOpt,
+  })
+  .strict();
+export const weeklyReportApproveSchema = z
+  .object({ status: z.enum(WEEKLY_REPORT_STATUSES) })
+  .strict();
 
 export const conveyanceSchema = z
   .object({
@@ -180,7 +201,7 @@ export const rfiSchema = z
     team: strOpt,
     assignedTo: strOpt,
     due: dateOpt,
-    status: z.enum(['Open', 'Responded', 'Closed']).optional(),
+    status: z.enum(['Open', 'In Progress', 'Escalated', 'Responded', 'Closed']).optional(),
   })
   .strict();
 export const rfiUpdateSchema = rfiSchema.partial();

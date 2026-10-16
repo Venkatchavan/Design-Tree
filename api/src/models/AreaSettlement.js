@@ -15,7 +15,7 @@ const areaSettlementSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ['Pending', 'Approved', 'Rejected'],
-      default: 'Pending',
+      default: 'Approved',
       index: true,
     },
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

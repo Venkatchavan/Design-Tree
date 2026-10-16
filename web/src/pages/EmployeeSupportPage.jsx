@@ -6,12 +6,30 @@ import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import { fileUrl } from '../lib/docsApi.js';
 
 function fmtDate(v) {
   if (!v) return '—';
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return String(v);
   return d.toISOString().slice(0, 10);
+}
+
+function fmtMonth(v) {
+  if (!v) return '—';
+  const [year, month] = String(v).slice(0, 7).split('-').map(Number);
+  if (!year || !month || month < 1 || month > 12) return String(v);
+  return new Date(year, month - 1, 1).toLocaleDateString('en-IN', {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function fmtShortDate(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
 }
 
 function latestRemark(item) {
@@ -26,23 +44,100 @@ function latestRemark(item) {
   return item.statusRemark ?? item.decisionRemarks ?? '—';
 }
 
-function SupportTab({ kind, title, showMonth, hint }) {
+function SalarySlipTab() {
   const queryClient = useQueryClient();
-  const [month, setMonth] = useState('');
+  const [month, setMonth] = useState(() => {
+    const previousMonth = new Date();
+    previousMonth.setDate(1);
+    previousMonth.setMonth(previousMonth.getMonth() - 1);
+    return `${previousMonth.getFullYear()}-${String(previousMonth.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [err, setErr] = useState('');
+  const mineQ = useQuery({ queryKey: ['support-mine', 'salary-slip'], queryFn: supportApi.mine });
+  const mine = useMemo(
+    () => (mineQ.data?.items ?? []).filter((r) => r.kind === 'salary-slip'),
+    [mineQ.data?.items],
+  );
+  const create = useMutation({
+    mutationFn: (body) => supportApi.create(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['support-mine', 'salary-slip'] });
+      setErr('');
+    },
+    onError: (e) => setErr(e.message),
+  });
+
+  function submit(e) {
+    e.preventDefault();
+    setErr('');
+    create.mutate({
+      kind: 'salary-slip',
+      month,
+      subject: `Salary slip — ${fmtMonth(month)}`,
+    });
+  }
+
+  return (
+    <>
+      <Panel title="Request salary slip">
+        <form onSubmit={submit}>
+          <div className="form-row" style={{ maxWidth: 260 }}>
+            <label className="form-label">Month</label>
+            <input className="form-input" type="month" required value={month} onChange={(e) => setMonth(e.target.value)} />
+          </div>
+          {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
+          <button type="submit" className="btn-primary" disabled={create.isPending || !month}>
+            {create.isPending ? 'Requesting…' : 'Request salary slip'}
+          </button>
+        </form>
+      </Panel>
+      <Panel title="My salary slip requests">
+        {mineQ.isLoading ? <EmptyState text="Loading…" /> : mineQ.isError ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{mineQ.error.message}</div>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'month', label: 'Month', render: (r) => fmtMonth(r.month) },
+              { key: 'requestedOn', label: 'Requested on', render: (r) => fmtShortDate(r.createdAt) },
+              { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+              { key: 'issuedOn', label: 'Issued on', render: (r) => fmtShortDate(r.issuedAt) },
+              { key: 'download', label: 'Download', render: (r) => r.file ? <a href={fileUrl(r.file)} download>Download</a> : '—' },
+            ]}
+            rows={mine}
+            emptyText="No salary slip requests yet."
+          />
+        )}
+      </Panel>
+    </>
+  );
+}
+
+function SupportTab({ kind, title }) {
+  const queryClient = useQueryClient();
   const [category, setCategory] = useState('');
   const [subject, setSubject] = useState('');
   const [details, setDetails] = useState('');
   const [err, setErr] = useState('');
 
   const mineQ = useQuery({ queryKey: ['support-mine', kind], queryFn: supportApi.mine });
-  const allMine = mineQ.data?.items ?? [];
-  const mine = useMemo(() => allMine.filter((r) => String(r.kind ?? '').toLowerCase() === kind.toLowerCase()), [allMine, kind]);
+  const mine = useMemo(
+    () => (mineQ.data?.items ?? []).filter((r) => String(r.kind ?? '').toLowerCase() === kind.toLowerCase()),
+    [mineQ.data?.items, kind],
+  );
+  const categoryOptions = useMemo(() => {
+    const defaults = {
+      complaint: ['Facilities', 'IT', 'HR', 'Admin', 'Other'],
+      suggestion: ['Process improvement', 'Tools', 'Workplace', 'Other'],
+      query: ['HR policy', 'Payroll', 'Leave', 'Other'],
+      'salary-slip': [],
+    }[kind] ?? ['Other'];
+    return [...new Set([...defaults, ...mine.map((r) => r.category).filter(Boolean)])];
+  }, [mine, kind]);
 
   const create = useMutation({
     mutationFn: (body) => supportApi.create(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['support-mine'] });
-      setMonth('');
       setCategory('');
       setSubject('');
       setDetails('');
@@ -60,7 +155,6 @@ function SupportTab({ kind, title, showMonth, hint }) {
     }
     create.mutate({
       kind,
-      month: month || undefined,
       category: category || undefined,
       subject: subject || undefined,
       details: details || undefined,
@@ -70,17 +164,13 @@ function SupportTab({ kind, title, showMonth, hint }) {
   return (
     <>
       <Panel title={`${title} — new request`}>
-        {hint && <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>{hint}</p>}
         <form onSubmit={submit}>
-          {showMonth && (
-            <div className="form-row" style={{ maxWidth: 260 }}>
-              <label className="form-label">Month (YYYY-MM)</label>
-              <input className="form-input" type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-            </div>
-          )}
           <div className="form-row">
             <label className="form-label">Category</label>
-            <input className="form-input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Optional category" />
+            <select className="filter-select" style={{ width: '100%' }} value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">Select category</option>
+              {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
           <div className="form-row">
             <label className="form-label">Subject</label>
@@ -116,13 +206,13 @@ function SupportTab({ kind, title, showMonth, hint }) {
   );
 }
 
-export default function EmployeeSupportPage({ bootstrap, user, viewKey }) {
+export default function EmployeeSupportPage() {
   const [tab, setTab] = useState('salary-slip');
   return (
     <>
       <div className="page-head">
         <div className="page-title">Employee support</div>
-        <div className="page-sub">Salary slips, complaints, suggestions and queries — live from the support API.</div>
+        <div className="page-sub">Request your salary slip, and raise complaints, suggestions or queries directly with HR</div>
       </div>
       <Tabs
         tabs={[
@@ -134,9 +224,7 @@ export default function EmployeeSupportPage({ bootstrap, user, viewKey }) {
         active={tab}
         onChange={setTab}
       />
-      {tab === 'salary-slip' && (
-        <SupportTab kind="salary-slip" title="Salary slip" showMonth hint="Request a salary slip for a payroll month." />
-      )}
+      {tab === 'salary-slip' && <SalarySlipTab />}
       {tab === 'complaint' && <SupportTab kind="complaint" title="Complaint" />}
       {tab === 'suggestion' && <SupportTab kind="suggestion" title="Suggestion" />}
       {tab === 'query' && <SupportTab kind="query" title="Query" />}

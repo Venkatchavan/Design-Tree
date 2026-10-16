@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import {
-  requireInternal,
   requireRole,
+  requireView,
 } from '../middlewares/requireRole.js';
 import {
   getWorkflow,
@@ -13,9 +13,9 @@ import {
 const router = Router();
 router.use(requireAuth);
 
-router.get('/meta', requireInternal(), workflowMeta);
-router.get('/', requireInternal(), getWorkflow);
-// Only the Design Management Head (or superusers) updates steps (§4.11).
+router.get('/meta', requireView('design-mgmt'), workflowMeta);
+router.get('/', requireView('design-mgmt'), getWorkflow);
+// Design Management Head owns the workflow steps (TD/Assoc-TD have no design-mgmt access).
 router.put('/', requireRole('design_mgmt_head'), saveWorkflow);
 
 export default router;

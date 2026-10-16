@@ -14,6 +14,11 @@ export const leaveApi = {
   list: (params = {}) => request(`/api/leave-travel/leave${toQuery(params)}`),
   create: (body) =>
     request('/api/leave-travel/leave', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) =>
+    request(`/api/leave-travel/leave/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   decide: (id, body) =>
     request(`/api/leave-travel/leave/${id}/decision`, {
       method: 'PATCH',
@@ -28,6 +33,11 @@ export const travelApi = {
   list: (params = {}) => request(`/api/leave-travel/travel${toQuery(params)}`),
   create: (body) =>
     request('/api/leave-travel/travel', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) =>
+    request(`/api/leave-travel/travel/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   decide: (id, body) =>
     request(`/api/leave-travel/travel/${id}/decision`, {
       method: 'PATCH',
@@ -45,10 +55,19 @@ export const allowanceApi = {
   list: (params = {}) => request(`/api/leave-travel/allowances${toQuery(params)}`),
   create: (body) =>
     request('/api/leave-travel/allowances', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) =>
+    request(`/api/leave-travel/allowances/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   decide: (id, body) =>
     request(`/api/leave-travel/allowances/${id}/decision`, {
       method: 'PATCH',
       body: JSON.stringify(body),
+    }),
+  complete: (id) =>
+    request(`/api/leave-travel/allowances/${id}/complete`, {
+      method: 'PATCH',
     }),
 };
 
@@ -56,6 +75,7 @@ export const holidaysApi = {
   list: (params = {}) => request(`/api/leave-travel/holidays${toQuery(params)}`),
   create: (body) =>
     request('/api/leave-travel/holidays', { method: 'POST', body: JSON.stringify(body) }),
+  remove: (id) => request(`/api/leave-travel/holidays/${id}`, { method: 'DELETE' }),
 };
 
 export const supportApi = {
@@ -65,6 +85,22 @@ export const supportApi = {
     request('/api/support', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) =>
     request(`/api/support/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  salarySlip: async (id, file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_BASE}/api/support/${id}/salary-slip`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.message ?? 'Salary slip upload failed.');
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  },
 };
 
 export const meetingsApi = {
@@ -152,10 +188,23 @@ export const meetingsApi = {
   absenceLog: (params = {}) => request(`/api/meetings/absence-log${toQuery(params)}`),
 };
 
+export const employeeMeetingsApi = {
+  list: (params = {}) => request(`/api/employee-meetings${toQuery(params)}`),
+  create: (body) =>
+    request('/api/employee-meetings', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+};
+
 export const portalApi = {
   mine: () => request('/api/portal/mine'),
   acknowledge: (body) =>
     request('/api/portal/acknowledge', { method: 'POST', body: JSON.stringify(body) }),
+  respond: (id, body) =>
+    request(`/api/portal/rfis/${id}/respond`, { method: 'POST', body: JSON.stringify(body ?? {}) }),
+  acknowledgeStage: (id, body) =>
+    request(`/api/portal/stages/${id}/acknowledge`, { method: 'POST', body: JSON.stringify(body ?? {}) }),
   uploadRequest: async (requestId, file) => {
     const form = new FormData();
     form.append('file', file);

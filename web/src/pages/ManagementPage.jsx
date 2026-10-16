@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { projectsApi, request, toQuery, workEntriesApi } from '../lib/api.js';
-import { billingApi, bookingsApi, certificatesApi, transmittalsApi } from '../lib/phase3Api.js';
+import { attendanceApi, employeesApi, projectsApi, request, toQuery, workEntriesApi } from '../lib/api.js';
+import { billingApi, certificatesApi, transmittalsApi } from '../lib/phase3Api.js';
 import { reportsApi } from '../lib/phase4aApi.js';
 import { bimApi, discApi, peerApi, rfiApi, visitsApi } from '../lib/functionsApi.js';
+import { allowanceApi, travelApi } from '../lib/phase4bApi.js';
 import { revisionsApi } from '../lib/workApi.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
@@ -15,22 +16,14 @@ import EmptyState from '../components/EmptyState.jsx';
 const money = (v) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 const arr = (v) => (Array.isArray(v) ? v : (v?.items ?? []));
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : '—');
-const countBy = (rows, fn) => {
-  const m = {};
-  for (const r of rows) {
-    const k = fn(r) ?? '—';
-    m[k] = (m[k] ?? 0) + 1;
-  }
-  return Object.entries(m).map(([name, count]) => ({ name, count }));
-};
-
-const LEAVE_STATUSES = ['', 'Pending', 'Approved', 'Rejected'];
 
 export default function ManagementPage({ bootstrap, user, viewKey }) {
   void user;
   void viewKey;
   const role = bootstrap?.role?.key ?? '';
-  const hideFinance = role === 'associate_director';
+  // Associate/Technical Directors see delivery, commercial and people overview
+  // without the Finance tab (no finance API access for these roles).
+  const hideFinance = role === 'associate_director' || role === 'technical_director';
 
   const [tab, setTab] = useState('projects');
   const [branch, setBranch] = useState('');
@@ -39,7 +32,10 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
   const [project, setProject] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [leaveStatus, setLeaveStatus] = useState('');
+  const [revSource, setRevSource] = useState('');
+  const [awaitSource, setAwaitSource] = useState('');
+  // Frozen at mount so day-counts stay stable across re-renders.
+  const [nowMs] = useState(() => Date.now());
 
   const mgmtParams = useMemo(
     () => ({
@@ -79,28 +75,57 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
   const billingStages = useQuery({
     queryKey: ['mgmt-billing-stages'],
     queryFn: () => billingApi.stages({}),
-    enabled: tab === 'projects',
-  });
-  const certs = useQuery({
-    queryKey: ['mgmt-certificates'],
-    queryFn: () => certificatesApi.list({}),
-    enabled: tab === 'projects',
-    retry: false,
-  });
-  const billingOverview = useQuery({
-    queryKey: ['mgmt-billing-overview'],
-    queryFn: billingApi.overview,
-    enabled: tab === 'admin',
+    enabled: tab === 'projects' || tab === 'admin',
   });
   const revenue = useQuery({
     queryKey: ['mgmt-revenue'],
     queryFn: billingApi.revenueByProject,
+    enabled: (tab === 'finance' && !hideFinance) || tab === 'admin',
+  });
+  const projectCosts = useQuery({
+    queryKey: ['mgmt-project-costs'],
+    queryFn: billingApi.projectCosts,
     enabled: tab === 'finance' && !hideFinance,
   });
+  const certsQ = useQuery({
+    queryKey: ['mgmt-certificates'],
+    queryFn: () => certificatesApi.list({}),
+    enabled: tab === 'admin',
+    retry: false,
+  });
+  const certReqsQ = useQuery({
+    queryKey: ['mgmt-cert-requests'],
+    queryFn: () => certificatesApi.requests({}),
+    enabled: tab === 'admin',
+    retry: false,
+  });
+  const attendanceQ = useQuery({
+    queryKey: ['mgmt-attendance'],
+    queryFn: () => attendanceApi.list({}),
+    enabled: tab === 'hr',
+    retry: false,
+  });
+  const travelsQ = useQuery({
+    queryKey: ['mgmt-travels'],
+    queryFn: () => travelApi.list({}),
+    enabled: tab === 'travel' || tab === 'hr',
+    retry: false,
+  });
+  const allowsQ = useQuery({
+    queryKey: ['mgmt-allowances'],
+    queryFn: () => allowanceApi.list({}),
+    enabled: tab === 'travel',
+    retry: false,
+  });
+  const employeesQ = useQuery({
+    queryKey: ['mgmt-employees'],
+    queryFn: () => employeesApi.list({}),
+    enabled: tab === 'hr',
+    retry: false,
+  });
   const leave = useQuery({
-    queryKey: ['mgmt-leave', leaveStatus],
-    queryFn: () =>
-      request(`/api/leave-travel/leave${toQuery({ status: leaveStatus || undefined })}`),
+    queryKey: ['mgmt-leave-all'],
+    queryFn: () => request('/api/leave-travel/leave'),
     enabled: tab === 'hr',
     retry: false,
   });
@@ -110,11 +135,6 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
     enabled: tab === 'travel',
     retry: false,
   });
-  const bookingsSummary = useQuery({
-    queryKey: ['mgmt-bookings-summary'],
-    queryFn: bookingsApi.summary,
-    enabled: tab === 'travel',
-  });
   const workEntries = useQuery({
     queryKey: ['mgmt-work-entries', from, to],
     queryFn: () =>
@@ -122,7 +142,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
         ...(from ? { from } : {}),
         ...(to ? { to } : {}),
       }),
-    enabled: tab === 'travel' || tab === 'ptl',
+    enabled: tab === 'ptl' || tab === 'hr' || tab === 'bim',
   });
   const bimOrders = useQuery({
     queryKey: ['mgmt-bim'],
@@ -147,6 +167,29 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
 
   // GBS phase counts across the first 10 active projects (derived).
   const projectRows = arr(projects.data);
+  const projectById = (pid) => projectRows.find((p) => String(p._id) === String(pid));
+  const branchOf = (populated, pid) => populated?.branch ?? projectById(pid)?.branch ?? '—';
+  const branchFilterOptions = useMemo(
+    () => [...new Set(projectRows.map((p) => p.branch).filter(Boolean))].sort((a, b) =>
+      String(a).localeCompare(String(b)),
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects.data],
+  );
+  const serviceFilterOptions = useMemo(
+    () => [...new Set(projectRows.flatMap((p) => (p.scope ?? []).map((s) => s.service)).filter(Boolean))].sort((a, b) =>
+      String(a).localeCompare(String(b)),
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects.data],
+  );
+  const stageFilterOptions = useMemo(
+    () => [...new Set(projectRows.map((p) => p.currentStage).filter(Boolean))].sort((a, b) =>
+      String(a).localeCompare(String(b)),
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects.data],
+  );
   const gbsTargets = useMemo(
     () =>
       projectRows
@@ -176,11 +219,6 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
 
   const m = management.data ?? {};
   const mp = m.projects ?? {};
-  const billing = m.billing ?? {};
-  const qaqc = m.qaqc ?? {};
-  const peer = m.peerReview ?? {};
-  const rfisM = m.rfis ?? {};
-  const meetingsM = m.meetings ?? {};
 
   const TABS = [
     { key: 'projects', label: 'Projects' },
@@ -194,25 +232,9 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
     { key: 'qaqc', label: 'QA/QC' },
   ];
 
-  const rfiRows = arr(openRfis.data);
-  const pendingResponses = rfiRows.filter((r) =>
-    ['open', 'pending', 'raised'].includes(String(r.status ?? '').toLowerCase()),
-  );
-  const billingReadyRows = arr(billingStages.data).filter((s) =>
-    String(s.billingReadiness ?? '').toLowerCase().includes('ready'),
-  );
-  const leaveRows = arr(leave.data);
   const travelRows = arr(travel.data);
   const entryRows = arr(workEntries.data);
   const peerRows = arr(peers.data);
-  const openComments = peerRows.flatMap((p) =>
-    (Array.isArray(p.comments) ? p.comments : []).filter((c) =>
-      ['open', 'pending', 'unresolved'].includes(String(c.status ?? 'open').toLowerCase()),
-    ),
-  );
-  const inProgressPeers = peerRows.filter((p) =>
-    ['in progress', 'inprogress', 'ongoing', 'open'].includes(String(p.status ?? '').toLowerCase()),
-  );
   const ptlByProject = useMemo(() => {
     const groups = {};
     for (const e of entryRows) {
@@ -234,12 +256,48 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
   const hoursByProject = useMemo(() => {
     const groups = {};
     for (const e of entryRows) {
-      const key = e.project?.name ?? e.project ?? 'Unassigned';
+      const pid = String(e.project?._id ?? e.project ?? '');
+      const proj = projectById(pid);
+      const key = proj?.name ?? e.project?.name ?? 'Unassigned';
+      const g = groups[key] ?? { name: key, pid, branch: proj?.branch ?? e.project?.branch ?? '—', stage: proj?.currentStage ?? '—', hours: 0 };
       const h = Number(e.hours ?? e.manHours ?? 0);
-      groups[key] = (groups[key] ?? 0) + (Number.isFinite(h) ? h : 0);
+      g.hours += Number.isFinite(h) ? h : 0;
+      groups[key] = g;
     }
-    return Object.entries(groups).map(([name, hours]) => ({ name, hours }));
-  }, [entryRows]);
+    return Object.entries(groups).map(([name, g]) => ({ name, pid: g.pid, branch: g.branch, stage: g.stage, hours: Math.round(g.hours) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryRows, projects.data]);
+
+  const ptlHoursFiltered = hoursByProject.filter((r) => {
+    if (project && r.pid !== project) return false;
+    if (branch && r.branch !== branch) return false;
+    if (stage && r.stage !== stage) return false;
+    return true;
+  });
+
+  const ptlTransmittals = useMemo(() => arr(management.data?.submissions).filter((r) => {
+    if (project && r.projectId !== project) return false;
+    if (branch && r.branch !== branch) return false;
+    if (service && r.service !== service) return false;
+    if (stage && r.stage !== stage) return false;
+    return true;
+  }), [management.data, project, branch, service, stage]);
+
+  const ptlProgress = useMemo(() => ptlByProject.map((p) => {
+    const proj = projectRows.find((x) => x.name === p.name);
+    return {
+      name: p.name,
+      branch: proj?.branch ?? '—',
+      stage: proj?.currentStage ?? '—',
+      progress: p.progress,
+    };
+  }).filter((r) => {
+    if (project && String(projectById(project)?.name ?? '') !== r.name) return false;
+    if (branch && r.branch !== branch) return false;
+    if (stage && r.stage !== stage) return false;
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [ptlByProject, projects.data, project, branch, stage]);
 
   function resetFilters() {
     setBranch('');
@@ -250,30 +308,419 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
     setTo('');
   }
 
+  // Revision raised-by → Internal / Client / Architect (free-text field).
+  function revisionSourceOf(name) {
+    const t = String(name ?? '');
+    if (/architect/i.test(t)) return 'Architect';
+    if (/client/i.test(t)) return 'Client';
+    return 'Internal';
+  }
+
+  // RFI raised-by (populated user) → source label.
+  function rfiSourceOf(r) {
+    const role = String(r.raisedBy?.role ?? '').toLowerCase();
+    if (role === 'client') return 'Client';
+    if (role === 'architect') return 'Architect';
+    return 'Internal';
+  }
+
+  function inDateRange(v) {
+    if (!from && !to) return true;
+    const d = String(v ?? '').slice(0, 10);
+    if (!d) return false;
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+    return true;
+  }
+
+  const revisionRows = useMemo(() => arr(revisions.data).map((r) => {
+    const pid = String(r.project?._id ?? r.project ?? '');
+    const proj = projectById(pid);
+    return {
+      id: String(r._id ?? r.id),
+      project: r.project?.name ?? proj?.name ?? '—',
+      projectId: pid,
+      branch: proj?.branch ?? '—',
+      stage: r.stage ?? '—',
+      item: r.details ?? r.drawing ?? '—',
+      source: revisionSourceOf(r.raisedBy),
+      raised: r.dateRaised ?? r.createdAt,
+      status: String(r.status ?? '') === 'Cleared' ? 'Cleared' : 'Awaiting employee update',
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [revisions.data, projects.data]);
+
+  const revFiltered = revisionRows.filter((r) =>
+    (!revSource || r.source === revSource) &&
+    (!project || r.projectId === project) &&
+    (!branch || r.branch === branch) &&
+    (!stage || r.stage === stage) &&
+    inDateRange(r.raised),
+  );
+
+  const submissionRows = useMemo(() => arr(management.data?.submissions).filter((r) => {
+    if (project && r.projectId !== project) return false;
+    if (branch && r.branch !== branch) return false;
+    if (service && r.service !== service) return false;
+    if (stage && r.stage !== stage) return false;
+    return inDateRange(r.date);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [management.data, project, branch, service, stage, from, to]);
+
+  const delayedRows = useMemo(() => arr(billingStages.data)
+    .filter((r) => (r.delayDays ?? 0) > 0)
+    .filter((r) => {
+      const pid = String(r.project?._id ?? r.project ?? '');
+      if (project && pid !== project) return false;
+      const b = branchOf(r.project, pid);
+      if (branch && b !== branch) return false;
+      if (service && (r.service ?? '') !== service) return false;
+      if (stage && (r.stage ?? '') !== stage) return false;
+      return true;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }), [billingStages.data, projects.data, project, branch, service, stage]);
+
+  const revRows = arr(revenue.data?.items ?? revenue.data);
+  const totalContract = revRows.reduce((s, r) => s + Number(r.contract ?? 0), 0);
+  const totalInvoiced = revRows.reduce((s, r) => s + Number(r.invoiced ?? 0), 0);
+  const totalReceived = revRows.reduce((s, r) => s + Number(r.received ?? 0), 0);
+
+  const readyStages = useMemo(() => arr(billingStages.data?.items ?? billingStages.data)
+    .filter((r) => String(r.billingReadiness ?? '') === 'Ready for billing')
+    .filter((r) => {
+      const pid = String(r.project?._id ?? r.project ?? '');
+      if (project && pid !== project) return false;
+      if (branch && branchOf(r.project, pid) !== branch) return false;
+      if (service && (r.service ?? '') !== service) return false;
+      if (stage && (r.stage ?? '') !== stage) return false;
+      return true;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }), [billingStages.data, projects.data, project, branch, service, stage]);
+
+  const certRequests = useMemo(() => arr(certReqsQ.data?.items ?? certReqsQ.data), [certReqsQ.data]);
+  const certsList = useMemo(() => arr(certsQ.data?.items ?? certsQ.data), [certsQ.data]);
+  const certReceived = certRequests.filter((r) => String(r.status ?? '') === 'Uploaded');
+  const certRequested = certRequests.filter((r) => String(r.status ?? '') !== 'Uploaded');
+  const certRows = useMemo(() => certRequests
+    .filter((r) => {
+      const pid = String(r.project?._id ?? r.project ?? '');
+      if (project && pid !== project) return false;
+      if (branch && branchOf(r.project, pid) !== branch) return false;
+      return true;
+    })
+    .map((r) => {
+      const pid = String(r.project?._id ?? r.project ?? '');
+      const uploaded = String(r.status ?? '') === 'Uploaded';
+      const cert = uploaded
+        ? certsList.filter((c) => String(c.project?._id ?? c.project ?? '') === pid && (c.certType ?? '') === (r.category ?? '')).sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))[0]
+        : null;
+      return {
+        id: String(r._id ?? r.id),
+        project: r.project,
+        certType: r.category,
+        stage: cert?.stage ?? '—',
+        status: uploaded ? 'Received' : 'Requested',
+        issuedDate: cert?.issuedDate,
+        createdAt: r.createdAt,
+        issuedBy: cert?.issuedBy ?? '—',
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }), [certRequests, certsList, projects.data, project, branch]);
+
+  // ---- Finance tab aggregates (project lookups join branch/stage) ----
+  const finBranchRows = useMemo(() => {
+    const m = new Map();
+    for (const r of revRows) {
+      const b = projectById(r.id)?.branch ?? '—';
+      const g = m.get(b) ?? { branch: b, contract: 0, invoiced: 0, received: 0 };
+      g.contract += Number(r.contract ?? 0);
+      g.invoiced += Number(r.invoiced ?? 0);
+      g.received += Number(r.received ?? 0);
+      m.set(b, g);
+    }
+    return [...m.values()].sort((a, b) => b.contract - a.contract);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revenue.data, projects.data]);
+
+  const finServiceRows = useMemo(
+    () => arr(revenue.data?.byService),
+    [revenue.data],
+  );
+
+  const finStageRows = useMemo(() => {
+    const m = new Map();
+    for (const r of revRows) {
+      const st = projectById(r.id)?.currentStage ?? '—';
+      const g = m.get(st) ?? { stage: st, contract: 0, invoiced: 0, received: 0 };
+      g.contract += Number(r.contract ?? 0);
+      g.invoiced += Number(r.invoiced ?? 0);
+      g.received += Number(r.received ?? 0);
+      m.set(st, g);
+    }
+    return [...m.values()].sort((a, b) => b.contract - a.contract);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revenue.data, projects.data]);
+
+  const invoiceRows = useMemo(() => revRows.flatMap((r) => {
+    const rows = r.serviceRows ?? [];
+    if (rows.length === 0) {
+      return [{
+        project: r.name, service: '—', contract: Number(r.contract ?? 0),
+        invoiced: Number(r.invoiced ?? 0), received: Number(r.received ?? 0),
+        outstanding: Number(r.contract ?? 0) - Number(r.invoiced ?? 0),
+      }];
+    }
+    return rows.map((s) => ({
+      project: r.name,
+      service: s.service,
+      contract: Number(s.contract ?? 0),
+      invoiced: Number(s.invoiced ?? 0),
+      received: Number(s.received ?? 0),
+      outstanding: Number(s.contract ?? 0) - Number(s.invoiced ?? 0),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [revenue.data]);
+
+  const costPerfRows = useMemo(() => {
+    const revById = new Map(revRows.map((r) => [String(r.id), r]));
+    return arr(projectCosts.data?.items ?? projectCosts.data).map((c) => {
+      const contract = Number(revById.get(String(c.id))?.contract ?? c.budget ?? 0);
+      const labourCost = Number(c.labourCost ?? 0);
+      return { id: c.id, name: c.name, contract, labourCost, margin: contract - labourCost };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectCosts.data, revenue.data]);
+
+  // ---- BIM tab aggregates ----
+  const bimScopeIds = useMemo(
+    () =>
+      projectRows
+        .filter((p) =>
+          (p.scope ?? []).some((s) => String(s.service ?? '').toLowerCase().includes('bim')),
+        )
+        .map((p) => String(p._id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects.data],
+  );
+  const bimLogEntries = useMemo(
+    () => arr(workEntries.data?.items ?? workEntries.data).filter((e) =>
+      bimScopeIds.includes(String(e.project?._id ?? e.project ?? '')),
+    ),
+    [workEntries.data, bimScopeIds],
+  );
+  const bimHoursByProject = useMemo(() => {
+    const groups = {};
+    for (const e of bimLogEntries) {
+      const pid = String(e.project?._id ?? e.project ?? '');
+      const proj = projectById(pid);
+      const key = proj?.name ?? e.project?.name ?? 'Unassigned';
+      const g = groups[key] ?? { name: key, pid, branch: proj?.branch ?? e.project?.branch ?? '—', stage: proj?.currentStage ?? '—', hours: 0 };
+      g.hours += Number(e.hours ?? e.manHours ?? 0);
+      groups[key] = g;
+    }
+    return Object.values(groups).map((g) => ({ ...g, hours: Math.round(g.hours) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bimLogEntries, projects.data]);
+  const bimHoursFiltered = bimHoursByProject.filter((r) => {
+    if (project && r.pid !== project) return false;
+    if (branch && r.branch !== branch) return false;
+    if (stage && r.stage !== stage) return false;
+    return true;
+  });
+  const bimHoursTotal = bimHoursFiltered.reduce((s, r) => s + r.hours, 0);
+  const bimTransmittals = useMemo(() => arr(management.data?.submissions).filter((r) => {
+    if (!bimScopeIds.includes(r.projectId)) return false;
+    if (project && r.projectId !== project) return false;
+    if (branch && r.branch !== branch) return false;
+    if (stage && r.stage !== stage) return false;
+    return true;
+  }), [management.data, bimScopeIds, project, branch, stage]);
+
+  // ---- Peer tab aggregates ----
+  const peerClientRows = useMemo(() => peerRows.map((r) => {
+    const pid = String(r.project?._id ?? r.project ?? '');
+    const proj = projectById(pid);
+    return {
+      id: String(r._id ?? r.id),
+      client: proj?.clientName ?? r.project?.clientName ?? '—',
+      project: r.project?.name ?? proj?.name ?? '—',
+      stage: r.stage ?? proj?.currentStage ?? '—',
+      discipline: r.discipline ?? '—',
+      reviewer: r.reviewer ?? '—',
+      status: r.status ?? '—',
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [peerRows, projects.data]);
+  const peerProjectCount = new Set(peerClientRows.map((r) => r.project)).size;
+  const peerReviewed = peerRows.filter((r) => r.finalApproved || r.finalVerified || String(r.status ?? '') === 'Approved for Issue').length;
+  const peerApprovalsGiven = peerRows.reduce((s, r) => s + (Array.isArray(r.comments) ? r.comments.filter((c) => String(c.closureStatus ?? '') === 'Closed').length : 0), 0);
+  const peerPendingCount = peerRows.filter((r) => ['pending', 'overdue'].includes(String(r.status ?? '').toLowerCase())).length;
+
+  // ---- QA/QC tab aggregates ----
+  const qaVisits = useMemo(() => arr(visits.data?.items ?? visits.data).filter((r) => {
+    if (branch && branchOf(r.project, String(r.project?._id ?? r.project ?? '')) !== branch) return false;
+    if (project) {
+      const pid = String(r.project?._id ?? r.project ?? '');
+      if (pid !== project) return false;
+    }
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [visits.data, projects.data, branch, project]);
+  const qaDiscs = useMemo(() => arr(discs.data?.items ?? discs.data), [discs.data]);
+  const qaOpenDiscs = qaDiscs.filter((d) => String(d.status ?? '').toLowerCase() !== 'closed');
+  const qaClosedDiscs = qaDiscs.filter((d) => String(d.status ?? '').toLowerCase() === 'closed');
+  const qaPendingActions = qaOpenDiscs.length + arr(visits.data?.items ?? visits.data).filter((v) => String(v.status ?? '') !== 'Approved').length;
+
+  const awaitingRows = useMemo(() => arr(openRfis.data)
+    .filter((r) => ['open', 'responded'].includes(String(r.status ?? '').toLowerCase()))
+    .map((r) => {
+      const pid = String(r.project?._id ?? r.project ?? '');
+      const since = r.createdAt;
+      const days = since ? Math.max(0, Math.ceil((nowMs - new Date(since).getTime()) / 86400000)) : '—';
+      return {
+        id: String(r._id ?? r.id),
+        project: r.project?.name ?? projectById(pid)?.name ?? '—',
+        projectId: pid,
+        branch: branchOf(r.project, pid),
+        item: r.description ?? '—',
+        source: rfiSourceOf(r),
+        since,
+        days,
+        status: String(r.status ?? '').toLowerCase() === 'responded' ? 'Responded' : 'Pending',
+      };
+    })
+    .filter((r) =>
+      (!awaitSource || r.source === awaitSource) &&
+      (!project || r.projectId === project) &&
+      (!branch || r.branch === branch),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    ), [openRfis.data, projects.data, awaitSource, project, branch]);
+
+  // ---- HR tab aggregates ----
+  // Frozen at mount so "today" stays stable across re-renders.
+  const [istToday] = useState(() => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10));
+  const hrAttendance = useMemo(() => arr(attendanceQ.data?.items ?? attendanceQ.data), [attendanceQ.data]);
+  const hrPresentIds = useMemo(() => new Set(
+    hrAttendance.filter((a) => String(a.date ?? '').slice(0, 10) === istToday && a.loginAt).map((a) => String(a.employee?._id ?? a.employee ?? '')),
+  ), [hrAttendance, istToday]);
+  const hrTravels = useMemo(() => arr(travelsQ.data?.items ?? travelsQ.data), [travelsQ.data]);
+  const hrTravelIds = useMemo(() => new Set(
+    hrTravels.filter((t) => {
+      if (['Rejected', 'Cancelled'].includes(String(t.status ?? ''))) return false;
+      const dep = String(t.departureDate ?? '').slice(0, 10);
+      const ret = String(t.returnDate ?? t.departureDate ?? '').slice(0, 10);
+      return dep && ret && dep <= istToday && istToday <= ret;
+    }).map((t) => String(t.employee?._id ?? t.employee ?? '')),
+  ), [hrTravels, istToday]);
+  const hrEmployees = useMemo(() => arr(employeesQ.data?.items ?? employeesQ.data), [employeesQ.data]);
+  const hrPresent = [...hrPresentIds].filter((id) => id && !hrTravelIds.has(id));
+  const hrOnTravel = [...hrTravelIds].filter(Boolean);
+  const hrAbsent = Math.max(0, hrEmployees.length - hrPresent.length - hrOnTravel.length);
+  const hrHoursRows = useMemo(() => arr(workEntries.data?.items ?? workEntries.data).filter((e) => {
+    if (branch) {
+      const pid = String(e.project?._id ?? e.project ?? '');
+      if (branchOf(e.project, pid) !== branch) return false;
+    }
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [workEntries.data, branch, projects.data]);
+  const hrHoursTotal = Math.round(hrHoursRows.reduce((s, e) => s + Number(e.hours ?? 0), 0));
+  const hrHoursByDept = useMemo(() => {
+    const m = new Map();
+    for (const e of hrHoursRows) {
+      const dept = e.employee?.department ?? '—';
+      const g = m.get(dept) ?? { dept, empIds: new Set(), hours: 0 };
+      g.empIds.add(String(e.employee?._id ?? e.employee ?? ''));
+      g.hours += Number(e.hours ?? 0);
+      m.set(dept, g);
+    }
+    return [...m.values()].map((g) => ({ dept: g.dept, employees: g.empIds.size, hours: Math.round(g.hours) })).sort((a, b) => b.hours - a.hours);
+  }, [hrHoursRows]);
+  const hrLeaves = useMemo(() => arr(leave.data?.items ?? leave.data), [leave.data]);
+  const hrLeaveApproved = hrLeaves.filter((r) => String(r.status ?? '').toLowerCase() === 'approved').length;
+  const hrLeavePending = hrLeaves.filter((r) => String(r.status ?? '').toLowerCase() === 'pending').length;
+  const hrLeaveRejected = hrLeaves.filter((r) => String(r.status ?? '').toLowerCase() === 'rejected').length;
+
+  // ---- Travel tab aggregates ----
+  function fmtTripDates(r) {
+    const dep = r.departureDate ? new Date(r.departureDate) : null;
+    const ret = r.returnDate ? new Date(r.returnDate) : null;
+    const day = (d) => `${d.getDate()} ${d.toLocaleString('en-GB', { month: 'short' })}`;
+    if (dep && !Number.isNaN(dep) && ret && !Number.isNaN(ret)) {
+      if (dep.toDateString() === ret.toDateString()) return day(dep);
+      if (dep.getMonth() === ret.getMonth() && dep.getFullYear() === ret.getFullYear()) {
+        return `${String(dep.getDate()).padStart(2, '0')}-${String(ret.getDate()).padStart(2, '0')} ${dep.toLocaleString('en-GB', { month: 'short' })}`;
+      }
+      return `${day(dep)} → ${day(ret)}`;
+    }
+    return dep && !Number.isNaN(dep) ? day(dep) : '—';
+  }
+
+  function travelTripStatus(r) {
+    const s = String(r.status ?? '');
+    if (s === 'Rejected' || s === 'Cancelled') return s;
+    if (String(r.settlementStatus ?? '') === 'Settled') return 'Settled';
+    if (s === 'Approved') {
+      const ret = r.returnDate ? new Date(r.returnDate) : null;
+      if (ret && !Number.isNaN(ret) && ret < new Date(new Date().toISOString().slice(0, 10))) return 'Completed';
+      return 'Approved';
+    }
+    if (s === 'Pending') return 'Awaiting approval';
+    return s || '—';
+  }
+
+  const travelSummaryRows = useMemo(() => travelRows.filter((r) => {
+    const pid = String(r.project?._id ?? r.project ?? '');
+    if (project && pid !== project) return false;
+    return true;
+  }), [travelRows, project]);
+  const travelPeople = new Set(travelSummaryRows.map((r) => String(r.employee?._id ?? r.employee ?? ''))).size;
+  const travelAdvanceTaken = travelSummaryRows.reduce((s, r) => s + Number(r.advanceReceived ?? r.advanceRequested ?? 0), 0);
+  const travelBillsClaimed = travelSummaryRows.reduce((s, r) => s + Number(r.actualExpense ?? 0), 0);
+  const cabRows = useMemo(() => arr(allowsQ.data?.items ?? allowsQ.data).filter((r) => String(r.reqType ?? '') === 'Cab'), [allowsQ.data]);
+  const travelLocalAllowance = useMemo(() => arr(allowsQ.data?.items ?? allowsQ.data)
+    .filter((r) => String(r.reqType ?? '') === 'LA')
+    .reduce((s, r) => s + Number(r.amount ?? 0), 0), [allowsQ.data]);
+
   const filterError = projects.error?.message ?? management.error?.message;
 
   return (
     <div id="view-management">
       <div className="page-head">
-        <div className="page-title">Management Oversight</div>
+        <div className="page-title">Management & Leadership Dashboard</div>
         <div className="page-sub">
-          Review-only consolidated figures across projects, billing, HR, travel, PTL, BIM/GBS, peer review and QA/QC.
+          Consolidated overview of project delivery, commercial performance, people and department-wise activity across the company.
         </div>
       </div>
 
-      <Panel title="Filters">
+      <Panel title="Filters" sub="Drill down company performance → branch → service → stage → project → date range. Applies across every section below.">
         <div className="field-grid">
           <div className="form-row">
             <label className="form-label">Branch</label>
-            <input className="form-input" value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="e.g. Mumbai" />
+            <select className="filter-select" style={{ width: '100%' }} value={branch} onChange={(e) => setBranch(e.target.value)}>
+              <option value="">All branches</option>
+              {branchFilterOptions.map((b) => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
           </div>
           <div className="form-row">
             <label className="form-label">Service</label>
-            <input className="form-input" value={service} onChange={(e) => setService(e.target.value)} placeholder="e.g. Structural" />
+            <select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}>
+              <option value="">All services</option>
+              {serviceFilterOptions.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
           </div>
           <div className="form-row">
             <label className="form-label">Stage</label>
-            <input className="form-input" value={stage} onChange={(e) => setStage(e.target.value)} />
+            <select className="filter-select" style={{ width: '100%' }} value={stage} onChange={(e) => setStage(e.target.value)}>
+              <option value="">All stages</option>
+              {stageFilterOptions.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
           </div>
           <div className="form-row">
             <label className="form-label">Project</label>
@@ -292,11 +739,8 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
             <label className="form-label">To</label>
             <input type="date" className="form-input" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          <button type="button" className="approve-btn" onClick={resetFilters}>Reset</button>
+          <button type="button" className="approve-btn" onClick={resetFilters}>Reset filters</button>
         </div>
-        <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
-          Date range applies only to work-entry-derived panels (Travel log hours, PTL); other endpoints do not accept dates.
-        </p>
       </Panel>
 
       {filterError && (
@@ -305,87 +749,188 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
         </div>
       )}
 
-      <div className="kpi-grid cols-6">
+      <div className="kpi-grid cols-4">
         <KpiCard label="Active projects" value={mp.active ?? 0} accent="forest" />
-        <KpiCard label="On hold" value={mp.onHold ?? 0} accent="amber" />
-        <KpiCard label="Completed" value={mp.completed ?? 0} accent="blueprint" />
-        <KpiCard label="Billing ready" value={billing.ready ?? 0} accent="teal" />
-        <KpiCard label="Open RFIs" value={rfisM.open ?? pendingResponses.length} accent="rust" />
-        <KpiCard label="QA/QC open discrepancies" value={qaqc.openDiscrepancies ?? 0} accent="violet" />
+        <KpiCard label="Projects on hold" value={mp.onHold ?? 0} accent="amber" />
+        <KpiCard label="Completed projects" value={mp.completed ?? 0} accent="blueprint" />
+        <KpiCard label="Total (filtered)" value={mp.total ?? 0} accent="teal" />
       </div>
 
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
       {tab === 'projects' && (
         <>
-          <div className="kpi-grid cols-4">
-            <KpiCard label="Total projects" value={mp.total ?? 0} accent="blueprint" />
-            <KpiCard label="Revisions" value={m.revisions ?? arr(revisions.data).length} accent="teal" />
-            <KpiCard label="Submissions (transmittals)" value={m.transmittals ?? arr(transmittals.data).length} accent="forest" />
-            <KpiCard label="Certificates issued" value={certs.data ? arr(certs.data).length : '—'} accent="copper" />
-          </div>
-          {certs.error && (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>
-              Certificates: {certs.error.message}
-            </div>
-          )}
-          <Panel title="Projects by stage">
+          <Panel title="Branch-wise project overview">
             <DataTable
               columns={[
-                { key: 'name', label: 'Stage' },
-                { key: 'count', label: 'Count' },
+                { key: 'branch', label: 'Branch' },
+                { key: 'projects', label: 'Projects' },
+                { key: 'active', label: 'Active' },
+                { key: 'completed', label: 'Completed' },
               ]}
-              rows={countBy(Object.entries(mp.byStage ?? {}).map(([name, count]) => ({ name, count })), (r) => r.name).map((r) => ({ name: r.name, count: mp.byStage[r.name] ?? r.count }))}
-              emptyText="No stage breakdown reported."
-            />
-          </Panel>
-          <Panel title="Projects by branch">
-            <DataTable
-              columns={[{ key: 'name', label: 'Branch' }, { key: 'count', label: 'Count' }]}
-              rows={Object.entries(mp.byBranch ?? {}).map(([name, count]) => ({ name, count }))}
+              rows={Object.entries(mp.byBranchStats ?? {}).map(([branch, s]) => ({ branch, projects: s.projects ?? 0, active: s.active ?? 0, completed: s.completed ?? 0 }))}
               emptyText="No branch breakdown reported."
             />
           </Panel>
-          <Panel title="Projects by service">
+          <Panel title="Service-wise project overview">
             <DataTable
-              columns={[{ key: 'name', label: 'Service' }, { key: 'count', label: 'Count' }]}
+              columns={[{ key: 'name', label: 'Service' }, { key: 'count', label: 'Projects' }]}
               rows={Object.entries(mp.byService ?? {}).map(([name, count]) => ({ name, count }))}
               emptyText="No service breakdown reported."
             />
           </Panel>
-          <Panel title="Pending responses (open RFIs)">
+          <Panel title="Stage-wise project overview">
             <DataTable
-              columns={[
-                { key: 'subject', label: 'Subject', render: (r) => r.subject ?? r.title ?? '—' },
-                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? r.project ?? '—' },
-                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-              ]}
-              rows={pendingResponses.slice(0, 20)}
-              emptyText="No open RFIs."
+              columns={[{ key: 'name', label: 'Stage' }, { key: 'count', label: 'Projects' }]}
+              rows={Object.entries(mp.byStage ?? {}).map(([name, count]) => ({ name, count }))}
+              emptyText="No stage breakdown reported."
             />
           </Panel>
-          <Panel title="Billing-ready stages">
-            <DataTable
-              columns={[
-                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
-                { key: 'stage', label: 'Stage' },
-                { key: 'billingReadiness', label: 'Readiness', render: (r) => <StatusPill status={r.billingReadiness}>{r.billingReadiness}</StatusPill> },
-              ]}
-              rows={billingReadyRows.slice(0, 20)}
-              emptyText="No billing-ready stages."
-            />
+          <Panel title="Number of revisions" sub="Raised internally, or by the client / architect">
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
+              <select className="filter-select" value={revSource} onChange={(e) => setRevSource(e.target.value)}>
+                <option value="">All sources</option>
+                <option>Internal</option>
+                <option>Client</option>
+                <option>Architect</option>
+              </select>
+            </div>
+            <div className="kpi-grid cols-4" style={{ marginBottom: 12 }}>
+              <KpiCard label="Revisions (filtered)" value={revFiltered.length} accent="teal" />
+            </div>
+            {revisions.isLoading ? <EmptyState text="Loading revisions…" /> : revisions.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{revisions.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'project', label: 'Project' },
+                  { key: 'item', label: 'Item' },
+                  { key: 'source', label: 'Raised by' },
+                  { key: 'raised', label: 'Raised', render: (r) => fmtDate(r.raised) },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                ]}
+                rows={revFiltered}
+                emptyText="No revisions found."
+              />
+            )}
+          </Panel>
+          <Panel title="Project submissions" sub="Drawings / documents issued to client, architect or PMC — respects the date range above">
+            {management.isLoading ? <EmptyState text="Loading submissions…" /> : management.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{management.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'date', label: 'Date', render: (r) => fmtDate(r.date) },
+                  { key: 'project', label: 'Project' },
+                  { key: 'branch', label: 'Branch' },
+                  { key: 'service', label: 'Service' },
+                  { key: 'stage', label: 'Stage' },
+                  { key: 'to', label: 'To' },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                ]}
+                rows={submissionRows}
+                emptyText="No submissions found."
+              />
+            )}
+          </Panel>
+          <Panel title="Pending / delayed submissions" sub="Stage deliverables still in progress past their planned date">
+            {billingStages.isLoading ? <EmptyState text="Loading stages…" /> : billingStages.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{billingStages.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'project', label: 'Project', render: (r) => r.project?.name ?? projectById(String(r.project?._id ?? r.project ?? ''))?.name ?? '—' },
+                  { key: 'branch', label: 'Branch', render: (r) => branchOf(r.project, String(r.project?._id ?? r.project ?? '')) },
+                  { key: 'service', label: 'Service' },
+                  { key: 'stage', label: 'Stage' },
+                  { key: 'plannedCompletion', label: 'Planned date', render: (r) => r.plannedCompletion ? String(r.plannedCompletion).slice(0, 10) : '—' },
+                  { key: 'reason', label: 'Reason', render: (r) => r.reason || '—' },
+                ]}
+                rows={delayedRows}
+                emptyText="No pending submissions."
+              />
+            )}
+          </Panel>
+          <Panel title="Awaiting responses" sub="Items waiting on someone else before work can continue">
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
+              <select className="filter-select" value={awaitSource} onChange={(e) => setAwaitSource(e.target.value)}>
+                <option value="">All sources</option>
+                <option>Internal</option>
+                <option>Client</option>
+                <option>Architect</option>
+              </select>
+            </div>
+            {openRfis.isLoading ? <EmptyState text="Loading responses…" /> : openRfis.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{openRfis.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'project', label: 'Project' },
+                  { key: 'item', label: 'Item' },
+                  { key: 'source', label: 'Source' },
+                  { key: 'since', label: 'Since', render: (r) => fmtDate(r.since) },
+                  { key: 'days', label: 'Days' },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                ]}
+                rows={awaitingRows}
+                emptyText="Nothing awaiting response."
+              />
+            )}
           </Panel>
         </>
       )}
 
       {tab === 'admin' && (
         <>
-          <div className="kpi-grid cols-4">
-            <KpiCard label="Contract value" value={money(billingOverview.data?.contractValue)} accent="blueprint" />
-            <KpiCard label="Invoiced" value={money(billingOverview.data?.invoiced)} accent="copper" />
-            <KpiCard label="Received" value={money(billingOverview.data?.received)} accent="forest" />
-            <KpiCard label="Transmittal log entries" value={arr(transmittals.data).length} accent="teal" />
+          <div className="kpi-grid cols-3">
+            <KpiCard label="Ready for billing" value={readyStages.length} accent="forest" />
+            <KpiCard label="Billing pending" value={revenue.isError ? '—' : money(totalContract - totalInvoiced)} accent="amber" />
+            <KpiCard label="Invoice raised" value={revenue.isError ? '—' : money(totalInvoiced)} accent="copper" />
           </div>
+          {revenue.isError && (
+            <div className="login-error" role="alert" style={{ display: 'block' }}>
+              Revenue figures: {revenue.error.message}
+            </div>
+          )}
+          <Panel title="Projects ready for billing" sub="Stage complete, not yet billed — use the Branch / Service / Stage filters above">
+            {billingStages.isLoading ? <EmptyState text="Loading…" /> : billingStages.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{billingStages.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'project', label: 'Project', render: (r) => r.project?.name ?? projectById(String(r.project?._id ?? r.project ?? ''))?.name ?? '—' },
+                  { key: 'branch', label: 'Branch', render: (r) => branchOf(r.project, String(r.project?._id ?? r.project ?? '')) },
+                  { key: 'service', label: 'Service' },
+                  { key: 'stage', label: 'Stage' },
+                  { key: 'completedOn', label: 'Completed on', render: (r) => fmtDate(r.updatedAt) },
+                ]}
+                rows={readyStages}
+                emptyText="No stages ready for billing."
+              />
+            )}
+          </Panel>
+          <Panel title="Completion certificates">
+            <div className="kpi-grid cols-2" style={{ marginBottom: 12 }}>
+              <KpiCard label="Received" value={certReceived.length} accent="forest" />
+              <KpiCard label="Requested" value={certRequested.length} accent="amber" />
+            </div>
+            {certsQ.isLoading || certReqsQ.isLoading ? <EmptyState text="Loading…" /> : (certsQ.isError || certReqsQ.isError) ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{(certsQ.error ?? certReqsQ.error)?.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'project', label: 'Project', render: (r) => r.project?.name ?? projectById(String(r.project?._id ?? r.project ?? ''))?.name ?? '—' },
+                  { key: 'type', label: 'Type', render: (r) => r.certType ?? r.category ?? '—' },
+                  { key: 'stage', label: 'Stage', render: (r) => r.stage ?? '—' },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+                  { key: 'date', label: 'Date', render: (r) => fmtDate(r.issuedDate ?? r.createdAt) },
+                  { key: 'issuedBy', label: 'Issued by', render: (r) => r.issuedBy ?? '—' },
+                ]}
+                rows={certRows}
+                emptyText="No completion certificates yet."
+              />
+            )}
+          </Panel>
           <Panel title="Transmittal log (latest)">
             <DataTable
               columns={[
@@ -402,133 +947,320 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
       )}
 
       {tab === 'finance' && !hideFinance && (
-        <Panel title="Revenue by project">
-          {revenue.isLoading ? (
-            <EmptyState text="Loading revenue…" />
-          ) : revenue.error ? (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>{revenue.error.message}</div>
-          ) : (
+        <>
+          <div className="kpi-grid cols-4">
+            <KpiCard label="Total projects" value={revRows.length} accent="blueprint" />
+            <KpiCard label="Total contract value" value={money(totalContract)} accent="teal" />
+            <KpiCard label="Revenue till date" value={money(totalReceived)} accent="forest" />
+            <KpiCard label="Outstanding" value={money(totalContract - totalReceived)} accent="amber" />
+          </div>
+          <Panel title="Branch-wise financial overview">
             <DataTable
               columns={[
-                { key: 'name', label: 'Project', render: (r) => <><b>{r.name}</b><br /><span className="proj-code">{r.code}</span></> },
+                { key: 'branch', label: 'Branch' },
                 { key: 'contract', label: 'Contract value', render: (r) => money(r.contract) },
                 { key: 'invoiced', label: 'Invoiced', render: (r) => money(r.invoiced) },
-                { key: 'received', label: 'Received', render: (r) => money(r.received ?? r.collected) },
-                { key: 'pct', label: '% collected', render: (r) => `${r.pct ?? 0}%` },
+                { key: 'received', label: 'Received', render: (r) => money(r.received) },
               ]}
-              rows={arr(revenue.data)}
-              emptyText="No revenue data yet."
+              rows={finBranchRows}
+              emptyText="No branch figures yet."
             />
-          )}
-        </Panel>
+          </Panel>
+          <Panel title="Service-wise financial overview">
+            <DataTable
+              columns={[
+                { key: 'service', label: 'Service' },
+                { key: 'contract', label: 'Contract value', render: (r) => money(r.contract) },
+                { key: 'invoiced', label: 'Invoiced', render: (r) => money(r.invoiced) },
+                { key: 'received', label: 'Received', render: (r) => money(r.received) },
+              ]}
+              rows={finServiceRows}
+              emptyText="No service figures yet."
+            />
+          </Panel>
+          <Panel title="Stage-wise financial overview">
+            <DataTable
+              columns={[
+                { key: 'stage', label: 'Stage' },
+                { key: 'contract', label: 'Contract value', render: (r) => money(r.contract) },
+                { key: 'invoiced', label: 'Invoiced', render: (r) => money(r.invoiced) },
+                { key: 'received', label: 'Received', render: (r) => money(r.received) },
+              ]}
+              rows={finStageRows}
+              emptyText="No stage figures yet."
+            />
+          </Panel>
+          <Panel title="Invoice status">
+            <DataTable
+              columns={[
+                { key: 'project', label: 'Project' },
+                { key: 'service', label: 'Service' },
+                { key: 'contract', label: 'Contract value', render: (r) => money(r.contract) },
+                { key: 'invoiced', label: 'Invoiced', render: (r) => money(r.invoiced) },
+                { key: 'received', label: 'Received', render: (r) => money(r.received) },
+                { key: 'outstanding', label: 'Outstanding', render: (r) => money(r.outstanding) },
+              ]}
+              rows={invoiceRows}
+              emptyText="No invoice data yet."
+            />
+          </Panel>
+          <Panel title="Revenue by project">
+            {revenue.isLoading ? (
+              <EmptyState text="Loading revenue…" />
+            ) : revenue.error ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{revenue.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'name', label: 'Project', render: (r) => <><b>{r.name}</b><br /><span className="proj-code">{r.code}</span></> },
+                  { key: 'contract', label: 'Contract value', render: (r) => money(r.contract) },
+                  { key: 'invoiced', label: 'Invoiced', render: (r) => money(r.invoiced) },
+                  { key: 'received', label: 'Received', render: (r) => money(r.received) },
+                  { key: 'pct', label: '% collected', render: (r) => `${r.contract > 0 ? Math.round((r.received / r.contract) * 100) : 0}%` },
+                ]}
+                rows={arr(revenue.data?.items ?? revenue.data)}
+                emptyText="No revenue data yet."
+              />
+            )}
+          </Panel>
+          <Panel title="Project cost & financial performance" sub="Labour cost estimated from logged hours × configured / average rate">
+            {projectCosts.isLoading ? <EmptyState text="Loading costs…" /> : projectCosts.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{projectCosts.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'name', label: 'Project' },
+                  { key: 'contract', label: 'Contract value', render: (r) => money(r.contract) },
+                  { key: 'labour', label: 'Est. labour cost', render: (r) => money(r.labourCost) },
+                  { key: 'margin', label: 'Margin', render: (r) => money(r.margin) },
+                ]}
+                rows={costPerfRows}
+                emptyText="No cost data yet."
+              />
+            )}
+          </Panel>
+        </>
       )}
 
       {tab === 'hr' && (
-        <Panel title="Leave requests by status">
-          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-            <select className="filter-select" value={leaveStatus} onChange={(e) => setLeaveStatus(e.target.value)}>
-              {LEAVE_STATUSES.map((s) => (
-                <option key={s} value={s}>{s === '' ? 'All statuses' : s}</option>
-              ))}
-            </select>
+        <>
+          <div className="kpi-grid cols-3">
+            <KpiCard label="Employees present today" value={hrPresent.length} accent="forest" />
+            <KpiCard label="Employees absent" value={hrAbsent} accent="amber" />
+            <KpiCard label="On travel" value={hrOnTravel.length} accent="teal" />
           </div>
-          {leave.isLoading ? (
-            <EmptyState text="Loading leave requests…" />
-          ) : leave.error && leave.error.status === 403 ? (
-            <EmptyState text="Leave data is not shared with your role." />
-          ) : leave.error ? (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>{leave.error.message}</div>
-          ) : (
+          <Panel title="Login hours" sub="Use the Branch / Service / Stage filters above">
+            <div className="kpi-grid cols-2" style={{ marginBottom: 12 }}>
+              <KpiCard label="Total hours (filtered)" value={hrHoursTotal} accent="blueprint" />
+            </div>
+            <DataTable
+              columns={[
+                { key: 'dept', label: 'Department / service' },
+                { key: 'employees', label: 'Employees' },
+                { key: 'hours', label: 'Total hours' },
+              ]}
+              rows={hrHoursByDept}
+              emptyText="No hours logged in range."
+            />
+          </Panel>
+          <Panel title="Leave status">
+            <div className="kpi-grid cols-3" style={{ marginBottom: 12 }}>
+              <KpiCard label="Approved" value={hrLeaveApproved} accent="forest" />
+              <KpiCard label="Pending" value={hrLeavePending} accent="amber" />
+              <KpiCard label="Rejected" value={hrLeaveRejected} accent="rust" />
+            </div>
+            {leave.isLoading ? <EmptyState text="Loading…" /> : leave.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{leave.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName ?? ''} ${r.employee.lastName ?? ''}`.trim() || '—' : '—' },
+                  { key: 'leaveType', label: 'Type' },
+                  { key: 'from', label: 'From', render: (r) => fmtDate(r.from) },
+                  { key: 'to', label: 'To', render: (r) => fmtDate(r.to) },
+                  { key: 'days', label: 'Days', render: (r) => r.days ?? '—' },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                ]}
+                rows={hrLeaves}
+                emptyText="No leave requests found."
+              />
+            )}
+          </Panel>
+          <Panel title="Leave denied" sub="Employee-wise, with reason for denial">
             <DataTable
               columns={[
                 { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName ?? ''} ${r.employee.lastName ?? ''}`.trim() || '—' : '—' },
-                { key: 'type', label: 'Type', render: (r) => r.leaveType ?? r.type ?? '—' },
-                { key: 'dates', label: 'Dates', render: (r) => `${fmtDate(r.from ?? r.startDate)} → ${fmtDate(r.to ?? r.endDate)}` },
-                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                { key: 'leaveType', label: 'Type' },
+                { key: 'dates', label: 'Dates', render: (r) => `${fmtDate(r.from)} – ${fmtDate(r.to)}` },
+                { key: 'remarks', label: 'Reason for denial', render: (r) => r.remarks ?? '—' },
               ]}
-              rows={leaveRows}
-              emptyText="No leave requests found."
+              rows={hrLeaves.filter((r) => String(r.status ?? '').toLowerCase() === 'rejected')}
+              emptyText="No denied leaves."
             />
-          )}
-          <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
-            “Denied” requests are those with status Rejected.
-          </p>
-        </Panel>
+          </Panel>
+        </>
       )}
 
       {tab === 'travel' && (
         <>
           <div className="kpi-grid cols-4">
-            <KpiCard label="Total bookings" value={bookingsSummary.data?.total ?? travelRows.length} accent="blueprint" />
-            <KpiCard label="Upcoming" value={bookingsSummary.data?.upcoming ?? 0} accent="teal" />
-            <KpiCard label="Travel log entries" value={travelRows.length} accent="copper" />
-            <KpiCard label="Work entries in range" value={entryRows.length} accent="violet" />
+            <KpiCard label="People travelling" value={travelPeople} accent="blueprint" />
+            <KpiCard label="Advance taken" value={money(travelAdvanceTaken)} accent="teal" />
+            <KpiCard label="Bills claimed" value={money(travelBillsClaimed)} accent="copper" />
+            <KpiCard label="Local allowance" value={money(travelLocalAllowance)} accent="violet" />
           </div>
-          {travel.error && travel.error.status !== 403 && (
+          {(travel.isError && travel.error.status !== 403) && (
             <div className="login-error" role="alert" style={{ display: 'block' }}>{travel.error.message}</div>
           )}
-          <Panel title="Travel log">
-            {travel.error && travel.error.status === 403 ? (
+          <Panel title="Travel summary">
+            {travel.isLoading ? <EmptyState text="Loading…" /> : travel.error && travel.error.status === 403 ? (
               <EmptyState text="Travel log is not shared with your role." />
             ) : (
               <DataTable
                 columns={[
                   { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName ?? ''} ${r.employee.lastName ?? ''}`.trim() || '—' : '—' },
                   { key: 'project', label: 'Project', render: (r) => r.project?.name ?? r.project ?? '—' },
-                  { key: 'dates', label: 'Dates', render: (r) => `${fmtDate(r.departureDate ?? r.from)} → ${fmtDate(r.returnDate ?? r.to)}` },
-                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                  { key: 'route', label: 'Route', render: (r) => (r.toCity ? `${r.fromCity ?? ''} → ${r.toCity}` : (r.fromCity ?? '—')) },
+                  { key: 'dates', label: 'Dates', render: (r) => fmtTripDates(r) },
+                  { key: 'mode', label: 'Mode', render: (r) => r.mode ?? '—' },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={travelTripStatus(r)}>{travelTripStatus(r)}</StatusPill> },
+                  { key: 'settlement', label: 'Settlement', render: (r) => r.settlementStatus ?? 'Pending' },
                 ]}
-                rows={travelRows.slice(0, 20)}
+                rows={travelSummaryRows}
                 emptyText="No travel entries yet."
               />
             )}
           </Panel>
-          <Panel title="Hours per project (derived from work entries in range)">
-            <DataTable
-              columns={[{ key: 'name', label: 'Project' }, { key: 'hours', label: 'Hours' }]}
-              rows={hoursByProject}
-              emptyText="No work entries in the selected range."
-            />
+          <Panel title="Cab / transportation details">
+            {allowsQ.isLoading ? <EmptyState text="Loading…" /> : allowsQ.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{allowsQ.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName ?? ''} ${r.employee.lastName ?? ''}`.trim() || '—' : '—' },
+                  { key: 'project', label: 'Project', render: (r) => r.project?.name ?? r.project ?? '—' },
+                  { key: 'vehicle', label: 'Vehicle', render: (r) => r.vehicle ?? '—' },
+                  { key: 'route', label: 'Pickup → Drop', render: (r) => [r.pickup || r.route, r.drop].filter(Boolean).join(' → ') || '—' },
+                  { key: 'amount', label: 'Amount', render: (r) => `₹${Number(r.amount ?? 0).toLocaleString('en-IN')}` },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+                ]}
+                rows={cabRows}
+                emptyText="No cab bookings yet."
+              />
+            )}
           </Panel>
         </>
       )}
 
       {tab === 'ptl' && (
-        <Panel title="PTL entries by project (progress = avg progressPct, derived)">
-          {workEntries.isLoading ? (
-            <EmptyState text="Loading work entries…" />
-          ) : workEntries.error ? (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>{workEntries.error.message}</div>
-          ) : (
+        <>
+          <div className="kpi-grid cols-2" style={{ marginBottom: 12 }}>
+            <KpiCard label="My projects" value={ptlHoursFiltered.length} accent="blueprint" />
+            <KpiCard label="Hours logged" value={ptlHoursFiltered.reduce((s, r) => s + r.hours, 0)} accent="teal" />
+          </div>
+          <Panel title="Hours spent on each project" sub="Use the Branch / Service / Stage filters above">
+            {workEntries.isLoading ? (
+              <EmptyState text="Loading work entries…" />
+            ) : workEntries.error ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{workEntries.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'name', label: 'Project' },
+                  { key: 'branch', label: 'Branch' },
+                  { key: 'stage', label: 'Stage' },
+                  { key: 'hours', label: 'Hours' },
+                ]}
+                rows={ptlHoursFiltered}
+                emptyText="No work entries yet."
+              />
+            )}
+          </Panel>
+          <Panel title="Transmittal log">
+            {management.isLoading ? <EmptyState text="Loading…" /> : management.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{management.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'project', label: 'Project' },
+                  { key: 'service', label: 'Service' },
+                  { key: 'drawingNo', label: 'No.' },
+                  { key: 'rev', label: 'Rev' },
+                  { key: 'date', label: 'Date', render: (r) => fmtDate(r.date) },
+                  { key: 'to', label: 'To' },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                ]}
+                rows={ptlTransmittals}
+                emptyText="No transmittals yet."
+              />
+            )}
+          </Panel>
+          <Panel title="Project-wise work / progress overview">
             <DataTable
               columns={[
                 { key: 'name', label: 'Project' },
-                { key: 'entries', label: 'Entries' },
-                { key: 'progress', label: 'Avg progress' },
+                { key: 'branch', label: 'Branch' },
+                { key: 'stage', label: 'Stage' },
+                { key: 'progress', label: 'Est. progress' },
               ]}
-              rows={ptlByProject}
+              rows={ptlProgress}
               emptyText="No work entries yet."
             />
-          )}
-        </Panel>
+          </Panel>
+        </>
       )}
 
       {tab === 'bim' && (
         <>
-          <div className="kpi-grid cols-4">
-            <KpiCard label="BIM work orders" value={arr(bimOrders.data).length} accent="blueprint" />
-            <KpiCard label="GBS projects checked" value={gbs.data?.length ?? 0} accent="teal" />
-            <KpiCard label="Peer reviews in progress" value={peer.inProgress ?? 0} accent="amber" />
-            <KpiCard label="QA/QC visits" value={qaqc.visits ?? 0} accent="violet" />
+          <div className="kpi-grid cols-2" style={{ marginBottom: 12 }}>
+            <KpiCard label="Assigned projects" value={bimScopeIds.length} accent="blueprint" />
+            <KpiCard label="Hours logged" value={bimHoursTotal} accent="teal" />
           </div>
-          <Panel title="BIM work orders">
+          <Panel title="Hours spent on each project" sub="Use the Branch / Service / Stage filters above">
+            {workEntries.isLoading ? <EmptyState text="Loading…" /> : workEntries.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{workEntries.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'name', label: 'Project' },
+                  { key: 'branch', label: 'Branch' },
+                  { key: 'stage', label: 'Stage' },
+                  { key: 'hours', label: 'Hours' },
+                ]}
+                rows={bimHoursFiltered}
+                emptyText="No BIM hours logged yet."
+              />
+            )}
+          </Panel>
+          <Panel title="Transmittal log" sub="For this discipline's assigned projects">
+            {management.isLoading ? <EmptyState text="Loading…" /> : management.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{management.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'project', label: 'Project' },
+                  { key: 'service', label: 'Service' },
+                  { key: 'drawingNo', label: 'No.' },
+                  { key: 'rev', label: 'Rev' },
+                  { key: 'date', label: 'Date', render: (r) => fmtDate(r.date) },
+                  { key: 'to', label: 'To' },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                ]}
+                rows={bimTransmittals}
+                emptyText="No transmittals yet."
+              />
+            )}
+          </Panel>
+          <Panel title="Project progress / status">
             <DataTable
               columns={[
-                { key: 'title', label: 'Order', render: (r) => r.title ?? r.subject ?? '—' },
-                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? r.project ?? '—' },
-                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                { key: 'woNo', label: 'Work order', render: (r) => r.woNo ?? '—' },
+                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? projectById(String(r.project?._id ?? r.project ?? ''))?.name ?? '—' },
+                { key: 'scope', label: 'Scope', render: (r) => r.scope ?? '—' },
+                { key: 'fee', label: 'Value', render: (r) => (r.fee ?? null) != null ? `₹${Number(r.fee).toLocaleString('en-IN')}` : '—' },
+                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
               ]}
-              rows={arr(bimOrders.data).slice(0, 20)}
+              rows={arr(bimOrders.data)}
               emptyText="No BIM work orders yet."
             />
           </Panel>
@@ -560,21 +1292,28 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
       {tab === 'peer' && (
         <>
           <div className="kpi-grid cols-4">
-            <KpiCard label="In progress" value={peer.inProgress ?? inProgressPeers.length} accent="amber" />
-            <KpiCard label="Open comments" value={peer.openComments ?? openComments.length} accent="rust" />
-            <KpiCard label="Total reviews" value={peerRows.length} accent="blueprint" />
-            <KpiCard label="QA/QC open discrepancies" value={qaqc.openDiscrepancies ?? 0} accent="violet" />
+            <KpiCard label="Total projects" value={peerProjectCount} accent="blueprint" />
+            <KpiCard label="Reviewed" value={peerReviewed} accent="forest" />
+            <KpiCard label="Approvals given" value={peerApprovalsGiven} accent="teal" />
+            <KpiCard label="Pending reviews" value={peerPendingCount} accent="amber" />
           </div>
-          <Panel title="Peer reviews">
-            <DataTable
-              columns={[
-                { key: 'title', label: 'Review', render: (r) => r.title ?? r.subject ?? '—' },
-                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? r.project ?? '—' },
-                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-              ]}
-              rows={peerRows.slice(0, 20)}
-              emptyText="No peer reviews yet."
-            />
+          <Panel title="Client-wise project overview">
+            {peers.isLoading ? <EmptyState text="Loading…" /> : peers.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{peers.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'client', label: 'Client' },
+                  { key: 'project', label: 'Project' },
+                  { key: 'stage', label: 'Stage' },
+                  { key: 'discipline', label: 'Discipline' },
+                  { key: 'reviewer', label: 'Reviewer' },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+                ]}
+                rows={peerClientRows}
+                emptyText="No peer reviews yet."
+              />
+            )}
           </Panel>
         </>
       )}
@@ -582,32 +1321,51 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
       {tab === 'qaqc' && (
         <>
           <div className="kpi-grid cols-4">
-            <KpiCard label="Site visits" value={qaqc.visits ?? arr(visits.data).length} accent="blueprint" />
-            <KpiCard label="Open discrepancies" value={qaqc.openDiscrepancies ?? 0} accent="rust" />
-            <KpiCard label="Peer reviews in progress" value={peer.inProgress ?? 0} accent="amber" />
-            <KpiCard label="Meetings scheduled" value={meetingsM.scheduled ?? 0} accent="teal" />
+            <KpiCard label="Site visits" value={arr(visits.data).length} accent="blueprint" />
+            <KpiCard label="Open discrepancies" value={qaOpenDiscs.length} accent="rust" />
+            <KpiCard label="Closed discrepancies" value={qaClosedDiscs.length} accent="forest" />
+            <KpiCard label="Pending QA/QC actions" value={qaPendingActions} accent="amber" />
           </div>
-          <Panel title="Recent site visits">
-            <DataTable
-              columns={[
-                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? r.project ?? '—' },
-                { key: 'date', label: 'Date', render: (r) => fmtDate(r.visitDate ?? r.date ?? r.createdAt) },
-                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-              ]}
-              rows={arr(visits.data).slice(0, 20)}
-              emptyText="No site visits yet."
-            />
+          <Panel title="Site visits" sub="Use the Branch filter above">
+            {visits.isLoading ? <EmptyState text="Loading…" /> : visits.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{visits.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'visitId', label: 'ID', render: (r) => r.visitId ?? String(r._id ?? r.id ?? '').slice(-6) },
+                  { key: 'project', label: 'Project', render: (r) => r.project?.name ?? projectById(String(r.project?._id ?? r.project ?? ''))?.name ?? '—' },
+                  { key: 'branch', label: 'Branch', render: (r) => branchOf(r.project, String(r.project?._id ?? r.project ?? '')) },
+                  { key: 'phase', label: 'Phase', render: (r) => r.phase ?? '—' },
+                  { key: 'visitType', label: 'Type', render: (r) => r.visitType ?? '—' },
+                  { key: 'date', label: 'Date', render: (r) => fmtDate(r.date ?? r.visitDate ?? r.createdAt) },
+                ]}
+                rows={qaVisits}
+                emptyText="No site visits yet."
+              />
+            )}
           </Panel>
-          <Panel title="Open discrepancies">
-            <DataTable
-              columns={[
-                { key: 'title', label: 'Discrepancy', render: (r) => r.title ?? r.description ?? '—' },
-                { key: 'project', label: 'Project', render: (r) => r.project?.name ?? r.project ?? '—' },
-                { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-              ]}
-              rows={arr(discs.data).filter((d) => !['closed', 'resolved', 'completed'].includes(String(d.status ?? '').toLowerCase())).slice(0, 20)}
-              emptyText="No open discrepancies."
-            />
+          <Panel title="Discrepancies found">
+            <div className="kpi-grid cols-2" style={{ marginBottom: 12 }}>
+              <KpiCard label="Construction-wise" value={qaOpenDiscs.filter((d) => String(d.kind ?? 'Construction') === 'Construction').length} accent="amber" />
+              <KpiCard label="Drawing-wise" value={qaOpenDiscs.filter((d) => String(d.kind ?? '') === 'Drawing').length} accent="rust" />
+            </div>
+            {discs.isLoading ? <EmptyState text="Loading…" /> : discs.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{discs.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'discId', label: 'ID', render: (r) => r.discId ?? String(r._id ?? r.id ?? '').slice(-6) },
+                  { key: 'project', label: 'Project', render: (r) => r.project?.name ?? projectById(String(r.project?._id ?? r.project ?? ''))?.name ?? '—' },
+                  { key: 'discipline', label: 'Discipline', render: (r) => r.discipline ?? '—' },
+                  { key: 'severity', label: 'Severity', render: (r) => r.severity ?? '—' },
+                  { key: 'issue', label: 'Issue', render: (r) => r.issue ?? r.description ?? '—' },
+                  { key: 'raised', label: 'Raised', render: (r) => fmtDate(r.raised ?? r.createdAt) },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+                ]}
+                rows={qaDiscs}
+                emptyText="No discrepancies yet."
+              />
+            )}
           </Panel>
         </>
       )}

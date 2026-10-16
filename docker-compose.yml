@@ -5,14 +5,14 @@
 #                             └─ /dbadmin/  mongo-express (FD only: IP + basic-auth + app login)
 #
 # Data survival:
-#   - mongo-data (named volume, lives on C:/SSD inside Docker's VM disk)
-#     survives container removal/rebuild. Deleted ONLY by explicit
-#     `down -v` / `volume prune` — see docs/BACKUP_RESTORE.md.
-#   - uploads (BIND to the 2 TB HDD) survive everything, including
+#   - mongo-data (NAMED VOLUME designtree_mongo-data — this is where the live
+#     database actually resides). Survives container removal/rebuild and plain
+#     `down`, but NOT `down -v` / `volume prune` — those delete it. Never run
+#     either without a verified backup (see docs/BACKUP_RESTORE.md).
+#   - uploads (BIND to the live uploads dir) survive everything, including
 #     `down -v`, because the files live on the host filesystem.
 #
-# RUNBOOK RULE: tear down with `docker compose down` (keeps volumes).
-# NEVER run `down -v` or `volume prune` without a fresh backup first.
+# RUNBOOK RULE: backups still run before every upgrade — see docs/BACKUP_RESTORE.md.
 #
 # First boot:  docker compose up -d --build
 #              docker compose run --rm api npm run seed   (one-shot FD login)
@@ -29,9 +29,12 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
       MONGO_INITDB_DATABASE: designtree
     volumes:
-      # Database files — named volume (correct on Windows; bind mounts
-      # cause MongoDB file-locking/performance problems).
-      - mongo-data:/data/db
+      # Database files — NAMED VOLUME (see top-level `volumes:`). This must
+      # stay a named volume: the live data resides in designtree_mongo-data.
+      # Do NOT convert to a host bind without migrating data first.
+      - type: volume
+        source: mongo-data
+        target: /data/db
       # Dump landing dir for scripts/backup.ps1 (host HDD).
       - type: bind
         source: ${HOST_BACKUPS_DIR}
@@ -75,6 +78,19 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+    # Mirrors the HEALTHCHECK baked into api/Dockerfile (explicit here so
+    # `docker compose ps` expectations and gateway's service_healthy gate
+    # don't depend on image metadata alone).
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://localhost:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   gateway:
     build:
@@ -88,6 +104,10 @@ services:
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
+      # Public alt-port: the office WAN's 443 is taken by the mail server's
+      # webmail, so the router forwards WAN:8443 here. LAN keeps using 443
+      # directly. Two host ports → one container port is fine.
+      - "${HTTPS_PUBLIC_PORT:-8443}:443"
     volumes:
       # TLS cert + dbadmin password file. Read-only mounts; the real
       # files are created on the host during deployment (never committed).
@@ -109,8 +129,14 @@ services:
     image: mongo-express:1
     container_name: designtree-dbadmin
     restart: unless-stopped
-    # NO ports published: reachable only through gateway /dbadmin/
-    # (IP allowlist + basic-auth) on the frontend network.
+    # Permanent loopback-only direct access (no app downtime to enable):
+    # http://127.0.0.1:18081/dbadmin/ on the server itself + SSH tunnel
+    # (ssh -N -L 18081:127.0.0.1:18081 <user>@server) for FD remote.
+    # Bound to 127.0.0.1 so LAN/WAN cannot reach it. Gateway /dbadmin/
+    # stays closed (Docker Desktop NAT masks all clients as 172.18.0.1,
+    # so its allow 127.0.0.1/192.168.1.50 never matches -> 403 by design).
+    ports:
+      - "127.0.0.1:18081:8081"
     environment:
       ME_CONFIG_MONGODB_URL: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       ME_CONFIG_BASICAUTH: "true"
@@ -132,5 +158,6 @@ networks:
     driver: bridge
 
 volumes:
+  # Live database files (adopted: the pre-existing designtree_mongo-data
+  # volume). Compose manages it; `down -v` / `volume prune` would DELETE it.
   mongo-data:
-    driver: local

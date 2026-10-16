@@ -1,6 +1,9 @@
 import mongoose from 'mongoose';
+import { PROJECT_SERVICES } from '../config/services.js';
 
-export const SERVICES = [
+export const SERVICES = PROJECT_SERVICES;
+// Legacy service labels retained for old scope rows (read-only compat).
+export const LEGACY_SERVICES = [
   'Structural',
   'Mechanical',
   'Electrical',
@@ -11,6 +14,8 @@ export const SERVICES = [
   'Peer Review',
   'QS/BOQ',
   'Other',
+  'Structure',
+  'Architecture',
 ];
 export const STAGES = ['CD', 'SD', 'DD', 'TD', 'GFC'];
 export const PROJECT_STATUSES = ['Active', 'On Hold', 'Completed', 'Other'];
@@ -18,6 +23,8 @@ export const PROJECT_COMPLEXITIES = ['Low', 'Medium', 'High'];
 export const ACTIVATION_STATUSES = ['Pending', 'Activated'];
 export const TEAM_CONFIRMATION_STATUSES = ['Pending', 'Confirmed'];
 export const FINAL_APPROVAL_STATUSES = ['Pending', 'Approved'];
+export const PROJECT_PRIORITIES = ['High', 'Medium', 'Low'];
+export const PROJECT_CATEGORIES = ['Category A', 'Category B', 'Category C'];
 
 const contactSchema = new mongoose.Schema(
   {
@@ -42,22 +49,25 @@ const projectSchema = new mongoose.Schema(
       uppercase: true,
       index: true,
     },
-    state: { type: String, required: true, trim: true },
-    projectType: { type: String, required: true, trim: true },
-    branch: { type: String, required: true, trim: true, index: true },
-    usedFor: { type: String, required: true, trim: true },
-    entityName: { type: String, required: true, trim: true },
+    state: { type: String, trim: true },
+    projectType: { type: String, trim: true },
+    branch: { type: String, trim: true, index: true },
+    usedFor: { type: String, trim: true },
+    services: [{ type: String, trim: true }],
+    source: { type: String, trim: true },
+    entityName: { type: String, trim: true },
     location: {
-      label: { type: String, required: true, trim: true },
+      label: { type: String, trim: true },
       address1: { type: String, trim: true },
       address2: { type: String, trim: true },
       city: { type: String, trim: true },
+      state: { type: String, trim: true },
       zip: { type: String, trim: true },
     },
     jobNumber: { type: String, trim: true },
     scope: [
       {
-        service: { type: String, enum: SERVICES },
+        service: { type: String, trim: true },
         scope: { type: String, trim: true },
         fee: { type: Number, min: 0 },
         _id: false,
@@ -65,14 +75,28 @@ const projectSchema = new mongoose.Schema(
     ],
     hospitalityByClient: { type: Boolean, default: false },
     bimWorkOrder: {
+      no: { type: String, trim: true },
+      date: { type: Date },
       scope: { type: String, trim: true },
       fee: { type: Number, min: 0 },
       description: { type: String, trim: true },
+      status: { type: String, trim: true },
     },
     principalTeamLeads: [
       {
+        employee: {type:mongoose.Schema.Types.ObjectId,ref:'Employee'},
         service: { type: String, trim: true },
         name: { type: String, trim: true },
+        // Multiple people per service: either several rows with the same
+        // service or a single row with names[].
+        names: [{ type: String, trim: true }],
+        // Team allocation (SPOC record, as nominated by Directors).
+        role: { type: String, trim: true },
+        nominatedBy: { type: String, trim: true },
+        approvalStatus: {
+          type: String,
+          enum: ['Proposed', 'Approved'],
+        },
         _id: false,
       },
     ],
@@ -85,7 +109,7 @@ const projectSchema = new mongoose.Schema(
     },
     clientName: { type: String, trim: true, index: true },
     related: {
-      projectDirector: { type: String, required: true, trim: true },
+      projectDirector: { type: String, trim: true },
       projectDirectorDesignation: { type: String, trim: true },
       projectHead: { type: String, trim: true },
       projectHeadDesignation: { type: String, trim: true },
@@ -97,6 +121,13 @@ const projectSchema = new mongoose.Schema(
     description: { type: String, trim: true },
     requirements: { type: String, trim: true },
     complexity: { type: String, enum: PROJECT_COMPLEXITIES, trim: true },
+    priority: { type: String, enum: PROJECT_PRIORITIES, trim: true },
+    category: { type: String, enum: PROJECT_CATEGORIES, trim: true },
+    referral: { type: String, trim: true },
+    sourcePerson: { type: String, trim: true },
+    clientSpoc: { type: String, trim: true },
+    workOrderDate: { type: Date },
+    workOrderDocument: { type: String, trim: true },
     // Project activation: Admin activates the project and assigns the
     // confirmed SPOC. New projects default to Pending; Admin confirms via
     // POST /api/projects/:id/activate which assigns the SPOC.

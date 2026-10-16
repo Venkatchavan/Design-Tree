@@ -27,6 +27,7 @@ export const deliverablesApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+  remove: (id) => request(`/api/work/deliverables/${id}`, { method: 'DELETE' }),
   log: (params = {}) => request(`/api/work/deliverables-log${toQuery(params)}`),
 };
 

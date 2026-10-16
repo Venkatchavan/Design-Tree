@@ -6,7 +6,7 @@ import {
 } from '../config/roles.js';
 
 // requireRole('hr', 'admin_billing', ...)
-// Founding/Working Directors bypass every check (§3.4 full access).
+// Founding/Working/Executive Directors bypass every check (§3.4 full access).
 export function requireRole(...allowed) {
   return (req, res, next) => {
     const role = req.user?.role;
@@ -25,6 +25,19 @@ export function requireRole(...allowed) {
 // Any internal (non-client/architect) role. Superusers pass automatically.
 export function requireInternal() {
   return requireRole(...INTERNAL_ROLES);
+}
+
+// Explicit deny-list evaluated before any allow (including the
+// FD/WD superuser bypass): denied roles always get 403.
+export function denyRoles(...denied) {
+  return (req, res, next) => {
+    if (denied.includes(req.user?.role)) {
+      return res
+        .status(403)
+        .json({ message: 'You do not have access to this area.' });
+    }
+    return next();
+  };
 }
 
 // Users who may provision logins: HR + Admin/Billing (+ superusers).

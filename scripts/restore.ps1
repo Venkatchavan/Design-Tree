@@ -1,8 +1,8 @@
 # DesignTree manual restore -- run from the repo root on the server:
 #     .\scripts\restore.ps1 -Backup 20260117-103000
 # Restores the pair created by .\scripts\backup.ps1:
-#   1. database: mongorestore from D:\backups\mongo\<Backup>.gz (REPLACES live data)
-#   2. uploads:  mirrored copy from D:\backups\uploads\<Backup>\ back to the live dir
+#   1. database: mongorestore from E:\DesignTree\backup\mongo\<Backup>.gz (REPLACES live data)
+#   2. uploads:  mirrored copy from E:\DesignTree\backup\uploads\<Backup>\ back to the live dir
 # Interactive confirmation is required -- this cannot run by accident.
 # Full procedure (stop order, verification): docs/BACKUP_RESTORE.md
 param(
@@ -30,7 +30,7 @@ Set-Location -LiteralPath $Root
 
 $env_map = Read-DotEnv (Join-Path $Root ".env")
 $backupsRoot = $env_map["HOST_BACKUPS_DIR"]
-if (-not $backupsRoot) { $backupsRoot = "D:/backups" }
+if (-not $backupsRoot) { $backupsRoot = "E:/DesignTree/backup" }
 $backupsRootWin = $backupsRoot -replace "/", "\"
 $uploadsDir = $env_map["HOST_UPLOADS_DIR"]
 if (-not $uploadsDir) { $uploadsDir = "D:/designtree-uploads" }

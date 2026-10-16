@@ -1,14 +1,22 @@
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
-import { config } from './config/config.js';
+import { isAllowedOrigin } from './config/config.js';
+import attendanceRoutes from './routes/attendance.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import billingRoutes from './routes/billing.routes.js';
 import bookingsRoutes from './routes/bookings.routes.js';
+import variationsRoutes from './routes/variations.routes.js';
+import serviceDashboardsRoutes from './routes/serviceDashboards.routes.js';
+import stageReviewsRoutes from './routes/stageReviews.routes.js';
+import drawingAcksRoutes from './routes/drawingAcks.routes.js';
+import workItemsRoutes from './routes/workItems.routes.js';
+import branchesRoutes from './routes/branches.routes.js';
 import certificatesRoutes from './routes/certificates.routes.js';
 import designmgmtRoutes from './routes/designmgmt.routes.js';
 import documentsRoutes from './routes/documents.routes.js';
 import employeesRoutes from './routes/employees.routes.js';
+import employeeMeetingsRoutes from './routes/employeeMeetings.routes.js';
 import leaveRoutes from './routes/leave.routes.js';
 import marketingRoutes from './routes/marketing.routes.js';
 import meetingsRoutes from './routes/meetings.routes.js';
@@ -33,7 +41,7 @@ export function createApp() {
 
   app.use(
     cors({
-      origin: config.clientOrigin,
+      origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
       credentials: true,
     }),
   );
@@ -44,9 +52,12 @@ export function createApp() {
     res.status(200).json({ ok: true });
   });
   app.use('/api/auth', authRoutes);
+  app.use('/api/attendance', attendanceRoutes);
   app.use('/api/meta', metaRoutes);
+  app.use('/api/branches', branchesRoutes);
   app.use('/api/projects', projectsRoutes);
   app.use('/api/employees', employeesRoutes);
+  app.use('/api/employee-meetings', employeeMeetingsRoutes);
   app.use('/api/users', usersRoutes);
   app.use('/api/teams', teamsRoutes);
   app.use('/api/work', workflowRoutes);
@@ -59,6 +70,11 @@ export function createApp() {
   app.use('/api/finance-occ', financeOccRoutes);
   app.use('/api/certificates', certificatesRoutes);
   app.use('/api/travel-bookings', bookingsRoutes);
+  app.use('/api/variations', variationsRoutes);
+  app.use('/api/service-dashboards', serviceDashboardsRoutes);
+  app.use('/api/stage-reviews', stageReviewsRoutes);
+  app.use('/api/drawing-acks', drawingAcksRoutes);
+  app.use('/api/work-items', workItemsRoutes);
   app.use('/api/design', designmgmtRoutes);
   app.use('/api/marketing', marketingRoutes);
   app.use('/api/leave-travel', leaveRoutes);

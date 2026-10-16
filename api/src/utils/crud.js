@@ -1,10 +1,25 @@
 // Tiny CRUD factory for straightforward Phase 2 resources.
-// makeCrud(Model, { create, update, filters(req)->filter, populate })
+// makeCrud(Model, { create, update, filters(req)->filter, populate, scopedByProject })
+// scopedByProject: restrict SPOC / team lead / engineer access to allocated projects.
+import { narrowByProject, projectIdOf, projectScopeIds } from './projectScope.js';
+
 export function makeCrud(Model, opts = {}) {
+  async function allowedDoc(req, id) {
+    const doc = await Model.findById(id);
+    if (!doc) return null;
+    if (!opts.scopedByProject) return doc;
+    const ids = await projectScopeIds(req.user);
+    if (ids && !ids.includes(projectIdOf(doc))) return null;
+    return doc;
+  }
+
   return {
     async list(req, res, next) {
       try {
         const filter = opts.filters ? opts.filters(req) : {};
+        if (opts.scopedByProject) {
+          narrowByProject(filter, 'project', await projectScopeIds(req.user));
+        }
         let q = Model.find(filter).sort({ createdAt: -1 }).limit(200);
         if (opts.populate) q = q.populate(opts.populate);
         const [items, total] = await Promise.all([
@@ -21,6 +36,10 @@ export function makeCrud(Model, opts = {}) {
     },
     async get(req, res, next) {
       try {
+        if (opts.scopedByProject) {
+          const visible = await allowedDoc(req, req.params.id);
+          if (!visible) return res.status(404).json({ message: 'Not found.' });
+        }
         let q = Model.findById(req.params.id);
         if (opts.populate) q = q.populate(opts.populate);
         const doc = await q;
@@ -32,6 +51,12 @@ export function makeCrud(Model, opts = {}) {
     },
     async create(req, res, next) {
       try {
+        if (opts.scopedByProject) {
+          const ids = await projectScopeIds(req.user);
+          if (ids && !ids.includes(String(req.body?.project ?? ''))) {
+            return res.status(403).json({ message: 'Project is not assigned to you.' });
+          }
+        }
         if (opts.create) {
           const parsed = opts.create.safeParse(req.body);
           if (!parsed.success) {
@@ -49,12 +74,21 @@ export function makeCrud(Model, opts = {}) {
     },
     async update(req, res, next) {
       try {
+        if (opts.scopedByProject) {
+          const visible = await allowedDoc(req, req.params.id);
+          if (!visible) return res.status(404).json({ message: 'Not found.' });
+          if (req.body?.project && String(req.body.project) !== projectIdOf(visible)) {
+            return res.status(400).json({ message: 'A record cannot be moved to another project.' });
+          }
+        }
         if (opts.update) {
           const parsed = opts.update.safeParse(req.body);
           if (!parsed.success) {
             return res.status(400).json({ message: 'Invalid data.' });
           }
-          req.body = parsed.data;
+          req.body = opts.decorate
+            ? await opts.decorate(parsed.data, req)
+            : parsed.data;
         }
         const doc = await Model.findByIdAndUpdate(req.params.id, req.body, {
           new: true,

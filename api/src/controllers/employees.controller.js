@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { ROLE_KEYS, USER_ADMIN_ROLES, isSuperRole } from '../config/roles.js';
 import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
+import { requireActiveBranch } from '../utils/branches.js';
 import {
   employeeLoginSchema,
   employeeSchema,
@@ -52,8 +53,9 @@ export async function employeeFilters(_req, res, next) {
       Employee.distinct('department'),
       Employee.distinct('designation'),
     ]);
+    const { branchOptionsWithLegacy } = await import('../utils/branches.js');
     return res.status(200).json({
-      branches: branches.filter(Boolean).sort(),
+      branches: await branchOptionsWithLegacy(branches),
       departments: departments.filter(Boolean).sort(),
       designations: designations.filter(Boolean).sort(),
     });
@@ -83,6 +85,13 @@ export async function createEmployee(req, res, next) {
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid employee data.', errors: parsed.error.issues });
     }
+    if (parsed.data.branch) {
+      try {
+        parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+      } catch (err) {
+        return res.status(err.status ?? 400).json({ message: err.message });
+      }
+    }
     // Mandatory-4 on create: firstName (schema) + login email/password/role,
     // but only for callers who may provision logins. Others may create
     // login-less records (route guard currently limits POST to those roles).
@@ -99,6 +108,11 @@ export async function createEmployee(req, res, next) {
       }
       if (!ROLE_KEYS.includes(loginParsed.data.role)) {
         return res.status(400).json({ message: 'Unknown role.' });
+      }
+      if (['client', 'architect'].includes(loginParsed.data.role)) {
+        return res.status(400).json({
+          message: 'External roles don\u2019t get employee records \u2014 create them under HR \u2192 External access.',
+        });
       }
       const clash = await User.findOne({ email: loginParsed.data.email });
       if (clash) {
@@ -159,6 +173,13 @@ export async function updateEmployee(req, res, next) {
     const parsed = employeeUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid employee data.', errors: parsed.error.issues });
+    }
+    if (parsed.data.branch) {
+      try {
+        parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+      } catch (err) {
+        return res.status(err.status ?? 400).json({ message: err.message });
+      }
     }
     const employee = await Employee.findByIdAndUpdate(
       req.params.id,

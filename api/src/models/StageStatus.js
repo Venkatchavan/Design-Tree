@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 export const BILLING_READINESS = ['Billed', 'Ready for billing', 'Pending'];
 
 // Per-project/service stage tracker + billing readiness (§4.4).
+// 2-step: PTL requests completion → SPOC confirms → Ready + notify.
 const stageStatusSchema = new mongoose.Schema(
   {
     project: {
@@ -23,6 +24,22 @@ const stageStatusSchema = new mongoose.Schema(
       default: 'Pending',
       index: true,
     },
+    confirmationStatus: {
+      type: String,
+      enum: ['None', 'PTL Requested', 'SPOC Confirmed', 'TD Approved'],
+      default: 'None',
+      index: true,
+    },
+    ptlRequestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    ptlRequestedAt: { type: Date },
+    ptlRemark: { type: String, trim: true },
+    spocConfirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    spocConfirmedAt: { type: Date },
+    spocRemark: { type: String, trim: true },
+    tdApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    tdApprovedAt: Date,
+    tdRemark: String,
+    history: [{ by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, at: { type: Date, default: Date.now }, action: String }],
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },

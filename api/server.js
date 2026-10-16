@@ -14,9 +14,52 @@ await connectDb(config.mongoUri);
 try {
   await Transmittal.collection.dropIndex('trNo_1');
 } catch (err) {
-  if (err?.codeName !== 'IndexNotFound' && err?.code !== 27) throw err;
+  const okToIgnore =
+    ['IndexNotFound', 'NamespaceNotFound'].includes(err?.codeName) ||
+    [27, 26].includes(err?.code);
+  if (!okToIgnore) throw err;
 }
 await Transmittal.createIndexes();
+
+// One-time backfill: human-readable SV-/DA- sequences for site visits and
+// discrepancies created before numbering existed. Idempotent (only docs
+// missing the id, ordered oldest-first per calendar year).
+try {
+  const { SiteVisit } = await import('./src/models/SiteVisit.js');
+  const { Discrepancy } = await import('./src/models/Discrepancy.js');
+  const { PeerReview } = await import('./src/models/PeerReview.js');
+  const { Rfi } = await import('./src/models/Rfi.js');
+  const { Counter } = await import('./src/models/Counter.js');
+  for (const [Model, field, prefix, pad, counterName] of [
+    [SiteVisit, 'visitId', 'SV', 3, 'site-visit'],
+    [Discrepancy, 'discId', 'DA', 2, 'discrepancy'],
+    [PeerReview, 'jobNo', 'PR', 3, 'peer-review'],
+    [Rfi, 'rfiNo', 'RFI', 3, 'rfi'],
+  ]) {
+    const missing = await Model.find({ [field]: { $in: [null, ''] } })
+      .select('date createdAt')
+      .sort({ date: 1, createdAt: 1 });
+    for (const doc of missing) {
+      const year = new Date(doc.date ?? doc.createdAt ?? Date.now()).getFullYear();
+      const counter = await Counter.findOneAndUpdate(
+        { name: `${counterName}-${year}` },
+        { $inc: { seq: 1 } },
+        { upsert: true, returnDocument: 'after' },
+      );
+      await Model.updateOne(
+        { _id: doc._id, [field]: { $in: [null, ''] } },
+        { $set: { [field]: `${prefix}-${year}-${String(counter.seq).padStart(pad, '0')}` } },
+      );
+    }
+  }
+  // Legacy discrepancies predate kind tracking; default to Construction.
+  await Discrepancy.updateMany(
+    { kind: { $in: [null, ''] } },
+    { $set: { kind: 'Construction' } },
+  );
+} catch (err) {
+  console.error('ID backfill skipped:', err?.message ?? err);
+}
 
 const app = createApp();
 // Plain http server (TLS terminates at nginx in production) doubling as

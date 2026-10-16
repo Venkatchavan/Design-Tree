@@ -16,7 +16,7 @@ export async function portfolio(_req, res, next) {
     const [projects, briefs] = await Promise.all([
       Project.find(
         {},
-        { name: 1, code: 1, clientName: 1, branch: 1, status: 1, completion: 1, currentStage: 1 },
+        { name: 1, code: 1, clientName: 1, branch: 1, status: 1, completion: 1, currentStage: 1, location: 1, contacts: 1, description: 1 },
       ).sort({ name: 1 }),
       MarketingBrief.find({}),
     ]);
@@ -28,6 +28,9 @@ export async function portfolio(_req, res, next) {
         name: p.name,
         code: p.code,
         client: p.clientName,
+        location: p.location?.city ?? p.branch ?? '',
+        architect: p.contacts?.architect?.company ?? p.contacts?.architect?.name ?? '',
+        description: p.description ?? '',
         stage: p.currentStage,
         completion: p.completion,
         status: p.status,
@@ -55,7 +58,7 @@ export async function getBrief(req, res, next) {
   try {
     const doc = await MarketingBrief.findOne({
       project: req.query.project ?? req.params.projectId,
-    }).populate('project', 'name code clientName currentStage completion');
+    }).populate('project', 'name code clientName currentStage completion status location branch contacts description');
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -116,11 +119,14 @@ export const contacts = makeCrud(Contact, {
         req.query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
         'i',
       );
-      f.$or = [{ name: rx }, { organization: rx }, { email: rx }];
+      f.$or = [{ name: rx }, { organization: rx }, { email: rx }, { phone: rx }];
     }
     return f;
   },
-  populate: [{ path: 'project', select: 'name code' }],
+  populate: [
+    { path: 'project', select: 'name code' },
+    { path: 'addedBy', select: 'name email' },
+  ],
 });
 
 export async function createContact(req, res, next) {

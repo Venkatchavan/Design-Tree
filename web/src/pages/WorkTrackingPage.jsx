@@ -392,9 +392,8 @@ function QsSettlement({ projects, roleKey }) {
   const [revised, setRevised] = useState('');
   const [remarks, setRemarks] = useState('');
   const [err, setErr] = useState('');
-  const [reviewRemark, setReviewRemark] = useState('');
 
-  const canReview = roleKey === 'qs_head' || SUPER_ROLES.includes(roleKey);
+  const canEdit = roleKey === 'qs' || SUPER_ROLES.includes(roleKey);
 
   const listQ = useQuery({
     queryKey: ['area-settlements', { project: filterProject }],
@@ -416,11 +415,10 @@ function QsSettlement({ projects, roleKey }) {
     onError: (e) => setErr(e.message),
   });
 
-  const review = useMutation({
-    mutationFn: ({ id, status }) => areaApi.review(id, { status, remark: reviewRemark || undefined }),
+  const setStatus = useMutation({
+    mutationFn: ({ id, status }) => areaApi.update(id, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['area-settlements'] });
-      setReviewRemark('');
     },
     onError: (e) => setErr(e.message),
   });
@@ -458,7 +456,16 @@ function QsSettlement({ projects, roleKey }) {
             </div>
             <div className="form-row">
               <label className="form-label">Zone</label>
-              <input className="form-input" value={zone} onChange={(e) => setZone(e.target.value)} />
+              <input
+                className="form-input"
+                list="qs-zones"
+                value={zone}
+                onChange={(e) => setZone(e.target.value)}
+                placeholder="Select or type zone"
+              />
+              <datalist id="qs-zones">
+                {[...new Set(rows.map((r) => r.zone).filter(Boolean))].map((z) => <option key={z} value={z} />)}
+              </datalist>
             </div>
             <div className="form-row">
               <label className="form-label">Initial area</label>
@@ -499,12 +506,6 @@ function QsSettlement({ projects, roleKey }) {
             ))}
           </select>
         </div>
-        {canReview && (
-          <div className="form-row" style={{ maxWidth: 360, marginBottom: 12 }}>
-            <label className="form-label">Review remark (applies to approve / reject)</label>
-            <input className="form-input" value={reviewRemark} onChange={(e) => setReviewRemark(e.target.value)} />
-          </div>
-        )}
         {listQ.isLoading ? (
           <EmptyState text="Loading…" />
         ) : (
@@ -526,16 +527,16 @@ function QsSettlement({ projects, roleKey }) {
                   label: 'Status',
                   render: (r) => (r.status ? <StatusPill tone={statusTone(r.status)}>{r.status}</StatusPill> : '—'),
                 },
-                ...(canReview
+                ...(canEdit
                   ? [{
-                    key: 'review',
-                    label: 'Review',
+                    key: 'update',
+                    label: 'Update',
                     render: (r) => (
                       <span style={{ display: 'flex', gap: 8 }}>
-                        <button type="button" className="approve-btn" disabled={review.isPending} onClick={() => review.mutate({ id: r._id ?? r.id, status: 'Approved' })}>
+                        <button type="button" className="approve-btn" disabled={setStatus.isPending} onClick={() => setStatus.mutate({ id: r._id ?? r.id, status: 'Approved' })}>
                           Approve
                         </button>
-                        <button type="button" className="approve-btn" disabled={review.isPending} onClick={() => review.mutate({ id: r._id ?? r.id, status: 'Rejected' })}>
+                        <button type="button" className="approve-btn" disabled={setStatus.isPending} onClick={() => setStatus.mutate({ id: r._id ?? r.id, status: 'Rejected' })}>
                           Reject
                         </button>
                       </span>
@@ -569,7 +570,7 @@ function BoqItems({ projects, roleKey }) {
   const [err, setErr] = useState('');
 
   const canCreate = roleKey === 'qs' || SUPER_ROLES.includes(roleKey);
-  const canReview = roleKey === 'qs_head' || SUPER_ROLES.includes(roleKey);
+  const canEdit = roleKey === 'qs' || SUPER_ROLES.includes(roleKey);
 
   const listQ = useQuery({
     queryKey: ['boq-items', { project: filterProject }],
@@ -595,7 +596,7 @@ function BoqItems({ projects, roleKey }) {
   });
 
   const review = useMutation({
-    mutationFn: ({ id, next }) => boqApi.review(id, { status: next }),
+    mutationFn: ({ id, next }) => boqApi.update(id, { status: next }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['boq-items'] }),
     onError: (e) => setErr(e.message),
   });
@@ -626,7 +627,7 @@ function BoqItems({ projects, roleKey }) {
   return (
     <>
       {canCreate && (
-        <Panel title="QS / BOQ — BOQ items (QS logs Draft → Submitted)">
+        <Panel title="QS / BOQ — BOQ items (QS only: Area settlement, BOQ, work updates)">
           <form onSubmit={handleSubmit}>
             <div className="field-grid">
               <div className="form-row">
@@ -641,7 +642,10 @@ function BoqItems({ projects, roleKey }) {
               </div>
               <div className="form-row">
                 <label className="form-label">Unit</label>
-                <input className="form-input" value={unit} onChange={(e) => setUnit(e.target.value)} />
+                <select className="filter-select" style={{ width: '100%' }} value={unit} onChange={(e) => setUnit(e.target.value)}>
+                  <option value="">Select unit</option>
+                  {['sqft', 'sqm', 'm', 'mm', 'nos', 'ls', 'kg', 'cum'].map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
               </div>
               <div className="form-row">
                 <label className="form-label">Qty</label>
@@ -656,6 +660,7 @@ function BoqItems({ projects, roleKey }) {
                 <select className="filter-select" value={status} onChange={(e) => setStatus(e.target.value)}>
                   <option>Draft</option>
                   <option>Submitted</option>
+                  <option>Approved</option>
                 </select>
               </div>
             </div>
@@ -713,10 +718,10 @@ function BoqItems({ projects, roleKey }) {
                   label: 'Status',
                   render: (r) => (r.status ? <StatusPill tone={statusTone(r.status)}>{r.status}</StatusPill> : '—'),
                 },
-                ...(canReview
+                ...(canEdit
                   ? [{
-                    key: 'review',
-                    label: 'Review',
+                    key: 'update',
+                    label: 'Update',
                     render: (r) => (
                       <span style={{ display: 'flex', gap: 8 }}>
                         <button type="button" className="approve-btn" disabled={review.isPending} onClick={() => review.mutate({ id: r._id ?? r.id, next: 'Submitted' })}>

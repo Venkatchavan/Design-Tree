@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, projectsApi, request, toQuery, workEntriesApi } from '../lib/api.js';
-import { areaApi, bimApi, boqApi, discApi, peerApi, visitsApi } from '../lib/functionsApi.js';
+import { areaApi, bimApi, boqApi, discApi, peerApi, visitsApi, weeklyReportApi } from '../lib/functionsApi.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -25,8 +25,55 @@ const HEAD_TABS = [
   { key: 'bim-head', label: 'BIM' },
   { key: 'gbs-head', label: 'GBS' },
   { key: 'peer-review-head', label: 'Peer review' },
-  { key: 'qs-head', label: 'QS / BOQ' },
+  { key: 'qs-head', label: 'QS' },
 ];
+
+function fmtShortDate(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '—';
+  const day = String(d.getDate()).padStart(2, '0');
+  const mon = d.toLocaleString('en-GB', { month: 'short' });
+  return `${day}-${mon}-${String(d.getFullYear()).slice(2)}`;
+}
+
+function weekLabelOf(r) {
+  if (r.weekLabel) return r.weekLabel;
+  const a = r.weekStart ? new Date(r.weekStart) : null;
+  const b = r.weekEnd ? new Date(r.weekEnd) : null;
+  if (a && !Number.isNaN(a) && b && !Number.isNaN(b)) {
+    const mon = a.toLocaleString('en-GB', { month: 'short' });
+    return `${mon} ${a.getDate()}-${b.getDate()}`;
+  }
+  return a && !Number.isNaN(a) ? fmtShortDate(a) : '—';
+}
+
+// Weekly report rows with visit counts derived from site visits
+// (project + week window). Shared by the workspace panel and the QA/QC view.
+function weeklyReportRows(reports, visits, projectName) {
+  return reports.map((r) => {
+    const pid = String(r.project?._id ?? r.project ?? '');
+    const start = r.weekStart ? new Date(r.weekStart) : null;
+    const end = r.weekEnd ? new Date(r.weekEnd) : null;
+    const count = visits.filter((v) => {
+      if (String(v.project?._id ?? v.project ?? '') !== pid) return false;
+      const d = new Date(v.visitDate ?? v.date ?? v.createdAt);
+      if (Number.isNaN(d.getTime())) return false;
+      if (start && !Number.isNaN(start) && d < start) return false;
+      if (end && !Number.isNaN(end) && d > end) return false;
+      return true;
+    }).length;
+    return {
+      id: String(r._id ?? r.id),
+      week: weekLabelOf(r),
+      project: r.project?.name ?? projectName(r.project),
+      visits: count,
+      status: r.status ?? 'Submitted',
+      submitted: r.submittedAt ?? r.createdAt,
+      approved: r.approvedAt,
+    };
+  });
+}
 
 function useTeamLog(projectIds, serviceLabel, enabled) {
   return useQuery({
@@ -44,7 +91,8 @@ function useTeamLog(projectIds, serviceLabel, enabled) {
 
 export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
   void user;
-  void bootstrap;
+  const role = bootstrap?.role?.key ?? '';
+  const isDirector = new Set(['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director']).has(role);
   const qc = useQueryClient();
   // viewKey selects the function; fall back to local tabs when absent/unknown.
   const known = HEAD_TABS.some((t) => t.key === viewKey);
@@ -85,11 +133,12 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     queryKey: ['function-areas'],
     queryFn: () => areaApi.list({}),
     enabled: active === 'qs-head',
+    retry: false,
   });
   const boq = useQuery({
     queryKey: ['function-boq'],
     queryFn: () => boqApi.list({}),
-    enabled: active === 'qs-head',
+    enabled: false,
     retry: false,
   });
   const employees = useQuery({
@@ -103,6 +152,12 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     queryFn: () =>
       request(`/api/leave-travel/leave${toQuery({ status: qsLeaveFilter || undefined })}`),
     enabled: active === 'qs-head',
+    retry: false,
+  });
+  const weeklyQ = useQuery({
+    queryKey: ['function-weekly-reports'],
+    queryFn: () => weeklyReportApi.list({}),
+    enabled: active === 'qaqc-specs',
     retry: false,
   });
 
@@ -170,25 +225,21 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['function-visits'] }),
   });
+  const approveWeekly = useMutation({
+    mutationFn: ({ id, status }) => weeklyReportApi.approve(id, { status }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['function-weekly-reports'] }),
+  });
   const approvePeer = useMutation({
     mutationFn: ({ id, body }) => peerApi.setFinal(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['function-peers'] }),
   });
   const reviewArea = useMutation({
-    mutationFn: ({ id, body }) => areaApi.review(id, body),
+    mutationFn: ({ id, body }) => areaApi.update(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['function-areas'] }),
   });
   const reviewBoq = useMutation({
-    mutationFn: ({ id, body }) => boqApi.review(id, body),
+    mutationFn: ({ id, body }) => boqApi.update(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['function-boq'] }),
-  });
-  const decideLeave = useMutation({
-    mutationFn: ({ id, status }) =>
-      request(`/api/leave-travel/leave/${id}/decision`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status }),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['function-qs-leave'] }),
   });
 
   const visitRows = arr(visits.data);
@@ -237,19 +288,81 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
     }
     return ids;
   }, [employees.data]);
-  const qsLeaveRows = useMemo(() => {
-    if (qsEmpIds.size === 0) return leaveRows;
-    return leaveRows.filter((l) =>
-      qsEmpIds.has(String(l.employee?._id ?? l.employee ?? l.employeeId ?? '')),
-    );
-  }, [leaveRows, qsEmpIds]);
+  const qsLeaveRows = leaveRows.filter((l) =>
+    qsEmpIds.has(String(l.employee?._id ?? l.employee ?? l.employeeId ?? '')),
+  );
 
   const actionError =
     approveVisit.error?.message ??
     approvePeer.error?.message ??
     reviewArea.error?.message ??
-    reviewBoq.error?.message ??
-    decideLeave.error?.message;
+    reviewBoq.error?.message;
+
+  if (isDirector && active === 'qaqc-specs') {
+    return (
+      <div id={`view-${active}`}>
+        <DirectorQaqcView
+          visits={arr(visits.data)}
+          discs={arr(discs.data)}
+          projects={projectRows}
+          loading={visits.isLoading || discs.isLoading}
+          loadError={visits.error?.message ?? discs.error?.message}
+        />
+      </div>
+    );
+  }
+
+  if (isDirector && active === 'bim-head') {
+    return (
+      <div id={`view-${active}`}>
+        <DirectorBimView
+          orders={bimRows}
+          teamLogCount={bimLog.data?.length ?? 0}
+          scopeCount={bimScopeIds.length}
+          loading={bimOrders.isLoading}
+          loadError={bimOrders.error?.message ?? bimLog.error?.message}
+        />
+      </div>
+    );
+  }
+
+  if (isDirector && active === 'gbs-head') {
+    return (
+      <div id={`view-${active}`}>
+        <DirectorGbsView
+          items={gbs.data ?? []}
+          teamLogCount={gbsLog.data?.length ?? 0}
+          loading={gbs.isLoading}
+          loadError={gbs.error?.message}
+        />
+      </div>
+    );
+  }
+
+  if (isDirector && active === 'peer-review-head') {
+    return (
+      <div id={`view-${active}`}>
+        <DirectorPeerView
+          reviews={peerRows}
+          openComments={openPeerComments}
+        />
+      </div>
+    );
+  }
+
+  if (isDirector && active === 'qs-head') {
+    return (
+      <div id={`view-${active}`}>
+        <DirectorQsView
+          teamLogCount={qsLog.data?.length ?? 0}
+          areas={areaRows}
+          leaves={qsLeaveRows}
+          loading={areas.isLoading || qsLeave.isLoading}
+          loadError={areas.error?.message}
+        />
+      </div>
+    );
+  }
 
   return (
     <div id={`view-${active}`}>
@@ -327,6 +440,30 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
               rows={visitRows.slice(0, 20)}
               emptyText="No site visits yet."
             />
+          </Panel>
+          <Panel title="Weekly reports" sub="Submitted by the QA/QC team for approval">
+            {weeklyQ.isLoading ? <EmptyState text="Loading…" /> : weeklyQ.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{weeklyQ.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'week', label: 'Week' },
+                  { key: 'project', label: 'Project' },
+                  { key: 'visits', label: 'Visits' },
+                  { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
+                  { key: 'submitted', label: 'Submitted', render: (r) => fmtShortDate(r.submitted) },
+                  { key: 'approved', label: 'Approved', render: (r) => fmtShortDate(r.approved) },
+                  {
+                    key: 'action', label: '', render: (r) => (r.status === 'Submitted' && role === 'qaqc_head' ? (
+                      <button type="button" className="approve-btn" disabled={approveWeekly.isPending} onClick={() => approveWeekly.mutate({ id: r.id, status: 'Approved' })}>Approve</button>
+                    ) : '—'),
+                  },
+                ]}
+                rows={weeklyReportRows(arr(weeklyQ.data), visitRows, projectName)}
+                emptyText="No weekly reports yet."
+              />
+            )}
+            {approveWeekly.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{approveWeekly.error.message}</div>}
           </Panel>
           <Panel title="Discrepancy log">
             <DataTable
@@ -551,7 +688,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
               emptyText="No work entries on QS-scope projects yet."
             />
           </Panel>
-          <Panel title="QS leave approvals">
+          <Panel title="QS leave requests">
             <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
               <select className="filter-select" value={qsLeaveFilter} onChange={(e) => setQsLeaveFilter(e.target.value)}>
                 <option value="">All statuses</option>
@@ -572,31 +709,186 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
                   { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName ?? ''} ${r.employee.lastName ?? ''}`.trim() || '—' : '—' },
                   { key: 'dates', label: 'Dates', render: (r) => `${fmtDate(r.from ?? r.startDate)} → ${fmtDate(r.to ?? r.endDate)}` },
                   { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
-                  {
-                    key: 'decision',
-                    label: 'Decision',
-                    render: (r) => (
-                      <span style={{ display: 'flex', gap: 8 }}>
-                        <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => decideLeave.mutate({ id: r._id ?? r.id, status: 'Approved' })}>
-                          Approve
-                        </button>
-                        <button type="button" className="approve-btn" disabled={decideLeave.isPending} onClick={() => decideLeave.mutate({ id: r._id ?? r.id, status: 'Rejected' })}>
-                          Reject
-                        </button>
-                      </span>
-                    ),
-                  },
                 ]}
                 rows={qsLeaveRows}
                 emptyText="No QS leave requests found."
               />
             )}
             <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
-              Filtered client-side to the QS department via the employee directory; when no department link exists, all fetched requests are shown.
+              Read-only. Leave approvals now flow Team Lead → HR → Finance in Leave &amp; Travel → Approvals.
             </p>
           </Panel>
         </>
       )}
     </div>
+  );
+}
+
+function DirectorBimView({ orders, teamLogCount, scopeCount, loading, loadError }) {
+  const activeOrders = orders.filter(
+    (b) => !['completed', 'closed', 'done'].includes(String(b.status ?? '').toLowerCase()),
+  );
+  return (
+    <>
+      <div className="page-head">
+        <div className="page-title">BIM</div>
+        <div className="page-sub">Team overview, BIM work orders and submitted work across every project</div>
+      </div>
+      <div className="kpi-grid cols-3">
+        <KpiCard label="Active BIM work orders" value={activeOrders.length} accent="blueprint" />
+        <KpiCard label="Team submissions (log)" value={teamLogCount} accent="teal" />
+        <KpiCard label="Projects covered" value={scopeCount} accent="forest" />
+      </div>
+      {loadError && (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{loadError}</div>
+      )}
+      <Panel title="BIM summary">
+        {loading ? <EmptyState text="Loading…" /> : (
+          <EmptyState text="Showing summary KPIs for BIM above. Work orders and the team work log are available in the BIM Head's own workspace." />
+        )}
+      </Panel>
+    </>
+  );
+}
+
+function gbsPhases(item) {
+  const cert = item?.data?.item ?? item?.data?.cert ?? item?.data;
+  const phases = cert?.phases ?? cert?.stages ?? [];
+  return Array.isArray(phases) ? phases : [];
+}
+
+function DirectorGbsView({ items, teamLogCount, loading, loadError }) {
+  const withPhases = items.map((r) => ({ ...r, phases: gbsPhases(r) }));
+  const isComplete = (p) =>
+    ['completed', 'approved', 'done', 'certified', 'issued'].includes(String(p.status ?? '').toLowerCase());
+  const inProgress = withPhases.filter((r) => r.phases.length === 0 || r.phases.some((p) => !isComplete(p)));
+  const phasesDone = withPhases.reduce((s, r) => s + r.phases.filter(isComplete).length, 0);
+  return (
+    <>
+      <div className="page-head">
+        <div className="page-title">GBS</div>
+        <div className="page-sub">Green building certification progress across every project pursuing certification</div>
+      </div>
+      <div className="kpi-grid cols-3">
+        <KpiCard label="Projects in progress" value={inProgress.length} accent="blueprint" />
+        <KpiCard label="Phases completed" value={phasesDone} accent="forest" />
+        <KpiCard label="Team submissions (log)" value={teamLogCount} accent="teal" />
+      </div>
+      {loadError && (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{loadError}</div>
+      )}
+      <Panel title="GBS summary">
+        {loading ? <EmptyState text="Loading…" /> : (
+          <EmptyState text="Showing summary KPIs for GBS above. The certification workflow and team work log are available in the GBS Head's own workspace." />
+        )}
+      </Panel>
+    </>
+  );
+}
+
+function DirectorPeerView({ reviews, openComments }) {
+  const norm = (v) => String(v ?? '').toLowerCase();
+  const inProgress = reviews.filter((p) =>
+    ['in progress', 'inprogress', 'ongoing', 'open'].includes(norm(p.status)),
+  );
+  const finalised = reviews.filter((p) =>
+    ['final', 'finalised', 'finalized', 'completed', 'approved'].includes(norm(p.status)),
+  );
+  const pendingApproval = reviews.filter((p) => !inProgress.includes(p) && !finalised.includes(p));
+  return (
+    <>
+      <div className="page-head">
+        <div className="page-title">Peer Review</div>
+        <div className="page-sub">Overview of every peer review submission, checklist progress and open comments</div>
+      </div>
+      <div className="kpi-grid cols-3">
+        <KpiCard label="Reviews in progress" value={inProgress.length} accent="blueprint" />
+        <KpiCard label="Pending approval" value={pendingApproval.length} accent="amber" />
+        <KpiCard label="Open comments" value={openComments.length} accent="rust" />
+      </div>
+      <Panel title="Peer review summary">
+        <EmptyState text="Showing summary KPIs for Peer Review above. The full review log is available in the Peer Review Head's own workspace." />
+      </Panel>
+    </>
+  );
+}
+
+function DirectorQsView({ teamLogCount, areas, leaves, loading, loadError }) {
+  const pendingAreas = areas.filter((a) =>
+    ['pending', 'submitted', 'open'].includes(String(a.status ?? a.reviewStatus ?? '').toLowerCase()),
+  );
+  const pendingLeaves = leaves.filter((l) => String(l.status ?? '').toLowerCase() === 'pending');
+  return (
+    <>
+      <div className="page-head">
+        <div className="page-title">QS</div>
+        <div className="page-sub">BOQ-related work across the QS team, area settlements, and leave approvals for the QS department</div>
+      </div>
+      <div className="kpi-grid cols-3">
+        <KpiCard label="Team submissions (log)" value={teamLogCount} accent="blueprint" />
+        <KpiCard label="Area settlements needing review" value={pendingAreas.length} accent="amber" />
+        <KpiCard label="Pending leave approvals" value={pendingLeaves.length} accent="teal" />
+      </div>
+      {loadError && (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{loadError}</div>
+      )}
+      <Panel title="QS summary">
+        {loading ? <EmptyState text="Loading…" /> : (
+          <EmptyState text="Showing summary KPIs for QS above. Area settlements, the team work log and leave approvals are available in the QS Head's own workspace." />
+        )}
+      </Panel>
+    </>
+  );
+}
+
+function DirectorQaqcView({ visits, discs, projects, loadError }) {
+  const [fProject, setFProject] = useState('');
+  const pidOf = (p) => String(p?._id ?? p ?? '');
+  const isOpenDisc = (d) => String(d.status ?? 'Open').toLowerCase() !== 'closed';
+  const fVisits = visits.filter((v) => !fProject || pidOf(v.project) === fProject);
+  const fDiscs = discs.filter((d) => !fProject || pidOf(d.project) === fProject);
+  const openDiscs = fDiscs.filter(isOpenDisc);
+  const pending = fVisits.filter((v) => v.status !== 'Approved');
+  const additional = fVisits.filter((v) => v.additionalVisit);
+  const structural = openDiscs.filter(
+    (d) => String(d.discipline ?? '').toLowerCase() === 'structural',
+  );
+
+  return (
+    <>
+      <div className="page-head">
+        <div className="page-title">QA/QC Specifications</div>
+        <div className="page-sub">Overview and approval of site visits and weekly reports submitted by the QA/QC team</div>
+      </div>
+      <div className="kpi-grid cols-4">
+        <KpiCard label="Total site visits" value={fVisits.length} accent="blueprint" />
+        <KpiCard label="Pending report approval" value={pending.length} accent="amber" />
+        <KpiCard label="Drawing issues flagged" value={openDiscs.length} accent="rust" />
+        <KpiCard label="Additional visits" value={additional.length} accent="teal" />
+      </div>
+      {loadError && (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{loadError}</div>
+      )}
+      <Panel
+        title="Project-wise QA/QC summary"
+        sub="Weekly reports and the full visit/discrepancy log are available in the Specification Head's own workspace"
+      >
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+          <select className="filter-select" value={fProject} onChange={(e) => setFProject(e.target.value)}>
+            <option value="">All projects</option>
+            {projects.map((p) => <option key={p._id} value={String(p._id)}>{p.name}</option>)}
+          </select>
+        </div>
+        <div className="kpi-grid cols-3">
+          <KpiCard label="Site visits" value={fVisits.length} accent="blueprint" />
+          <KpiCard label="Discrepancies during construction" value={openDiscs.length} accent="rust" />
+          <KpiCard label="Drawing discrepancies — Structural" value={structural.length} accent="amber" />
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
+          Drawing discrepancy tracking applies to the Structural department only — Mechanical,
+          Electrical, PHE and Fire are not tracked here.
+        </p>
+      </Panel>
+    </>
   );
 }

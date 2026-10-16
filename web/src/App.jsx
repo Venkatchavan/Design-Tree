@@ -2,8 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { bootstrapApi, meApi } from './lib/api.js'
 import AppShell from './layout/AppShell.jsx'
+import LoginSkeleton from './components/LoginSkeleton.jsx'
 import ComingSoon from './pages/ComingSoon.jsx'
 import LoginPage from './pages/LoginPage.jsx'
+import PublicCertificatePage from './pages/PublicCertificatePage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import ProjectDetailPage from './pages/ProjectDetailPage.jsx'
 import NewProjectPage from './pages/NewProjectPage.jsx'
@@ -11,17 +13,20 @@ import TeamsPage from './pages/TeamsPage.jsx'
 import TeamDetailPage from './pages/TeamDetailPage.jsx'
 import HRPage from './pages/HRPage.jsx'
 import MyTeamPage from './pages/MyTeamPage.jsx'
+import QSLogPage from './pages/QSLogPage.jsx'
 import MyWorkPage from './pages/MyWorkPage.jsx'
 import WorkProgressPage from './pages/WorkProgressPage.jsx'
 import UpdateWorkProgressPage from './pages/UpdateWorkProgressPage.jsx'
+import AdminWorkUpdatePage from './pages/AdminWorkUpdatePage.jsx'
 import MyCoordinationPage from './pages/MyCoordinationPage.jsx'
+import MyMeetingsPage from './pages/MyMeetingsPage.jsx'
 import WorkTrackingPage from './pages/WorkTrackingPage.jsx'
 import TransmittalLogPage from './pages/TransmittalLogPage.jsx'
 import AdminTransmittalPage from './pages/AdminTransmittalPage.jsx'
 import BillingPage from './pages/BillingPage.jsx'
 import CertificatesPage from './pages/CertificatesPage.jsx'
 import FinancePage from './pages/FinancePage.jsx'
-import TravelBookingPage from './pages/TravelBookingPage.jsx'
+import FinanceHubPage from './pages/FinanceHubPage.jsx'
 import RevenueReportsPage from './pages/RevenueReportsPage.jsx'
 import BillingStatusPage from './pages/BillingStatusPage.jsx'
 import FinanceOccPage from './pages/FinanceOccPage.jsx'
@@ -33,7 +38,9 @@ import DeptDashboardPage from './pages/DeptDashboardPage.jsx'
 import ClientPortalPage from './pages/ClientPortalPage.jsx'
 import LeaveTravelPage from './pages/LeaveTravelPage.jsx'
 import EmployeeSupportPage from './pages/EmployeeSupportPage.jsx'
-import OrgStructurePage from './pages/OrgStructurePage.jsx'
+import BranchesPage from './pages/BranchesPage.jsx'
+import OfflineGate from './components/OfflineGate.jsx'
+import TravelBookingPage from './pages/TravelBookingPage.jsx'
 
 const VIEW_COMPONENTS = {
   dashboard: DashboardPage,
@@ -46,14 +53,18 @@ const VIEW_COMPONENTS = {
   'my-work': MyWorkPage,
   'work-progress': WorkProgressPage,
   'update-work-progress': UpdateWorkProgressPage,
+  'admin-work-update': AdminWorkUpdatePage,
   'my-coordination': MyCoordinationPage,
+  'my-meetings': MyMeetingsPage,
+  meetings: MyMeetingsPage,
+  'qs-log': QSLogPage,
   'work-tracking': WorkTrackingPage,
   'transmittal-log': TransmittalLogPage,
   transmittal: AdminTransmittalPage,
   billing: BillingPage,
   certificates: CertificatesPage,
   finance: FinancePage,
-  'travel-booking': TravelBookingPage,
+  'finance-hub': FinanceHubPage,
   'revenue-reports': RevenueReportsPage,
   'billing-status': BillingStatusPage,
   'finance-occ': FinanceOccPage,
@@ -73,7 +84,8 @@ const VIEW_COMPONENTS = {
   'project-portal': ClientPortalPage,
   'leave-travel': LeaveTravelPage,
   'employee-support': EmployeeSupportPage,
-  'org-structure': OrgStructurePage,
+  branches: BranchesPage,
+  'travel-booking': TravelBookingPage,
 }
 
 // Non-nav views and the nav view whose presence grants their route.
@@ -84,13 +96,7 @@ const EXTRA_ROUTES = [
 ]
 
 function Splash() {
-  return (
-    <div className="login-screen">
-      <div className="login-sub" style={{ color: '#fff' }}>
-        Loading…
-      </div>
-    </div>
-  )
+  return <LoginSkeleton />
 }
 
 function ShellPage({ bootstrap, user, viewKey, activeView }) {
@@ -136,11 +142,31 @@ function ShellRoutes({ user }) {
       seen.add(v)
       return true
     })
+    // Belt-and-braces: Associate/Technical Directors never mount HR, even
+    // from a stale or forged bootstrap nav (server canAccess is already false).
+    // Technical/Assoc-Technical Directors also never mount design-mgmt or
+    // billing-status.
+    .filter((v) => {
+      if (v === 'hr') {
+        return user?.role !== 'associate_director' && user?.role !== 'technical_director'
+      }
+      if (v === 'design-mgmt' || v === 'billing-status') {
+        return user?.role !== 'technical_director' && user?.role !== 'assoc_technical_director'
+      }
+      return true
+    })
   const homePath = bootstrap.views[bootstrap.home].path
 
+  // Only Admin may open the new-project view (matches Dashboard button + API guard).
+  const PROJECT_CREATORS = new Set([
+    'admin_billing',
+  ])
   const extraRoutes = EXTRA_ROUTES.filter(
     ({ key, when }) =>
-      bootstrap.views[key] && allowedViews.includes(when) && !seen.has(key),
+      bootstrap.views[key] &&
+      allowedViews.includes(when) &&
+      !seen.has(key) &&
+      (key !== 'new-project' || PROJECT_CREATORS.has(user?.role)),
   )
 
   return (
@@ -188,8 +214,13 @@ function AuthGate() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthGate className="app-watermark"/>
-    </BrowserRouter>
+    <OfflineGate>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/certificate-request/:token" element={<PublicCertificatePage />} />
+          <Route path="*" element={<AuthGate className="app-watermark" />} />
+        </Routes>
+      </BrowserRouter>
+    </OfflineGate>
   )
 }

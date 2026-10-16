@@ -11,9 +11,11 @@ export const RECRUITMENT_STATUSES = [
 
 const recruitmentSchema = new mongoose.Schema(
   {
+    project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', index: true },
     department: { type: String, required: true, trim: true },
     position: { type: String, required: true, trim: true },
     headcount: { type: Number, required: true, min: 1 },
+    branch: { type: String, trim: true },
     fresherExperienced: { type: String, trim: true },
     experience: { type: String, trim: true },
     timeline: { type: String, trim: true },

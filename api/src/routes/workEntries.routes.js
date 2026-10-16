@@ -1,3 +1,4 @@
+import { entryDocumentsUpload, attachEntryDocuments, downloadEntryDocument, workDocumentAccess } from '../controllers/entryDocuments.controller.js';
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import {
@@ -13,11 +14,16 @@ import {
 const router = Router();
 
 router.use(requireAuth);
+router.post('/:id/documents', workDocumentAccess, entryDocumentsUpload, attachEntryDocuments);
+router.get('/:id/documents/:index', workDocumentAccess, downloadEntryDocument);
+
 router.get('/', requireInternal(), listWorkEntries);
 router.post('/', requireInternal(), createWorkEntry);
 router.patch(
   '/:id/decision',
   requireRole(
+    'admin_billing',
+    'hr',
     'team_lead',
     'assoc_technical_director',
     'technical_director',

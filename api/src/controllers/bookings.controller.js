@@ -17,7 +17,7 @@ export const bookings = makeCrud(TravelBooking, {
     return f;
   },
   populate: [
-    { path: 'employee', select: 'firstName lastName empId designation' },
+    { path: 'employee', select: 'firstName lastName empId designation department' },
     { path: 'project', select: 'name code' },
   ],
 });
@@ -56,8 +56,17 @@ export async function setBookingStatus(req, res, next) {
   }
 }
 
-export async function bookingSummary(_req, res, next) {
+export async function deleteBooking(req, res, next) {
   try {
+    const doc = await TravelBooking.findByIdAndDelete(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Not found.' });
+    return res.status(200).json({ removed: doc._id });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+export async function bookingSummary(_req, res, next) {  try {
     const rows = await TravelBooking.aggregate([
       {
         $group: {

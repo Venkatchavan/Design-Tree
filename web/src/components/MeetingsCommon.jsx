@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { meApi, projectsApi } from '../lib/api.js';
+import { API_BASE, meApi, projectsApi } from '../lib/api.js';
 import { UNAVAILABLE_REASONS, meetingsApi } from '../lib/phase4bApi.js';
 import {
   CONDUCTED_BY_BY_TYPE,
@@ -74,9 +74,9 @@ function defaultTime(sudden, which) {
 
 // v2 form (§5–§7): project team checklist (2A), service chips, responsible
 // banner (3B), conducted-by by type, link/location swap, ref docs.
-export function ScheduleMeetingModal({ sudden, onClose, onCreated }) {
+export function ScheduleMeetingModal({ sudden, onClose, onCreated, projectId }) {
   const queryClient = useQueryClient();
-  const [project, setProject] = useState('');
+  const [project, setProject] = useState(projectId ?? '');
   const [checkedServices, setCheckedServices] = useState([]);
   const [title, setTitle] = useState('');
   const [agenda, setAgenda] = useState('');
@@ -327,6 +327,8 @@ export function ScheduleMeetingModal({ sudden, onClose, onCreated }) {
 }
 
 export function MeetingDetailModal({ meetingId, onClose, manage = false }) {
+  const meQ = useQuery({ queryKey: ['me'], queryFn: meApi });
+  const myEmpId = idOf(meQ.data?.user?.employee);
   const queryClient = useQueryClient();
   const detailQ = useQuery({ queryKey: ['meeting', meetingId], queryFn: () => meetingsApi.get(meetingId), enabled: !!meetingId });
   const [resDate, setResDate] = useState('');
@@ -413,6 +415,7 @@ export function MeetingDetailModal({ meetingId, onClose, manage = false }) {
             <div><div className="form-label">Date</div><div style={{ fontSize: 13 }}>{fmtDate(meeting.date)} {meeting.startTime ?? ''}{meeting.endTime ? `–${meeting.endTime}` : ''}</div></div>
             <div><div className="form-label">Status</div><StatusPill tone={statusTone(meeting.status)}>{meeting.status ?? '—'}</StatusPill></div>
           </div>
+          {meeting.link && <p><a href={meeting.link} target="_blank" rel="noopener noreferrer">Join meeting</a> <button type="button" className="approve-btn" onClick={() => navigator.clipboard.writeText(meeting.link)}>Copy link</button></p>}
           {meeting.agenda && <p style={{ fontSize: 13 }}>{meeting.agenda}</p>}
           <div className="section-label">Invites & responses ({invites.length})</div>
           <DataTable
@@ -463,25 +466,18 @@ export function MeetingDetailModal({ meetingId, onClose, manage = false }) {
               columns={[
                 { key: 'text', label: 'Action', render: (a) => a.text ?? '—' },
                 { key: 'owner', label: 'Owner', render: (a) => empName(a.owner) },
-                {
-                  key: 'priority', label: 'Priority', render: (a) => {
-                    const p = a.priority ?? 'Medium';
-                    const tone = p === 'High' ? 'rust' : p === 'Low' ? 'neutral' : 'amber';
-                    return <StatusPill tone={tone}>{p}</StatusPill>;
-                  },
-                },
+
                 { key: 'due', label: 'Due', render: (a) => `${fmtDate(a.due)} · ${actionLabel(a)}` },
                 { key: 'status', label: 'Status', render: (a) => <StatusPill tone={statusTone(a.status)}>{a.status ?? '—'}</StatusPill> },
                 { key: 'note', label: 'Update note', render: (a) => a.note ?? '—' },
                 {
                   key: 'flip',
                   label: 'Update',
-                  render: (a) => (
+                  render: (a) => (manage || idOf(a.owner) === myEmpId) ? (
                     <span style={{ display: 'flex', gap: 6 }}>
-                      <button type="button" className="approve-btn" onClick={() => flipAction.mutate({ actionId: a._id ?? a.id, status: 'Completed' })}>Complete</button>
-                      <button type="button" className="approve-btn" onClick={() => flipAction.mutate({ actionId: a._id ?? a.id, status: 'Pending' })}>Reopen</button>
+                      <select className="filter-select" aria-label="Action status" value={a.status || 'Pending'} disabled={flipAction.isPending} onChange={e => flipAction.mutate({actionId: a._id ?? a.id, status: e.target.value})}><option>Pending</option><option>In Progress</option><option>Completed</option></select>
                     </span>
-                  ),
+                  ) : '—',
                 },
               ]}
               rows={actions}
@@ -491,16 +487,9 @@ export function MeetingDetailModal({ meetingId, onClose, manage = false }) {
               <>
                 <div className="field-grid" style={{ marginTop: 10 }}>
                   <div className="form-row"><label className="form-label">Action text *</label><input className="form-input" value={actionText} onChange={(e) => setActionText(e.target.value)} /></div>
-                  <div className="form-row"><label className="form-label">Owner (employee id)</label><input className="form-input" value={actionOwner} onChange={(e) => setActionOwner(e.target.value)} placeholder="Optional employee id" /></div>
+                  <div className="form-row"><label className="form-label">Owner</label><select className="filter-select" style={{ width: '100%' }} value={actionOwner} onChange={(e) => setActionOwner(e.target.value)}><option value="">Select team member</option>{members.map((m) => { const id = String(m?.employee?._id ?? m?.employee?.id ?? ''); const n = [m?.employee?.firstName, m?.employee?.lastName].filter(Boolean).join(' ') || id; return id ? <option key={id} value={id}>{n}</option> : null; })}</select></div>
                   <div className="form-row"><label className="form-label">Due</label><input className="form-input" type="date" value={actionDue} onChange={(e) => setActionDue(e.target.value)} /></div>
-                  <div className="form-row">
-                    <label className="form-label">Priority</label>
-                    <select className="filter-select" style={{ width: '100%' }} value={actionPriority} onChange={(e) => setActionPriority(e.target.value)}>
-                      <option>High</option>
-                      <option>Medium</option>
-                      <option>Low</option>
-                    </select>
-                  </div>
+
                 </div>
                 <button
                   type="button"
@@ -539,7 +528,7 @@ function ModalInviteResponse({ meeting }) {
   const myEmpId = emp
     ? String(typeof emp === 'object' ? (emp._id ?? emp.id ?? '') : emp)
     : '';
-  if (meeting?.status !== 'Scheduled' || meeting?.category !== 'Scheduled') return null;
+  if (!['Scheduled', 'Rescheduled'].includes(meeting?.status) || meeting?.category !== 'Scheduled') return null;
   if (meeting?.date) {
     const d = new Date(meeting.date);
     const t = new Date();
@@ -565,7 +554,7 @@ function AttendanceReadout({ meeting }) {
             {
               key: 'status', label: 'Status', render: (r) => r.present
                 ? <StatusPill tone="forest">Attended</StatusPill>
-                : <StatusPill tone="rust">Not attended</StatusPill>,
+                : r.present === false ? <StatusPill tone="rust">Not attended</StatusPill> : 'Not marked',
             },
             { key: 'reason', label: 'Reason', render: (r) => (!r.present && r.reason ? r.reason : '—') },
           ]}
@@ -621,11 +610,7 @@ function AttendanceEditor({ invites, initial, onChange, onSave, saving }) {
 function MomSection({ meeting, manage, onSaved }) {
   const queryClient = useQueryClient();
   const mom = meeting?.mom && typeof meeting.mom === 'object' ? meeting.mom : {};
-  const hasMom =
-    (mom.discussion ?? '').trim() ||
-    (mom.decisions ?? '').trim() ||
-    (mom.followUp ?? '').trim() ||
-    meeting?.momDoc;
+  const hasMom = (mom.discussion ?? '').trim() || meeting?.momDoc;
   const [form, setForm] = useState(null);
   const [err, setErr] = useState('');
   const draft = form ?? {
@@ -661,6 +646,7 @@ function MomSection({ meeting, manage, onSaved }) {
           </div>
           <div>
             <div className="form-label">Download</div>
+            {meeting?.momDocPath && <p><a href={`${API_BASE}/api/meetings/${meeting._id ?? meeting.id}/file?mom=true`} download>Download original MOM document</a></p>}
             <a className="approve-btn" style={{ textDecoration: 'none', display: 'inline-block' }} href={meetingsApi.momDownloadUrl(meeting._id ?? meeting.id)} download>
               Download MOM
             </a>
@@ -724,7 +710,7 @@ function RefDocsSection({ meeting, manage, onSaved }) {
       ) : (
         <ul style={{ fontSize: 13, paddingLeft: 18 }}>
           {docs.map((d, i) => (
-            <li key={i}>{String(d).split('/').pop()}</li>
+            <li key={i}><a href={`${API_BASE}/api/meetings/${meeting._id}/file?index=${i}`} download>{String(d).split('/').pop()}</a></li>
           ))}
         </ul>
       )}
@@ -785,11 +771,11 @@ export function ResponseBox({ meeting, myEmpId, organiser }) {
       setErr('Describe the reason.');
       return;
     }
-    const finalReason = reason === 'Other — specify' ? customReason.trim() : reason;
+    const finalReason = reason;
     respond.mutate({
       response: choice,
       reason: choice === 'Not Available' ? finalReason : undefined,
-      note: note.trim() || undefined,
+      note: (reason === 'Other — specify' ? customReason.trim() : note.trim()) || undefined,
     });
   }
 

@@ -11,7 +11,9 @@ import StatusPill from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Modal from '../components/Modal.jsx';
 
-const SUPER = new Set(['founding_director', 'working_director']);
+const SUPER = new Set(['founding_director', 'working_director', 'executive_director']);
+const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'executive_director']);
+const DIRECTOR_CONTACT_TYPES = ['Client', 'Architect', 'Contractor', 'Government Official'];
 const arr = (v) => (Array.isArray(v) ? v : (v?.items ?? []));
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : '—');
 
@@ -26,6 +28,7 @@ export default function MarketingPage({ bootstrap, user, viewKey }) {
   void viewKey;
   const role = bootstrap?.role?.key ?? '';
   const canCollateral = SUPER.has(role) || String(role).includes('marketing');
+  const isMarketing = String(role).includes('marketing');
   const qc = useQueryClient();
 
   const [tab, setTab] = useState('portfolio');
@@ -47,11 +50,15 @@ export default function MarketingPage({ bootstrap, user, viewKey }) {
     details: '',
   });
   const [contactForm, setContactForm] = useState({
+    type: 'Client',
     name: '',
-    type: '',
-    email: '',
+    organization: '',
+    designation: '',
     phone: '',
-    organisation: '',
+    email: '',
+    city: '',
+    project: '',
+    notes: '',
   });
 
   const portfolio = useQuery({
@@ -101,7 +108,10 @@ export default function MarketingPage({ bootstrap, user, viewKey }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['marketing-contacts'] });
       qc.invalidateQueries({ queryKey: ['marketing-contacts-summary'] });
-      setContactForm({ name: '', type: '', email: '', phone: '', organisation: '' });
+      setContactForm({
+        type: 'Client', name: '', organization: '', designation: '',
+        phone: '', email: '', city: '', project: '', notes: '',
+      });
     },
   });
 
@@ -131,7 +141,17 @@ export default function MarketingPage({ bootstrap, user, viewKey }) {
 
   function submitContact(e) {
     e.preventDefault();
-    createContact.mutate({ ...contactForm });
+    createContact.mutate({
+      type: contactForm.type,
+      name: contactForm.name.trim(),
+      organization: contactForm.organization.trim(),
+      designation: contactForm.designation.trim() || undefined,
+      phone: contactForm.phone.trim(),
+      email: contactForm.email.trim() || undefined,
+      city: contactForm.city.trim() || undefined,
+      project: contactForm.project || undefined,
+      notes: contactForm.notes.trim() || undefined,
+    });
   }
 
   function exportContacts() {
@@ -155,6 +175,10 @@ export default function MarketingPage({ bootstrap, user, viewKey }) {
     createCollateral.error?.message ??
     updateCollateral.error?.message ??
     createContact.error?.message;
+
+  if (DIRECTOR_ROLES.has(role)) {
+    return <DirectorMarketingView />;
+  }
 
   return (
     <div id="view-marketing">
@@ -314,33 +338,24 @@ export default function MarketingPage({ bootstrap, user, viewKey }) {
 
       {tab === 'contacts' && (
         <>
-          <Panel title="Add contact">
+          {isMarketing && (
+          <Panel title="Add new contact">
             <form onSubmit={submitContact} className="field-grid">
-              <div className="form-row">
-                <label className="form-label">Name *</label>
-                <input required className="form-input" value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })} />
-              </div>
-              <div className="form-row">
-                <label className="form-label">Type</label>
-                <input className="form-input" value={contactForm.type} onChange={(e) => setContactForm({ ...contactForm, type: e.target.value })} placeholder="Client, vendor, media…" />
-              </div>
-              <div className="form-row">
-                <label className="form-label">Email</label>
-                <input type="email" className="form-input" value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} />
-              </div>
-              <div className="form-row">
-                <label className="form-label">Phone</label>
-                <input className="form-input" value={contactForm.phone} onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })} />
-              </div>
-              <div className="form-row">
-                <label className="form-label">Organisation</label>
-                <input className="form-input" value={contactForm.organisation} onChange={(e) => setContactForm({ ...contactForm, organisation: e.target.value })} />
-              </div>
+              <div className="form-row"><label className="form-label">Contact type *</label><select required className="filter-select" style={{ width: '100%' }} value={contactForm.type} onChange={(e) => setContactForm({ ...contactForm, type: e.target.value })}>{DIRECTOR_CONTACT_TYPES.map((t) => <option key={t}>{t}</option>)}</select></div>
+              <div className="form-row"><label className="form-label">Full name *</label><input required className="form-input" placeholder="Person or point of contact" value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })} /></div>
+              <div className="form-row"><label className="form-label">Organization / Company *</label><input required className="form-input" placeholder="e.g. Skyline Developers" value={contactForm.organization} onChange={(e) => setContactForm({ ...contactForm, organization: e.target.value })} /></div>
+              <div className="form-row"><label className="form-label">Designation / Role</label><input className="form-input" placeholder="e.g. Director, Site Engineer" value={contactForm.designation} onChange={(e) => setContactForm({ ...contactForm, designation: e.target.value })} /></div>
+              <div className="form-row"><label className="form-label">Phone *</label><input required className="form-input" placeholder="+91 XXXXX XXXXX" value={contactForm.phone} onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })} /></div>
+              <div className="form-row"><label className="form-label">Email</label><input type="email" className="form-input" placeholder="name@example.com" value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} /></div>
+              <div className="form-row"><label className="form-label">City / Location</label><input className="form-input" placeholder="e.g. Bengaluru" value={contactForm.city} onChange={(e) => setContactForm({ ...contactForm, city: e.target.value })} /></div>
+              <div className="form-row"><label className="form-label">Related project</label><select className="filter-select" style={{ width: '100%' }} value={contactForm.project} onChange={(e) => setContactForm({ ...contactForm, project: e.target.value })}><option value="">Not project-specific</option>{portfolioRows.map((p) => <option key={p._id ?? p.id} value={p._id ?? p.id}>{p.name}</option>)}</select></div>
+              <div className="form-row"><label className="form-label">Notes</label><input className="form-input" placeholder="Any additional detail" value={contactForm.notes} onChange={(e) => setContactForm({ ...contactForm, notes: e.target.value })} /></div>
               <button type="submit" className="btn-primary" disabled={createContact.isPending}>
                 {createContact.isPending ? 'Saving…' : 'Add contact'}
               </button>
             </form>
           </Panel>
+          )}
           <Panel title="Contact book">
             <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
               <input
@@ -484,6 +499,199 @@ export default function MarketingPage({ bootstrap, user, viewKey }) {
           )}
         </Modal>
       )}
+    </div>
+  );
+}
+
+function stageDisplay(r) {
+  if (r.status === 'Completed') return 'Complete';
+  if (r.status === 'On Hold') return `${r.stage ?? ''} (on hold)`.trim();
+  if ((r.completion ?? 0) === 0) return 'Not started';
+  return r.stage ?? '—';
+}
+
+function DirectorMarketingView() {
+  const [search, setSearch] = useState('');
+  const [contactType, setContactType] = useState('');
+  const [briefProjectId, setBriefProjectId] = useState('');
+
+  const portfolio = useQuery({
+    queryKey: ['marketing-portfolio'],
+    queryFn: () => marketingApi.portfolio({}),
+  });
+  const allContacts = useQuery({
+    queryKey: ['marketing-contacts-all'],
+    queryFn: () => marketingApi.contacts.list({}),
+  });
+  const contacts = useQuery({
+    queryKey: ['marketing-contacts', contactType, search],
+    queryFn: () =>
+      marketingApi.contacts.list({ type: contactType || undefined, search: search || undefined }),
+  });
+
+  const portfolioRows = arr(portfolio.data);
+  const summary = portfolio.data?.summary ?? {};
+  const selectedId = briefProjectId || portfolioRows[0]?.id || '';
+  const selected = portfolioRows.find((p) => p.id === selectedId) ?? null;
+  const brief = useQuery({
+    queryKey: ['marketing-brief', selectedId],
+    queryFn: () => marketingApi.brief(selectedId),
+    enabled: !!selectedId,
+  });
+  const briefItem = brief.data?.item ?? null;
+
+  const allRows = arr(allContacts.data);
+  const countBy = (t) => allRows.filter((c) => c.type === t).length;
+  const contactRows = arr(contacts.data);
+
+  function exportContacts() {
+    const ws = XLSX.utils.json_to_sheet(
+      contactRows.map((c) => ({
+        Type: c.type ?? '',
+        Name: c.name ?? '',
+        'Organization / Dept.': c.organization ?? '',
+        Designation: c.designation ?? '',
+        Phone: c.phone ?? '',
+        Email: c.email ?? '',
+        City: c.city ?? '',
+        'Related project': c.project?.name ?? c.project ?? '',
+        'Trade / Jurisdiction': c.trade ?? c.department ?? '',
+        Notes: c.notes ?? '',
+        'Added by': c.addedBy?.name ?? c.addedBy ?? '',
+        'Added on': c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '',
+      })),
+    );
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Contacts');
+    XLSX.writeFile(wb, 'marketing-contacts.xlsx');
+  }
+
+  return (
+    <div id="view-marketing">
+      <div className="page-head">
+        <div className="page-title">Marketing</div>
+        <div className="page-sub">Project details for marketing and portfolio use — no billing, staffing or technical data</div>
+      </div>
+
+      <div className="kpi-grid cols-4">
+        <KpiCard label="Portfolio projects" value={summary.portfolio ?? portfolioRows.length} accent="blueprint" />
+        <KpiCard label="Completed" value={summary.completed ?? 0} accent="forest" />
+        <KpiCard label="Ongoing" value={portfolioRows.filter((x) => x.status === "Active").length} accent="teal" />
+        <KpiCard label="Marketing-ready" value={summary.ready ?? 0} accent="copper" />
+      </div>
+
+      {(portfolio.error || allContacts.error) && (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>
+          {portfolio.error?.message ?? allContacts.error?.message}
+        </div>
+      )}
+
+      <Panel title="Portfolio projects" sub="Click a project for its marketing brief">
+        {portfolio.isLoading ? (
+          <EmptyState text="Loading portfolio…" />
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'name', label: 'Project', render: (r) => <><b>{r.name}</b><br /><span className="proj-code">{r.code}</span></> },
+              { key: 'client', label: 'Client', render: (r) => r.client ?? '—' },
+              { key: 'location', label: 'Location', render: (r) => r.location ?? '—' },
+              { key: 'category', label: 'Category', render: (r) => r.category || '—' },
+              { key: 'stage', label: 'Stage', render: (r) => stageDisplay(r) },
+              { key: 'completion', label: 'Completion', render: (r) => (r.completion ?? '—') === '—' ? '—' : `${r.completion}%` },
+              {
+                key: 'marketingReady',
+                label: 'Marketing-ready',
+                render: (r) => (
+                  <StatusPill status={r.marketingReady ? 'Ready' : 'Not ready'}>
+                    {r.marketingReady ? 'Yes' : 'Not yet'}
+                  </StatusPill>
+                ),
+              },
+            ]}
+            rows={portfolioRows}
+            emptyText="No portfolio projects yet."
+            onRowClick={(r) => setBriefProjectId(r.id)}
+          />
+        )}
+      </Panel>
+
+      {selected && (
+        <Panel title="Project marketing brief" sub="Description, highlights and collateral status for use in proposals, the website or case studies">
+          <div className="field-grid">
+            <div className="form-row"><span className="form-label">{selected.name}</span></div>
+            <div className="form-row"><label className="form-label">Client</label><div>{selected.client ?? '—'}</div></div>
+            <div className="form-row"><label className="form-label">Location</label><div>{selected.location ?? '—'}</div></div>
+            <div className="form-row"><label className="form-label">Category</label><div>{selected.category || '—'}</div></div>
+            <div className="form-row"><label className="form-label">Architect</label><div>{selected.architect ?? '—'}</div></div>
+            <div className="form-row"><label className="form-label">Stage</label><div>{stageDisplay(selected)}</div></div>
+            <div className="form-row"><label className="form-label">Completion</label><div>{selected.completion ?? '—'}{selected.completion != null ? '%' : ''}</div></div>
+          </div>
+          {brief.isLoading ? (
+            <EmptyState text="Loading brief…" />
+          ) : (
+            <div className="field-grid" style={{ marginTop: 12 }}>
+              <div className="form-row"><label className="form-label">Description</label><div>{briefItem?.description || selected.description || '—'}</div></div>
+              <div className="form-row"><label className="form-label">Key highlights</label><div>{(briefItem?.highlights ?? []).length > 0 ? briefItem.highlights.join(' · ') : '—'}</div></div>
+              <div className="form-row"><label className="form-label">Client testimonial</label><div>{briefItem?.testimonial || 'Pending — project ongoing'}</div></div>
+              <div className="form-row"><label className="form-label">Awards / recognition</label><div>{briefItem?.awards || 'None yet'}</div></div>
+              <div className="form-row"><label className="form-label">Photos / renders</label><div>{(briefItem?.photos ?? []).length > 0 ? briefItem.photos.map((p, i) => <span key={i}><a href={fileUrl(p)} download>Photo {i + 1}</a>{i < briefItem.photos.length - 1 ? ' · ' : ''}</span>) : 'Pending — under construction'}</div></div>
+            </div>
+          )}
+        </Panel>
+      )}
+
+      <Panel title="Contacts database" sub="Clients, architects, contractors and government officials — download the full list as Excel">
+        <div className="kpi-grid cols-5">
+          <KpiCard label="Total contacts" value={allRows.length} accent="blueprint" />
+          <KpiCard label="Clients" value={countBy('Client')} accent="forest" />
+          <KpiCard label="Architects" value={countBy('Architect')} accent="teal" />
+          <KpiCard label="Contractors" value={countBy('Contractor')} accent="copper" />
+          <KpiCard label="Govt. officials" value={countBy('Government Official')} accent="violet" />
+        </div>
+      </Panel>
+
+      <Panel title="All contacts" sub={`${contactRows.length} of ${allRows.length} contacts shown`}>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+          <input
+            className="form-input"
+            placeholder="Search name, org, phone, email…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ maxWidth: 260 }}
+          />
+          <select className="filter-select" value={contactType} onChange={(e) => setContactType(e.target.value)}>
+            <option value="">All types</option>
+            {DIRECTOR_CONTACT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <button type="button" className="btn-primary" onClick={exportContacts} disabled={contactRows.length === 0}>
+            Download Excel
+          </button>
+        </div>
+        {contacts.isLoading ? (
+          <EmptyState text="Loading contacts…" />
+        ) : contacts.error ? (
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{contacts.error.message}</div>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'type', label: 'Type' },
+              { key: 'name', label: 'Name' },
+              { key: 'organization', label: 'Organization / Dept.', render: (r) => r.organization ?? '—' },
+              { key: 'designation', label: 'Designation', render: (r) => r.designation ?? '—' },
+              { key: 'phone', label: 'Phone', render: (r) => r.phone ?? '—' },
+              { key: 'email', label: 'Email', render: (r) => r.email ?? '—' },
+              { key: 'city', label: 'City', render: (r) => r.city ?? '—' },
+              { key: 'project', label: 'Related project', render: (r) => r.project?.name ?? '—' },
+              { key: 'trade', label: 'Trade / Jurisdiction', render: (r) => r.trade ?? r.department ?? '—' },
+              { key: 'notes', label: 'Notes', render: (r) => r.notes ?? '—' },
+              { key: 'addedBy', label: 'Added by', render: (r) => r.addedBy?.name ?? '—' },
+              { key: 'createdAt', label: 'Added on', render: (r) => r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '—' },
+            ]}
+            rows={contactRows}
+            emptyText="No contacts yet."
+          />
+        )}
+      </Panel>
     </div>
   );
 }

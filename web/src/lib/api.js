@@ -23,8 +23,11 @@ export function loginApi({ email, password }) {
   });
 }
 
-export function logoutApi() {
-  return request('/api/auth/logout', { method: 'POST' });
+export function logoutApi(body) {
+  return request('/api/auth/logout', {
+    method: 'POST',
+    body: JSON.stringify(body ?? {}),
+  });
 }
 
 export function meApi() {
@@ -63,6 +66,16 @@ export async function requestMultipart(path, file, field = 'file') {
   return data;
 }
 
+export const attendanceApi = {
+  status: () => request('/api/attendance/status'),
+  reason: (body) =>
+    request('/api/attendance/reason', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  list: (params = {}) => request(`/api/attendance${toQuery(params)}`),
+};
+
 export const projectsApi = {
   list: (params = {}) => request(`/api/projects${toQuery(params)}`),
   stats: () => request('/api/projects/stats'),
@@ -86,9 +99,13 @@ export const projectsApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
-  directory: (id) => request(`/api/projects/${id}/directory`),
-  saveDirectory: (id, body) =>
-    request(`/api/projects/${id}/directory`, {
+  saveSpocContacts: (id, body) =>
+    request(`/api/projects/${id}/spoc-contacts`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  saveTeamLeads: (id, body) =>
+    request(`/api/projects/${id}/team-leads`, {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
@@ -104,6 +121,12 @@ export const projectsApi = {
       body: JSON.stringify(body),
     }),
   importFile: (file) => requestMultipart('/api/projects/import', file, 'file'),
+  nextCode: () => request('/api/projects/next-code'),
+  nextJobNumber: () => request('/api/projects/next-job-number'),
+};
+
+export const metaApi = {
+  geocode: (q) => request(`/api/meta/geocode${toQuery({ q })}`),
 };
 
 export const employeesApi = {
@@ -123,9 +146,24 @@ export const usersApi = {
   list: (params = {}) => request(`/api/users${toQuery(params)}`),
   create: (body) =>
     request('/api/users', { method: 'POST', body: JSON.stringify(body) }),
+  // External portal identity (client / architect) — never linked to employees.
+  createPortal: (body) =>
+    request('/api/users/portal', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) =>
     request(`/api/users/${id}`, {
       method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+};
+
+export const branchesApi = {
+  options: () => request('/api/branches/options'),
+  list: (all = false) => request(`/api/branches${all ? '?all=1' : ''}`),
+  create: (body) =>
+    request('/api/branches', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) =>
+    request(`/api/branches/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(body),
     }),
 };

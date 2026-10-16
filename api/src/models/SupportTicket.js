@@ -18,7 +18,6 @@ const supportTicketSchema = new mongoose.Schema(
     employee: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Employee',
-      required: true,
       index: true,
     },
     month: { type: String, trim: true },
@@ -34,6 +33,7 @@ const supportTicketSchema = new mongoose.Schema(
     assignedTo: { type: String, trim: true },
     remarks: [remarkSchema],
     issuedAt: { type: Date },
+    file: { type: String, trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },

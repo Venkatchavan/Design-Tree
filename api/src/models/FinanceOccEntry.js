@@ -13,6 +13,8 @@ export const FIN_OCC_STATUSES = [
   'Approved',
   'Paid',
   'Rejected',
+  'Raised',
+  'Closed',
 ];
 export const FIN_OCC_APPROVALS = ['Pending', 'In Review', 'Approved'];
 export const FIN_OCC_PAYMENTS = ['Pending', 'Paid'];
@@ -74,8 +76,24 @@ const financeOccSchema = new mongoose.Schema(
       enum: FIN_OCC_SETTLEMENTS,
       default: 'Not started',
     },
+    // Advance amount actually received + date (control amount lives in `amount`).
+    advanceReceived: { type: Number, min: 0 },
+    advanceDate: { type: Date },
+    // Per-category actual expenses backing the settlement calc.
+    fare: { type: Number, min: 0 },
+    lodgingAmount: { type: Number, min: 0 },
+    foodPerDiem: { type: Number, min: 0 },
+    localConveyance: { type: Number, min: 0 },
+    cabBills: { type: Number, min: 0 },
+    misc: { type: Number, min: 0 },
+    billsSubmitted: { type: Boolean, default: false },
+    hardcopyReceived: { type: Boolean, default: false },
     // Hospitality-claim fields (reference S.reimb)
     client: { type: String, trim: true },
+    hosp: { type: String, enum: ['Yes', 'No'] },
+    hospTypes: [{ type: String, trim: true }],
+    refNo: { type: String, trim: true },
+    raisedDate: { type: Date },
     linkedTravel: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'FinanceOccEntry',

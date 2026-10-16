@@ -1,3 +1,5 @@
+import { canReadProject } from '../utils/projectScope.js';
+import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { z } from 'zod';
 import { Deliverable, DeliverableLog } from '../models/Deliverable.js';
 import { TASK_STATUSES } from '../models/Task.js';
@@ -29,7 +31,22 @@ import {
 const POP_EMP = 'firstName lastName empId designation';
 const POP_PROJ = 'name code branch';
 
+export async function taskMemberAccess(req,res,next) {
+  try {
+    if (!Array.isArray(req.body?.members)) return next();
+    const existing = req.params.id ? await Task.findById(req.params.id) : null;
+    const project = req.body.project || existing?.project;
+    if (!project || !await canReadProject(req.user,project)) return res.status(403).json({message:'Project is not assigned to you.'});
+    const {Team} = await import('../models/Team.js');
+    const teams = await Team.find({projects:project}).select('lead members').lean();
+    const allowed = new Set(teams.flatMap(t=>[String(t.lead),...t.members.map(m=>String(m.employee))]));
+    if(req.body.members.some(id=>!allowed.has(String(id))))return res.status(400).json({message:'Assign work to members of this project only.'});
+    return next();
+  }catch(err){return next(err);}
+}
+
 export const tasks = makeCrud(Task, {
+  scopedByProject: true,
   create: taskSchema,
   update: taskUpdateSchema,
   filters: (req) => {
@@ -72,6 +89,7 @@ async function logDeliverable(project, action, payload, by) {
 }
 
 export const deliverables = makeCrud(Deliverable, {
+  scopedByProject: true,
   create: deliverableSchema,
   update: deliverableUpdateSchema,
   filters: (req) => {
@@ -83,6 +101,7 @@ export const deliverables = makeCrud(Deliverable, {
   populate: [
     { path: 'project', select: POP_PROJ },
     { path: 'assignedTo', select: POP_EMP },
+    { path: 'createdBy', select: 'name email' },
   ],
 });
 
@@ -112,6 +131,7 @@ export async function listDeliverableLog(req, res, next) {
   try {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
+    narrowByProject(filter, 'project', await projectScopeIds(req.user));
     const items = await DeliverableLog.find(filter)
       .populate('project', POP_PROJ)
       .sort({ createdAt: -1 })
@@ -123,6 +143,7 @@ export async function listDeliverableLog(req, res, next) {
 }
 
 export const revisions = makeCrud(Revision, {
+  scopedByProject: true,
   create: revisionSchema,
   update: revisionUpdateSchema,
   filters: (req) => {
@@ -137,31 +158,54 @@ export const revisions = makeCrud(Revision, {
   ],
 });
 
+export async function deleteDeliverable(req, res, next) {
+  try {
+    const { Deliverable } = await import('../models/Deliverable.js');
+    const old = await Deliverable.findById(req.params.id);
+    if (!old || !await canReadProject(req.user, old.project)) return res.status(404).json({ message: 'Not found.' });
+    const doc = await Deliverable.findByIdAndDelete(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Not found.' });
+    return res.status(200).json({ ok: true });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 export async function createRevision(req, res, next) {
   const parsed = revisionSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: 'Invalid data.' });
   }
   try {
-    const emailLog = [];
-    if (parsed.data.notify && parsed.data.assignedTo) {
-      const { Employee } = await import('../models/Employee.js');
-      const assignee = await Employee.findById(parsed.data.assignedTo);
-      if (assignee?.email) {
-        // Logged only — no real mail service is connected (spec §7).
-        emailLog.push(
-          `Notified ${assignee.firstName} ${assignee.lastName} <${assignee.email}> — revision logged (queued, not sent)`,
-        );
-      }
-    }
+    // Recipients: assigned designer, project SPOC, the logging TL (copy) and
+    // any directors / ATD / DMH ticked on the form. Mail is logged only (queued).
+    const { Employee } = await import('../models/Employee.js');
+    const { SpocAllocation } = await import('../models/SpocAllocation.js');
+    const { User } = await import('../models/User.js');
+    const alloc = await SpocAllocation.findOne({ project: parsed.data.project, status: 'Approved' })
+      .select('coordinator')
+      .lean();
+    const me = await User.findById(req.user.id).select('employee').lean();
+    const employeeIds = [
+      ...new Set(
+        [parsed.data.assignedTo, alloc?.coordinator, me?.employee, ...(parsed.data.notifyEmployees ?? [])]
+          .filter(Boolean)
+          .map(String),
+      ),
+    ];
+    const people = await Employee.find({ _id: { $in: employeeIds } }).select('firstName lastName email').lean();
+    const emailLog = people.map(
+      (p) => `Notified ${p.firstName ?? ''} ${p.lastName ?? ''} <${p.email ?? 'no email on file'}> — revision logged (queued, not sent)`.replace(/\s+/g, ' '),
+    );
     const doc = await Revision.create({
       ...parsed.data,
+      notifyEmployees: parsed.data.notifyEmployees ?? [],
       emailLog,
       createdBy: req.user.id,
     });
     try {
-      const assignees = parsed.data.assignedTo ? await userIdsForEmployees([parsed.data.assignedTo]) : [];
-      const recipients = [...new Set([...assignees])].filter((u) => u !== String(req.user.id));
+      const assignees = await userIdsForEmployees(employeeIds);
+      const recipients = [...new Set(assignees)].filter((u) => u !== String(req.user.id));
       await notify({
         roles: ['team_lead'],
         users: recipients,
@@ -186,6 +230,8 @@ export async function setRevisionStatus(req, res, next) {
     return res.status(400).json({ message: 'Invalid data.' });
   }
   try {
+    const old = await Revision.findById(req.params.id);
+    if (!old || !await canReadProject(req.user, old.project)) return res.status(404).json({ message: 'Not found.' });
     const patch = { status: parsed.data.status };
     if (parsed.data.status === 'Resubmitted')
       patch.resubmittedAt = new Date();
@@ -222,22 +268,35 @@ export async function setRevisionStatus(req, res, next) {
 }
 
 export const drawings = makeCrud(Drawing, {
+  scopedByProject: true,
   create: drawingSchema,
   update: drawingUpdateSchema,
   filters: (req) => {
     const f = {};
     if (req.query.project) f.project = req.query.project;
     if (req.query.stage) f.stage = req.query.stage;
+    if (req.query.mine === 'true') f.sharedBy = req.user.id;
     return f;
   },
+  decorate: (data, req) => req.method === 'POST'
+    ? { ...data, sharedBy: req.user.id }
+    : data,
   populate: [{ path: 'project', select: POP_PROJ }],
 });
 
 export const recruitments = makeCrud(Recruitment, {
   create: recruitmentSchema,
   update: recruitmentUpdateSchema,
+  decorate: async (data) => {
+    if (data.branch) {
+      const { requireActiveBranch } = await import('../utils/branches.js');
+      return { ...data, branch: await requireActiveBranch(data.branch) };
+    }
+    return data;
+  },
   filters: (req) => {
     const f = {};
+    if (req.query.project) f.project = req.query.project;
     if (req.query.status) f.status = req.query.status;
     if (req.query.mine === 'true') f.requestedBy = req.user.id;
     return f;
@@ -249,7 +308,16 @@ export async function createRecruitment(req, res, next) {
   if (!parsed.success) {
     return res.status(400).json({ message: 'Invalid data.' });
   }
+  if (parsed.data.branch) {
+    try {
+      const { requireActiveBranch } = await import('../utils/branches.js');
+      parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+    } catch (err) {
+      return res.status(err.status ?? 400).json({ message: err.message });
+    }
+  }
   try {
+    if (parsed.data.project && !await canReadProject(req.user,parsed.data.project)) return res.status(403).json({message:'Project is not assigned to you.'});
     const doc = await Recruitment.create({
       ...parsed.data,
       requestedBy: req.user.id,
@@ -288,7 +356,7 @@ export async function setTaskStatus(req, res, next) {
   }
   try {
     const task = await Task.findById(req.params.id);
-    if (!task) return res.status(404).json({ message: 'Not found.' });
+    if (!task || !await canReadProject(req.user, task.project)) return res.status(404).json({ message: 'Not found.' });
     const { User } = await import('../models/User.js');
     const { isSuperRole } = await import('../config/roles.js');
     const me = await User.findById(req.user.id);

@@ -51,3 +51,22 @@ export function subscribeNotifications(fn) {
     listeners.delete(fn);
   };
 }
+
+// Tear down the live socket on sign-out. The server authenticates only at
+// handshake and keeps the socket in user:/role: rooms, so failing to
+// disconnect here would keep delivering the previous user's pushes.
+export function disconnectSocket() {
+  try {
+    socket?.disconnect();
+  } catch {
+    /* disconnect is best-effort */
+  } finally {
+    try {
+      socket?.removeAllListeners();
+    } catch {
+      /* noop */
+    }
+    socket = null;
+    connected = false;
+  }
+}

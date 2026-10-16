@@ -11,15 +11,17 @@ Copy `.env.example` to `.env` and fill every `REPLACE_WITH_…` value.
 | `NODE_ENV` | yes | `development` | `production` | `secure` cookies need `production`+TLS; dev values leak debug behaviour |
 | `PORT` | no | `5000` | `5000` | Must match compose/gateway expectation (`api:5000`); change all three together or not at all |
 | `VITE_API_URL` | no | `""` | *(empty)* | Keep empty: same-origin `/api`. Only set for split-domain hosting (not this deployment) |
-| `CLIENT_ORIGIN` | yes | dev URL | `https://designtree.local` | CORS rejects browser calls; must equal the URL users type, `https` included |
-| `HTTP_PORT` / `HTTPS_PORT` | no | `80` / `443` | `80` / `443` | Host port bindings for gateway |
+| `CLIENT_ORIGIN` | yes | dev URL | `https://designtree.local` or `https://103.169.236.122:8443,https://192.168.1.50` | Comma-separated allowlist for CORS + socket.io; each entry needs `https://` and must match the URL users type (port included when non-standard) and the TLS cert + nginx `server_name` |
+| `HTTP_PORT` / `HTTPS_PORT` | no | `80` / `443` | `80` / `443` | Host port bindings for gateway (LAN-side) |
+| `HTTPS_PUBLIC_PORT` | no | `8443` | `8443` | Extra host→443 mapping for the public alt-port (office WAN 443 is taken by webmail; router forwards WAN:8443 → server:443) |
 | `JWT_SECRET` | yes | — | 64-char hex | App refuses to boot without it; rotating logs everyone out (by design) |
 | `JWT_EXPIRES_IN` | no | `1d` | `1d` | Session lifetime |
 | `COOKIE_NAME` | no | `token` | `token` | Must match across deploys or all sessions invalidate |
 | `MONGO_ROOT_USER` / `MONGO_ROOT_PASSWORD` | yes | — | `dtadmin` / strong pw | Mongo + api + express all derive from these; password with `@ : / ? # [ ]` must be URL-encoded — safest is letters/digits/`_`-`-` |
+| `HOST_MONGO_DIR` | no (unused) | — | *(unset)* | Legacy bind path; compose now uses the named volume `mongo-data` (live data is in `designtree_mongo-data`). Leave unset — setting it has no effect |
 | `HOST_UPLOADS_DIR` | yes | — | `D:/designtree-uploads` | Uploads bind mount; forward slashes in compose; folder must exist and be Docker-shared |
-| `HOST_BACKUPS_DIR` | yes | — | `D:/backups` | `mongodump` archives land here; scripts read it too |
-| `SEED_NAME` / `SEED_EMAIL` / `SEED_PASSWORD` | one-shot | — | FD details | `npm run seed` upserts the founding-director login; rotate the password in-app right after |
+| `HOST_BACKUPS_DIR` | yes | — | `E:/DesignTree/backup` | `mongodump` archives land here; scripts read it too |
+| `SEED_NAME` / `SEED_EMAIL` / `SEED_PASSWORD` | one-shot | — | superuser details | `npm run seed` upserts the superuser login; rotate the password in-app right after |
 | `ME_CONFIG_BASICAUTH_USERNAME` / `_PASSWORD` | yes | — | FD-only creds | mongo-express login screen (gate 3 of 3 for `/dbadmin`) |
 | `DBADMIN_USER` | doc | — | `founding-director` | Username baked into `gateway/.htpasswd` (nginx gate 2); keep identical to express user for sanity |
 | `DBADMIN_ALLOW_IP` | doc | — | `192.168.1.50` | Reminder of the FD PC address mirrored in `gateway/nginx.conf` (nginx gate 1) |
@@ -33,3 +35,10 @@ Copy `.env.example` to `.env` and fill every `REPLACE_WITH_…` value.
 - Generate secrets with: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
 - Local development keeps using `api/.env` (localhost Mongo, dev origin) —
   the root `.env` is production-only and must never be copied back into `api/`.
+- E2E uses `e2e/.env` (`E2E_BASE_URL` / `E2E_API_URL` / `E2E_MONGO_URI` /
+  `E2E_SU_EMAIL` / `E2E_SU_PASSWORD` = api `SEED_PASSWORD` /
+  `E2E_TEST_PASSWORD`) against an isolated `designtree-e2e` DB — see
+  `e2e/README.md`. Never point it at production.
+- Upload caps: API enforces 10 MB per file (`api/src/utils/storage.js`);
+  nginx allows 20 MB (`client_max_body_size` in `gateway/nginx.conf`).
+  Raise both together or uploads fail at whichever is smaller.

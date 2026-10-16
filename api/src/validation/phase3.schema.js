@@ -43,8 +43,8 @@ export const fromDrawingsSchema = z
   .object({
     drawingIds: z.array(objectId).min(1),
     date: dateOpt,
-    issuedTo: z.enum(TRANSMITTAL_RECIPIENTS),
-    method: z.enum(TRANSMITTAL_METHODS),
+    issuedTo: z.enum(TRANSMITTAL_RECIPIENTS).optional(),
+    method: z.enum(TRANSMITTAL_METHODS).optional(),
     remarks: strOpt,
   })
   .strict();
@@ -90,6 +90,7 @@ export const claimSchema = z
   .object({
     project: objectId,
     stage: strOpt,
+    service: strOpt,
     amount: z.number().min(0),
     submissionDate: dateOpt,
     status: z.enum(CLAIM_STATUSES).optional(),
@@ -111,6 +112,12 @@ export const stageStatusSchema = z
     delayDays: z.number().optional(),
     reason: strOpt,
     billingReadiness: z.enum(BILLING_READINESS).optional(),
+    ptlRemark: strOpt,
+    spocRemark: strOpt,
+    requestCompletion: z.boolean().optional(),
+    confirmCompletion: z.boolean().optional(),
+    approveCompletion: z.boolean().optional(),
+    tdRemark: strOpt,
   })
   .strict();
 export const stageStatusUpdateSchema = stageStatusSchema.partial();
@@ -119,6 +126,7 @@ export const paymentSchema = z
   .object({
     project: objectId,
     amount: z.number().min(0),
+    service: strOpt,
     date: dateOpt,
     reference: strOpt,
   })
@@ -128,6 +136,7 @@ export const certificateSchema = z
   .object({
     project: objectId,
     certType: z.string().trim().min(1),
+    certNo: strOpt,
     stage: strOpt,
     status: z.enum(CERT_STATUSES).optional(),
     issuedDate: dateOpt,
@@ -152,6 +161,7 @@ export const bookingSchema = z
     departureDate: dateOpt,
     returnDate: dateOpt,
     mode: strOpt,
+    preferredSeat: strOpt,
     checkIn: strOpt,
     checkOut: strOpt,
     hotel: strOpt,
@@ -185,7 +195,21 @@ export const financeOccSchema = z
     fromDate: dateOpt,
     toDate: dateOpt,
     settlement: z.enum(FIN_OCC_SETTLEMENTS).optional(),
+    advanceReceived: z.number().min(0).optional(),
+    advanceDate: dateOpt,
+    fare: z.number().min(0).optional(),
+    lodgingAmount: z.number().min(0).optional(),
+    foodPerDiem: z.number().min(0).optional(),
+    localConveyance: z.number().min(0).optional(),
+    cabBills: z.number().min(0).optional(),
+    misc: z.number().min(0).optional(),
+    billsSubmitted: z.boolean().optional(),
+    hardcopyReceived: z.boolean().optional(),
     client: strOpt,
+    hosp: z.enum(['Yes', 'No']).optional(),
+    hospTypes: z.array(z.string()).optional(),
+    refNo: strOpt,
+    raisedDate: dateOpt,
     linkedTravel: objectId.optional(),
     verification: z
       .object({

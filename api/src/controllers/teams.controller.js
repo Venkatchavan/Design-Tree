@@ -1,5 +1,10 @@
+import { applyMeetingAudience } from '../middlewares/meetingAccess.js';
+import { projectScopeIds } from '../utils/projectScope.js';
+import { Meeting } from '../models/Meeting.js';
+import { Project } from '../models/Project.js';
 import { Team } from '../models/Team.js';
 import { WorkEntry } from '../models/WorkEntry.js';
+import { requireActiveBranch } from '../utils/branches.js';
 import {
   teamMembersSchema,
   teamSchema,
@@ -25,15 +30,31 @@ async function weekHoursByEmployee(employeeIds) {
 
 export async function myTeams(req, res, next) {
   try {
-    const me = await (await import('../models/User.js')).User.findById(
-      req.user.id,
-    );
+    const { User } = await import('../models/User.js');
+    const me = await User.findById(req.user.id);
+    // Prefer the live DB role: JWTs are minted at login, so a recently
+    // re-roled user still carries the old role in their cookie until they
+    // sign in again.
+    const role = me?.role ?? req.user.role;
+    const memberSelect =
+      'firstName lastName empId designation department branch status experience';
+    // Associate / Associate Technical Directors oversee every team without
+    // necessarily being listed on them — return all teams (same shape as the
+    // scoped path) so My Team reflects instead of rendering "No team assigned".
+    if (role === 'associate_director' || role === 'assoc_technical_director') {
+      const teams = await Team.find({})
+        .populate('projects', 'name code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services')
+        .populate('lead', memberSelect)
+        .populate('members.employee', memberSelect);
+      return res.status(200).json({ items: teams, total: teams.length });
+    }
     if (!me?.employee) return res.status(200).json({ items: [], total: 0 });
     const teams = await Team.find({
       $or: [{ lead: me.employee }, { 'members.employee': me.employee }],
     })
-      .populate('projects', 'name code branch currentStage status')
-      .populate('members.employee', 'firstName lastName empId designation');
+      .populate('projects', 'name code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services')
+      .populate('lead', memberSelect)
+      .populate('members.employee', memberSelect);
     return res.status(200).json({ items: teams, total: teams.length });
   } catch (err) {
     return next(err);
@@ -45,6 +66,8 @@ export async function listTeams(req, res, next) {
     const { service } = req.query;
     const filter = {};
     if (service) filter.service = service;
+    const allowed = await projectScopeIds(req.user);
+    if (allowed) filter.projects = {$in:allowed};
     const teams = await Team.find(filter).sort({ name: 1 });
     const memberIds = teams.flatMap((t) => t.members.map((m) => m.employee));
     const hours = await weekHoursByEmployee(memberIds);
@@ -72,22 +95,61 @@ export async function getTeam(req, res, next) {
   try {
     const team = await Team.findById(req.params.id)
       .populate('lead', 'firstName lastName empId designation')
-      .populate('members.employee', 'firstName lastName empId designation branch department status');
+      .populate('members.employee', 'firstName lastName empId designation branch department status experience')
+      .populate('projects', 'name code status currentStage');
     if (!team) return res.status(404).json({ message: 'Team not found.' });
-    const memberIds = team.members.map((m) => m.employee._id);
-    const since = new Date(Date.now() - WEEK_MS);
-    const [entries, pending] = await Promise.all([
-      WorkEntry.find({ employee: { $in: memberIds }, date: { $gte: since } })
+    const allowed = await projectScopeIds(req.user);
+    const projectIds = team.projects.map(p => p._id);
+    if (allowed && !projectIds.some(id => allowed.includes(String(id)))) return res.status(404).json({message:'Team not found.'});
+    const visibleProjects = allowed ? projectIds.filter(id => allowed.includes(String(id))) : projectIds;
+    const memberIds = team.members.filter(m => m.employee).map((m) => m.employee._id);
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+    const meetingFilter = {project:{$in:visibleProjects}};
+    await applyMeetingAudience(meetingFilter,req.user);
+    const weekFilter = {
+      employee: { $in: memberIds },
+      project: { $in: visibleProjects },
+      date: { $gte: weekStart, $lte: now },
+    };
+    const [entries, pending, meetings, projectHourRows] = await Promise.all([
+      WorkEntry.find(weekFilter)
         .populate('project', 'name code')
-        .populate('employee', 'firstName lastName empId')
+        .populate('employee', 'firstName lastName empId designation')
         .sort({ date: -1 })
-        .limit(100),
-      WorkEntry.countDocuments({
+        .limit(500),
+      WorkEntry.find({
         employee: { $in: memberIds },
+        project: { $in: visibleProjects },
         status: 'Pending',
-      }),
+        date: { $gte: weekStart, $lte: now },
+      }).populate('project','name code').populate('employee','firstName lastName empId designation').sort({ date: -1 }).limit(500),
+      Meeting.find(meetingFilter).populate('project','name code').sort({date:-1}),
+      WorkEntry.aggregate([
+        { $match: weekFilter },
+        { $group: { _id: '$project', hours: { $sum: '$hours' } } },
+        { $sort: { hours: -1 } },
+      ]),
     ]);
-    return res.status(200).json({ team, weekEntries: entries, pending });
+    const projectsById = new Map(
+      (await Project.find({ _id: { $in: projectHourRows.map((row) => row._id) } }).select('name code'))
+        .map((project) => [String(project._id), project]),
+    );
+    const projectHours = projectHourRows.map((row) => ({
+      project: projectsById.get(String(row._id)) ?? { _id: row._id },
+      hours: row.hours,
+    }));
+    return res.status(200).json({
+      team,
+      weekEntries: entries,
+      pending,
+      meetings,
+      projectHours,
+      weekStart,
+      weekEnd: now,
+    });
   } catch (err) {
     return next(err);
   }
@@ -98,6 +160,13 @@ export async function createTeam(req, res, next) {
     const parsed = teamSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid team data.' });
+    }
+    if (parsed.data.branch) {
+      try {
+        parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+      } catch (err) {
+        return res.status(err.status ?? 400).json({ message: err.message });
+      }
     }
     const team = await Team.create(parsed.data);
     return res.status(201).json({ team });
@@ -111,6 +180,13 @@ export async function updateTeam(req, res, next) {
     const parsed = teamUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid team data.' });
+    }
+    if (parsed.data.branch) {
+      try {
+        parsed.data.branch = await requireActiveBranch(parsed.data.branch);
+      } catch (err) {
+        return res.status(err.status ?? 400).json({ message: err.message });
+      }
     }
     const team = await Team.findByIdAndUpdate(req.params.id, parsed.data, {
       new: true,

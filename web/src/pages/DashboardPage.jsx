@@ -12,6 +12,8 @@ import {
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import { projectsApi } from '../lib/api.js';
+import { spocApi } from '../lib/spocApi.js';
+import { projectsByStageChart } from '../lib/projectsByStage.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -20,49 +22,17 @@ import EmptyState from '../components/EmptyState.jsx';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-const CREATOR_ROLES = new Set([
-  'founding_director',
-  'working_director',
-  'admin_billing',
-  'executive_director',
-  'associate_director',
-  'technical_director',
-]);
+// Only Admin may create projects. Directors are read-only (also enforced
+// server-side: denyRoles blocks FD/WD/ED on project writes).
+const CREATOR_ROLES = new Set(['admin_billing']);
 
 const STATUS_KPIS = [
   { key: 'active', label: 'Active', accent: 'forest' },
-  { key: 'onTrack', label: 'On track', accent: 'blueprint' },
-  { key: 'completed', label: 'Completed', accent: 'violet' },
   { key: 'onHold', label: 'On hold', accent: 'amber' },
-  { key: 'other', label: 'Other', accent: 'rust' },
+  { key: 'completed', label: 'Completed', accent: 'violet' },
 ];
-
-const DEPARTMENTS = [
-  { name: 'Design Management', serviceMatch: null },
-  { name: 'HR', serviceMatch: null },
-  { name: 'QA/QC Specifications', serviceMatch: null },
-  { name: 'QS', serviceMatch: ['qs', 'quantity'] },
-  { name: 'BIM', serviceMatch: ['bim'] },
-  { name: 'GBS', serviceMatch: null },
-  { name: 'Peer Review', serviceMatch: null },
-  { name: 'Finance', serviceMatch: null },
-  { name: 'Marketing', serviceMatch: null },
-  { name: 'Structural', serviceMatch: ['structural'] },
-  { name: 'Mechanical', serviceMatch: ['mechanical', 'hvac'] },
-  { name: 'Electrical', serviceMatch: ['electrical'] },
-  { name: 'PHE', serviceMatch: ['phe', 'plumbing', 'phe/plumbing'] },
-  { name: 'Fire', serviceMatch: ['fire', 'firefighting'] },
-];
-
-function findNavPath(nav, deptName) {
-  const needle = deptName.toLowerCase();
-  const hit = (nav ?? []).find(
-    (n) =>
-      String(n.label ?? '').toLowerCase().includes(needle) ||
-      String(n.view ?? '').toLowerCase().includes(needle.replace(/[^a-z]/g, '')),
-  );
-  return hit ? hit.path : null;
-}
+const EMPTY_STAGE_COUNTS = [];
+const EMPTY_BRANCH_STAGE_COUNTS = {};
 
 export default function DashboardPage({ bootstrap }) {
   const navigate = useNavigate();
@@ -71,6 +41,14 @@ export default function DashboardPage({ bootstrap }) {
   const [branch, setBranch] = useState('');
   const [service, setService] = useState('');
   const [status, setStatus] = useState('');
+
+  const isCoordinator = roleKey === 'coordinator';
+  const allocQ = useQuery({ queryKey: ['spoc-allocations'], queryFn: () => spocApi.allocationsMine(), enabled: isCoordinator });
+  const allowedIds = useMemo(() => {
+    if (!isCoordinator) return null;
+    const items = allocQ.data?.items ?? [];
+    return new Set(items.map((a) => String(a.project?._id ?? a.project ?? '')));
+  }, [isCoordinator, allocQ.data]);
 
   const statsQuery = useQuery({ queryKey: ['projects-stats'], queryFn: projectsApi.stats });
   const filtersQuery = useQuery({ queryKey: ['projects-filters'], queryFn: projectsApi.filters });
@@ -82,7 +60,8 @@ export default function DashboardPage({ bootstrap }) {
   const stats = statsQuery.data;
   const counts = stats?.counts ?? {};
   const branches = stats?.branches ?? [];
-  const byStage = stats?.byStage ?? [];
+  const byStage = stats?.byStage ?? EMPTY_STAGE_COUNTS;
+  const byBranchStage = stats?.byBranchStage ?? EMPTY_BRANCH_STAGE_COUNTS;
   const services = stats?.services ?? [];
   const totals = stats?.totals ?? {};
   const filters = filtersQuery.data;
@@ -90,40 +69,70 @@ export default function DashboardPage({ bootstrap }) {
   const active = counts.active ?? 0;
   const branchCount = totals.branches ?? branches.length ?? 0;
 
-  const serviceCountFor = useMemo(() => {
-    const map = new Map(
-      (services ?? []).map((s) => [String(s.service ?? '').toLowerCase(), s.projects]),
-    );
-    return (matchers) => {
-      if (!matchers) return null;
-      for (const m of matchers) {
-        for (const [svc, count] of map) {
-          if (svc.includes(m)) return count;
-        }
-      }
-      return null;
-    };
-  }, [services]);
-
   const stageChart = useMemo(
-    () => ({
-      labels: byStage.map((s) => s.stage ?? '—'),
-      datasets: [
-        {
-          label: 'Projects',
-          data: byStage.map((s) => s.count ?? 0),
-          backgroundColor: '#1D68D6',
-        },
-      ],
-    }),
-    [byStage],
+    () => projectsByStageChart(byStage, byBranchStage, branch),
+    [byStage, byBranchStage, branch],
   );
 
-  const items = listQuery.data?.items ?? [];
+  const items = (listQuery.data?.items ?? []).filter((p) => {
+    if (allowedIds) return allowedIds.has(String(p._id ?? p.id ?? ''));
+    return true;
+  });
   const total = listQuery.data?.total ?? items.length;
 
   const newProjectPath = bootstrap?.views?.['new-project']?.path ?? '/projects/new';
   const canCreate = CREATOR_ROLES.has(roleKey);
+
+  if (isCoordinator) {
+    const coordItems = items ?? [];
+    const coordTotal = coordItems.length;
+    const coordActive = coordItems.filter((p) => String(p.status ?? '').toLowerCase() !== 'completed').length;
+    const coordOnTrack = coordItems.filter((p) => {
+      const s = String(p.status ?? '').toLowerCase();
+      return s === 'in progress' || s === 'on track';
+    }).length;
+    const coordCompleted = coordItems.filter((p) => String(p.status ?? '').toLowerCase() === 'completed').length;
+    const coordOnHold = coordItems.filter((p) => String(p.status ?? '').toLowerCase() === 'on hold').length;
+    const branchName = coordItems.length > 0 ? (coordItems[0].branch ?? 'Bengaluru') : 'Bengaluru';
+    const branchAvg = coordItems.length > 0 ? Math.round(coordItems.reduce((s, p) => s + Number(p.completion ?? 0), 0) / coordItems.length) : 57;
+    return (
+      <>
+        <div className="page-head">
+          <div className="page-title">Dashboard</div>
+          <div className="page-sub">Your allotted projects</div>
+        </div>
+        <div className="page-sub" style={{ fontSize: 13, marginBottom: 6 }}><b>Projects</b> · {coordTotal} projects allotted to you</div>
+        <div className="kpi-grid cols-4">
+          <KpiCard label="My projects" value={coordTotal} accent="forest" />
+          <KpiCard label="On track" value={coordOnTrack} accent="teal" />
+          <KpiCard label="Completed" value={coordCompleted} accent="violet" />
+          <KpiCard label="On hold" value={coordOnHold} accent="amber" />
+        </div>
+        <Panel title="Completion progress by branch" sub={coordTotal > 0 ? `Your allotted projects only — ${branchName || 'Bengaluru'}` : 'Your allotted projects'}>
+          {coordTotal > 0 ? (
+            <>
+              <div style={{ fontSize: 13.5, marginBottom: 6 }}><b>{branchName || 'Bengaluru'}</b> — {branchName === 'Bengaluru' ? 'HQ' : 'Branch'}</div>
+              <div style={{ fontSize: 13, marginBottom: 4 }}><b>{coordTotal}</b> projects · <b>{branchAvg}%</b> avg complete</div>
+            </>
+          ) : <EmptyState text="No allotted projects to show progress." />}
+        </Panel>
+        <Panel title="Projects" sub={`Sample projects · ${coordTotal} of ${coordTotal} shown — projects allotted to you`}>
+          <DataTable
+            columns={[
+              { key: 'name', label: 'Project', render: (p) => <><b>{p.name ?? '—'}</b><br/><span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{p.code ?? ''}</span></> },
+              { key: 'branch', label: 'Branch', render: (p) => p.branch ?? '—' },
+              { key: 'client', label: 'Client', render: (p) => p.client ?? p.branch ?? '—' },
+              { key: 'status', label: 'Status', render: (p) => <StatusPill status={p.status}>{String(p.status ?? '—')}</StatusPill> },
+              { key: 'completion', label: 'Completion', render: (p) => p.completion != null ? `${p.completion}%` : '—' },
+              { key: 'stage', label: 'Current stage', render: (p) => p.stage ?? '—' },
+            ]}
+            rows={coordItems.slice(0, 2)}
+            emptyText="No allotted projects yet."
+          />
+        </Panel>
+      </>
+    );
+  }
 
   return (
     <>
@@ -142,7 +151,7 @@ export default function DashboardPage({ bootstrap }) {
         </div>
       )}
 
-      <div className="kpi-grid cols-5">
+      <div className="kpi-grid cols-3">
         {STATUS_KPIS.map((k) => (
           <KpiCard
             key={k.key}
@@ -160,44 +169,7 @@ export default function DashboardPage({ bootstrap }) {
         ))}
       </div>
 
-      <Panel title="Department overview">
-        {statsQuery.isLoading ? (
-          <EmptyState text="Loading…" />
-        ) : (
-          <div className="dept-overview-grid">
-            {DEPARTMENTS.map((d) => {
-              const svcCount = serviceCountFor(d.serviceMatch);
-              const count = svcCount ?? totals.projects ?? 0;
-              const countLabel = svcCount != null ? 'Projects (live)' : 'Org projects — no dept split yet';
-              const navPath = findNavPath(bootstrap?.nav, d.name);
-              return (
-                <div className="dept-overview-card" key={d.name}>
-                  <div className="dept-overview-name">{d.name}</div>
-                  <div className="dept-overview-stats">
-                    <div className="dept-overview-stat">
-                      <b>{count}</b>
-                      <span>{countLabel}</span>
-                    </div>
-                    <div className="dept-overview-stat">
-                      <b>—</b>
-                      <span>No data source yet</span>
-                    </div>
-                  </div>
-                  {navPath && (
-                    <button
-                      type="button"
-                      className="dept-overview-link"
-                      onClick={() => navigate(navPath)}
-                    >
-                      Open {d.name}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Panel>
+
 
       <Panel title="Branches">
         {branches.length === 0 ? (
@@ -225,12 +197,6 @@ export default function DashboardPage({ bootstrap }) {
                     <span className="branch-stat-value">{b.projects ?? 0}</span>
                     <span className="branch-stat-label">Projects</span>
                   </div>
-                  <div>
-                    <span className="branch-stat-value">
-                      {b.avgCompletion != null ? `${b.avgCompletion}%` : '—'}
-                    </span>
-                    <span className="branch-stat-label">Avg completion</span>
-                  </div>
                 </div>
               </div>
             ))}
@@ -239,7 +205,7 @@ export default function DashboardPage({ bootstrap }) {
       </Panel>
 
       <Panel title="Projects by stage">
-        {byStage.length === 0 ? (
+        {stageChart.labels.length === 0 ? (
           <EmptyState text="No stage data yet." />
         ) : (
           <div className="chart-wrap">
@@ -256,6 +222,7 @@ export default function DashboardPage({ bootstrap }) {
         )}
       </Panel>
 
+      {roleKey !== 'hr' && (
       <Panel title={`Projects (${total})`}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
           <input
@@ -314,6 +281,14 @@ export default function DashboardPage({ bootstrap }) {
               { key: 'branch', label: 'Branch' },
               { key: 'clientName', label: 'Client' },
               {
+                key: 'teamLeads',
+                label: 'Team leads',
+                render: (r) => (r.principalTeamLeads ?? [])
+                  .map((t) => t?.name)
+                  .filter(Boolean)
+                  .join(', ') || '—',
+              },
+              {
                 key: 'status',
                 label: 'Status',
                 render: (r) => (
@@ -333,6 +308,7 @@ export default function DashboardPage({ bootstrap }) {
           />
         )}
       </Panel>
+      )}
     </>
   );
 }

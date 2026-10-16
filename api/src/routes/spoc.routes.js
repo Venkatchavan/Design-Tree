@@ -1,3 +1,4 @@
+import { entryDocumentsUpload, attachEntryDocuments, downloadEntryDocument, spocDocumentAccess } from '../controllers/entryDocuments.controller.js';
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import {
@@ -27,18 +28,20 @@ router.post(
 );
 router.post(
   '/allocations',
-  requireRole('coordinator', 'design_mgmt_head'),
+  requireRole('coordinator', 'design_mgmt_head', 'team_lead', 'technical_director'),
   recordAllocation,
 );
 router.patch(
   '/allocations/:id',
-  requireRole('design_mgmt_head', 'admin_billing'),
+  requireRole('design_mgmt_head', 'admin_billing', 'technical_director'),
   setAllocationStatus,
 );
+router.post('/entries/:id/documents', spocDocumentAccess, entryDocumentsUpload, attachEntryDocuments);
+router.get('/entries/:id/documents/:index', spocDocumentAccess, downloadEntryDocument);
 router.get('/entries', requireInternal(), listSpocEntries);
 router.post(
   '/entries',
-  requireRole('coordinator', 'design_mgmt_head'),
+  requireRole('coordinator', 'design_mgmt_head', 'technical_director'),
   createSpocEntry,
 );
 router.get('/man-hours/status', manHourStatus);

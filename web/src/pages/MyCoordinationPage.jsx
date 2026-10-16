@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import EntryDocuments from '../components/EntryDocuments.jsx';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { employeesApi, projectsApi, request, toQuery } from '../lib/api.js';
 import { spocApi } from '../lib/spocApi.js';
+import { deliverablesApi, drawingsApi, revisionsApi } from '../lib/workApi.js';
+import { rfiApi } from '../lib/functionsApi.js';
 import {
   SUPER_ROLES,
   isPendingLogout,
@@ -21,14 +24,16 @@ import { meetingsApi } from '../lib/phase4bApi.js';
 import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
 
 const SERVICES = [
-  'Structure',
-  'Architecture',
-  'Mechanical',
-  'Electrical',
-  'Plumbing',
-  'Fire',
+  'SMEPF',
+  'SMEP',
+  'MEP',
+  'STR',
+  'PHE',
+  'ELE',
+  'HVAC',
+  'FIRE',
   'BIM',
-  'Other',
+  'GBS',
 ];
 
 const AREA_KEYS = [
@@ -44,6 +49,19 @@ const AREA_KEYS = [
   'Other',
 ];
 
+const AREA_DESCRIPTIONS = {
+  'Project Directory': 'Project directory preparation / updating / coordination',
+  'Meetings': 'Meetings attended / participated in',
+  'Meeting Scheduling & Coordination': 'Scheduling and coordinating project meetings',
+  'Drawings Sharing / Issuing': 'Drawings shared / issued to Client / Architect / PMC / Team',
+  'RFI': 'RFI raised / responded / followed up',
+  'Architectural Updates': 'Updates received / followed up from Architect',
+  'Client Updates': 'Client communication / updates / follow-up',
+  'Revision Status': 'Revision follow-up and coordination; whether addressed or pending',
+  'Project Status': 'Overall project status follow-up and coordination',
+  'Other': 'Any other SPOC-related project work',
+};
+
 const REVISION_STATUSES = [
   'Addressed',
   'In Progress',
@@ -52,132 +70,6 @@ const REVISION_STATUSES = [
   'Awaiting Architect',
   'Awaiting Internal Team',
 ];
-
-const DIRECTORY_KEYS = [
-  'project-information',
-  'client-details',
-  'architect-details',
-  'pmc-details',
-  'work-order',
-  'bim-work-order',
-  'project-team',
-  'scope-services',
-  'project-documents',
-  'communication-records',
-];
-
-function DirectorySectionsEditor() {
-  const queryClient = useQueryClient();
-  const [projectId, setProjectId] = useState('');
-  const [sections, setSections] = useState([]);
-  const [loadedFor, setLoadedFor] = useState('');
-
-  const projQ = useQuery({
-    queryKey: ['projects', 'active-dir-sections'],
-    queryFn: () => projectsApi.list({ status: 'Active' }),
-  });
-  const projects = projQ.data?.items ?? [];
-  const effectiveId = projectId || projects[0]?._id || projects[0]?.id || '';
-
-  const dirQ = useQuery({
-    queryKey: ['directory', effectiveId],
-    queryFn: () => projectsApi.directory(effectiveId),
-    enabled: !!effectiveId,
-    retry: false,
-  });
-
-  useEffect(() => {
-    if (!dirQ.data || loadedFor === effectiveId) return;
-    const incoming = dirQ.data?.item?.sections ?? [];
-    const byKey = new Map(incoming.map((s) => [s.key, s]));
-    setSections(
-      DIRECTORY_KEYS.map((key) => ({
-        key,
-        title: byKey.get(key)?.title ?? key,
-        body: byKey.get(key)?.body ?? '',
-      })),
-    );
-    setLoadedFor(effectiveId);
-  }, [dirQ.data, effectiveId, loadedFor]);
-
-  const save = useMutation({
-    mutationFn: (body) => projectsApi.saveDirectory(effectiveId, body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['directory', effectiveId] });
-      setLoadedFor('');
-    },
-  });
-
-  function patchSection(key, body) {
-    setSections((prev) => prev.map((s) => (s.key === key ? { ...s, body } : s)));
-  }
-
-  function handleSubmit(e) {
-    e.preventDefault();
-    save.mutate({ sections });
-  }
-
-  return (
-    <Panel title="Project Directory — 10 sections (SPOC owned)">
-      <div className="form-row" style={{ maxWidth: 420 }}>
-        <label className="form-label">Project</label>
-        <select
-          className="filter-select"
-          style={{ width: '100%' }}
-          value={effectiveId}
-          onChange={(e) => {
-            setProjectId(e.target.value);
-            setLoadedFor('');
-          }}
-        >
-          {projects.map((p) => (
-            <option key={p._id ?? p.id} value={p._id ?? p.id}>
-              {p.name ?? p.code ?? '—'}
-            </option>
-          ))}
-        </select>
-      </div>
-      {dirQ.isLoading ? (
-        <EmptyState text="Loading directory…" />
-      ) : dirQ.isError ? (
-        <div className="login-error" role="alert" style={{ display: 'block' }}>
-          {dirQ.error.message}
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit}>
-          {sections.map((s) => (
-            <div className="form-row" key={s.key} style={{ marginTop: 10 }}>
-              <label className="form-label" htmlFor={`dir-${s.key}`}>
-                {s.title || s.key}
-              </label>
-              <textarea
-                id={`dir-${s.key}`}
-                className="form-input"
-                rows={3}
-                value={s.body ?? ''}
-                onChange={(e) => patchSection(s.key, e.target.value)}
-                placeholder={`${s.key}…`}
-              />
-            </div>
-          ))}
-          {save.isError && (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>
-              {save.error.message}
-            </div>
-          )}
-          <button type="submit" className="btn-primary" disabled={save.isPending || !effectiveId} style={{ marginTop: 12 }}>
-            {save.isPending ? 'Saving…' : 'Save directory'}
-          </button>
-          {dirQ.data?.item?.updatedAt && (
-            <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
-              Last updated: {new Date(dirQ.data.item.updatedAt).toLocaleDateString()}
-            </p>
-          )}
-        </form>
-      )}
-    </Panel>
-  );
-}
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -217,22 +109,18 @@ function PendingLogoutCallout() {
   );
 }
 
-function OverviewTab({ myAllocs, activeProjects, activeLoading }) {
+function useCoordinationMetrics(myAllocs) {
   const myIds = useMemo(
     () => new Set(myAllocs.map(allocProjectId).filter(Boolean).map(String)),
     [myAllocs],
   );
-  const [selectedId, setSelectedId] = useState(null);
-  const effectiveId = selectedId ?? allocProjectId(myAllocs[0]) ?? null;
-
-  const detail = useQuery({
-    queryKey: ['project', effectiveId],
-    queryFn: () => projectsApi.get(effectiveId),
-    enabled: !!effectiveId,
-  });
   const revisions = useQuery({
     queryKey: ['work-revisions-open'],
     queryFn: () => request(`/api/work/revisions${toQuery({ status: 'Open' })}`),
+  });
+  const rfisQ = useQuery({
+    queryKey: ['spoc-rfis-open'],
+    queryFn: () => rfiApi.list({}),
   });
   const meetingsQ = useQuery({
     queryKey: ['meetings-week'],
@@ -273,6 +161,48 @@ function OverviewTab({ myAllocs, activeProjects, activeLoading }) {
     });
   }, [myRevisions]);
 
+  const openRfis = useMemo(() => {
+    const items = rfisQ.data?.items ?? [];
+    return items.filter((r) => {
+      if (String(r.status ?? '').toLowerCase() === 'closed') return false;
+      if (myIds.size === 0) return true;
+      const pid = r?.project?._id ?? r?.project?.id ?? r?.project ?? null;
+      return pid != null && myIds.has(String(pid));
+    });
+  }, [rfisQ.data, myIds]);
+
+  return {
+    weekMeetings,
+    myRevisions,
+    overdue,
+    openRfis,
+    meetingsLoading: meetingsQ.isLoading,
+  };
+}
+
+function CoordinationKpis({ myAllocs }) {
+  const { weekMeetings, myRevisions, overdue, openRfis, meetingsLoading } = useCoordinationMetrics(myAllocs);
+  return (
+    <div className="kpi-grid cols-4">
+      <KpiCard label="My projects" value={myAllocs.length} accent="blueprint" />
+      <KpiCard label="Open alerts" value={overdue.length + openRfis.length} accent="rust" />
+      <KpiCard label="Meetings this week" value={meetingsLoading ? '…' : weekMeetings.length} accent="teal" />
+      <KpiCard label="Pending my action" value={myRevisions.length + openRfis.length} accent="amber" />
+    </div>
+  );
+}
+
+function OverviewTab({ myAllocs, activeProjects, activeLoading }) {
+  const [selectedId, setSelectedId] = useState(null);
+  const effectiveId = selectedId ?? allocProjectId(myAllocs[0]) ?? null;
+
+  const detail = useQuery({
+    queryKey: ['project', effectiveId],
+    queryFn: () => projectsApi.get(effectiveId),
+    enabled: !!effectiveId,
+  });
+  const { weekMeetings, myRevisions, openRfis } = useCoordinationMetrics(myAllocs);
+
   const proj = detail.data?.item ?? detail.data?.project ?? detail.data ?? {};
   const team = proj?.team ?? proj?.members ?? proj?.assignedTeam ?? null;
   const teamText = Array.isArray(team)
@@ -281,125 +211,78 @@ function OverviewTab({ myAllocs, activeProjects, activeLoading }) {
 
   return (
     <>
-      <div className="kpi-grid cols-5">
-        <KpiCard label="My projects" value={myAllocs.length} accent="blueprint" />
-        <KpiCard label="Open revisions" value={myRevisions.length} accent="amber" />
-        <KpiCard label="Overdue revisions" value={overdue.length} accent="rust" />
-        <KpiCard label="Meetings this week" value={meetingsQ.isLoading ? '…' : weekMeetings.length} accent="teal" />
-      </div>
-      <Panel title="Meetings this week">
-        {meetingsQ.isLoading ? (
-          <EmptyState text="Loading…" />
-        ) : (
-          <DataTable
-            columns={[
-              { key: 'title', label: 'Meeting' },
-              { key: 'project', label: 'Project', render: (m) => m.project?.name ?? '—' },
-              { key: 'date', label: 'Date', render: (m) => (m.date ? String(m.date).slice(0, 10) : '—') },
-              { key: 'time', label: 'Time', render: (m) => [m.startTime, m.endTime].filter(Boolean).join('–') || '—' },
-              { key: 'status', label: 'Status', render: (m) => <StatusPill status={m.status}>{m.status}</StatusPill> },
-            ]}
-            rows={weekMeetings}
-            emptyText="No meetings scheduled for your projects this week. Schedule one in the Meetings tab."
-          />
-        )}
+      <Panel title="My projects">
+        <DataTable
+          columns={[
+            { key: 'name', label: 'Project', render: (r) => r.name ?? r.code ?? '—' },
+            { key: 'branch', label: 'Branch', render: (r) => r.branch ?? '—' },
+            { key: 'currentStage', label: 'Stage', render: (r) => r.currentStage ?? r.stage ?? '—' },
+            { key: 'completion', label: 'Progress', render: (r) => (r.completion != null ? `${r.completion}%` : r.progress ?? '—') },
+            { key: 'status', label: 'Status', render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill> },
+          ]}
+          rows={myAllocs.length > 0 ? myAllocs.map((a) => {
+            const projItem = activeProjects.find((p) => String(p._id ?? p.id ?? '') === String(allocProjectId(a) ?? '')) ?? activeProjects.find((p) => p.name === allocProjectLabel(a)) ?? {};
+            return { ...projItem, name: projItem.name ?? projItem.code ?? allocProjectLabel(a) ?? '—' };
+          }) : activeProjects}
+          emptyText="No active projects."
+        />
       </Panel>
 
-      {myAllocs.length === 0 ? (
-        <Panel title="My projects">
-          <EmptyState text="No allocations yet. Allocation is recorded in the Project Directory tab." />
-          <div className="section-label">All active projects</div>
-          {activeLoading ? (
-            <EmptyState text="Loading…" />
+      <Panel title={('Project overview — ' + (allocProjectLabel(myAllocs[0]) || 'Business park - Tower A'))}>
+        <div className="field-grid">
+          <Field label="Client" value={proj?.clientName || proj?.client || '—'} />
+          <Field label="Current stage" value={proj?.currentStage || proj?.stage || '—'} />
+          <Field label="Progress" value={(proj?.completion != null ? String(proj.completion) + '%' : proj?.progress || '—')} />
+          <Field label="Project status" value={proj?.status || '—'} />
+          <Field label="Branch" value={proj?.branch || activeProjects[0]?.branch || '—'} />
+        </div>
+        <div className="section-label" style={{ marginTop: 12 }}>Project team</div>
+        <div className="field-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+          {teamText ? (
+            String(teamText).split(',').map((t) => {
+              const trimmed = String(t).trim();
+              const [name, service] = trimmed.split('·').map((s) => s.trim());
+              return (
+                <div key={trimmed} style={{ fontSize: 14 }}>
+                  <b>{name || trimmed}</b>
+                  {service ? <span style={{ color: 'var(--ink-muted)' }}> · {service}</span> : ''}
+                </div>
+              );
+            })
           ) : (
-            <DataTable
-              columns={[
-                { key: 'name', label: 'Project', render: (r) => r.name ?? '—' },
-                { key: 'code', label: 'Code' },
-                { key: 'branch', label: 'Branch' },
-                {
-                  key: 'status',
-                  label: 'Status',
-                  render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill>,
-                },
-              ]}
-              rows={activeProjects}
-              emptyText="No active projects."
-            />
+            <div style={{ fontSize: 13, color: 'var(--ink-muted)' }}>No team data available.</div>
           )}
-        </Panel>
-      ) : (
-        <>
-          <Panel title="My projects">
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-              {myAllocs.map((a, i) => {
-                const pid = allocProjectId(a);
-                const active = String(pid) === String(effectiveId);
-                return (
-                  <button
-                    key={pid ?? i}
-                    type="button"
-                    className={`tab-btn${active ? ' active' : ''}`}
-                    onClick={() => setSelectedId(pid)}
-                  >
-                    {allocProjectLabel(a)}
-                  </button>
-                );
-              })}
+        </div>
+      </Panel>
+
+      <Panel title="Alerts">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {openRfis.length > 0 && openRfis.map((r, i) => (
+            <div key={i}>
+              <div className="section-label">Pending response</div>
+              <div style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Open</div>
+              <div style={{ fontSize: 14 }}>{r.type || r.description || 'RFI pending'}</div>
             </div>
-            {detail.isLoading ? (
-              <EmptyState text="Loading…" />
-            ) : detail.isError ? (
-              <div className="login-error" role="alert" style={{ display: 'block' }}>
-                {detail.error.message}
-              </div>
-            ) : (
-              <div className="field-grid">
-                <Field label="Client" value={proj?.clientName ?? proj?.client} />
-                <Field label="Stage" value={proj?.currentStage ?? proj?.stage} />
-                <Field
-                  label="Progress"
-                  value={proj?.completion != null ? `${proj.completion}%` : proj?.progress}
-                />
-                <Field label="Team" value={teamText} />
-                <Field label="Status" value={proj?.status} />
-                <Field label="Branch" value={proj?.branch} />
-              </div>
-            )}
-          </Panel>
-          <Panel title="Alerts">
-            {revisions.isLoading ? (
-              <EmptyState text="Loading…" />
-            ) : revisions.isError ? (
-              <div className="login-error" role="alert" style={{ display: 'block' }}>
-                {revisions.error.message}
-              </div>
-            ) : myRevisions.length === 0 ? (
-              <EmptyState text="No open revisions on your projects." />
-            ) : (
-              <DataTable
-                columns={[
-                  { key: 'title', label: 'Revision', render: (r) => r.title ?? r.refNo ?? r._id ?? '—' },
-                  { key: 'project', label: 'Project', render: (r) => r?.project?.name ?? r?.project ?? '—' },
-                  {
-                    key: 'status',
-                    label: 'Status',
-                    render: (r) => <StatusPill tone={statusTone(r.revisionStatus ?? r.status)}>{r.revisionStatus ?? r.status ?? '—'}</StatusPill>,
-                  },
-                  { key: 'due', label: 'Due', render: (r) => r.due ?? r.dueDate ?? '—' },
-                ]}
-                rows={myRevisions}
-                emptyText="No open revisions on your projects."
-              />
-            )}
-            {overdue.length > 0 && (
-              <p style={{ fontSize: 13, color: 'var(--ink-danger, #a33)' }}>
-                {overdue.length} overdue revision(s) need attention.
-              </p>
-            )}
-          </Panel>
-        </>
-      )}
+          ))}
+          {myRevisions.length > 0 && (
+            <div>
+              <div className="section-label">Delayed activity</div>
+              <div style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Internal</div>
+              <div style={{ fontSize: 14 }}>{myRevisions[0]?.title || 'Revision pending'}</div>
+            </div>
+          )}
+          {weekMeetings.length > 0 && (
+            <div>
+              <div className="section-label">Submission due</div>
+              <div style={{ fontSize: 13, color: 'var(--ink-muted)' }}>In 3 days</div>
+              <div style={{ fontSize: 14 }}>{weekMeetings[0]?.title || 'Meeting due'}</div>
+            </div>
+          )}
+          {openRfis.length === 0 && myRevisions.length === 0 && weekMeetings.length === 0 && (
+            <div style={{ fontSize: 13, color: 'var(--ink-muted)' }}>No alerts.</div>
+          )}
+        </div>
+      </Panel>
     </>
   );
 }
@@ -414,179 +297,466 @@ function OtherProjectsTab({ myAllocs, activeProjects, activeLoading }) {
     return activeProjects.filter((p) => !myIds.has(String(p._id ?? p.id ?? '')));
   }, [activeProjects, myIds]);
 
-  return (
-    <Panel title="Other projects (view only)">
-      {activeLoading ? (
+  const allocsQ = useQuery({ queryKey: ['spoc-allocations-all'], queryFn: () => request('/api/spoc/allocations') });
+  const delsQ = useQuery({ queryKey: ['other-dels'], queryFn: () => deliverablesApi.list({}) });
+  const meetsQ = useQuery({ queryKey: ['other-meets'], queryFn: () => meetingsApi.list({}) });
+  const rfisQ = useQuery({ queryKey: ['other-rfis'], queryFn: () => rfiApi.list({}) });
+  const revsQ = useQuery({ queryKey: ['other-revs'], queryFn: () => request('/api/work/revisions') });
+  const entriesQ = useQuery({ queryKey: ['other-entries'], queryFn: () => spocApi.entriesList({}) });
+
+  const allocs = allocsQ.data?.items ?? [];
+  const spocFor = (pid) => {
+    const a = allocs.find((x) => String(allocProjectId(x) ?? '') === String(pid) && String(x.status ?? '') === 'Approved')
+      ?? allocs.find((x) => String(allocProjectId(x) ?? '') === String(pid));
+    const c = a?.coordinator;
+    if (!c) return '—';
+    if (typeof c === 'string') return c;
+    return [c.firstName, c.lastName].filter(Boolean).join(' ') || c.empId || '—';
+  };
+  const byProject = (items, getPid) => {
+    const m = new Map();
+    for (const r of items) {
+      const pid = String(getPid(r) ?? '');
+      if (!pid) continue;
+      if (!m.has(pid)) m.set(pid, []);
+      m.get(pid).push(r);
+    }
+    return m;
+  };
+  const delsBy = byProject(delsQ.data?.items ?? [], (r) => r?.project?._id ?? r?.project?.id ?? r?.project);
+  const meetsBy = byProject(meetsQ.data?.items ?? [], (m) => m?.project?._id ?? m?.project);
+  const rfisBy = byProject(rfisQ.data?.items ?? [], (r) => r?.project?._id ?? r?.project?.id ?? r?.project);
+  const revsBy = byProject(revsQ.data?.items ?? [], (r) => r?.project?._id ?? r?.project?.id ?? r?.project ?? r?.projectId);
+  const entriesBy = byProject(entriesQ.data?.items ?? [], (e) => e?.project?._id ?? e?.project?.id ?? e?.project);
+
+  if (activeLoading) {
+    return (
+      <Panel title="Other projects (view only)">
         <EmptyState text="Loading…" />
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel
+      title="Other projects (view only)"
+      sub="Limited, view-only status for projects allotted to other SPOCs — enough to stand in for a meeting, without detailed project or task-level information."
+    >
+      {others.length === 0 ? (
+        <EmptyState text="No other active projects." />
       ) : (
-        <DataTable
-          columns={[
-            { key: 'name', label: 'Project', render: (r) => r.name ?? '—' },
-            { key: 'code', label: 'Code' },
-            { key: 'branch', label: 'Branch' },
-            { key: 'currentStage', label: 'Stage' },
-            {
-              key: 'status',
-              label: 'Status',
-              render: (r) => <StatusPill tone={statusTone(r.status)}>{r.status ?? '—'}</StatusPill>,
-            },
-          ]}
-          rows={others}
-          emptyText="No other active projects."
-        />
+        others.map((p) => {
+          const pid = String(p._id ?? p.id ?? '');
+          const dels = [...(delsBy.get(pid) ?? [])].sort((a, b) =>
+            String(b.updatedAt ?? b.createdAt ?? '').localeCompare(String(a.updatedAt ?? a.createdAt ?? ''))).slice(0, 2);
+          const meets = [...(meetsBy.get(pid) ?? [])].filter((m) => m.status !== 'Cancelled').sort((a, b) =>
+            String(a.date ?? '').localeCompare(String(b.date ?? ''))).slice(0, 2);
+          const openRfis = (rfisBy.get(pid) ?? []).filter((r) => String(r.status ?? '').toLowerCase() !== 'closed');
+          const openRevs = (revsBy.get(pid) ?? []).filter((r) => !['cleared', 'closed'].includes(String(r.status ?? r.revisionStatus ?? '').toLowerCase()));
+          const overdue = openRevs.filter((r) => {
+            const d = r?.due ?? r?.dueDate ?? null;
+            return d && !Number.isNaN(Date.parse(d)) && Date.parse(d) < Date.now();
+          });
+          const latestEntries = [...(entriesBy.get(pid) ?? [])].sort((a, b) =>
+            String(b.date ?? b.createdAt ?? '').localeCompare(String(a.date ?? a.createdAt ?? ''))).slice(0, 2);
+          return (
+            <div key={pid} style={{ marginBottom: 16, borderTop: '1px solid var(--line, #eee)', paddingTop: 12 }}>
+              <div className="section-label">{p.name ?? p.code ?? '—'}</div>
+              <div className="field-grid">
+                <Field label="Allotted SPOC" value={allocsQ.isLoading ? '…' : spocFor(pid)} />
+                <Field label="Current stage" value={p.currentStage ?? '—'} />
+                <Field label="Overall status" value={p.status ?? '—'} />
+                <Field
+                  label="Recent submissions"
+                  value={dels.length > 0 ? dels.map((d) => d.title ?? d.deliverable ?? d.name ?? '—').join(' · ') : 'None yet'}
+                />
+                <Field
+                  label="Upcoming meetings"
+                  value={meets.length > 0 ? meets.map((m) => `${m.title ?? 'Meeting'}${m.date ? `, ${String(m.date).slice(0, 10)}` : ''}`).join(' · ') : 'None scheduled'}
+                />
+                <Field
+                  label="Key pending items"
+                  value={[...openRfis.map((r) => r.type ?? 'RFI'), ...openRevs.map((r) => r.title ?? r.revNo ?? 'Revision')].slice(0, 3).join(' · ') || 'None'}
+                />
+                <Field
+                  label="Major outstanding issues"
+                  value={overdue.length > 0 ? `${overdue.length} overdue` : 'None'}
+                />
+                <Field
+                  label="Key follow-ups and actions"
+                  value={latestEntries.length > 0 ? latestEntries.map((e) => (e.areas ?? []).map((a) => a.update).filter(Boolean).join('; ') || e.service || 'Update').join(' · ') : 'None currently'}
+                />
+              </div>
+            </div>
+          );
+        })
       )}
     </Panel>
   );
 }
 
-function DirectoryTab() {
-  const queryClient = useQueryClient();
-  const [err, setErr] = useState('');
-  const [project, setProject] = useState('');
-  const [coordinator, setCoordinator] = useState('');
-  const [services, setServices] = useState([]);
+const TEAM_SERVICES = [
+  { key: 'Structural', role: 'Principal team lead — structural design and detailing' },
+  { key: 'Electrical', role: 'Principal team lead — electrical layout and panel schedules' },
+  { key: 'Mechanical', role: 'Principal team lead — HVAC layout and coordination' },
+  { key: 'Plumbing', role: 'Principal team lead — drainage and plumbing layout' },
+  { key: 'Fire', role: 'Principal team lead — fire protection sign-off' },
+  { key: 'QS', role: 'Principal team lead — BOQ and area settlements' },
+  { key: 'QA/QC', role: 'Site visits and inspection' },
+  { key: 'BIM', role: 'Federated model and clash detection' },
+];
 
-  const empQ = useQuery({
-    queryKey: ['employees-dir'],
-    queryFn: () => employeesApi.list({}),
+const APPROVAL_OPTIONS = [
+  { value: 'Approved', label: 'Approved' },
+  { value: 'Proposed', label: 'Pending' },
+];
+
+const CONTACT_RESPONSIBILITY = {
+  client: 'Client approvals and sign-off',
+  architect: 'Base drawings, design coordination',
+  coordinator: 'Overall coordination, single point of contact',
+};
+
+const COMPANY_NAME = 'Datum';
+
+function projectIdOf(p) {
+  return String(p?._id ?? p?.id ?? '');
+}
+
+function orgLabel(sub) {
+  return sub ? `${COMPANY_NAME} (${sub})` : COMPANY_NAME;
+}
+
+function approvalLabel(value) {
+  return APPROVAL_OPTIONS.find((o) => o.value === value)?.label ?? (value || '—');
+}
+
+function teamEntries(project) {
+  return (project?.principalTeamLeads ?? []).flatMap((t) => {
+    const names = (t.names ?? []).filter(Boolean);
+    const list = names.length > 0 ? names : [t.name ?? ''];
+    const base = {
+      service: t.service ?? '',
+      employee: t.employee ? String(t.employee._id ?? t.employee) : undefined,
+      role: t.role ?? '',
+      nominatedBy: t.nominatedBy ?? '',
+      approvalStatus: t.approvalStatus ?? '',
+    };
+    return list.filter(Boolean).map((name) => ({ ...base, name }));
   });
-  const projQ = useQuery({
-    queryKey: ['projects', 'active-dir'],
-    queryFn: () => projectsApi.list({ status: 'Active' }),
-  });
+}
 
-  const employees = empQ.data?.items ?? [];
-  const projects = projQ.data?.items ?? [];
+function toTeamPayload(entries) {
+  return entries
+    .map((r) => ({
+      service: (r.service ?? '').trim(),
+      name: (r.name ?? '').trim(),
+      ...(r.employee ? {employee:r.employee} : {}),
+      ...(r.role?.trim() ? { role: r.role.trim() } : {}),
+      ...(r.nominatedBy?.trim() ? { nominatedBy: r.nominatedBy.trim() } : {}),
+      ...(r.approvalStatus ? { approvalStatus: r.approvalStatus } : {}),
+    }))
+    .filter((r) => r.service || r.name);
+}
 
-  const byDept = useMemo(() => {
-    const m = new Map();
-    for (const e of employees) {
-      const k = e.department || '—';
-      if (!m.has(k)) m.set(k, []);
-      m.get(k).push(e);
+function employeeByName(employees, name) {
+  return employees.find((e) => empName(e) === name) ?? null;
+}
+
+function employeeOf(ref, employees) {
+  if (!ref) return null;
+  const id = typeof ref === 'string' ? ref : String(ref._id ?? ref.id ?? '');
+  const emp = employees.find((e) => String(e._id ?? e.id ?? '') === id);
+  if (emp) return emp;
+  return typeof ref === 'string' ? null : ref;
+}
+
+function coordinatorFor(projectId, myAllocs, employees) {
+  const alloc = myAllocs.find((a) => allocProjectId(a) === projectId);
+  return employeeOf(alloc?.coordinator, employees);
+}
+
+function serviceRows(project) {
+  const entries = teamEntries(project);
+  const rows = [];
+  for (const s of TEAM_SERVICES) {
+    const members = entries.filter((e) => e.service === s.key);
+    if (members.length === 0) {
+      rows.push({ key: `${s.key}-open`, service: s.key, name: '', role: s.role });
+    } else {
+      members.forEach((m, i) => rows.push({ key: `${s.key}-${i}`, service: s.key, name: m.name, role: m.role || s.role }));
     }
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [employees]);
-
-  function toggleService(s) {
-    setServices((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   }
+  const known = new Set(TEAM_SERVICES.map((s) => s.key));
+  entries
+    .filter((e) => !known.has(e.service))
+    .forEach((m, i) => rows.push({ key: `other-${i}`, service: m.service || '—', name: m.name, role: m.role }));
+  return rows;
+}
+
+function InhouseTeamPanel({ projects, myAllocs, employees, loading }) {
+  return (
+    <Panel title="In-house project team — all services" sub="Service-wise, with role and coordinator details. Live from team allocation.">
+      {loading ? (
+        <EmptyState text="Loading…" />
+      ) : projects.length === 0 ? (
+        <EmptyState text="No active projects." />
+      ) : (
+        projects.map((p) => {
+          const coord = coordinatorFor(projectIdOf(p), myAllocs, employees);
+          return (
+            <div key={projectIdOf(p)} style={{ marginBottom: 16 }}>
+              <div className="section-label">{p.name ?? p.code ?? '—'}</div>
+              <DataTable
+                columns={[
+                  { key: 'service', label: 'Service' },
+                  { key: 'name', label: 'Team member', render: (r) => r.name || 'Not allocated' },
+                  { key: 'role', label: 'Role / responsibility', render: (r) => r.role || '—' },
+                  { key: 'coord', label: 'Coordinator / SPOC', render: () => (coord ? empName(coord) : '—') },
+                ]}
+                rows={serviceRows(p)}
+                emptyText="No services."
+              />
+            </div>
+          );
+        })
+      )}
+    </Panel>
+  );
+}
+
+export function TeamAllocationPanel({ projects, employees }) {
+  const queryClient = useQueryClient();
+  const [project, setProject] = useState('');
+  const [service, setService] = useState('');
+  const [role, setRole] = useState('');
+  const [nominatedBy, setNominatedBy] = useState('');
+  const [member, setMember] = useState('');
+  const [status, setStatus] = useState('Approved');
+  const [err, setErr] = useState('');
+  const [ok, setOk] = useState('');
+  const directors = useMemo(() => {
+    const list = employees.filter((e) => /director|design management head/i.test(e.designation ?? ''));
+    return list.length > 0 ? list : employees;
+  }, [employees]);
+  const withTeam = projects.filter((p) => teamEntries(p).length > 0);
 
   const save = useMutation({
-    mutationFn: (body) => spocApi.recordAllocation(body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['spoc-allocations-mine'] });
-      setProject('');
-      setCoordinator('');
-      setServices([]);
-      setErr('');
+    mutationFn: async (body) => {
+      const detail = await projectsApi.get(body.project);
+      const p = detail?.project ?? detail ?? {};
+      const current = teamEntries(p);
+      const selected = employees.find(e=>String(e._id ?? e.id)===body.member);
+      const name = empName(selected);
+      const idx = current.findIndex((r) => r.service === body.service && r.employee === body.member);
+      const row = {
+        service: body.service,
+        name,
+        employee:body.member,
+        role: body.role,
+        nominatedBy: body.nominatedBy,
+        approvalStatus: body.status,
+      };
+      if (idx >= 0) current[idx] = { ...current[idx], ...row };
+      else current.push(row);
+      return projectsApi.saveTeamLeads(body.project, { principalTeamLeads: toTeamPayload(current) });
     },
-    onError: (e) => setErr(e.message),
+    onSuccess: (_data, body) => {
+      for (const key of ['projects','teams','my-teams','teams-allocation-projects']) queryClient.invalidateQueries({queryKey:[key]});
+      queryClient.invalidateQueries({ queryKey: ['project-team', body.project] });
+      queryClient.invalidateQueries({ queryKey: ['project', body.project] });
+      setProject('');
+      setService('');
+      setRole('');
+      setNominatedBy('');
+      setMember('');
+      setStatus('Approved');
+      setErr('');
+      setOk('Team allocation recorded.');
+    },
+    onError: (e) => {
+      setErr(e.message);
+      setOk('');
+    },
   });
 
-  function handleSubmit(e) {
+  function pickService(value) {
+    setService(value);
+    setRole(TEAM_SERVICES.find((s) => s.key === value)?.role ?? '');
+  }
+
+  function submit(e) {
     e.preventDefault();
     setErr('');
+    setOk('');
     if (!project) {
       setErr('Project is required.');
       return;
     }
-    if (!coordinator) {
-      setErr('Coordinator is required.');
+    if (!service) {
+      setErr('Service is required.');
       return;
     }
-    if (services.length === 0) {
-      setErr('Select at least one service.');
+    if (!member) {
+      setErr('Team member is required.');
       return;
     }
-    save.mutate({ project, coordinator, services });
+    save.mutate({ project, service, role: role.trim(), nominatedBy: nominatedBy || undefined, member, status });
   }
 
   return (
+    <Panel title="Team allocation" sub="As nominated by the respective department Directors — record the approved allocation here once confirmed.">
+      <div className="section-label" style={{ marginTop: 12 }}>Record allocation</div>
+      <form onSubmit={submit}>
+        <div className="field-grid">
+          <div className="form-row">
+            <label className="form-label">Project</label>
+            <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
+              <option value="">Select project</option>
+              {projects.map((p) => <option key={projectIdOf(p)} value={projectIdOf(p)}>{p.name ?? p.code ?? '—'}</option>)}
+            </select>
+          </div>
+          <div className="form-row">
+            <label className="form-label">Service</label>
+            <select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => pickService(e.target.value)}>
+              <option value="">Select service</option>
+              {TEAM_SERVICES.map((s) => <option key={s.key} value={s.key}>{s.key}</option>)}
+            </select>
+          </div>
+          <div className="form-row">
+            <label className="form-label">Role / responsibility</label>
+            <input className="form-input" value={role} onChange={(e) => setRole(e.target.value)} />
+          </div>
+          <div className="form-row">
+            <label className="form-label">Nominated by (Director)</label>
+            <select className="filter-select" style={{ width: '100%' }} value={nominatedBy} onChange={(e) => setNominatedBy(e.target.value)}>
+              <option value="">Select director</option>
+              {directors.map((d) => {
+                const n = `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || d.empId;
+                return <option key={d._id ?? d.id} value={n}>{n}{d.designation ? `, ${d.designation}` : ''}</option>;
+              })}
+            </select>
+          </div>
+          <div className="form-row">
+            <label className="form-label">Team member</label>
+            <select className="filter-select" style={{ width: '100%' }} value={member} onChange={(e) => setMember(e.target.value)}>
+              <option value="">Select member</option>
+              {employees.map((x) => {
+                const n = `${x.firstName ?? ''} ${x.lastName ?? ''}`.trim() || x.empId;
+                return <option key={x._id ?? x.id} value={x._id ?? x.id}>{n}{x.designation ? ` · ${x.designation}` : ''}</option>;
+              })}
+            </select>
+          </div>
+          <div className="form-row">
+            <label className="form-label">Approval status</label>
+            <select className="filter-select" style={{ width: '100%' }} value={status} onChange={(e) => setStatus(e.target.value)}>
+              {APPROVAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        </div>
+        {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
+        {ok && <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>{ok}</p>}
+        <button type="submit" className="btn-primary" disabled={save.isPending} style={{ marginTop: 8 }}>
+          {save.isPending ? 'Saving…' : 'Record allocation'}
+        </button>
+      </form>
+      {withTeam.length === 0 ? (
+        <EmptyState text="No team allocations recorded yet." />
+      ) : (
+        withTeam.map((p) => (
+          <div key={projectIdOf(p)} style={{ marginBottom: 16 }}>
+            <div className="section-label">{p.name ?? p.code ?? '—'}</div>
+            <DataTable
+              columns={[
+                { key: 'service', label: 'Service' },
+                { key: 'nominatedBy', label: 'Nominated by', render: (r) => r.nominatedBy || '—' },
+                { key: 'name', label: 'Team member' },
+                { key: 'approvalStatus', label: 'Approval status', render: (r) => <StatusPill status={approvalLabel(r.approvalStatus)} /> },
+              ]}
+              rows={teamEntries(p)}
+              emptyText="No team allocations."
+            />
+          </div>
+        ))
+      )}
+
+    </Panel>
+  );
+}
+
+function contactRows(project, myAllocs, employees) {
+  const c = project.contacts ?? {};
+  const rows = [];
+  const push = (name, org, role, contact, resp) => {
+    if (!name) return;
+    rows.push({ name, org: org || '—', role: role || '—', contact: contact || '—', resp: resp || '—' });
+  };
+  push(c.client?.name, c.client?.company, c.client?.designation || 'Client', c.client?.email, CONTACT_RESPONSIBILITY.client);
+  push(c.architect?.name, c.architect?.company, c.architect?.designation || 'Design architect', c.architect?.email, CONTACT_RESPONSIBILITY.architect);
+  for (const t of teamEntries(project)) {
+    const emp = employeeByName(employees, t.name);
+    push(t.name, orgLabel(t.service), 'Principal team lead', emp?.email, `${t.service} queries and submissions`);
+  }
+  const coord = coordinatorFor(projectIdOf(project), myAllocs, employees);
+  if (coord) push(empName(coord), orgLabel('Coordinator'), 'SPOC', coord.email, CONTACT_RESPONSIBILITY.coordinator);
+  return rows;
+}
+
+function ProjectContactsPanel({ projects, myAllocs, employees, loading }) {
+  return (
+    <Panel title="Project contacts & coordination">
+      {loading ? (
+        <EmptyState text="Loading…" />
+      ) : projects.length === 0 ? (
+        <EmptyState text="No project contacts yet." />
+      ) : (
+        projects.map((p) => (
+          <div key={projectIdOf(p)} style={{ marginBottom: 16 }}>
+            <div className="section-label">{p.name ?? p.code ?? '—'}</div>
+            <DataTable
+              columns={[
+                { key: 'name', label: 'Name' },
+                { key: 'org', label: 'Organisation' },
+                { key: 'role', label: 'Role' },
+                { key: 'contact', label: 'Contact' },
+                { key: 'resp', label: 'Coordination responsibility' },
+              ]}
+              rows={contactRows(p, myAllocs, employees)}
+              emptyText="No project contacts yet."
+            />
+          </div>
+        ))
+      )}
+    </Panel>
+  );
+}
+
+export function DirectoryTab({ myAllocs, activeProjects, activeLoading, canEdit = false }) {
+  const myIds = useMemo(
+    () => new Set(myAllocs.map(allocProjectId).filter(Boolean).map(String)),
+    [myAllocs],
+  );
+  const projects = useMemo(
+    () => (myIds.size === 0 ? activeProjects : activeProjects.filter((p) => myIds.has(projectIdOf(p)))),
+    [activeProjects, myIds],
+  );
+  const empQ = useQuery({
+    queryKey: ['employees-coord-dir'],
+    queryFn: () => employeesApi.list({}),
+  });
+  const employees = empQ.data?.items ?? [];
+
+  return (
     <>
-      <Panel title="In-house team browser">
-        {empQ.isLoading ? (
-          <EmptyState text="Loading…" />
-        ) : empQ.isError ? (
-          <div className="login-error" role="alert" style={{ display: 'block' }}>
-            {empQ.error.message}
-          </div>
-        ) : byDept.length === 0 ? (
-          <EmptyState text="No employees found." />
-        ) : (
-          byDept.map(([dept, list]) => (
-            <div key={dept} style={{ marginBottom: 16 }}>
-              <div className="section-label">
-                {dept} ({list.length})
-              </div>
-              <DataTable
-                columns={[
-                  { key: 'name', label: 'Employee', render: empName },
-                  { key: 'empId', label: 'Emp ID', render: (r) => r.empId ?? '—' },
-                  { key: 'designation', label: 'Designation' },
-                  { key: 'branch', label: 'Branch' },
-                ]}
-                rows={list}
-                emptyText="No employees in this department."
-              />
-            </div>
-          ))
-        )}
-      </Panel>
-      <Panel title="Record allocation">
-        <form onSubmit={handleSubmit}>
-          <div className="field-grid">
-            <div className="form-row">
-              <label className="form-label">Project</label>
-              <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
-                <option value="">Select project</option>
-                {projects.map((p) => (
-                  <option key={p._id ?? p.id} value={p._id ?? p.id}>
-                    {p.name ?? p.code ?? '—'}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="form-row">
-              <label className="form-label">Coordinator</label>
-              <select className="filter-select" style={{ width: '100%' }} value={coordinator} onChange={(e) => setCoordinator(e.target.value)}>
-                <option value="">Select coordinator</option>
-                {employees.map((e) => (
-                  <option key={e._id ?? e.id} value={e._id ?? e.id}>
-                    {empName(e)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="form-row" style={{ marginTop: 8 }}>
-            <label className="form-label">Services</label>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              {SERVICES.map((s) => (
-                <label key={s} className="form-label" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <input type="checkbox" checked={services.includes(s)} onChange={() => toggleService(s)} />
-                  {s}
-                </label>
-              ))}
-            </div>
-          </div>
-          {err && (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>
-              {err}
-            </div>
-          )}
-          <button type="submit" className="btn-primary" disabled={save.isPending} style={{ marginTop: 8 }}>
-            {save.isPending ? 'Saving…' : 'Record allocation'}
-          </button>
-        </form>
-      </Panel>
-      <DirectorySectionsEditor />
+      {canEdit && <TeamAllocationPanel projects={projects} employees={employees} />}
+      <InhouseTeamPanel projects={projects} myAllocs={myAllocs} employees={employees} loading={activeLoading} />
+      <ProjectContactsPanel projects={projects} myAllocs={myAllocs} employees={employees} loading={activeLoading} />
     </>
   );
 }
 
 function blankAreas() {
-  return AREA_KEYS.map((key) => ({ key, update: '', hours: '' }));
+  return AREA_KEYS.map((key) => ({ key, selected: false, update: '', hours: '' }));
 }
 
 function DailyEntryTab({ myAllocs, activeProjects }) {
@@ -596,9 +766,6 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
   const [project, setProject] = useState('');
   const [service, setService] = useState('');
   const [areas, setAreas] = useState(blankAreas);
-  const [revisionNo, setRevisionNo] = useState('');
-  const [revisionStatus, setRevisionStatus] = useState('');
-  const [revisionRemarks, setRevisionRemarks] = useState('');
   const [err, setErr] = useState('');
 
   const projectOptions = myAllocs.length > 0
@@ -609,10 +776,24 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
     queryKey: ['spoc-entries', { mine: true, date }],
     queryFn: () => spocApi.entriesList({ mine: true, date }),
   });
+  const allQ = useQuery({
+    queryKey: ['spoc-entries', { mine: true }],
+    queryFn: () => spocApi.entriesList({ mine: true }),
+  });
   const dayItems = listQ.data?.items ?? [];
+  const recentItems = useMemo(
+    () => [...(allQ.data?.items ?? [])].sort((a, b) =>
+      String(b.date ?? b.createdAt ?? '').localeCompare(String(a.date ?? a.createdAt ?? '')),
+    ),
+    [allQ.data],
+  );
+  const dayTotal = useMemo(
+    () => dayItems.reduce((s, r) => s + (Number(r.totalHours) || 0), 0),
+    [dayItems],
+  );
 
   const total = useMemo(
-    () => areas.reduce((sum, a) => sum + (parseFloat(a.hours) || 0), 0),
+    () => areas.reduce((sum, a) => sum + (a.selected ? parseFloat(a.hours) || 0 : 0), 0),
     [areas],
   );
 
@@ -622,9 +803,6 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
 
   function handleClear() {
     setAreas(blankAreas());
-    setRevisionNo('');
-    setRevisionStatus('');
-    setRevisionRemarks('');
     setService('');
     setErr('');
   }
@@ -653,25 +831,27 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
       setErr('Service is required.');
       return;
     }
+    const selectedAreas = areas.filter((area) => area.selected);
+    if (selectedAreas.length === 0) {
+      setErr('Select at least one work area.');
+      return;
+    }
     save.mutate({
       date,
       project,
       service,
-      areas: areas.map((a) => ({
+      areas: selectedAreas.map((a) => ({
         key: a.key,
         update: a.update || undefined,
         hours: a.hours === '' ? undefined : Number(a.hours),
       })),
-      revisionNo: revisionNo || undefined,
-      revisionStatus: revisionStatus || undefined,
-      revisionRemarks: revisionRemarks || undefined,
     });
   }
 
   return (
     <>
       <PendingLogoutCallout />
-      <Panel title="Daily work update">
+      <Panel title="SPOC daily work update / man-hour entry" sub="Pick the project and service, tick the work areas you handled today, and record a short update with the man-hours spent.">
         <form onSubmit={handleSubmit}>
           <div className="field-grid">
             <div className="form-row">
@@ -679,7 +859,7 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
               <input className="form-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div className="form-row">
-              <label className="form-label">Project</label>
+              <label className="form-label">Project name</label>
               <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
                 <option value="">Select project</option>
                 {projectOptions.map((o) => (
@@ -701,19 +881,38 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
               </select>
             </div>
           </div>
-          <div className="section-label">Work areas</div>
+          <div className="section-label">SPOC work performed</div>
           <table className="data">
             <thead>
               <tr>
-                <th>Area</th>
-                <th>Update</th>
-                <th style={{ width: 110 }}>Hours</th>
+                <th>Work area</th>
+                <th>Daily update / remarks</th>
+                <th style={{ width: 110 }}>Man-hours</th>
               </tr>
             </thead>
             <tbody>
               {areas.map((a, i) => (
                 <tr key={a.key}>
-                  <td>{a.key}</td>
+                  <td>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={a.selected}
+                        onChange={(e) => setArea(i, {
+                          selected: e.target.checked,
+                          update: e.target.checked ? a.update : '',
+                          hours: e.target.checked ? a.hours : '',
+                        })}
+                        aria-label={`Select ${a.key} work area`}
+                      />
+                      <span>
+                        {a.key}
+                        <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-muted)' }}>
+                          {AREA_DESCRIPTIONS[a.key] ?? ''}
+                        </span>
+                      </span>
+                    </label>
+                  </td>
                   <td>
                     <input
                       className="form-input"
@@ -721,6 +920,7 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
                       onChange={(e) => setArea(i, { update: e.target.value })}
                       placeholder="Update"
                       aria-label={`${a.key} update`}
+                      disabled={!a.selected}
                     />
                   </td>
                   <td>
@@ -732,35 +932,15 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
                       value={a.hours}
                       onChange={(e) => setArea(i, { hours: e.target.value })}
                       aria-label={`${a.key} hours`}
+                      disabled={!a.selected}
                     />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div className="field-grid" style={{ marginTop: 12 }}>
-            <div className="form-row">
-              <label className="form-label">Revision no</label>
-              <input className="form-input" value={revisionNo} onChange={(e) => setRevisionNo(e.target.value)} />
-            </div>
-            <div className="form-row">
-              <label className="form-label">Revision status</label>
-              <select className="filter-select" style={{ width: '100%' }} value={revisionStatus} onChange={(e) => setRevisionStatus(e.target.value)}>
-                <option value="">Select status</option>
-                {REVISION_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="form-row">
-              <label className="form-label">Revision remarks</label>
-              <input className="form-input" value={revisionRemarks} onChange={(e) => setRevisionRemarks(e.target.value)} />
-            </div>
-          </div>
           <p style={{ fontSize: 13.5, marginTop: 12 }}>
-            Total: <b className="mono">{total}</b> hrs · {MAN_HOUR_NOTE}
+            Total man-hours for the project / service: <b className="mono">{total}</b> hrs · {MAN_HOUR_NOTE}
           </p>
           {err && (
             <div className="login-error" role="alert" style={{ display: 'block' }}>
@@ -775,30 +955,29 @@ function DailyEntryTab({ myAllocs, activeProjects }) {
               Clear
             </button>
           </div>
+          <p style={{ fontSize: 12.5, color: 'var(--ink-muted)', marginTop: 8 }}>
+            Worked on another project or service today? Save this entry, then fill the form again — each project / service is saved as its own entry.
+          </p>
         </form>
       </Panel>
-      <Panel title={`My entries — ${date}`}>
-        {listQ.isLoading ? (
+      <Panel title="My daily entries" sub={`Most recent first${dayTotal ? ` · ${dayTotal} hrs on ${date}` : ''}`}>
+        {allQ.isLoading ? (
           <EmptyState text="Loading…" />
-        ) : listQ.isError ? (
+        ) : allQ.isError ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>
-            {listQ.error.message}
+            {allQ.error.message}
           </div>
         ) : (
           <DataTable
             columns={[
+              { key: 'date', label: 'Date', render: (r) => String(r.date ?? r.createdAt ?? '').slice(0, 10) },
               { key: 'project', label: 'Project', render: (r) => r?.project?.name ?? r?.project?.code ?? '—' },
               { key: 'service', label: 'Service' },
               { key: 'totalHours', label: 'Hours', render: (r) => r.totalHours ?? '—' },
-              { key: 'revisionNo', label: 'Rev no' },
-              {
-                key: 'revisionStatus',
-                label: 'Rev status',
-                render: (r) => (r.revisionStatus ? <StatusPill tone={statusTone(r.revisionStatus)}>{r.revisionStatus}</StatusPill> : '—'),
-              },
+              { key: 'documents', label: 'Documents', render: r => <EntryDocuments entry={r} spoc /> },
             ]}
-            rows={dayItems}
-            emptyText="No entries for this date yet."
+            rows={recentItems}
+            emptyText="No entries saved yet."
           />
         )}
       </Panel>
@@ -810,10 +989,125 @@ function CoordinationMeetingsTab() {
   return <SpocMeetings />;
 }
 
-export default function MyCoordinationPage({ bootstrap }) {
-  const [tab, setTab] = useState('overview');
+function useMyProjectIds(myAllocs, activeProjects) {
+  return useMemo(() => {
+    const ids = myAllocs.map(allocProjectId).filter(Boolean).map(String);
+    if (ids.length > 0) return [...new Set(ids)];
+    return (activeProjects ?? []).map((p) => String(p._id ?? p.id ?? '')).filter(Boolean);
+  }, [myAllocs, activeProjects]);
+}
+
+function DelDrawTab({ myAllocs, activeProjects }) {
+  const ids = useMyProjectIds(myAllocs, activeProjects);
+  const delsQ = useQuery({ queryKey: ['spoc-dels', ids.join(',')], queryFn: () => deliverablesApi.list({}), enabled: ids.length > 0 });
+  const drgsQ = useQuery({ queryKey: ['spoc-drgs', ids.join(',')], queryFn: () => drawingsApi.list({}), enabled: ids.length > 0 });
+  const inMine = (r) => {
+    const pid = String(r?.project?._id ?? r?.project?.id ?? r?.project ?? r?.projectId ?? '');
+    return ids.includes(pid);
+  };
+  const dels = (delsQ.data?.items ?? []).filter(inMine);
+  const drgs = (drgsQ.data?.items ?? []).filter(inMine);
+  return (
+    <>
+      <Panel title="Deliverables (entry top)">
+        <DataTable columns={[
+          { key: 'title', label: 'Deliverable', render: (r) => r.title ?? r.deliverable ?? r.name ?? '—' },
+          { key: 'project', label: 'Project', render: (r) => r?.project?.name ?? '—' },
+          { key: 'stage', label: 'Stage' },
+          { key: 'status', label: 'Status', render: (r) => r.status ? <StatusPill status={r.status}>{r.status}</StatusPill> : '—' },
+        ]} rows={dels} emptyText="No deliverables for your projects yet." />
+      </Panel>
+      <Panel title="Drawings (log bottom)">
+        <DataTable columns={[
+          { key: 'drawingNo', label: 'Drawing no' },
+          { key: 'title', label: 'Title' },
+          { key: 'project', label: 'Project', render: (r) => r?.project?.name ?? '—' },
+          { key: 'service', label: 'Service' },
+          { key: 'stage', label: 'Stage' },
+        ]} rows={drgs} emptyText="No drawings for your projects yet." />
+      </Panel>
+    </>
+  );
+}
+
+function RevisionLogTab({ myAllocs, activeProjects }) {
+  const ids = useMyProjectIds(myAllocs, activeProjects);
+  const revQ = useQuery({ queryKey: ['spoc-revs', ids.join(',')], queryFn: () => revisionsApi.list({}), enabled: ids.length > 0 });
+  const rows = (revQ.data?.items ?? []).filter((r) => {
+    const pid = String(r?.project?._id ?? r?.project?.id ?? r?.project ?? r?.projectId ?? '');
+    return ids.includes(pid);
+  });
+  return (
+    <Panel title="Revision log">
+      <DataTable columns={[
+        { key: 'title', label: 'Revision', render: (r) => r.title ?? r.revNo ?? r._id ?? '—' },
+        { key: 'project', label: 'Project', render: (r) => r?.project?.name ?? '—' },
+        { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+        { key: 'due', label: 'Due', render: (r) => r.due ?? r.dueDate ?? '—' },
+      ]} rows={rows} emptyText="No revisions for your projects yet." />
+    </Panel>
+  );
+}
+
+function PendingTab({ myAllocs, activeProjects }) {
+  const ids = useMyProjectIds(myAllocs, activeProjects);
+  const rfisQ = useQuery({ queryKey: ['spoc-rfis-pending'], queryFn: () => rfiApi.list({}), enabled: ids.length > 0 });
+  const revQ = useQuery({ queryKey: ['spoc-revs-pending'], queryFn: () => revisionsApi.list({}), enabled: ids.length > 0 });
+  const inMine = (r) => ids.includes(String(r?.project?._id ?? r?.project?.id ?? r?.project ?? r?.projectId ?? ''));
+  const rfis = (rfisQ.data?.items ?? []).filter((r) => inMine(r) && String(r.status ?? '').toLowerCase() !== 'closed');
+  const revs = (revQ.data?.items ?? []).filter((r) => inMine(r) && String(r.status ?? '').toLowerCase() !== 'cleared');
+  return (
+    <>
+      <Panel title="Pending RFIs (entry top)">
+        <DataTable columns={[
+          { key: 'type', label: 'Type' },
+          { key: 'project', label: 'Project', render: (r) => r?.project?.name ?? '—' },
+          { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+        ]} rows={rfis} emptyText="No pending RFIs." />
+      </Panel>
+      <Panel title="Follow-up revisions (log bottom)">
+        <DataTable columns={[
+          { key: 'title', label: 'Revision', render: (r) => r.title ?? r.revNo ?? '—' },
+          { key: 'project', label: 'Project', render: (r) => r?.project?.name ?? '—' },
+          { key: 'status', label: 'Status' },
+        ]} rows={revs} emptyText="No pending revisions." />
+      </Panel>
+    </>
+  );
+}
+
+function CoordRfiTab({ myAllocs, activeProjects }) {
+  const ids = useMyProjectIds(myAllocs, activeProjects);
+  const entriesQ = useQuery({ queryKey: ['spoc-coord-entries'], queryFn: () => spocApi.entriesList({ mine: true }) });
+  const rfisQ = useQuery({ queryKey: ['spoc-coord-rfis'], queryFn: () => rfiApi.list({}) });
+  const entries = entriesQ.data?.items ?? [];
+  const rfis = (rfisQ.data?.items ?? []).filter((r) => ids.includes(String(r?.project?._id ?? r?.project?.id ?? r?.project ?? '')));
+  return (
+    <>
+      <Panel title="Coordination log (entry top)">
+        <DataTable columns={[
+          { key: 'project', label: 'Project', render: (r) => r?.project?.name ?? '—' },
+          { key: 'service', label: 'Service' },
+          { key: 'totalHours', label: 'Hours' },
+        ]} rows={entries} emptyText="No coordination entries yet." />
+      </Panel>
+      <Panel title="RFI log (bottom)">
+        <DataTable columns={[
+          { key: 'type', label: 'Type' },
+          { key: 'description', label: 'Description' },
+          { key: 'status', label: 'Status' },
+        ]} rows={rfis} emptyText="No RFIs for your projects." />
+      </Panel>
+    </>
+  );
+}
+
+export default function MyCoordinationPage({ bootstrap, user }) {
+  const [tab, setTab] = useState('daily');
   const roleKey = bootstrap?.role?.key;
   const isSuper = SUPER_ROLES.includes(roleKey);
+  const userName = user?.name ?? user?.email ?? '';
+  const roleLabel = bootstrap?.role?.label ?? roleKey ?? '';
 
   const allocQ = useQuery({
     queryKey: ['spoc-allocations-mine'],
@@ -834,6 +1128,14 @@ export default function MyCoordinationPage({ bootstrap }) {
         <div className="page-sub">
           {allocQ.isLoading ? 'Loading…' : `${myAllocs.length} allocated project(s)`}
         </div>
+        {userName && (
+          <div className="page-sub" style={{ marginTop: 4 }}>
+            {userName}{roleLabel ? ` · ${roleLabel}` : ''} · single point of contact to client, architect, and internal teams
+          </div>
+        )}
+        <div className="page-sub" style={{ marginTop: 2 }}>
+          Your coordination work, project updates and meetings are visible on the Design Management dashboard.
+        </div>
       </div>
       {isSuper && (
         <Panel title="Role note">
@@ -845,26 +1147,17 @@ export default function MyCoordinationPage({ bootstrap }) {
           {allocQ.error.message}
         </div>
       )}
+      <CoordinationKpis myAllocs={myAllocs} />
       <Tabs
         tabs={[
-          { key: 'overview', label: 'Overview' },
-          { key: 'other', label: 'Other Projects' },
-          { key: 'directory', label: 'Project Directory' },
           { key: 'daily', label: 'Daily work update' },
-          { key: 'meetings', label: 'Meetings' },
+          { key: 'other', label: 'Other projects' },
         ]}
         active={tab}
         onChange={setTab}
       />
-      {tab === 'overview' && (
-        <OverviewTab myAllocs={myAllocs} activeProjects={activeProjects} activeLoading={activeQ.isLoading} />
-      )}
-      {tab === 'other' && (
-        <OtherProjectsTab myAllocs={myAllocs} activeProjects={activeProjects} activeLoading={activeQ.isLoading} />
-      )}
-      {tab === 'directory' && <DirectoryTab />}
       {tab === 'daily' && <DailyEntryTab myAllocs={myAllocs} activeProjects={activeProjects} />}
-      {tab === 'meetings' && <CoordinationMeetingsTab />}
+      {tab === 'other' && <OtherProjectsTab myAllocs={myAllocs} activeProjects={activeProjects} activeLoading={activeQ.isLoading} />}
     </>
   );
 }

@@ -1,3 +1,5 @@
+import { sendTransmittalPdf } from '../utils/transmittalPdf.js';
+import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import multer from 'multer';
 import XLSX from 'xlsx';
 import { nextNumber } from '../models/Counter.js';
@@ -71,6 +73,10 @@ export async function listTransmittals(req, res, next) {
       .populate(POP)
       .sort({ createdAt: -1 })
       .limit(500);
+    const scopeIds = await projectScopeIds(req.user);
+    if (scopeIds) {
+      items = items.filter((t) => scopeIds.includes(t.drawing?.project?._id?.toString() ?? ''));
+    }
     if (project) {
       items = items.filter(
         (t) => t.drawing?.project?._id?.toString() === project,
@@ -266,8 +272,15 @@ export async function tlDrawingLists(req, res, next) {
       .sort({ createdAt: -1 })
       .limit(500);
     const ids = drawings.map((d) => d._id);
-    const sent = await Transmittal.distinct('drawing', { drawing: { $in: ids } });
-    const sentSet = new Set(sent.map((s) => s.toString()));
+    const transmittals = await Transmittal.find({ drawing: { $in: ids } })
+      .select('drawing trNo status createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+    const latestByDrawing = new Map();
+    for (const transmittal of transmittals) {
+      const drawingId = String(transmittal.drawing);
+      if (!latestByDrawing.has(drawingId)) latestByDrawing.set(drawingId, transmittal);
+    }
     return res.status(200).json({
       items: drawings.map((d) => ({
         id: d._id.toString(),
@@ -279,7 +292,10 @@ export async function tlDrawingLists(req, res, next) {
         stage: d.stage,
         sharedBy: d.sharedBy,
         date: d.date,
-        transmitted: sentSet.has(d._id.toString()),
+        issuedTo: d.issuedTo,
+        method: d.method,
+        transmitted: latestByDrawing.has(d._id.toString()),
+        transmittal: latestByDrawing.get(d._id.toString()) ?? null,
         gfc: d.stage === 'GFC',
       })),
       total: drawings.length,
@@ -305,14 +321,16 @@ export async function createFromDrawings(req, res, next) {
     // One TR number per project + recipient.
     const groups = new Map();
     for (const d of gfc) {
-      const key = `${d.project?._id ?? 'none'}|${parsed.data.issuedTo}`;
+      const issuedTo = d.issuedTo || parsed.data.issuedTo || 'Client';
+      const method = d.method || parsed.data.method || 'Portal';
+      const key = `${d.project?._id ?? 'none'}|${issuedTo}`;
       if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(d);
+      groups.get(key).push({ drawing: d, issuedTo, method });
     }
     const created = [];
     for (const list of groups.values()) {
       const trNo = await nextNumber('tr', 'TR');
-      for (const d of list) {
+      for (const { drawing: d, issuedTo, method } of list) {
         const exists = await Transmittal.findOne({
           drawing: d._id,
           rev: d.rev,
@@ -324,8 +342,8 @@ export async function createFromDrawings(req, res, next) {
           date: parsed.data.date ?? new Date(),
           drawing: d._id,
           rev: d.rev,
-          issuedTo: parsed.data.issuedTo,
-          method: parsed.data.method,
+          issuedTo,
+          method,
           status: 'Pending',
           remarks: parsed.data.remarks,
           source: 'tl-list',
@@ -344,7 +362,7 @@ export async function createFromDrawings(req, res, next) {
       roles: ['team_lead'],
       link: { view: 'transmittal' },
       title: `${created.length} transmittal entries created`,
-      detail: `From TL drawing lists (${parsed.data.issuedTo})`,
+      detail: 'From TL drawing lists; recipient and method taken from each drawing.',
       type: 'transmittal',
     }).catch(() => {});
     return res.status(201).json({ created, skipped });
@@ -734,4 +752,14 @@ export async function importUndo(req, res, next) {
   } catch (err) {
     return next(err);
   }
+}
+
+export async function exportPdf(req,res,next) {
+  try {
+    const filter={};
+    if(req.query.status)filter.status=req.query.status;
+    const rows=await Transmittal.find(filter).populate({path:'drawing',populate:{path:'project',select:'name code'}}).sort({date:-1});
+    const visible=rows.filter(r=>(!req.query.project||String(r.drawing?.project?._id)===req.query.project)&&(!req.query.search||[r.trNo,r.drawing?.drawingNo,r.drawing?.title].join(' ').toLowerCase().includes(String(req.query.search).toLowerCase())));
+    return sendTransmittalPdf(res,visible.map(r=>({...r.toObject(),project:r.drawing?.project,service:r.drawing?.service,docType:r.drawing?.stage,rev:r.drawing?.rev,reason:r.remarks})),req.query);
+  }catch(err){return next(err);}
 }

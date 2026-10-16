@@ -1,10 +1,10 @@
+import { canReadProject, narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { Employee } from '../models/Employee.js';
 import { SpocEntry } from '../models/SpocEntry.js';
 import { User } from '../models/User.js';
 import { WorkEntry } from '../models/WorkEntry.js';
 import { spocEntrySchema } from '../validation/phase2.schema.js';
-
-const EXTERNAL_ROLES = ['client', 'architect'];
+import { MAN_HOUR_EXEMPT_ROLES } from '../config/roles.js';
 
 function todayRange() {
   const start = new Date();
@@ -25,6 +25,9 @@ export async function createSpocEntry(req, res, next) {
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid data.' });
     }
+    const me = await User.findById(req.user.id).select('employee');
+    if (parsed.data.employee && String(parsed.data.employee) !== String(me?.employee)) return res.status(403).json({ message: 'Log your own daily work.' });
+    if (!await canReadProject(req.user, parsed.data.project)) return res.status(403).json({ message: 'Project is not assigned to you.' });
     const employee = await resolveEmployee(req, parsed.data.employee);
     if (!employee) {
       return res.status(400).json({
@@ -47,6 +50,7 @@ export async function listSpocEntries(req, res, next) {
   try {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
+    narrowByProject(filter, 'project', await projectScopeIds(req.user));
     if (req.query.employee) filter.employee = req.query.employee;
     if (req.query.mine === 'true') {
       const me = await User.findById(req.user.id);
@@ -81,10 +85,12 @@ export async function listSpocEntries(req, res, next) {
 }
 
 // Sign-out gate data (§2.6): has this user recorded man-hours today?
+// Directive roles (founding → assoc technical) + externals + superuser are exempt:
+// no own entry required, view-only for others' hours.
 export async function manHourStatus(req, res, next) {
   try {
     const role = req.user.role;
-    if (EXTERNAL_ROLES.includes(role)) {
+    if (MAN_HOUR_EXEMPT_ROLES.includes(role)) {
       return res
         .status(200)
         .json({ required: false, logged: true, hours: 0 });
@@ -142,6 +148,7 @@ export async function listAllocations(req, res, next) {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
     if (req.query.status) filter.status = req.query.status;
+    narrowByProject(filter, 'project', await projectScopeIds(req.user));
     const items = await SpocAllocation.find(filter)
       .populate('project', 'name code branch currentStage status')
       .populate('coordinator', 'firstName lastName empId designation')
@@ -185,6 +192,7 @@ export async function proposeAllocation(req, res, next) {
         .status(400)
         .json({ message: 'project and coordinator are required.' });
     }
+    if (!await canReadProject(req.user,project)) return res.status(403).json({message:'Project is not assigned to you.'});
     const doc = await SpocAllocation.findOneAndUpdate(
       { project, coordinator },
       {
@@ -214,6 +222,7 @@ export async function recordAllocation(req, res, next) {
         .status(400)
         .json({ message: 'project and coordinator are required.' });
     }
+    if (!await canReadProject(req.user,project)) return res.status(403).json({message:'Project is not assigned to you.'});
     const doc = await SpocAllocation.findOneAndUpdate(
       { project, coordinator },
       {

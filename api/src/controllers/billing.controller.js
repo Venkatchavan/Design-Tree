@@ -38,6 +38,8 @@ export async function createClaim(req, res, next) {
   try {
     const project = await Project.findById(parsed.data.project);
     if (!project) return res.status(404).json({ message: 'Project not found.' });
+    if (!await billingApproved(parsed.data.project, parsed.data.stage, parsed.data.service)) return res.status(409).json({ message: 'TD approval is required before billing.' });
+    if (parsed.data.status === 'Billed') return res.status(400).json({ message: 'Create the claim first, then mark it billed.' });
     const doc = await Claim.create({ ...parsed.data, createdBy: req.user.id });
     return res.status(201).json({ item: doc });
   } catch (err) {
@@ -51,6 +53,9 @@ export async function setClaimStatus(req, res, next) {
     return res.status(400).json({ message: 'Invalid data.' });
   }
   try {
+    const old = await Claim.findById(req.params.id);
+    if (!old) return res.status(404).json({ message: 'Claim not found.' });
+    if (parsed.data.status === 'Billed' && !await billingApproved(old.project, old.stage, old.service)) return res.status(409).json({ message: 'TD approval is required before billing.' });
     const patch = { status: parsed.data.status };
     if (parsed.data.status === 'Billed') patch.billedAt = new Date();
     const doc = await Claim.findByIdAndUpdate(req.params.id, patch, {
@@ -61,8 +66,8 @@ export async function setClaimStatus(req, res, next) {
     if (!doc) return res.status(404).json({ message: 'Not found.' });
     // A billed claim flips the matching stage tracker to Billed.
     if (parsed.data.status === 'Billed' && doc.stage) {
-      await StageStatus.findOneAndUpdate(
-        { project: doc.project._id ?? doc.project, stage: doc.stage },
+      await StageStatus.updateMany(
+        { project: doc.project._id ?? doc.project, stage: doc.stage, confirmationStatus: 'TD Approved', ...(doc.service ? { service: doc.service } : {}) },
         { billingReadiness: 'Billed', updatedBy: req.user.id },
       );
     }
@@ -73,6 +78,7 @@ export async function setClaimStatus(req, res, next) {
 }
 
 export const stages = makeCrud(StageStatus, {
+  scopedByProject: true,
   create: stageStatusSchema,
   update: stageStatusUpdateSchema,
   filters: (req) => {
@@ -86,23 +92,100 @@ export const stages = makeCrud(StageStatus, {
 
 export async function upsertStage(req, res, next) {
   const parsed = stageStatusSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: 'Invalid data.' });
-  }
+  if (!parsed.success) return res.status(400).json({ message: 'Invalid stage data.' });
   try {
-    const doc = await StageStatus.findOneAndUpdate(
-      {
-        project: parsed.data.project,
-        service: parsed.data.service ?? null,
-        stage: parsed.data.stage ?? null,
-      },
-      { ...parsed.data, updatedBy: req.user.id },
-      { upsert: true, new: true, returnDocument: 'after', runValidators: true },
-    );
+    const { requestCompletion, confirmCompletion, approveCompletion, ptlRemark, spocRemark, tdRemark, ...rest } = parsed.data;
+    const { canReadProject } = await import('../utils/projectScope.js');
+    if (!await canReadProject(req.user, rest.project)) return res.status(403).json({ message: 'Project is not assigned to you.' });
+    if (!await Project.exists({ _id: rest.project })) return res.status(404).json({ message: 'Project not found.' });
+    const identity = { project: rest.project, service: rest.service ?? null, stage: rest.stage ?? null };
+    const old = await StageStatus.findOne(identity);
+    const count = [requestCompletion, confirmCompletion, approveCompletion].filter(Boolean).length;
+    if (count > 1) return res.status(400).json({ message: 'Choose one approval action.' });
+    let patch = { ...rest, updatedBy: req.user.id };
+    let from = old?.confirmationStatus ?? 'None';
+    let action = 'Stage updated';
+    if (old?.billingReadiness === 'Billed') return res.status(409).json({ message: 'An already billed stage cannot be changed.' });
+    if (requestCompletion) {
+      if (req.user.role !== 'team_lead') return res.status(403).json({ message: 'Only the assigned PTL can request completion.' });
+      if (!['None', 'PTL Requested'].includes(from)) return res.status(409).json({ message: 'Completion has already progressed to approval.' });
+      patch = { ...patch, confirmationStatus: 'PTL Requested', ptlRequestedBy: req.user.id, ptlRequestedAt: new Date(), ptlRemark, currentStatus: 'Pending SPOC approval', billingReadiness: 'Pending' };
+      action = 'PTL requested completion';
+    } else if (confirmCompletion) {
+      if (req.user.role !== 'coordinator') return res.status(403).json({ message: 'Only the assigned SPOC can confirm completion.' });
+      if (from !== 'PTL Requested') return res.status(409).json({ message: 'A PTL request is required first.' });
+      patch = { ...patch, confirmationStatus: 'SPOC Confirmed', spocConfirmedBy: req.user.id, spocConfirmedAt: new Date(), spocRemark, currentStatus: 'Pending TD approval', billingReadiness: 'Pending' };
+      action = 'SPOC confirmed completion';
+    } else if (approveCompletion) {
+      if (!['technical_director', 'assoc_technical_director'].includes(req.user.role)) return res.status(403).json({ message: 'Only the Technical Director or Associate Technical Director approves completion.' });
+      if (from === 'TD Approved') return res.status(409).json({ message: 'Stage is already approved.' });
+      // TD / ATD can complete directly from the individual project view,
+      // even when the PTL → SPOC steps were skipped.
+      patch = { ...patch, confirmationStatus: 'TD Approved', tdApprovedBy: req.user.id, tdApprovedAt: new Date(), tdRemark, currentStatus: 'Completed', billingReadiness: 'Ready for billing' };
+      action = req.user.role === 'assoc_technical_director' ? 'ATD approved completion' : 'TD approved completion';
+    } else {
+      if (rest.billingReadiness === 'Billed' || ((rest.billingReadiness === 'Ready for billing' || rest.currentStatus === 'Completed') && from !== 'TD Approved')) {
+        return res.status(409).json({ message: 'PTL, SPOC and TD approvals are required before billing.' });
+      }
+      if (from !== 'None') return res.status(409).json({ message: 'Use the next approval action for this stage.' });
+    }
+    const doc = old
+      ? await StageStatus.findOneAndUpdate({ _id: old._id, confirmationStatus: from, billingReadiness: { $ne: 'Billed' } }, { $set: patch, $push: { history: { by: req.user.id, action } } }, { returnDocument: 'after', runValidators: true })
+      : await StageStatus.create({ ...patch, history: [{ by: req.user.id, action }] });
+    if (!doc) return res.status(409).json({ message: 'Stage changed; refresh before approving.' });
+    try {
+      const { notify, userIdsForEmployees } = await import('../models/Notification.js');
+      const { SpocAllocation } = await import('../models/SpocAllocation.js');
+      const { Team } = await import('../models/Team.js');
+      const projectDoc = await Project.findById(rest.project).select('principalTeamLeads').lean();
+      const allocations = await SpocAllocation.find({ project: rest.project, status: 'Approved' });
+      const teams = await Team.find({ projects: rest.project }).select('lead members').lean();
+      const employeeIds = [
+        ...allocations.map((a) => a.coordinator),
+        ...(projectDoc?.principalTeamLeads ?? []).map((t) => t.employee).filter(Boolean),
+        ...teams.map((t) => t.lead).filter(Boolean),
+        ...teams.flatMap((t) => (t.members ?? []).map((m) => m.employee)).filter(Boolean),
+      ];
+      const users = await userIdsForEmployees(employeeIds);
+      for (const u of [doc.ptlRequestedBy, doc.spocConfirmedBy]) {
+        if (u && String(u) !== String(req.user.id) && !users.includes(String(u))) users.push(String(u));
+      }
+      const relatedRoles = requestCompletion
+        ? ['coordinator', 'technical_director', 'assoc_technical_director', 'design_mgmt_head']
+        : confirmCompletion
+          ? ['technical_director', 'assoc_technical_director', 'team_lead', 'design_mgmt_head']
+          : ['team_lead', 'coordinator', 'technical_director', 'assoc_technical_director', 'design_mgmt_head', 'founding_director', 'working_director', 'executive_director', 'associate_director', 'admin_billing'];
+      await notify({ users, roles: relatedRoles, project: rest.project, link: { view: 'project-detail', id: String(rest.project) }, title: action, detail: `${rest.service ?? ''} ${rest.stage ?? ''} — ${doc.currentStatus}`, type: 'stage-approval' });
+    } catch { /* persisted approval remains available when live notifications fail */ }
     return res.status(200).json({ item: doc });
-  } catch (err) {
-    return next(err);
-  }
+  } catch (err) { return next(err); }
+}
+
+export async function updateStage(req, res, next) {
+  try {
+    const doc = await StageStatus.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Stage not found.' });
+    if (req.body?.project && String(req.body.project) !== String(doc.project)) return res.status(400).json({ message: 'Stage cannot move projects.' });
+    req.body = { ...req.body, project: String(doc.project), service: doc.service, stage: doc.stage };
+    return upsertStage(req, res, next);
+  } catch (err) { return next(err); }
+}
+
+async function billingApproved(project, stage, service) {
+  if (!stage) return false;
+  const rows = await StageStatus.find({ project, stage, ...(service ? { service } : {}) }).lean();
+  return rows.length > 0 && rows.every(s => s.confirmationStatus === 'TD Approved');
+}
+
+export async function updateClaim(req, res, next) {
+  try {
+    const old = await Claim.findById(req.params.id);
+    if (!old) return res.status(404).json({ message: 'Claim not found.' });
+    if (req.body.status === 'Billed' && old.status !== 'Billed') return res.status(400).json({message:'Use the claim status action to mark billing.'});
+    const data = { ...old.toObject(), ...req.body };
+    if (!await billingApproved(data.project, data.stage, data.service)) return res.status(409).json({ message: 'TD approval is required before billing.' });
+    return claims.update(req, res, next);
+  } catch (err) { return next(err); }
 }
 
 export async function quotedFees(req, res, next) {
@@ -264,6 +347,21 @@ export async function revenueByProject(_req, res, next) {
       const received = payments
         .filter((c) => c.project.toString() === pid)
         .reduce((s, c) => s + c.amount, 0);
+      const serviceRows = (p.scope ?? []).filter((x) => x.service).map((x) => {
+        const svcInvoiced = claims
+          .filter((c) => c.project.toString() === pid && c.service === x.service && (c.status === 'Billed' || c.status === 'Ready for billing'))
+          .reduce((s, c) => s + c.amount, 0);
+        const svcReceived = payments
+          .filter((c) => c.project.toString() === pid && c.service === x.service)
+          .reduce((s, c) => s + c.amount, 0);
+        return {
+          service: x.service,
+          contract: x.fee ?? 0,
+          invoiced: svcInvoiced,
+          received: svcReceived,
+          outstanding: (x.fee ?? 0) - svcInvoiced,
+        };
+      });
       return {
         id: pid,
         name: p.name,
@@ -273,9 +371,46 @@ export async function revenueByProject(_req, res, next) {
         received,
         pct: invoiced > 0 ? Math.round((received / invoiced) * 100) : 0,
         outstanding: invoiced - received,
+        services: [...new Set((p.scope ?? []).map((x) => x.service).filter(Boolean))],
+        serviceRows,
       };
     });
-    return res.status(200).json({ items: rows, total: rows.length });
+    // Per-service splits for the Management Finance tab. Contract comes from
+    // scope fees (always present); invoiced/received only from service-tagged
+    // claims/payments — untagged legacy entries stay in project totals above.
+    const byService = (() => {
+      const m = new Map();
+      for (const p of projects) {
+        for (const s of p.scope ?? []) {
+          if (!s.service) continue;
+          const g = m.get(s.service) ?? { service: s.service, projects: new Set(), contract: 0, invoiced: 0, received: 0 };
+          g.projects.add(p._id.toString());
+          g.contract += s.fee ?? 0;
+          m.set(s.service, g);
+        }
+      }
+      for (const c of claims) {
+        if (!c.service) continue;
+        const g = m.get(c.service) ?? { service: c.service, projects: new Set(), contract: 0, invoiced: 0, received: 0 };
+        if ((c.status === 'Billed' || c.status === 'Ready for billing')) g.invoiced += c.amount;
+        m.set(c.service, g);
+      }
+      for (const pay of payments) {
+        if (!pay.service) continue;
+        const g = m.get(pay.service) ?? { service: pay.service, projects: new Set(), contract: 0, invoiced: 0, received: 0 };
+        g.received += pay.amount;
+        m.set(pay.service, g);
+      }
+      return [...m.values()].map((g) => ({
+        service: g.service,
+        projects: g.projects.size,
+        contract: g.contract,
+        invoiced: g.invoiced,
+        received: g.received,
+        pct: g.invoiced > 0 ? Math.round((g.received / g.invoiced) * 100) : 0,
+      })).sort((a, b) => b.contract - a.contract);
+    })();
+    return res.status(200).json({ items: rows, total: rows.length, byService });
   } catch (err) {
     return next(err);
   }

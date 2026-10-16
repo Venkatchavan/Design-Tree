@@ -8,15 +8,32 @@ import {
   MEETING_TYPES,
   UNAVAILABLE_REASONS,
 } from '../models/Meeting.js';
-import { ALLOWANCE_STATUSES, ALLOWANCE_TYPES } from '../models/AllowanceRequest.js';
+import { ALLOWANCE_TYPES } from '../models/AllowanceRequest.js';
 import { BOOKING_STATUSES } from '../models/TravelBooking.js';
-import { LEAVE_STATUSES } from '../models/LeaveRequest.js';
 import { SUPPORT_KINDS, SUPPORT_STATUSES } from '../models/SupportTicket.js';
-import { TRAVEL_STATUSES } from '../models/TravelRequest.js';
+import { FLOW_APPROVED, FLOW_REJECTED } from '../config/approvalFlow.js';
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
 const strOpt = z.string().trim().optional();
 const dateOpt = z.coerce.date().optional();
+
+// An approver records only their own stage's verdict; the resulting overall
+// `status` is derived from the chain, never posted directly.
+const stageDecision = z
+  .object({
+    status: z.enum([FLOW_APPROVED, FLOW_REJECTED]),
+    remarks: strOpt,
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (v.status === FLOW_REJECTED && !v.remarks?.trim()) {
+      ctx.addIssue({ code: 'custom', message: 'A reason is required when rejecting.' });
+    }
+  });
+
+export const leaveDecisionSchema = stageDecision;
+export const travelDecisionSchema = stageDecision;
+export const allowanceDecisionSchema = stageDecision;
 
 export const workflowStepsSchema = z
   .object({
@@ -100,12 +117,6 @@ export const leaveSchema = z
   .refine((v) => new Date(v.to) >= new Date(v.from), {
     message: 'To date must be on or after from date.',
   });
-export const leaveDecisionSchema = z
-  .object({
-    status: z.enum(LEAVE_STATUSES),
-    remarks: strOpt,
-  })
-  .strict();
 
 export const travelSchema = z
   .object({
@@ -121,9 +132,6 @@ export const travelSchema = z
     advanceRequested: z.number().min(0).optional(),
   })
   .strict();
-export const travelDecisionSchema = z
-  .object({ status: z.enum(TRAVEL_STATUSES), remarks: strOpt })
-  .strict();
 export const travelSettleSchema = z
   .object({
     advanceReceived: z.number().min(0).optional(),
@@ -135,10 +143,12 @@ export const travelSettleSchema = z
       })
       .strict()
       .optional(),
+    lodgingAmount: z.number().min(0).optional(),
     foodPerDiem: z.number().min(0).optional(),
     localConveyance: z.number().min(0).optional(),
     misc: z.number().min(0).optional(),
     hospitality: z.boolean().optional(),
+    hospitalityLines: z.array(z.enum(['fare', 'lodging', 'foodPerDiem', 'localConveyance', 'misc'])).optional(),
     settlementStatus: strOpt,
     settlementDate: dateOpt,
   })
@@ -163,9 +173,6 @@ export const allowanceSchema = z
     bill: strOpt,
   })
   .strict();
-export const allowanceDecisionSchema = z
-  .object({ status: z.enum(ALLOWANCE_STATUSES), remarks: strOpt })
-  .strict();
 
 export const supportSchema = z
   .object({
@@ -187,7 +194,11 @@ export const supportUpdateSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: 'Nothing to update.' });
 
 export const holidaySchema = z
-  .object({ date: z.coerce.date(), name: z.string().trim().min(1) })
+  .object({
+    date: z.coerce.date(),
+    name: z.string().trim().min(1),
+    type: z.enum(['Public holiday', 'Restricted holiday']).optional(),
+  })
   .strict();
 
 export const meetingSchema = z
@@ -318,6 +329,14 @@ export const inviteResponseSchema = z
 
 export const ackSchema = z
   .object({ drawing: objectId, remarks: strOpt })
+  .strict();
+
+export const portalRespondSchema = z
+  .object({ remarks: strOpt })
+  .strict();
+
+export const stageAckSchema = z
+  .object({ stageStatus: objectId, remarks: strOpt })
   .strict();
 
 export const portalUsersSchema = z

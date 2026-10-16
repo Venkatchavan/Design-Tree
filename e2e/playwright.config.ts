@@ -13,7 +13,7 @@ const API_URL = process.env.E2E_API_URL ?? 'http://localhost:5000';
  * Local-dev e2e (per user choice):
  *   web  -> http://localhost:5173 (vite dev, /api proxied to :5000)
  *   api  -> http://localhost:5000
- *   mongo -> local isolated DB (designtree-e2e), seeded with FD only.
+  *   mongo -> local isolated DB (designtree-e2e), seeded with superuser only.
  *
  * Workflow is strictly serial (sign-in -> sign-out per role, §0.3), so
  * workers:1 + fullyParallel:false. Spec files run alphabetically 01..09.

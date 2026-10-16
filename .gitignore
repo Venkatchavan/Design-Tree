@@ -13,4 +13,9 @@ certs/*.key
 gateway/.htpasswd
 gateway/.httpasswd
 gateway/pki/
+# Exception: the rollout/ folder intentionally ships the PUBLIC CA cert
+# (no secret) alongside its installer, so any PC can trust the LAN CA.
+!rollout/*.crt
 backups/
+# Live MongoDB bind dir on the server (never commit database files).
+mongo-data/

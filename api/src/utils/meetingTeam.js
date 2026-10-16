@@ -1,7 +1,8 @@
 import { SpocAllocation } from '../models/SpocAllocation.js';
 import { Team } from '../models/Team.js';
+import { expandServices } from '../config/services.js';
 
-const POP_EMP = 'firstName lastName empId designation department branch';
+const POP_EMP = 'firstName lastName empId designation department branch experience';
 
 function empLabel(e) {
   if (!e) return '';
@@ -23,7 +24,7 @@ function committedServices(project) {
   for (const s of project?.scope ?? []) {
     if (s?.service) out.push(s.service);
   }
-  return out;
+  return expandServices([...out, ...(project?.services ?? [])]);
 }
 
 /**
@@ -67,6 +68,10 @@ export async function projectTeamBundle(project) {
       }
     }
   }
+  for (const t of teams) {
+    const e = t.lead;
+    if (e?._id && !seen.has(String(e._id))) seen.set(String(e._id), { employee: e, service: t.service, team: t.name, allocation: 'Team lead' });
+  }
   const members = [...seen.values()];
   const committed = committedServices(project);
   const responsible = resolveResponsible({ project, teams, allocations, committed });
@@ -74,7 +79,7 @@ export async function projectTeamBundle(project) {
 }
 
 export function resolveResponsible({ project, teams, allocations, committed }) {
-  const set = new Set((committed ?? []).map(normService));
+  const set = new Set(expandServices(committed).map(normService));
   const smepf = ['structural', 'mechanical', 'electrical', 'plumbing', 'fire'];
   const hasAll = smepf.every((s) => set.has(s));
   const onlyStructural = set.size === 1 && set.has('structural');
@@ -86,7 +91,7 @@ export function resolveResponsible({ project, teams, allocations, committed }) {
 
   const leadOf = (serviceMatch) => {
     const t = (teams ?? []).find(
-      (x) => normService(x.service) === normService(serviceMatch) && x.lead,
+      (x) => expandServices([x.service]).map(normService).includes(normService(serviceMatch)) && x.lead,
     );
     return t?.lead ?? null;
   };

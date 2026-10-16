@@ -7,6 +7,8 @@ const rfiSchema = new mongoose.Schema(
       ref: 'Project',
       index: true,
     },
+    // Human-readable sequence (RFI-2026-014…) assigned on create via Counter.
+    rfiNo: { type: String, trim: true, uppercase: true, index: true },
     type: { type: String, required: true, trim: true },
     description: { type: String, required: true, trim: true },
     team: { type: String, trim: true },
@@ -15,9 +17,15 @@ const rfiSchema = new mongoose.Schema(
     due: { type: Date },
     status: {
       type: String,
-      enum: ['Open', 'Responded', 'Closed'],
+      enum: ['Open', 'In Progress', 'Escalated', 'Responded', 'Closed'],
       default: 'Open',
       index: true,
+    },
+    clientResponse: {
+      text: { type: String, trim: true },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      at: { type: Date },
+      _id: false,
     },
   },
   { timestamps: true },

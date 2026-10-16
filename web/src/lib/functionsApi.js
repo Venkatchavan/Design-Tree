@@ -7,9 +7,9 @@ export const areaApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  review: (id, body) =>
-    request(`/api/functions/area-settlements/${id}/review`, {
-      method: 'PATCH',
+  update: (id, body) =>
+    request(`/api/functions/area-settlements/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(body),
     }),
 };
@@ -26,11 +26,6 @@ export const boqApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
-  review: (id, body) =>
-    request(`/api/functions/boq/${id}/review`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    }),
 };
 
 export const visitsApi = {
@@ -38,6 +33,20 @@ export const visitsApi = {
   create: (body) =>
     request('/api/functions/site-visits', {
       method: 'POST',
+      body: JSON.stringify(body),
+    }),
+};
+
+export const weeklyReportApi = {
+  list: (params = {}) => request(`/api/functions/weekly-reports${toQuery(params)}`),
+  create: (body) =>
+    request('/api/functions/weekly-reports', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  approve: (id, body) =>
+    request(`/api/functions/weekly-reports/${id}/approve`, {
+      method: 'PATCH',
       body: JSON.stringify(body),
     }),
 };
@@ -65,6 +74,61 @@ export const convApi = {
     }),
 };
 
+export const workItemApi = {
+  list: (params = {}) => request(`/api/work-items${toQuery(params)}`),
+  create: (body) =>
+    request('/api/work-items', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  update: (id, body) =>
+    request(`/api/work-items/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+};
+
+export const drawingAckApi = {
+  list: (params = {}) => request(`/api/drawing-acks${toQuery(params)}`),
+};
+
+export const serviceDashboardApi = {
+  list: (params = {}) => request(`/api/service-dashboards${toQuery(params)}`),
+  save: (body) =>
+    request('/api/service-dashboards', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+};
+
+export const stageReviewApi = {
+  list: (params = {}) => request(`/api/stage-reviews${toQuery(params)}`),
+  create: (body) =>
+    request('/api/stage-reviews', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  update: (id, body) =>
+    request(`/api/stage-reviews/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+};
+
+export const variationApi = {
+  list: (params = {}) => request(`/api/variations${toQuery(params)}`),
+  create: (body) =>
+    request('/api/variations', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  update: (id, body) =>
+    request(`/api/variations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+};
+
 export const rfiApi = {
   list: (params = {}) => request(`/api/functions/rfis${toQuery(params)}`),
   create: (body) =>
@@ -80,15 +144,15 @@ export const rfiApi = {
 };
 
 export const bimApi = {
-  list: (params = {}) => request(`/api/functions/bim-orders${toQuery(params)}`),
+  list: (params = {}) => request(`/api/functions/bim-work-orders${toQuery(params)}`),
   create: (body) =>
-    request('/api/functions/bim-orders', {
+    request('/api/functions/bim-work-orders', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
   update: (id, body) =>
-    request(`/api/functions/bim-orders/${id}`, {
-      method: 'PATCH',
+    request(`/api/functions/bim-work-orders/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(body),
     }),
 };

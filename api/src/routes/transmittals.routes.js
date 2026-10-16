@@ -5,6 +5,7 @@ import {
   createFromDrawings,
   createTransmittal,
   exportWorkbook,
+  exportPdf,
   getTransmittal,
   importConfirm,
   importPreview,
@@ -24,12 +25,13 @@ const router = Router();
 router.get('/team-scope', requireAuth, requireInternal(), teamScope);
 
 // Admin Transmittal page (§4.10) — Admin only (+FD/WD superusers).
-router.use(requireAuth, requireRole('admin_billing'));
+router.use(requireAuth, (req,res,next)=> req.user.role === 'admin_billing' ? next() : res.status(403).json({message:'Admin manages transmittals; use the read-only transmittal log.'}));
 
 router.get('/', listTransmittals);
 router.get('/tl-drawings', tlDrawingLists);
 router.get('/resync', resyncCheck);
 router.get('/export', exportWorkbook);
+router.get('/pdf', requireRole('admin_billing'), exportPdf);
 router.get('/:id', getTransmittal);
 router.post('/', createTransmittal);
 router.put('/:id', updateTransmittal);

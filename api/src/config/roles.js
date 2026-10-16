@@ -3,7 +3,24 @@
 // §3.3 (access rules), §3.4 (FD/WD full access). Served to the client via
 // GET /api/meta/bootstrap so there is exactly one copy of this config.
 
-export const SUPER_ROLES = ['founding_director', 'working_director'];
+export const SUPER_ROLES = ['founding_director', 'working_director', 'executive_director'];
+
+// Directive roles (founding director → assoc technical director): exempt from
+// own man-hour entry + sign-out gate, view-only for others' hours.
+export const DIRECTIVE_ROLES = [
+  'founding_director',
+  'working_director',
+  'admin_billing',
+  'hr',
+  'executive_director',
+  'associate_director',
+  'technical_director',
+  'assoc_technical_director',
+];
+
+// Roles exempt from the man-hour sign-out gate (directive + external + superuser).
+// Superuser only provisions employees/logins (HR view) and has no own entry.
+export const MAN_HOUR_EXEMPT_ROLES = [...DIRECTIVE_ROLES, 'client', 'architect', 'superuser'];
 
 export const ROLES = [
   { key: 'founding_director', label: 'Founding Director', designation: 'Founding Director', home: 'dashboard' },
@@ -11,6 +28,7 @@ export const ROLES = [
   { key: 'admin_billing', label: 'Admin / Billing', designation: 'Administrator, Admin / Billing', home: 'dashboard' },
   { key: 'hr', label: 'HR', designation: 'HR lead', home: 'hr' },
   { key: 'executive_director', label: 'Executive Director', designation: 'Executive Director', home: 'dashboard' },
+  { key: 'superuser', label: 'Superuser', designation: 'Superuser', home: 'hr' },
   { key: 'associate_director', label: 'Associate Director', designation: 'Associate Director', home: 'dashboard' },
   { key: 'technical_director', label: 'Technical Director', designation: 'Technical Director', home: 'dashboard' },
   { key: 'assoc_technical_director', label: 'Associate Technical Director', designation: 'Associate Technical Director', home: 'my-team' },
@@ -28,7 +46,7 @@ export const ROLES = [
   { key: 'bim_head', label: 'BIM Head', designation: 'BIM Head', home: 'bim-head' },
   { key: 'gbs_head', label: 'GBS Head', designation: 'GBS Head', home: 'gbs-head' },
   { key: 'peer_review_head', label: 'Peer Review Head', designation: 'Peer Review Head', home: 'peer-review-head' },
-  { key: 'qs_head', label: 'QS Head', designation: 'QS Head', home: 'qs-head' },
+  { key: 'qs_head', label: 'QS Head', designation: 'QS Head', home: 'work-tracking' },
   { key: 'peer_reviewer', label: 'Peer Review', designation: 'Peer Reviewer, Mechanical', home: 'work-tracking' },
   { key: 'client', label: 'Client', designation: 'Client', home: 'project-portal' },
   { key: 'architect', label: 'Architect', designation: 'Architect of record', home: 'project-portal' },
@@ -55,17 +73,18 @@ export const VIEWS = {
   'transmittal-log': { path: '/transmittals', label: 'Transmittal Log', sub: 'Company transmittal register', phase: 3 },
   'transmittal': { path: '/admin/transmittals', label: 'Transmittal', sub: 'Admin · create and manage transmittals from TL drawing lists', phase: 3, adminOnly: true },
   'design-mgmt': { path: '/design-management', label: 'Design Management', sub: 'Coordination, deliverables and RFI tracking', phase: 4 },
-  'marketing': { path: '/marketing', label: 'Marketing Dashboard', sub: 'Portfolio, collateral requests and contacts', phase: 4 },
+  'marketing': { path: '/marketing', label: 'Marketing', sub: 'Portfolio, collateral requests and contacts', phase: 4 },
   'finance': { path: '/finance', label: 'Finance Dashboard', sub: 'Revenue, billing, cost and travel snapshot', phase: 3 },
-  'finance-occ': { path: '/finance/occ', label: 'Finance Operation Control Center (OCC)', sub: 'DT Finance Operations Control Centre', phase: 3 },
-  'travel-booking': { path: '/finance/travel', label: 'Travel Booking', sub: 'Travel and hotel bookings', phase: 3 },
-  'revenue-reports': { path: '/finance/revenue', label: 'Revenue & Financial Reports', sub: 'Service-wise and project-wise financial view', phase: 3 },
+  'finance-hub': { path: '/finance/hub', label: 'Finance', sub: 'Finance operations and revenue reports in one place', phase: 3 },
+  'finance-occ': { path: '/finance/occ', label: 'Finance Operation Control Center (OCC)', sub: 'DT Finance Operations Control Centre', phase: 3, via: 'finance-hub' },
+  'revenue-reports': { path: '/finance/revenue', label: 'Revenue & Financial Reports', sub: 'Service-wise and project-wise financial view', phase: 3, via: 'finance-hub' },
   'billing-status': { path: '/finance/billing-status', label: 'Billing Status', sub: 'Live billing readiness by stage', phase: 3 },
   'qaqc-specs': { path: '/qaqc', label: 'QA/QC Specifications', sub: 'QA/QC overview and approvals', phase: 4 },
   'bim-head': { path: '/bim', label: 'BIM', sub: 'BIM overview and approvals', phase: 4 },
   'gbs-head': { path: '/gbs', label: 'GBS', sub: 'Green-building overview and approvals', phase: 4 },
   'peer-review-head': { path: '/peer-review', label: 'Peer Review', sub: 'Peer review overview and approvals', phase: 4 },
-  'qs-head': { path: '/qs', label: 'QS / BOQ', sub: 'QS overview and approvals', phase: 4 },
+  'qs-head': { path: '/qs', label: 'QS', sub: 'BOQ work, area settlements and leave approvals for the QS department', phase: 4 },
+  'travel-booking': { path: '/travel-booking', label: 'Travel Booking', sub: 'Travel and hotel bookings across departments', phase: 4, financeOnly: true },
   'structural': { path: '/departments/structural', label: 'Structural', sub: 'Company-wide Structural dashboard', phase: 4, boardOnly: true },
   'mechanical': { path: '/departments/mechanical', label: 'Mechanical', sub: 'Company-wide Mechanical dashboard', phase: 4, boardOnly: true },
   'electrical': { path: '/departments/electrical', label: 'Electrical', sub: 'Company-wide Electrical dashboard', phase: 4, boardOnly: true },
@@ -73,15 +92,18 @@ export const VIEWS = {
   'fire': { path: '/departments/fire', label: 'Fire', sub: 'Company-wide Fire dashboard', phase: 4, boardOnly: true },
   'project-portal': { path: '/portal', label: 'Project Portal', sub: 'External client / architect portal', phase: 4, externalOnly: true },
   'update-work-progress': { path: '/work/update', label: 'Update Work Progress', sub: 'Hours worked, work done and the daily entry', phase: 2 },
-  'leave-travel': { path: '/leave-travel', label: 'Leave & Travel', sub: 'Leave, travel and allowance requests', phase: 4 },
+  'admin-work-update': { path: '/work/admin-update', label: 'Update Work Progress', sub: 'Log hours and describe the work done', phase: 2 },  'leave-travel': { path: '/leave-travel', label: 'Leave & Travel', sub: 'Leave, travel and allowance requests', phase: 4 },
   'employee-support': { path: '/support', label: 'Employee support', sub: 'Salary slips, complaints, suggestions, queries', phase: 4, noFinance: true },
-  'management': { path: '/management', label: 'Management & Leadership Dashboard', sub: 'Consolidated delivery, commercial and people overview', phase: 4 },
+  'management': { path: '/management', label: 'Management & Leadership Dashboard', sub: 'Consolidated delivery, commercial and people overview', phase: 4, managementOnly: true },
+  'branches': { path: '/branches', label: 'Branches', sub: 'Branch master — add, rename and activate office branches', phase: 4 },
   'my-team': { path: '/my-team', label: 'My team', sub: 'My projects and team', phase: 2 },
   'my-coordination': { path: '/my-coordination', label: 'My coordination', sub: 'Coordinator (SPOC) workspace', phase: 2 },
   'my-work': { path: '/my-work', label: 'My work', sub: 'Engineer / Drafter workspace', phase: 2 },
+  'my-meetings': { path: '/meetings/mine', label: 'Meetings', sub: 'Meeting log of projects under you', phase: 2 },
+  'meetings': { path: '/meetings', label: 'Meetings', sub: 'Meeting log of projects under you', phase: 2 },
+  'qs-log': { path: '/qs-log', label: 'QS', sub: 'BOQ, area settlement and pending review per project', phase: 4 },
   'work-tracking': { path: '/work-tracking', label: 'Work tracking', sub: 'Service work tracking', phase: 2 },
   'settings': { path: '/settings', label: 'Settings', sub: 'Placeholder — no screen behind it yet', phase: 4 },
-  'org-structure': { path: '/org', label: 'Org Structure & Policy', sub: 'Reporting hierarchy and level & approval policy', phase: 4 },
 };
 
 const BOARD_ROLES = [
@@ -92,7 +114,25 @@ const BOARD_ROLES = [
   'technical_director',
 ];
 
+// Management & Leadership Dashboard is restricted to the top three
+// director roles only (FD / WD / ED).
+const MANAGEMENT_ROLES = [
+  'founding_director',
+  'working_director',
+  'executive_director',
+];
+
 // Navigation per role, in Appendix A order. Entries may relabel a view.
+// Directive roles (FD → assoc TD) are view-only for hours: no
+// update-work-progress entry, but work-progress stays. `management`
+// stays only for FD / WD / ED (see MANAGEMENT_ROLES).
+// Finance Dashboard lives inside the OCC for directors, so `finance`
+// is intentionally absent here (finance role keeps its own nav below).
+// Finance hub (single "Finance" sidebar entry opening one page with OCC +
+// Revenue as inner tabs). Only FD / WD / ED (via FULL_LEADERSHIP_NAV) and the
+// finance role get this entry; all data stays server-driven, no dummy data.
+const FINANCE_HUB_NAV = { view: 'finance-hub', label: 'Finance' };
+
 const FULL_LEADERSHIP_NAV = [
   { view: 'dashboard', label: 'Dashboard' },
   { view: 'dashboard', label: 'Projects' },
@@ -104,97 +144,68 @@ const FULL_LEADERSHIP_NAV = [
   { view: 'transmittal-log' },
   { view: 'design-mgmt' },
   { view: 'marketing' },
-  { view: 'finance' },
-  { view: 'finance-occ' },
-  { view: 'travel-booking' },
-  { view: 'revenue-reports' },
+  FINANCE_HUB_NAV,
   { view: 'billing-status' },
   { view: 'qaqc-specs' },
   { view: 'bim-head' },
   { view: 'gbs-head' },
   { view: 'peer-review-head' },
   { view: 'qs-head' },
-  { view: 'structural' },
-  { view: 'mechanical' },
-  { view: 'electrical' },
-  { view: 'phe' },
-  { view: 'fire' },
-  { view: 'update-work-progress' },
   { view: 'leave-travel' },
   { view: 'employee-support' },
   { view: 'management' },
+  { view: 'my-meetings' },
 ];
 
 export const NAV_BY_ROLE = {
   founding_director: FULL_LEADERSHIP_NAV,
   working_director: FULL_LEADERSHIP_NAV,
   executive_director: FULL_LEADERSHIP_NAV,
+  // Associate/Technical Directors intentionally have no `hr` entry:
+  // canAccess(role, 'hr') is false and the client never mounts /hr for them.
   associate_director: [
     { view: 'dashboard', label: 'Dashboard' },
     { view: 'dashboard', label: 'Projects' },
-    { view: 'certificates' },
+    { view: 'certificates', label: 'Completion Certificates' },
     { view: 'teams' },
-    { view: 'work-progress' },
     { view: 'transmittal-log' },
-    { view: 'design-mgmt' },
-    { view: 'travel-booking' },
     { view: 'billing-status' },
     { view: 'qaqc-specs' },
     { view: 'bim-head' },
     { view: 'gbs-head' },
     { view: 'peer-review-head' },
     { view: 'qs-head' },
-    { view: 'structural' },
-    { view: 'mechanical' },
-    { view: 'electrical' },
-    { view: 'phe' },
-    { view: 'fire' },
-    { view: 'update-work-progress' },
+    { view: 'my-meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
-    { view: 'management' },
   ],
   technical_director: [
     { view: 'dashboard', label: 'Dashboard' },
     { view: 'dashboard', label: 'Projects' },
-    { view: 'certificates' },
+    { view: 'certificates', label: 'Completion Certificates' },
     { view: 'teams' },
-    { view: 'work-progress' },
     { view: 'transmittal-log' },
-    { view: 'design-mgmt' },
-    { view: 'travel-booking' },
-    { view: 'billing-status' },
     { view: 'qaqc-specs' },
     { view: 'bim-head' },
     { view: 'gbs-head' },
     { view: 'peer-review-head' },
     { view: 'qs-head' },
-    { view: 'structural' },
-    { view: 'mechanical' },
-    { view: 'electrical' },
-    { view: 'phe' },
-    { view: 'fire' },
-    { view: 'update-work-progress' },
+    { view: 'my-meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
-    { view: 'management' },
   ],
   assoc_technical_director: [
     { view: 'dashboard', label: 'Dashboard' },
     { view: 'dashboard', label: 'Projects' },
-    { view: 'certificates' },
+    { view: 'certificates', label: 'Completion Certificates' },
     { view: 'teams' },
-    { view: 'work-progress' },
     { view: 'transmittal-log' },
-    { view: 'design-mgmt' },
-    { view: 'travel-booking' },
-    { view: 'billing-status' },
     { view: 'qaqc-specs' },
-    { view: 'bim-head', label: 'BIM Head' },
-    { view: 'gbs-head', label: 'GBS Head' },
-    { view: 'peer-review-head', label: 'Peer Review Head' },
-    { view: 'qs-head', label: 'QS Head' },
-    { view: 'update-work-progress' },
+    { view: 'bim-head' },
+    { view: 'gbs-head' },
+    { view: 'peer-review-head' },
+    { view: 'qs-head' },
+    { view: 'my-meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'my-team' },
@@ -205,20 +216,27 @@ export const NAV_BY_ROLE = {
     { view: 'billing' },
     { view: 'certificates' },
     { view: 'teams' },
+    { view: 'branches' },
     { view: 'transmittal' },
-    { view: 'update-work-progress' },
+    { view: 'admin-work-update' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
+  { view: 'my-meetings' },
   ],
+  // Superuser: employee + login provisioning only (HR employee management).
+  // Superuser provisions employees/logins only — no Leave & Travel.
+  superuser: [{ view: 'hr' }],
   hr: [
     { view: 'dashboard', label: 'Dashboard' },
     { view: 'dashboard', label: 'Projects' },
     { view: 'certificates' },
     { view: 'teams' },
     { view: 'hr' },
+    { view: 'branches' },
     { view: 'transmittal-log' },
-    { view: 'update-work-progress' },
+    { view: 'admin-work-update' },
     { view: 'leave-travel' },
+    { view: 'meetings' },
     { view: 'employee-support' },
   ],
   team_lead: [
@@ -230,6 +248,7 @@ export const NAV_BY_ROLE = {
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'my-team' },
+  { view: 'my-meetings' },
   ],
   coordinator: [
     { view: 'dashboard', label: 'Dashboard' },
@@ -244,12 +263,14 @@ export const NAV_BY_ROLE = {
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'my-work' },
+  { view: 'my-meetings' },
   ],
   qs: [
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'work-tracking' },
+  { view: 'my-meetings' },
   ],
   qaqc: [
     { view: 'dashboard', label: 'Dashboard' },
@@ -259,77 +280,90 @@ export const NAV_BY_ROLE = {
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'work-tracking' },
+  { view: 'my-meetings' },
   ],
   bim: [
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'work-tracking' },
+  { view: 'my-meetings' },
   ],
   gbs: [
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'work-tracking' },
+  { view: 'my-meetings' },
   ],
   peer_reviewer: [
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'work-tracking' },
+  { view: 'my-meetings' },
   ],
   marketing: [
     { view: 'marketing' },
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
+  { view: 'my-meetings' },
   ],
   design_mgmt_head: [
-    { view: 'dashboard', label: 'Dashboard' },
-    { view: 'dashboard', label: 'Projects' },
     { view: 'design-mgmt' },
+    { view: 'certificates' },
+    { view: 'teams' },
+    { view: 'transmittal-log' },
+    { view: 'billing-status' },
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
+    { view: 'meetings' },
     { view: 'employee-support' },
   ],
   finance: [
     { view: 'finance' },
-    { view: 'finance-occ' },
-    { view: 'travel-booking' },
-    { view: 'revenue-reports' },
+    FINANCE_HUB_NAV,
     { view: 'billing-status' },
+    { view: 'travel-booking' },
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
+  { view: 'my-meetings' },
   ],
   qaqc_head: [
     { view: 'qaqc-specs' },
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
+  { view: 'my-meetings' },
   ],
   bim_head: [
     { view: 'bim-head', label: 'BIM Head' },
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
+  { view: 'my-meetings' },
   ],
   gbs_head: [
     { view: 'gbs-head', label: 'GBS Head' },
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
+  { view: 'my-meetings' },
   ],
   peer_review_head: [
     { view: 'peer-review-head', label: 'Peer Review Head' },
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
+  { view: 'my-meetings' },
   ],
   qs_head: [
-    { view: 'qs-head', label: 'QS Head' },
+    { view: 'work-tracking' },
     { view: 'update-work-progress' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
+  { view: 'my-meetings' },
   ],
   client: [{ view: 'project-portal' }],
   architect: [{ view: 'project-portal' }],
@@ -344,13 +378,8 @@ export function homeView(role) {
 }
 
 // Nav with resolved labels/paths for a role.
-// Org Structure & Policy (§4.20) is reachable by every internal role even
-// though Appendix A omits it from the per-role lists.
 export function navFor(role) {
   const items = [...(NAV_BY_ROLE[role] ?? [])];
-  if (role !== 'client' && role !== 'architect') {
-    items.push({ view: 'org-structure' });
-  }
   return items.map((item) => {
     const def = VIEWS[item.view];
     return {
@@ -362,7 +391,7 @@ export function navFor(role) {
 }
 
 // Roles that may create/update user logins (FD/WD superusers always can).
-export const USER_ADMIN_ROLES = ['hr', 'admin_billing'];
+export const USER_ADMIN_ROLES = ['hr', 'admin_billing', 'superuser'];
 
 // All roles except external Client/Architect.
 export const INTERNAL_ROLES = ROLE_KEYS.filter(
@@ -372,20 +401,25 @@ export const INTERNAL_ROLES = ROLE_KEYS.filter(
 // Second-layer page guard (§2.7): nav membership + view flags + superuser.
 export function canAccess(role, view) {
   if (!VIEWS[view]) return false;
+  if (VIEWS[view].financeOnly && role !== 'finance') return false;
+  if (VIEWS[view].adminOnly && role !== 'admin_billing') return false;
   if (isSuperRole(role)) return true;
   // Admin can open the HR view (for user provisioning) even though it is
   // not in the Admin sidebar — §3.3 does not block Admin from HR.
-  if (role === 'admin_billing' && view === 'hr') return true;
+  if (role === 'admin_billing' && ['hr','transmittal-log'].includes(view)) return true;
   const def = VIEWS[view];
-  const inNav = (NAV_BY_ROLE[role] ?? []).some((i) => i.view === view);
+  const flatNav = (NAV_BY_ROLE[role] ?? []).flatMap((i) =>
+    i.children ? i.children : [i],
+  );
+  const inNav = flatNav.some((i) => i.view === view);
   const viaNav =
-    def.via != null &&
-    (NAV_BY_ROLE[role] ?? []).some((i) => i.view === def.via);
+    def.via != null && flatNav.some((i) => i.view === def.via);
   if (!inNav && !viaNav) return false;
   if (def.adminOnly && role !== 'admin_billing') return false;
   if (def.externalOnly && role !== 'client' && role !== 'architect')
     return false;
   if (def.boardOnly && !BOARD_ROLES.includes(role)) return false;
+  if (def.managementOnly && !MANAGEMENT_ROLES.includes(role)) return false;
   if (def.noFinance && role === 'finance') return false;
   return true;
 }

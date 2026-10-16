@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
-// QS/BOQ line items. QS logs items (Draft → Submitted); QS Head reviews
-// (Submitted → Approved). Feeds the GFC readiness checklist.
+// QS/BOQ line items. QS logs items directly (Draft → Submitted → Approved,
+// no separate head review). Feeds the GFC readiness checklist.
 export const BOQ_STATUSES = ['Draft', 'Submitted', 'Approved'];
 
 const boqItemSchema = new mongoose.Schema(

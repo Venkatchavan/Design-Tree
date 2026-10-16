@@ -5,6 +5,7 @@ import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import ProjectPulse from '../components/ProjectPulse.jsx';
 
 const TABS = [
   { key: 'service', label: 'By project & service' },
@@ -18,11 +19,7 @@ export default function RevenueReportsPage() {
   const [tab, setTab] = useState('service');
   const [filter, setFilter] = useState('');
   const revenue = useQuery({ queryKey: ['revenue-full'], queryFn: billingApi.revenueByProject });
-  const costs = useQuery({ queryKey: ['costs-full'], queryFn: billingApi.projectCosts });
   const rows = (revenue.data?.items ?? []).filter((r) =>
-    !filter || r.name.toLowerCase().includes(filter.toLowerCase()),
-  );
-  const costRows = (costs.data?.items ?? []).filter((r) =>
     !filter || r.name.toLowerCase().includes(filter.toLowerCase()),
   );
 
@@ -73,20 +70,7 @@ export default function RevenueReportsPage() {
         </Panel>
       )}
       {tab === 'cost' && (
-        <Panel title="Project cost & performance">
-          <DataTable
-            columns={[
-              { key: 'name', label: 'Project' },
-              { key: 'manHours', label: 'Man-hours' },
-              { key: 'labourCost', label: 'Labour cost', render: (r) => money(r.labourCost) },
-              { key: 'budget', label: 'Budget', render: (r) => money(r.budget) },
-              { key: 'utilizedPct', label: 'Utilised %', render: (r) => `${r.utilizedPct}%` },
-              { key: 'variance', label: 'Cost variance', render: (r) => money(r.variance) },
-            ]}
-            rows={costRows}
-            emptyText="Log work hours to build cost data. Set employee hourly rates in HR."
-          />
-        </Panel>
+        <ProjectPulse filter={filter} />
       )}
     </div>
   );

@@ -54,6 +54,10 @@ const workEntrySchema = new mongoose.Schema(
       default: 'Pending',
       index: true,
     },
+    // Required when the day's total logged hours exceed 8 (extra hours).
+    extraHoursReason: { type: String, trim: true },
+    documents: [{ name: String, file: String }],
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     decidedAt: { type: Date },
     remark: { type: String, trim: true },

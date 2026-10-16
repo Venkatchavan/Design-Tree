@@ -6,6 +6,8 @@ import {
   requireUserAdmin,
 } from '../middlewares/requireRole.js';
 import {
+  drawingDocumentAccess,
+  visitDocumentAccess,
   addBriefPhotos,
   addEmployeeDoc,
   addFinanceOccDocs,
@@ -31,6 +33,7 @@ router.get('/files/*splat', requireInternal(), downloadStored);
 router.post(
   '/visits/:id/photos',
   requireRole('qaqc'),
+  visitDocumentAccess,
   (req, res, next) =>
     visitPhotosUpload(req, res, (err) =>
       err ? next(err) : addVisitPhotos(req, res, next),
@@ -71,6 +74,7 @@ router.post(
 router.post(
   '/drawings/:id/proof',
   requireRole('team_lead', 'assoc_technical_director', 'technical_director', 'engineer_drafter'),
+  drawingDocumentAccess,
   (req, res, next) =>
     drawingProofUpload(req, res, (err) =>
       err ? next(err) : setDrawingProof(req, res, next),

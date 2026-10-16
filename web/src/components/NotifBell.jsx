@@ -11,7 +11,7 @@ function pathForLink(link, role) {
   if (!link?.view) return null;
   switch (link.view) {
     case 'meeting':
-      return role === 'coordinator' ? '/my-coordination' : '/my-work';
+      return `${['coordinator','design_mgmt_head'].includes(role) ? '/meetings' : '/meetings/mine'}${link.id ? `?meeting=${link.id}` : ''}`;
     case 'leave':
     case 'travel':
     case 'allowance':
@@ -22,6 +22,13 @@ function pathForLink(link, role) {
       return '/transmittals';
     case 'revision':
       return role === 'team_lead' ? '/my-team' : '/my-coordination';
+    case 'project-detail':
+    case 'dashboard':
+      return link.id ? `/projects/${link.id}` : '/dashboard';
+    case 'design-mgmt':
+      return link.id ? `/projects/${link.id}` : '/design-management';
+    case 'my-coordination':
+      return '/my-coordination';
     default:
       return null;
   }
@@ -57,7 +64,7 @@ export default function NotifBell() {
   useEffect(
     () =>
       subscribeNotifications(() => {
-        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        for (const key of ['notifications','meetings','meeting','project-stages','stage-approvals','billing-status-stages','my-teams','project-team','projects']) queryClient.invalidateQueries({ queryKey: [key] });
       }),
     [queryClient],
   );

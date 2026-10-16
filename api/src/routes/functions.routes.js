@@ -1,3 +1,4 @@
+import { canReadProject } from '../utils/projectScope.js';
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import {
@@ -7,6 +8,7 @@ import {
 import {
   addChecklistItem,
   addComment,
+  approveWeeklyReport,
   areaSettlements,
   bimWorkOrders,
   boqItems,
@@ -15,33 +17,33 @@ import {
   discrepancies,
   getGbsCert,
   peerReviews,
-  reviewAreaSettlement,
-  reviewBoqItem,
   rfis,
   saveGbsSteps,
   setPeerFinal,
   siteVisits,
   updateChecklistItem,
   updateComment,
+  weeklyReports,
 } from '../controllers/functions.controller.js';
 
 const router = Router();
 router.use(requireAuth);
+router.use(async (req,res,next) => {
+  try {
+    if (req.body?.project && !await canReadProject(req.user,req.body.project)) return res.status(403).json({message:'Project is not assigned to you.'});
+    return next();
+  }catch(err){return next(err);}
+});
 
-// QS area settlement (QS logs, QS Head reviews)
+// QS area settlement (QS-owned, no head review)
 router.get('/area-settlements', requireInternal(), areaSettlements.list);
 router.post('/area-settlements', requireRole('qs'), areaSettlements.create);
-router.patch(
-  '/area-settlements/:id/review',
-  requireRole('qs_head'),
-  reviewAreaSettlement,
-);
+router.put('/area-settlements/:id', requireRole('qs'), areaSettlements.update);
 
-// QS/BOQ line items (QS logs Draft/Submitted, QS Head approves)
+// QS/BOQ line items (QS-owned Draft → Submitted → Approved, no head review)
 router.get('/boq', requireInternal(), boqItems.list);
 router.post('/boq', requireRole('qs'), boqItems.create);
 router.put('/boq/:id', requireRole('qs'), boqItems.update);
-router.patch('/boq/:id/review', requireRole('qs_head'), reviewBoqItem);
 
 // QA/QC site visits + discrepancies + conveyance + RFIs
 router.get('/site-visits', requireInternal(), siteVisits.list);
@@ -67,6 +69,12 @@ router.post('/conveyance', requireInternal(), conveyances.create);
 router.get('/rfis', requireInternal(), rfis.list);
 router.post('/rfis', requireInternal(), createRfi);
 router.put('/rfis/:id', requireInternal(), rfis.update);
+
+// QA/QC weekly reports (team submits, Specs Head approves)
+router.get('/weekly-reports', requireInternal(), weeklyReports.list);
+router.get('/weekly-reports/:id', requireInternal(), weeklyReports.get);
+router.post('/weekly-reports', requireRole('qaqc', 'qaqc_head'), weeklyReports.create);
+router.patch('/weekly-reports/:id/approve', requireRole('qaqc_head'), approveWeeklyReport);
 
 // BIM work orders
 router.get('/bim-work-orders', requireInternal(), bimWorkOrders.list);

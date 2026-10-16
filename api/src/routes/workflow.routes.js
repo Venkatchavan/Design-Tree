@@ -1,3 +1,4 @@
+import { canReadProject } from '../utils/projectScope.js';
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import {
@@ -6,7 +7,9 @@ import {
   requireUserAdmin,
 } from '../middlewares/requireRole.js';
 import {
+  taskMemberAccess,
   createDeliverable,
+  deleteDeliverable,
   createRecruitment,
   createRevision,
   myRevisions,
@@ -24,6 +27,12 @@ import {
 
 const router = Router();
 router.use(requireAuth);
+router.use(async (req,res,next) => {
+  try {
+    if (req.body?.project && !await canReadProject(req.user,req.body.project)) return res.status(403).json({message:'Project is not assigned to you.'});
+    return next();
+  }catch(err){return next(err);}
+});
 
 const TL_CHAIN = [
   'team_lead',
@@ -35,8 +44,8 @@ const TL_CHAIN = [
 router.get('/tasks/mine', requireInternal(), myTasks);
 router.get('/tasks', requireInternal(), tasks.list);
 router.get('/tasks/:id', requireInternal(), tasks.get);
-router.post('/tasks', requireRole(...TL_CHAIN), tasks.create);
-router.put('/tasks/:id', requireRole(...TL_CHAIN), tasks.update);
+router.post('/tasks', requireRole(...TL_CHAIN), taskMemberAccess, tasks.create);
+router.put('/tasks/:id', requireRole(...TL_CHAIN), taskMemberAccess, tasks.update);
 router.patch('/tasks/:id/status', requireInternal(), setTaskStatus);
 
 // Deliverables (+log)
@@ -48,6 +57,7 @@ router.put(
   requireRole(...TL_CHAIN),
   deliverables.update,
 );
+router.delete('/deliverables/:id', requireRole(...TL_CHAIN), deleteDeliverable);
 router.get('/deliverables-log', requireInternal(), listDeliverableLog);
 
 // Revisions
@@ -56,7 +66,7 @@ router.get('/revisions', requireInternal(), revisions.list);
 router.get('/revisions/:id', requireInternal(), revisions.get);
 router.post(
   '/revisions',
-  requireRole(...TL_CHAIN, 'qaqc', 'peer_reviewer'),
+  requireRole(...TL_CHAIN, 'qaqc', 'peer_reviewer', 'engineer_drafter'),
   createRevision,
 );
 router.put('/revisions/:id', requireRole(...TL_CHAIN), revisions.update);

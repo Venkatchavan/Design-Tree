@@ -4,6 +4,12 @@ const holidaySchema = new mongoose.Schema(
   {
     date: { type: Date, required: true, unique: true, index: true },
     name: { type: String, required: true, trim: true },
+    type: {
+      type: String,
+      enum: ['Public holiday', 'Restricted holiday'],
+      default: 'Public holiday',
+      trim: true,
+    },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },

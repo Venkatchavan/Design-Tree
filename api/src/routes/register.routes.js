@@ -15,7 +15,8 @@ const router = Router();
 router.use(requireAuth, requireView('transmittal-log'));
 router.get('/', listRecords);
 router.get('/:id', getRecord);
-router.post('/', createRecord);
-router.put('/:id', updateRecord);
+const registerWriter=(req,res,next)=>req.user.role==='admin_billing'?next():res.status(403).json({message:'The transmittal register is read-only for this role.'});
+router.post('/', registerWriter, createRecord);
+router.put('/:id', registerWriter, updateRecord);
 
 export default router;
