@@ -26,14 +26,48 @@ Target: single Windows 10/11 host, Docker Desktop, LAN access over
    (The database lives in the Docker named volume `designtree_mongo-data`,
    not a host folder — no folder needed for it.)
 5. Copy `.env.example` → `.env`, fill every `REPLACE_WITH_…` value.
-6. TLS cert (`certs/`): self-signed via openssl on the server (mkcert is not
-   installed; the original internal CA key is not on this machine):
-   `openssl req -x509 -newkey rsa:2048 -keyout certs/server.key -out certs/server.crt -days 825 -nodes -subj "/C=IN/ST=Karnataka/L=Bengaluru/O=DesignTree/OU=IT/CN=192.168.1.50" -addext "subjectAltName=IP:192.168.1.50,IP:103.169.236.122" -addext "keyUsage=digitalSignature,keyEncipherment" -addext "extendedKeyUsage=serverAuth" -addext "basicConstraints=CA:FALSE"`.
-   Back up the previous pair first (`prev-<date>-server.crt/.key`).
-   List every IP in the SANs. Install `server.crt` into Trusted Root once per
-   office PC to silence warnings (LAN). Note: bare-IP certs still warn for
-   outsiders (no public CA for bare IPs) — expected. Ports are never part of
-   certs, so the `:8443` public URL needs no cert change.
+6. TLS (`certs/`, all host-local, never committed):
+   - Internal CA (2026-10-11, v2): `certs/ca.key` (RSA 4096, keep secret) +
+     `certs/ca.crt` (self-signed, 10y, `CN=DesignTree LAN CA`,
+     SHA256 `93:49:40:FB:71:C3:BB:7B:8F:7B:15:4B:BA:29:DB:59:63:3D:D2:10:F1:0E:0F:B8:CE:39:A4:55:BD:2C:49:2E`).
+     The CN is deliberately DIFFERENT from the pre-2026 `DesignTree Internal
+     CA`: Firefox resolves issuers by subject name, and a same-name CA with a
+     different key makes clients report "invalid signature" instead of trying
+     the right CA. Never re-use an old CA subject for a new CA key.
+     **Back up `ca.key` with the deploy secrets outside the repo** — losing it
+     means rebuilding trust on every office PC. Distribute only `ca.crt`.
+     (Superseded same-name CA archived as `ca-samename-20261011.*` — never install.)
+   - Server cert: new `server.key` + CSR, signed by the CA (SANs =
+     `IP:192.168.1.50,IP:103.169.236.122`, 825d, with SKID/AKID).
+     SAN/extension list lives in `certs/server.ext`; verify with
+     `openssl verify -CAfile certs/ca.crt certs/server.crt` (must say `OK`)
+     plus a key↔cert modulus match before swapping into `server.crt/.key`.
+     Back up the previous pair first.
+   - Server cert: new `server.key` + CSR, signed by the CA (SANs =
+     `IP:192.168.1.50,IP:103.169.236.122`, 825d). SAN list lives in
+     `certs/server.ext`; verify with
+     `openssl verify -CAfile certs/ca.crt certs/server.crt` (must say `OK`)
+     plus a key↔cert modulus match before swapping into `server.crt/.key`.
+     Back up the previous pair (`prev-<date>-*`) first.
+   - After any cert swap: `docker compose restart gateway` (a plain `up -d`
+     does nothing — image config is unchanged; nginx reads the mounted files
+     at start). Confirm with
+     `openssl s_client -connect 192.168.1.50:443 -CAfile certs/ca.crt`
+     → `Verify return code: 0 (ok)`.
+   - Trust (once per office PC): use the `rollout/` folder — copy
+     `install-designtree-ca.bat` + `designtree-lan-ca.crt` together to the PC
+     (USB/share), double-click the `.bat`, accept the UAC prompt. It verifies
+     the CA file fingerprint, installs into Local Machine Trusted Root, sets
+     the Firefox machine policy to use the Windows store, and verifies the
+     install. Then fully restart the browser: clean padlock, no click-through.
+     If the script reports a fingerprint mismatch, stop — the folder copy is
+     stale. (Manual fallback: elevated `certutil -addstore root ca.crt` +
+     Firefox `about:config security.enterprise_roots.enabled=true`.)
+     Thereafter reissues stay trusted — no per-PC work until the CA itself
+     expires (2036). Refresh `rollout/designtree-lan-ca.crt` if the CA is ever
+     replaced (the installer refuses stale files).
+   - Note: bare-IP certs still warn for outsiders (no public CA for bare IPs)
+     — expected. Ports are never part of certs, so `:8443` needs no change.
 7. DB-admin password file: `docker run --rm httpd:2.4-alpine htpasswd -nbB <user>`
    → save the printed line as `gateway/.htpasswd`.
 8. Edit `gateway/nginx.conf` EDIT-ME spots: `server_name` (= CLIENT_ORIGIN hosts,
@@ -74,7 +108,8 @@ docker compose run --rm api npm run seed  # one-shot superuser login (upsert, sa
 ## Phase 5 — handover
 
 - Record (outside the repo): FD app password, dbadmin passwords, `JWT_SECRET`
-  custodian, backup location + cadence owner.
+  custodian, **`certs/ca.key` custodian** (loss = re-trust every PC),
+  backup location + cadence owner.
 - State the runbook rule to the operator: uploads live on host binds
   (survive everything), but the database is a Docker NAMED VOLUME
   (`designtree_mongo-data`) — `down -v` / `volume prune` would delete it,

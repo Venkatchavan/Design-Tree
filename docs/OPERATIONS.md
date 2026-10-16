@@ -30,7 +30,7 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
 
 | Symptom | Likely cause → fix |
 |---|---|
-| Browser cert warning | mkcert CA not installed on that PC → `mkcert -install` (once per PC) |
+| Browser cert warning (LAN) | `ca.crt` not installed on that PC → install into Trusted Root once (Firefox: enable `security.enterprise_roots.enabled`); outsiders always warn (bare IP, expected) |
 | Signed in, then immediately logged out / API 401 | `NODE_ENV=production` serves `secure` cookies → plain-HTTP access; always use `https://` |
 | API calls fail / CORS errors | `CLIENT_ORIGIN` allowlist doesn't include the URL in the address bar (each entry needs scheme+host, comma-separated for dual LAN+public) |
 | File upload fails | `client_max_body_size` (nginx, 20m) or API 10 MB cap; check `docker compose logs api` |
