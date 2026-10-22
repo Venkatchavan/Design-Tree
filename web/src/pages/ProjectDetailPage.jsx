@@ -620,7 +620,6 @@ export default function ProjectDetailPage({ bootstrap }) {
   const q = useQuery({
     queryKey: ['project', id],
     queryFn: () => projectsApi.get(id),
-    refetchInterval: role === 'coordinator' ? 10_000 : false,
   });
   const isAdmin = role === 'admin_billing';
   const isTD = role === 'technical_director';
@@ -628,7 +627,6 @@ export default function ProjectDetailPage({ bootstrap }) {
     queryKey: ['spoc-assigned-projects'],
     queryFn: () => projectsApi.list({}),
     enabled: role === 'coordinator',
-    refetchInterval: role === 'coordinator' ? 5_000 : false,
   });
   const coordTabs = role === 'coordinator'
     ? [...COORD_TABS, { key: 'rfis', label: 'RFI Log' }]

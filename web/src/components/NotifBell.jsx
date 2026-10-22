@@ -66,7 +66,7 @@ export default function NotifBell() {
   useEffect(
     () =>
       subscribeNotifications(() => {
-        for (const key of ['notifications','announcements','meetings','meeting','project-stages','stage-approvals','billing-status-stages','my-teams','project-team','projects']) queryClient.invalidateQueries({ queryKey: [key] });
+        for (const key of ['notifications','announcements','meetings','meeting','project-stages','stage-approvals','billing-status-stages','my-teams','project-team','projects','projects-stats','spoc-allocations','spoc-assigned-projects','project']) queryClient.invalidateQueries({ queryKey: [key] });
       }),
     [queryClient],
   );

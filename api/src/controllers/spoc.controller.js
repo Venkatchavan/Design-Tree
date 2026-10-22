@@ -193,6 +193,25 @@ export async function setAllocationStatus(req, res, next) {
       { new: true, returnDocument: 'after', runValidators: true },
     );
     if (!doc) return res.status(404).json({ message: 'Allocation not found.' });
+    if (status === 'Approved') {
+      try {
+        const { userIdsForEmployees, notify } = await import('../models/Notification.js');
+        const users = await userIdsForEmployees([doc.coordinator]);
+        if (users.length) {
+          await notify({
+            users,
+            project: doc.project,
+            link: { view: 'project-detail', id: String(doc.project) },
+            title: 'Project assignment approved',
+            detail: 'This project is now available in your SPOC dashboard.',
+            type: 'spoc-allocation-approved',
+          });
+        }
+      } catch (err) {
+        // Keep assignment approval successful if its notification cannot be delivered.
+        console.error('Failed to notify SPOC about project assignment:', err);
+      }
+    }
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);

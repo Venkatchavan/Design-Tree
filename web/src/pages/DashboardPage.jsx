@@ -48,7 +48,6 @@ export default function DashboardPage({ bootstrap }) {
     queryKey: ['spoc-allocations'],
     queryFn: () => spocApi.allocationsMine(),
     enabled: isCoordinator,
-    refetchInterval: isCoordinator ? 5_000 : false,
   });
   const allowedIds = useMemo(() => {
     if (!isCoordinator || allocQ.isLoading) return null;
@@ -61,7 +60,6 @@ export default function DashboardPage({ bootstrap }) {
   const listQuery = useQuery({
     queryKey: ['projects', { search, branch, service, status }],
     queryFn: () => projectsApi.list({ search, branch, service, status }),
-    refetchInterval: isCoordinator ? 5_000 : false,
   });
 
   const stats = statsQuery.data;
