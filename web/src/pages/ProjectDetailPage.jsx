@@ -680,6 +680,30 @@ export default function ProjectDetailPage({ bootstrap }) {
   }
 
   const project = q.data?.project ?? {};
+  const employeeList = listOf(employees.data);
+  const employeeName = (employee) =>
+    [employee?.firstName, employee?.lastName].filter(Boolean).join(' ') || employee?.empId || employee?.email || '';
+  const employeeLabel = (value) => {
+    if (value && typeof value === 'object') {
+      const name = employeeName(value);
+      if (name) return name;
+      const employeeId = idOf(value);
+      const match = employeeList.find((employee) => idOf(employee) === employeeId);
+      return employeeName(match);
+    }
+    const employeeId = idOf(value);
+    if (!employeeId) return '';
+    const match = employeeList.find((employee) => idOf(employee) === employeeId);
+    return employeeName(match);
+  };
+  const allocatedSpocs = (teamQ.data?.allocations ?? [])
+    .filter((allocation) => allocation.status === 'Approved')
+    .map((allocation) => employeeLabel(allocation.coordinator))
+    .filter(Boolean);
+  const activationSpoc = employeeLabel(project.activation?.spoc);
+  const assignedSpocLabel = [...new Set(allocatedSpocs)].join(', ')
+    || activationSpoc
+    || (teamQ.isLoading || (project.activation?.spoc && employees.isLoading) ? 'Loading…' : 'Not allocated');
   const pid = String(id);
   const ofProject = (items) => (items ?? []).filter((r) => idOf(r.project) === pid);
   const stages = ofProject(stagesQ.data?.items);
@@ -1100,7 +1124,7 @@ export default function ProjectDetailPage({ bootstrap }) {
 
           {(!isTD && coord !== 'overview') && (
           <Panel title="Assigned SPOC">
-            <p>{(teamQ.data?.allocations ?? []).filter(a => a.status === 'Approved').map(a => empName(a.coordinator)).join(', ') || empName(project.activation?.spoc) || 'Not allocated'}</p>
+            <p>{assignedSpocLabel}</p>
           </Panel>
           )}
           {coord === 'documents' && <>
