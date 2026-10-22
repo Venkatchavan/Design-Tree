@@ -10,6 +10,8 @@ import { subscribeNotifications } from '../lib/realtime.js';
 function pathForLink(link, role) {
   if (!link?.view) return null;
   switch (link.view) {
+    case 'announcement':
+      return link.id ? `/announcements/${link.id}` : '/announcements';
     case 'meeting':
       return `${['coordinator','design_mgmt_head'].includes(role) ? '/meetings' : '/meetings/mine'}${link.id ? `?meeting=${link.id}` : ''}`;
     case 'leave':
@@ -64,7 +66,7 @@ export default function NotifBell() {
   useEffect(
     () =>
       subscribeNotifications(() => {
-        for (const key of ['notifications','meetings','meeting','project-stages','stage-approvals','billing-status-stages','my-teams','project-team','projects']) queryClient.invalidateQueries({ queryKey: [key] });
+        for (const key of ['notifications','announcements','meetings','meeting','project-stages','stage-approvals','billing-status-stages','my-teams','project-team','projects']) queryClient.invalidateQueries({ queryKey: [key] });
       }),
     [queryClient],
   );

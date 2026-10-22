@@ -1,4 +1,6 @@
 import cookieParser from 'cookie-parser';
+import announcementRoutes from './routes/announcements.routes.js';
+import { startAnnouncementWorker } from './services/announcements.js';
 import cors from 'cors';
 import express from 'express';
 import { isAllowedOrigin } from './config/config.js';
@@ -38,6 +40,7 @@ import workEntriesRoutes from './routes/workEntries.routes.js';
 
 export function createApp() {
   const app = express();
+  startAnnouncementWorker();
 
   app.use(
     cors({
@@ -82,6 +85,7 @@ export function createApp() {
   app.use('/api/meetings', meetingsRoutes);
   app.use('/api/portal', portalRoutes);
   app.use('/api/notifications', notificationsRoutes);
+  app.use('/api/announcements', announcementRoutes);
   app.use('/api/reports', reportsRoutes);
   // Document files are served ONLY through auth-checked download routes
   // (certificates, templates, visits, bills, employees, marketing).

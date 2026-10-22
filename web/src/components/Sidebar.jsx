@@ -64,6 +64,8 @@ function initials(name) {
 function navIcon(view, label) {
   if (label === 'Projects') return FolderKanban;
   switch (view) {
+    case 'announcements':
+      return Megaphone;
     case 'dashboard':
       return LayoutDashboard;
     case 'billing':
