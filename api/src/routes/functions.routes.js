@@ -2,6 +2,7 @@ import { canReadProject } from '../utils/projectScope.js';
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import {
+  denyRoles,
   requireInternal,
   requireRole,
 } from '../middlewares/requireRole.js';
@@ -67,8 +68,8 @@ router.put(
 router.get('/conveyance', requireInternal(), conveyances.list);
 router.post('/conveyance', requireInternal(), conveyances.create);
 router.get('/rfis', requireInternal(), rfis.list);
-router.post('/rfis', requireInternal(), createRfi);
-router.put('/rfis/:id', requireInternal(), rfis.update);
+router.post('/rfis', requireInternal(), denyRoles('coordinator'), createRfi);
+router.put('/rfis/:id', requireInternal(), denyRoles('coordinator'), rfis.update);
 
 // QA/QC weekly reports (team submits, Specs Head approves)
 router.get('/weekly-reports', requireInternal(), weeklyReports.list);
