@@ -61,6 +61,8 @@ export function isSuperRole(role) {
 // Every view: route path, display title, subtitle, build phase.
 // `guard` further restricts beyond nav membership where needed.
 export const VIEWS = {
+  'announcements': { path: '/announcements', label: 'Announcements', sub: 'Company notices for all branches', phase: 4 },
+  'announcement-detail': { path: '/announcements/:id', label: 'Announcement', sub: 'Company notice', via: 'announcements', phase: 4 },
   'dashboard': { path: '/dashboard', label: 'Dashboard', sub: 'Company project dashboard', phase: 1 },
   'project-detail': { path: '/projects/:id', label: 'Project Detail', sub: 'Design-stage timeline against plan', phase: 1, via: 'dashboard' },
   'new-project': { path: '/projects/new', label: 'New Project', sub: 'These fields become the basis for every filter downstream', phase: 1, via: 'dashboard' },
@@ -380,6 +382,7 @@ export function homeView(role) {
 // Nav with resolved labels/paths for a role.
 export function navFor(role) {
   const items = [...(NAV_BY_ROLE[role] ?? [])];
+  if (ROLE_KEYS.includes(role) && !['client', 'architect', 'superuser'].includes(role)) items.push({ view: 'announcements' });
   return items.map((item) => {
     const def = VIEWS[item.view];
     return {
@@ -401,6 +404,7 @@ export const INTERNAL_ROLES = ROLE_KEYS.filter(
 // Second-layer page guard (§2.7): nav membership + view flags + superuser.
 export function canAccess(role, view) {
   if (!VIEWS[view]) return false;
+  if (['announcements', 'announcement-detail'].includes(view)) return ROLE_KEYS.includes(role) && !['client', 'architect', 'superuser'].includes(role);
   if (VIEWS[view].financeOnly && role !== 'finance') return false;
   if (VIEWS[view].adminOnly && role !== 'admin_billing') return false;
   if (isSuperRole(role)) return true;

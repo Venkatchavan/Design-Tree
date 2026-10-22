@@ -41,8 +41,11 @@ import EmployeeSupportPage from './pages/EmployeeSupportPage.jsx'
 import BranchesPage from './pages/BranchesPage.jsx'
 import OfflineGate from './components/OfflineGate.jsx'
 import TravelBookingPage from './pages/TravelBookingPage.jsx'
+import AnnouncementsPage from './pages/AnnouncementsPage.jsx'
 
 const VIEW_COMPONENTS = {
+  announcements: AnnouncementsPage,
+  'announcement-detail': AnnouncementsPage,
   dashboard: DashboardPage,
   'project-detail': ProjectDetailPage,
   'new-project': NewProjectPage,
@@ -90,6 +93,7 @@ const VIEW_COMPONENTS = {
 
 // Non-nav views and the nav view whose presence grants their route.
 const EXTRA_ROUTES = [
+  { key: 'announcement-detail', when: 'announcements', parent: 'announcements' },
   { key: 'project-detail', when: 'dashboard', parent: 'dashboard' },
   { key: 'new-project', when: 'dashboard', parent: 'dashboard' },
   { key: 'team-detail', when: 'teams', parent: 'teams' },
