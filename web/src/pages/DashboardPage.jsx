@@ -129,6 +129,7 @@ export default function DashboardPage({ bootstrap }) {
             ]}
             rows={coordItems.slice(0, 2)}
             emptyText="No allotted projects yet."
+            onRowClick={(r) => navigate(`/projects/${r._id}`)}
           />
         </Panel>
       </>

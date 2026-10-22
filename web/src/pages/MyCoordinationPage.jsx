@@ -1162,14 +1162,12 @@ export default function MyCoordinationPage({ bootstrap, user }) {
       <CoordinationKpis myAllocs={myAllocs} />
       <Tabs
         tabs={[
-          { key: 'meetings', label: 'Meetings' },
           { key: 'daily', label: 'Daily work update' },
           { key: 'other', label: 'Other projects' },
         ]}
         active={tab}
         onChange={setTab}
       />
-      {tab === 'meetings' && <CoordinationMeetingsTab />}
       {tab === 'daily' && <DailyEntryTab myAllocs={myAllocs} activeProjects={activeProjects} />}
       {tab === 'other' && <OtherProjectsTab myAllocs={myAllocs} activeProjects={activeProjects} activeLoading={activeQ.isLoading} />}
     </>
