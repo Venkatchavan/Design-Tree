@@ -41,6 +41,7 @@ export default function DashboardPage({ bootstrap }) {
   const [branch, setBranch] = useState('');
   const [service, setService] = useState('');
   const [status, setStatus] = useState('');
+  const [coordOpenKpi, setCoordOpenKpi] = useState('');
 
   const isCoordinator = roleKey === 'coordinator';
   const allocQ = useQuery({ queryKey: ['spoc-allocations'], queryFn: () => spocApi.allocationsMine(), enabled: isCoordinator });
@@ -87,13 +88,13 @@ export default function DashboardPage({ bootstrap }) {
   if (isCoordinator) {
     const coordItems = items ?? [];
     const coordTotal = coordItems.length;
-    const coordActive = coordItems.filter((p) => String(p.status ?? '').toLowerCase() !== 'completed').length;
-    const coordOnTrack = coordItems.filter((p) => {
-      const s = String(p.status ?? '').toLowerCase();
-      return s === 'in progress' || s === 'on track';
-    }).length;
     const coordCompleted = coordItems.filter((p) => String(p.status ?? '').toLowerCase() === 'completed').length;
     const coordOnHold = coordItems.filter((p) => String(p.status ?? '').toLowerCase() === 'on hold').length;
+    const projectGroups = [
+      { key: 'all', label: 'My projects', accent: 'forest', projects: coordItems },
+      { key: 'completed', label: 'Completed', accent: 'violet', projects: coordItems.filter((p) => String(p.status ?? '').toLowerCase() === 'completed') },
+      { key: 'onHold', label: 'On hold', accent: 'amber', projects: coordItems.filter((p) => String(p.status ?? '').toLowerCase() === 'on hold') },
+    ];
     const branchName = coordItems.length > 0 ? (coordItems[0].branch ?? 'Bengaluru') : 'Bengaluru';
     const branchAvg = coordItems.length > 0 ? Math.round(coordItems.reduce((s, p) => s + Number(p.completion ?? 0), 0) / coordItems.length) : 57;
     return (
@@ -103,11 +104,39 @@ export default function DashboardPage({ bootstrap }) {
           <div className="page-sub">Your allotted projects</div>
         </div>
         <div className="page-sub" style={{ fontSize: 13, marginBottom: 6 }}><b>Projects</b> · {coordTotal} projects allotted to you</div>
-        <div className="kpi-grid cols-4">
-          <KpiCard label="My projects" value={coordTotal} accent="forest" />
-          <KpiCard label="On track" value={coordOnTrack} accent="teal" />
-          <KpiCard label="Completed" value={coordCompleted} accent="violet" />
-          <KpiCard label="On hold" value={coordOnHold} accent="amber" />
+        <div className="kpi-grid cols-3">
+          {projectGroups.map((group) => (
+            <KpiCard
+              key={group.key}
+              label={group.label}
+              value={group.projects.length}
+              accent={group.accent}
+              open={coordOpenKpi === group.key}
+              onClick={() => setCoordOpenKpi((current) => current === group.key ? '' : group.key)}
+            >
+              {group.projects.length ? group.projects.map((project) => (
+                <div
+                  key={project._id ?? project.id}
+                  className="kpi-drop-row"
+                  role="button"
+                  tabIndex={0}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    navigate(`/projects/${project._id ?? project.id}`);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.stopPropagation();
+                      navigate(`/projects/${project._id ?? project.id}`);
+                    }
+                  }}
+                >
+                  <span>{project.name ?? 'Unnamed project'}</span>
+                  <b>{project.code ?? ''}</b>
+                </div>
+              )) : <div className="kpi-drop-row">No projects</div>}
+            </KpiCard>
+          ))}
         </div>
         <Panel title="Completion progress by branch" sub={coordTotal > 0 ? `Your allotted projects only — ${branchName || 'Bengaluru'}` : 'Your allotted projects'}>
           {coordTotal > 0 ? (

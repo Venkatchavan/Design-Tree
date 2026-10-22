@@ -288,7 +288,7 @@ function AssignedRegisterView({ roleKey }) {
           <select className="filter-select" value={docType} onChange={(e) => setDocType(e.target.value)}><option value="">All document types</option>{DIR_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           <select className="filter-select" value={printType} onChange={(e) => setPrintType(e.target.value)}><option value="">All print types</option>{DIR_PRINT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           <select className="filter-select" value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{DIR_SERVICES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-          <button type="button" className="btn-primary" onClick={() => setLogOpen(true)}>Log transmittal</button>
+          {roleKey === 'team_lead' && <button type="button" className="btn-primary" onClick={() => setLogOpen(true)}>Log transmittal</button>}
           <button type="button" className="approve-btn" onClick={() => downloadCsv(rows, columns.map((c) => ({ key: c.key, label: c.label, value: c.render ? (r) => {
             if (c.key === 'date') return fmtRegisterDate(r.date);
             if (c.key === 'project') return r.project?.name ?? r.projectName;
@@ -301,7 +301,7 @@ function AssignedRegisterView({ roleKey }) {
           <DataTable columns={columns} rows={rows} emptyText="No transmittals match these filters." />
         )}
       </Panel>
-      {logOpen && (
+      {roleKey === 'team_lead' && logOpen && (
         <Modal title="Log transmittal" onClose={() => setLogOpen(false)} wide>
           <LogTransmittalForm onDone={() => setLogOpen(false)} />
         </Modal>

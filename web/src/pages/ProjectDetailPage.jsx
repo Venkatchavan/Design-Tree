@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { projectsApi, employeesApi, usersApi } from '../lib/api.js';
 import { spocApi } from '../lib/spocApi.js';
-import { discApi, drawingAckApi, gbsApi, peerApi, serviceDashboardApi, stageReviewApi, variationApi, visitsApi, weeklyReportApi, workItemApi } from '../lib/functionsApi.js';
+import { discApi, drawingAckApi, gbsApi, peerApi, rfiApi, serviceDashboardApi, stageReviewApi, variationApi, visitsApi, weeklyReportApi, workItemApi } from '../lib/functionsApi.js';
 import { billingApi } from '../lib/phase3Api.js';
 import { deliverablesApi, drawingsApi, revisionsApi } from '../lib/workApi.js';
 import { summarizeRevisions } from '../lib/revisionSummary.js';
@@ -25,13 +25,84 @@ import LocationModal from '../components/LocationModal.jsx';
 
 const COORD_TABS = [
   { key: 'overview', label: 'Overview' },
-  { key: 'directory', label: 'Project directory' },
+  { key: 'documents', label: 'Documents' },
   { key: 'meetings', label: 'Meetings' },
   { key: 'deliverables', label: 'Deliverables & drawings' },
   { key: 'revisions', label: 'Revision logs' },
   { key: 'pending', label: 'Pending & follow-up' },
   { key: 'coordination', label: 'Coordination' },
 ];
+
+const DOCUMENT_TABS = [
+  { key: 'directory', label: 'Project Directory' },
+  { key: 'dbr', label: 'DBR (Design Basis Report)' },
+];
+
+function SpocRfiLog({ projectId }) {
+  const rfisQ = useQuery({
+    queryKey: ['project-rfi-log', projectId],
+    queryFn: () => rfiApi.list({ project: projectId }),
+    enabled: !!projectId,
+  });
+  const rows = rfisQ.data?.items ?? [];
+
+  return (
+    <Panel title="RFI Log" sub="View only · RFIs for this assigned project">
+      {rfisQ.isLoading ? <EmptyState text="Loading RFI log…" /> : rfisQ.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{rfisQ.error.message}</div>
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'rfiNo', label: 'RFI No.', render: (r) => r.rfiNo ?? '—' },
+            { key: 'type', label: 'Type' },
+            { key: 'description', label: 'Description' },
+            { key: 'team', label: 'Team' },
+            { key: 'raisedBy', label: 'Raised by', render: (r) => r.raisedBy?.name ?? r.raisedBy?.email ?? '—' },
+            { key: 'assignedTo', label: 'Assigned to' },
+            { key: 'due', label: 'Due', render: (r) => fmtDate(r.due) },
+            { key: 'clientResponse', label: 'Response', render: (r) => r.clientResponse?.text ?? '—' },
+            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+            { key: 'createdAt', label: 'Created', render: (r) => fmtDate(r.createdAt) },
+          ]}
+          rows={rows}
+          emptyText="No RFIs have been logged for this project."
+        />
+      )}
+    </Panel>
+  );
+}
+
+function DbrDocumentPanel({ projectId }) {
+  const deliverablesQ = useQuery({
+    queryKey: ['project-dbr-deliverables', projectId],
+    queryFn: () => deliverablesApi.list({ project: projectId }),
+    enabled: !!projectId,
+  });
+  const rows = (deliverablesQ.data?.items ?? []).filter((item) =>
+    /\bDBR\b|design basis report/i.test(`${item.deliverable ?? ''} ${item.specify ?? ''}`),
+  );
+
+  return (
+    <Panel title="DBR (Design Basis Report)" sub="DBR deliverable information for this project">
+      {deliverablesQ.isLoading ? <EmptyState text="Loading DBR information…" /> : deliverablesQ.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{deliverablesQ.error.message}</div>
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'deliverable', label: 'Deliverable', render: (item) => item.deliverable ?? item.specify ?? 'DBR' },
+            { key: 'stage', label: 'Stage' },
+            { key: 'assignedTo', label: 'Assigned to', render: (item) => empName(item.assignedTo) },
+            { key: 'plannedDate', label: 'Planned date', render: (item) => fmtDate(item.plannedDate) },
+            { key: 'dueDate', label: 'Due date', render: (item) => fmtDate(item.dueDate) },
+            { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status}>{item.status ?? '—'}</StatusPill> },
+          ]}
+          rows={rows}
+          emptyText="No DBR deliverable has been recorded for this project."
+        />
+      )}
+    </Panel>
+  );
+}
 
 const TOP_TABS = [
   { key: 'coordinator', label: 'Coordinator' },
@@ -542,11 +613,15 @@ export default function ProjectDetailPage({ bootstrap }) {
   const [spocId, setSpocId] = useState('');
   const [top, setTop] = useState(bootstrap?.role?.key === 'team_lead' ? 'team-workspace' : 'coordinator');
   const [coord, setCoord] = useState('overview');
+  const [documentsTab, setDocumentsTab] = useState('directory');
 
   const q = useQuery({ queryKey: ['project', id], queryFn: () => projectsApi.get(id) });
   const role = bootstrap?.role?.key ?? '';
   const isAdmin = role === 'admin_billing';
   const isTD = role === 'technical_director';
+  const coordTabs = role === 'coordinator'
+    ? [...COORD_TABS, { key: 'rfis', label: 'RFI Log' }]
+    : COORD_TABS;
 
   const employees = useQuery({
     queryKey: ['employees-spoc', id],
@@ -1021,22 +1096,27 @@ export default function ProjectDetailPage({ bootstrap }) {
 
       {top === 'coordinator' && (
         <>
-          <Tabs tabs={COORD_TABS} active={coord} onChange={setCoord} />
+          <Tabs tabs={coordTabs} active={coord} onChange={setCoord} />
 
           {(!isTD && coord !== 'overview') && (
           <Panel title="Assigned SPOC">
             <p>{(teamQ.data?.allocations ?? []).filter(a => a.status === 'Approved').map(a => empName(a.coordinator)).join(', ') || empName(project.activation?.spoc) || 'Not allocated'}</p>
           </Panel>
           )}
-          {coord === 'directory' && <>
-            <DirectoryTab myAllocs={teamQ.data?.allocations ?? []} activeProjects={[project]} activeLoading={teamQ.isLoading} canEdit={role === 'coordinator'} />
-            <Panel title="Project team"><DataTable columns={[
-              { key: 'service', label: 'Service' }, { key: 'team', label: 'Team' },
-              { key: 'name', label: 'Member', render: r => empName(r.employee) },
-              { key: 'designation', label: 'Designation', render: r => r.employee?.designation ?? '—' },
-              { key: 'experience', label: 'Experience', render: r => r.employee?.experience ?? '—' },
-            ]} rows={teamQ.data?.members ?? []} emptyText="No team members allocated." /></Panel>
+          {coord === 'documents' && <>
+            <Tabs tabs={DOCUMENT_TABS} active={documentsTab} onChange={setDocumentsTab} />
+            {documentsTab === 'directory' && <>
+              <DirectoryTab myAllocs={teamQ.data?.allocations ?? []} activeProjects={[project]} activeLoading={teamQ.isLoading} canEdit={role === 'coordinator'} />
+              <Panel title="Project team"><DataTable columns={[
+                { key: 'service', label: 'Service' }, { key: 'team', label: 'Team' },
+                { key: 'name', label: 'Member', render: r => empName(r.employee) },
+                { key: 'designation', label: 'Designation', render: r => r.employee?.designation ?? '—' },
+                { key: 'experience', label: 'Experience', render: r => r.employee?.experience ?? '—' },
+              ]} rows={teamQ.data?.members ?? []} emptyText="No team members allocated." /></Panel>
+            </>}
+            {documentsTab === 'dbr' && <DbrDocumentPanel projectId={id} />}
           </>}
+          {coord === 'rfis' && role === 'coordinator' && <SpocRfiLog projectId={id} />}
           {coord === 'overview' && (
             <>
               <Panel title="Stage & Service-wise Status" sub="Live project status, progress & completion, and delay / submission status — by service and stage, covering every service tracked on the Board & Leadership dashboard">
