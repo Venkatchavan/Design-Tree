@@ -44,7 +44,12 @@ export default function DashboardPage({ bootstrap }) {
   const [coordOpenKpi, setCoordOpenKpi] = useState('');
 
   const isCoordinator = roleKey === 'coordinator';
-  const allocQ = useQuery({ queryKey: ['spoc-allocations'], queryFn: () => spocApi.allocationsMine(), enabled: isCoordinator });
+  const allocQ = useQuery({
+    queryKey: ['spoc-allocations'],
+    queryFn: () => spocApi.allocationsMine(),
+    enabled: isCoordinator,
+    refetchInterval: isCoordinator ? 5_000 : false,
+  });
   const allowedIds = useMemo(() => {
     if (!isCoordinator || allocQ.isLoading) return null;
     const items = allocQ.data?.items ?? [];
@@ -56,6 +61,7 @@ export default function DashboardPage({ bootstrap }) {
   const listQuery = useQuery({
     queryKey: ['projects', { search, branch, service, status }],
     queryFn: () => projectsApi.list({ search, branch, service, status }),
+    refetchInterval: isCoordinator ? 5_000 : false,
   });
 
   const stats = statsQuery.data;
@@ -146,7 +152,7 @@ export default function DashboardPage({ bootstrap }) {
             </>
           ) : <EmptyState text="No allotted projects to show progress." />}
         </Panel>
-        <Panel title="Projects" sub={`Sample projects · ${coordTotal} of ${coordTotal} shown — projects allotted to you`}>
+        <Panel title="Projects" sub={`${coordTotal} allotted project(s)`}>
           <DataTable
             columns={[
               { key: 'name', label: 'Project', render: (p) => <><b>{p.name ?? '—'}</b><br/><span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{p.code ?? ''}</span></> },
@@ -156,7 +162,7 @@ export default function DashboardPage({ bootstrap }) {
               { key: 'completion', label: 'Completion', render: (p) => p.completion != null ? `${p.completion}%` : '—' },
               { key: 'stage', label: 'Current stage', render: (p) => p.stage ?? '—' },
             ]}
-            rows={coordItems.slice(0, 2)}
+            rows={coordItems}
             emptyText="No allotted projects yet."
             onRowClick={(r) => navigate(`/projects/${r._id}`)}
           />

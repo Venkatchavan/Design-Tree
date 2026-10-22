@@ -614,11 +614,22 @@ export default function ProjectDetailPage({ bootstrap }) {
   const [top, setTop] = useState(bootstrap?.role?.key === 'team_lead' ? 'team-workspace' : 'coordinator');
   const [coord, setCoord] = useState('overview');
   const [documentsTab, setDocumentsTab] = useState('directory');
+  const [stageStatusFilter, setStageStatusFilter] = useState('');
 
-  const q = useQuery({ queryKey: ['project', id], queryFn: () => projectsApi.get(id) });
   const role = bootstrap?.role?.key ?? '';
+  const q = useQuery({
+    queryKey: ['project', id],
+    queryFn: () => projectsApi.get(id),
+    refetchInterval: role === 'coordinator' ? 10_000 : false,
+  });
   const isAdmin = role === 'admin_billing';
   const isTD = role === 'technical_director';
+  const assignedProjectsQ = useQuery({
+    queryKey: ['spoc-assigned-projects'],
+    queryFn: () => projectsApi.list({}),
+    enabled: role === 'coordinator',
+    refetchInterval: role === 'coordinator' ? 5_000 : false,
+  });
   const coordTabs = role === 'coordinator'
     ? [...COORD_TABS, { key: 'rfis', label: 'RFI Log' }]
     : COORD_TABS;
@@ -629,7 +640,7 @@ export default function ProjectDetailPage({ bootstrap }) {
     enabled: !!id,
     retry: false,
   });
-  const stagesQ = useQuery({ queryKey: ['project-stages', id], queryFn: () => billingApi.stages({ project: id }), enabled: !!id, retry: false });
+  const stagesQ = useQuery({ queryKey: ['project-stages', id], queryFn: () => billingApi.stages({ project: id }), enabled: !!id, retry: false, refetchInterval: role === 'coordinator' ? 10_000 : false });
   const drawingsQ = useQuery({ queryKey: ['project-drawings', id], queryFn: () => drawingsApi.list({ project: id }), enabled: !!id, retry: false });
   const revisionsQ = useQuery({ queryKey: ['project-revisions', id], queryFn: () => revisionsApi.list({ project: id }), enabled: !!id, retry: false });
   const deliverablesQ = useQuery({ queryKey: ['project-deliverables', id], queryFn: () => deliverablesApi.list({ project: id }), enabled: !!id, retry: false });
@@ -680,6 +691,11 @@ export default function ProjectDetailPage({ bootstrap }) {
   }
 
   const project = q.data?.project ?? {};
+  const documentProjectOptions = [...new Map(
+    [...listOf(assignedProjectsQ.data), project]
+      .filter((candidate) => idOf(candidate))
+      .map((candidate) => [idOf(candidate), candidate]),
+  ).values()];
   const employeeList = listOf(employees.data);
   const employeeName = (employee) =>
     [employee?.firstName, employee?.lastName].filter(Boolean).join(' ') || employee?.empId || employee?.email || '';
@@ -707,6 +723,12 @@ export default function ProjectDetailPage({ bootstrap }) {
   const pid = String(id);
   const ofProject = (items) => (items ?? []).filter((r) => idOf(r.project) === pid);
   const stages = ofProject(stagesQ.data?.items);
+  const filteredStages = stages.filter((stage) => {
+    if (!stageStatusFilter) return true;
+    const status = String(stage.currentStatus ?? '').trim().toLowerCase();
+    if (stageStatusFilter === 'on-hold') return ['on hold', 'onhold', 'paused'].includes(status);
+    return status !== '' && !['on hold', 'onhold', 'paused', 'completed', 'cancelled'].includes(status);
+  });
   const drawings = ofProject(drawingsQ.data?.items);
   const revisions = ofProject(revisionsQ.data?.items);
   const deliverables = ofProject(deliverablesQ.data?.items);
@@ -1128,6 +1150,25 @@ export default function ProjectDetailPage({ bootstrap }) {
           </Panel>
           )}
           {coord === 'documents' && <>
+            {role === 'coordinator' && (
+              <div className="form-row" style={{ maxWidth: 360, marginBottom: 12 }}>
+                <label className="form-label" htmlFor="spoc-documents-project">Project</label>
+                <select
+                  id="spoc-documents-project"
+                  className="filter-select"
+                  value={id}
+                  onChange={(event) => {
+                    if (event.target.value) navigate(`/projects/${event.target.value}`);
+                  }}
+                >
+                  {documentProjectOptions.map((option) => (
+                    <option key={idOf(option)} value={idOf(option)}>
+                      {option.name ?? option.code ?? 'Unnamed project'}{option.code ? ` (${option.code})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <Tabs tabs={DOCUMENT_TABS} active={documentsTab} onChange={setDocumentsTab} />
             {documentsTab === 'directory' && <>
               <DirectoryTab myAllocs={teamQ.data?.allocations ?? []} activeProjects={[project]} activeLoading={teamQ.isLoading} canEdit={role === 'coordinator'} />
@@ -1143,6 +1184,19 @@ export default function ProjectDetailPage({ bootstrap }) {
           {coord === 'rfis' && role === 'coordinator' && <SpocRfiLog projectId={id} />}
           {coord === 'overview' && (
             <>
+              <div className="form-row" style={{ maxWidth: 260, marginBottom: 12 }}>
+                <label className="form-label" htmlFor="stage-live-status-filter">Live status</label>
+                <select
+                  id="stage-live-status-filter"
+                  className="filter-select"
+                  value={stageStatusFilter}
+                  onChange={(event) => setStageStatusFilter(event.target.value)}
+                >
+                  <option value="">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="on-hold">On hold</option>
+                </select>
+              </div>
               <Panel title="Stage & Service-wise Status" sub="Live project status, progress & completion, and delay / submission status — by service and stage, covering every service tracked on the Board & Leadership dashboard">
                 <DataTable
                   columns={[
@@ -1152,7 +1206,7 @@ export default function ProjectDetailPage({ bootstrap }) {
                     { key: 'progress', label: 'Progress / completion', render: (s) => overviewProgress(s) },
                     { key: 'delay', label: 'Delay / submission status', render: (s) => overviewDelay(s) },
                   ]}
-                  rows={stages}
+                  rows={filteredStages}
                   emptyText="No stage status recorded for this project yet."
                 />
               </Panel>
