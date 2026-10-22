@@ -12,7 +12,7 @@ export async function projectScopeIds(user) {
   const empId = me.employee;
   if (user.role === 'coordinator') {
     const { SpocAllocation } = await import('../models/SpocAllocation.js');
-    const rows = await SpocAllocation.find({ coordinator: empId, status: 'Approved' }).select('project').lean();
+    const rows = await SpocAllocation.find({ coordinator: empId, status: { $in: ['Approved', 'Proposed'] } }).select('project').lean();
     return [...new Set(rows.map((r) => String(r.project)))];
   }
   const { Team } = await import('../models/Team.js');
