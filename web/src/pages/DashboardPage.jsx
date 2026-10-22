@@ -45,10 +45,10 @@ export default function DashboardPage({ bootstrap }) {
   const isCoordinator = roleKey === 'coordinator';
   const allocQ = useQuery({ queryKey: ['spoc-allocations'], queryFn: () => spocApi.allocationsMine(), enabled: isCoordinator });
   const allowedIds = useMemo(() => {
-    if (!isCoordinator) return null;
+    if (!isCoordinator || allocQ.isLoading) return null;
     const items = allocQ.data?.items ?? [];
     return new Set(items.map((a) => String(a.project?._id ?? a.project ?? '')));
-  }, [isCoordinator, allocQ.data]);
+  }, [isCoordinator, allocQ.isLoading, allocQ.data]);
 
   const statsQuery = useQuery({ queryKey: ['projects-stats'], queryFn: projectsApi.stats });
   const filtersQuery = useQuery({ queryKey: ['projects-filters'], queryFn: projectsApi.filters });
@@ -75,8 +75,9 @@ export default function DashboardPage({ bootstrap }) {
   );
 
   const items = (listQuery.data?.items ?? []).filter((p) => {
-    if (allowedIds) return allowedIds.has(String(p._id ?? p.id ?? ''));
-    return true;
+    if (!isCoordinator) return true;
+    if (allocQ.isLoading) return false;
+    return allowedIds ? allowedIds.has(String(p._id ?? p.id ?? '')) : true;
   });
   const total = listQuery.data?.total ?? items.length;
 

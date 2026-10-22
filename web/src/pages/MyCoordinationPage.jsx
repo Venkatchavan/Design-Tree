@@ -292,19 +292,31 @@ function OtherProjectsTab({ myAllocs, activeProjects, activeLoading }) {
     () => new Set(myAllocs.map(allocProjectId).filter(Boolean).map(String)),
     [myAllocs],
   );
-  const others = useMemo(() => {
-    if (myIds.size === 0) return activeProjects;
-    return activeProjects.filter((p) => !myIds.has(String(p._id ?? p.id ?? '')));
-  }, [activeProjects, myIds]);
 
   const allocsQ = useQuery({ queryKey: ['spoc-allocations-all'], queryFn: () => request('/api/spoc/allocations') });
+  const allocs = allocsQ.data?.items ?? [];
+
+  const others = useMemo(() => {
+    const otherAllocs = allocs.filter((a) => {
+      const pid = String(allocProjectId(a) ?? '');
+      return pid && !myIds.has(pid);
+    });
+    const projMap = new Map();
+    for (const a of otherAllocs) {
+      const proj = a.project;
+      if (!proj) continue;
+      const pid = String(proj?._id ?? proj?.id ?? proj ?? '');
+      if (!pid || projMap.has(pid)) continue;
+      projMap.set(pid, proj);
+    }
+    return [...projMap.values()];
+  }, [allocs, myIds]);
   const delsQ = useQuery({ queryKey: ['other-dels'], queryFn: () => deliverablesApi.list({}) });
   const meetsQ = useQuery({ queryKey: ['other-meets'], queryFn: () => meetingsApi.list({}) });
   const rfisQ = useQuery({ queryKey: ['other-rfis'], queryFn: () => rfiApi.list({}) });
   const revsQ = useQuery({ queryKey: ['other-revs'], queryFn: () => request('/api/work/revisions') });
   const entriesQ = useQuery({ queryKey: ['other-entries'], queryFn: () => spocApi.entriesList({}) });
 
-  const allocs = allocsQ.data?.items ?? [];
   const spocFor = (pid) => {
     const a = allocs.find((x) => String(allocProjectId(x) ?? '') === String(pid) && String(x.status ?? '') === 'Approved')
       ?? allocs.find((x) => String(allocProjectId(x) ?? '') === String(pid));
@@ -329,7 +341,7 @@ function OtherProjectsTab({ myAllocs, activeProjects, activeLoading }) {
   const revsBy = byProject(revsQ.data?.items ?? [], (r) => r?.project?._id ?? r?.project?.id ?? r?.project ?? r?.projectId);
   const entriesBy = byProject(entriesQ.data?.items ?? [], (e) => e?.project?._id ?? e?.project?.id ?? e?.project);
 
-  if (activeLoading) {
+  if (allocsQ.isLoading || activeLoading) {
     return (
       <Panel title="Other projects (view only)">
         <EmptyState text="Loading…" />
@@ -1150,12 +1162,14 @@ export default function MyCoordinationPage({ bootstrap, user }) {
       <CoordinationKpis myAllocs={myAllocs} />
       <Tabs
         tabs={[
+          { key: 'meetings', label: 'Meetings' },
           { key: 'daily', label: 'Daily work update' },
           { key: 'other', label: 'Other projects' },
         ]}
         active={tab}
         onChange={setTab}
       />
+      {tab === 'meetings' && <CoordinationMeetingsTab />}
       {tab === 'daily' && <DailyEntryTab myAllocs={myAllocs} activeProjects={activeProjects} />}
       {tab === 'other' && <OtherProjectsTab myAllocs={myAllocs} activeProjects={activeProjects} activeLoading={activeQ.isLoading} />}
     </>
