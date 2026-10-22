@@ -293,7 +293,7 @@ function OtherProjectsTab({ myAllocs, activeProjects, activeLoading }) {
     [myAllocs],
   );
 
-  const allocsQ = useQuery({ queryKey: ['spoc-allocations-all'], queryFn: () => request('/api/spoc/allocations') });
+  const allocsQ = useQuery({ queryKey: ['spoc-allocations-all'], queryFn: () => request('/api/spoc/allocations/all') });
   const allocs = allocsQ.data?.items ?? [];
 
   const others = useMemo(() => {
