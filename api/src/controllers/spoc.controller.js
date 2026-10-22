@@ -148,7 +148,6 @@ export async function listAllocations(req, res, next) {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
     if (req.query.status) filter.status = req.query.status;
-    narrowByProject(filter, 'project', await projectScopeIds(req.user));
     const items = await SpocAllocation.find(filter)
       .populate('project', 'name code branch currentStage status')
       .populate('coordinator', 'firstName lastName empId designation')
