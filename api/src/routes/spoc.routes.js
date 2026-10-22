@@ -20,6 +20,7 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/allocations', requireInternal(), listAllocations);
+router.get('/allocations/all', requireInternal(), listAllAllocations);
 router.get('/allocations/mine', requireInternal(), myAllocations);
 router.post(
   '/allocations/propose',

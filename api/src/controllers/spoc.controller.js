@@ -148,6 +148,24 @@ export async function listAllocations(req, res, next) {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
     if (req.query.status) filter.status = req.query.status;
+    narrowByProject(filter, 'project', await projectScopeIds(req.user));
+    const items = await SpocAllocation.find(filter)
+      .populate('project', 'name code branch currentStage status')
+      .populate('coordinator', 'firstName lastName empId designation')
+      .sort({ createdAt: -1 })
+      .limit(200);
+    return res.status(200).json({ items, total: items.length });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+export async function listAllAllocations(req, res, next) {
+  try {
+    const { SpocAllocation } = await import('../models/SpocAllocation.js');
+    const filter = {};
+    if (req.query.project) filter.project = req.query.project;
+    if (req.query.status) filter.status = req.query.status;
     const items = await SpocAllocation.find(filter)
       .populate('project', 'name code branch currentStage status')
       .populate('coordinator', 'firstName lastName empId designation')
