@@ -2,6 +2,8 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium, expect } from '@playwright/test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 const f = JSON.parse(
   await readFile(
     process.env.TEST_FIXTURE_FILE || '/tmp/designtree-local-fixture.json',
@@ -14,8 +16,18 @@ const base = process.env.TEST_WEB_URL || 'http://127.0.0.1:5173',
     process.env.TEST_REPORT_DIR || '../client-updates-2026-10-23/evidence',
   );
 await mkdir(out, { recursive: true });
+const webURL = new URL(base);
+assert.equal(webURL.hostname, '127.0.0.1', 'Use the isolated loopback web server only.');
+const args = [];
+if (webURL.protocol === 'https:') {
+  assert(process.env.TEST_CERTIFICATE, 'Provide the disposable TLS certificate.');
+  const publicKey = execFileSync('openssl', ['x509', '-in', process.env.TEST_CERTIFICATE, '-pubkey', '-noout']);
+  const der = execFileSync('openssl', ['pkey', '-pubin', '-outform', 'DER'], { input: publicKey });
+  args.push('--ignore-certificate-errors-spki-list=' + createHash('sha256').update(der).digest('base64'));
+}
 const browser = await chromium.launch({
   headless: true,
+  args,
   ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
     ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE }
     : {}),
@@ -37,6 +49,7 @@ const panel = (p, title) =>
     });
 async function session(role) {
   const c = await browser.newContext({
+    ignoreHTTPSErrors: webURL.protocol === 'https:',
     viewport: { width: 1440, height: 1100 },
   });
   const login = await c.request.post(base + '/api/auth/login', {
@@ -77,6 +90,18 @@ try {
       })
     ).ok(),
   ).toBeTruthy();
+  async function openAssignedTeam() {
+    const response = await tl.request.get(base + '/api/teams/mine');
+    expect(response.ok()).toBeTruthy();
+    const { items } = await response.json();
+    const team = items.find((item) => item.allocationProject === f.project);
+    assert(team, 'Confirmed fixture project team must exist.');
+    await t.goto(base + '/my-team');
+    if (items.length > 1) {
+      const id = String(team._id ?? team.id);
+      await t.locator('select').filter({ has: t.locator('option[value="' + id + '"]') }).selectOption(id);
+    }
+  }
   let created;
   await check(
     'Admin creates marked fields and no duplicate PMC/Peer Review inputs',
@@ -260,7 +285,7 @@ try {
       await expect(
         panel(s, 'Coordination items').getByText(COORD, { exact: true }),
       ).toBeVisible();
-      await t.goto(base + '/my-team');
+      await openAssignedTeam();
       await expect(
         panel(t, 'Coordination items').getByText(COORD, { exact: true }),
       ).toBeVisible();
@@ -488,7 +513,7 @@ try {
   assert.deepEqual(errors, []);
   const covered = [...new Set(checks.flatMap((c) => c.requirements))].sort();
   assert.equal(covered.length, 30);
-  await t.goto(base + '/my-team');
+  await openAssignedTeam();
   await t.getByRole('tab', { name: 'Revision', exact: true }).click();
   await t.screenshot({
     path: resolve(out, 'ptl-implementation.png'),

@@ -23,7 +23,10 @@ Implemented the 30 confirmed requests from the client change review. Announcemen
 - 3 real spreadsheet import/export tests passed, including partial row validation.
 - Existing workflow suite: 12 passed, 1 pre-existing QS navigation assertion failed, none skipped. The assertion expects `qs-log`; the role registry supplies `qs-head`. This mismatch remains tracked; it was not changed to mask the failure.
 - New components pass ESLint. Changed existing pages retain pre-existing lint errors; comparison found no newly introduced lint errors.
-- No production data/environment was accessed. Docker image rebuild was not run because the local Docker daemon was unavailable. The isolated checks used native local Node/MongoDB and a web development server; the production/PWA bundle was built separately.
+- Both production Docker images were rebuilt successfully for `linux/amd64` with the pinned base images. MongoDB and API health checks and the HTTPS gateway passed in a separate disposable Compose project.
+- All 13 client browser checks also passed against the built production frontend and Docker API, covering the 30 confirmed requirement IDs with no page errors. Six additional HTTPS/container checks passed, including secure cookie login, WebSockets, live notifications, announcement acknowledgment, spreadsheet parsing and upload/download. The three spreadsheet checks also passed inside the rebuilt API container. Uploaded files survived API/database restart.
+- Existing workflow tests against Docker: 10 passed, the same pre-existing QS assertion failed, and two memory-fixture-only checks were skipped. Their native results above remain separate. The container test fixture now includes the director, Marketing and Peer Review roles; the browser suite explicitly selects the confirmed fixture team so earlier workflow tests cannot change its default team.
+- No production data/environment was accessed. These checks verify the local rebuilt containers; company-server deployment and real-user acceptance remain pending. The earlier MongoDB image scan findings in `CONTAINER_SECURITY_UPDATE.md` still require review; this run did not perform a new vulnerability scan.
 
 ## Reproduce locally
 
@@ -38,6 +41,8 @@ node --test e2e/required-workflows.test.mjs
 For browser checks, start `node e2e/local-server.mjs` and the web development server. The fixture writes random disposable credentials to a private temporary file. Run `node e2e/client-updates-browser.mjs`; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` only if using a non-default Chromium installation. The script refuses a non-isolated fixture. Shut down both servers and delete the temporary fixture when finished.
 
 The documentation KG, source PDF, screenshots and local evidence stay outside this application repository.
+
+For container acceptance, follow the disposable stack preparation in `CONTAINER_SECURITY_UPDATE.md`, seed with `e2e/container-fixture.mjs`, and run the client browser suite with `TEST_FIXTURE_FILE`, `TEST_WEB_URL=https://127.0.0.1:19443` and `TEST_CERTIFICATE` pointing to that disposable certificate. The browser trusts only its public key. Use `TEST_REPORT_DIR` for a separate container-results folder. Never point these fixtures at production.
 
 ## Browser acceptance mapping
 
