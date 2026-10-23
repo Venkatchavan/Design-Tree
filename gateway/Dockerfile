@@ -8,7 +8,7 @@
 # are mounted read-only at runtime (see docker-compose.yml).
 
 # ---------- Stage 1: build the SPA ----------
-FROM node:22-alpine AS web-build
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS web-build
 
 WORKDIR /build
 
@@ -25,7 +25,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
 
 # ---------- Stage 2: nginx runtime ----------
-FROM nginx:1.27-alpine
+FROM nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
 
 COPY --from=web-build /build/dist /usr/share/nginx/html
 COPY gateway/nginx.conf /etc/nginx/conf.d/default.conf

@@ -2,7 +2,7 @@
 
 Target: single Windows 10/11 host, Docker Desktop, LAN access over
 `https://<server>` with an internal trusted certificate. Read
-`ENVIRONMENT.md` first; every `EDIT-ME` below is marked in its file.
+`CONTAINER_SECURITY_UPDATE.md` and `ENVIRONMENT.md` first; every `EDIT-ME` below is marked in its file.
 
 ## Phase 0 — before the remote session
 
@@ -68,11 +68,12 @@ Target: single Windows 10/11 host, Docker Desktop, LAN access over
      replaced (the installer refuses stale files).
    - Note: bare-IP certs still warn for outsiders (no public CA for bare IPs)
      — expected. Ports are never part of certs, so `:8443` needs no change.
-7. DB-admin password file: `docker run --rm httpd:2.4-alpine htpasswd -nbB <user>`
-   → save the printed line as `gateway/.htpasswd`.
+7. Database admin is disabled by default. No gateway password file is required.
+   Temporary loopback-only access uses the explicit `dbadmin` profile; see
+   `CONTAINER_SECURITY_UPDATE.md` before enabling the legacy image.
 8. Edit `gateway/nginx.conf` EDIT-ME spots: `server_name` (= CLIENT_ORIGIN hosts,
    space-separated, e.g. `103.169.236.122 192.168.1.50`)
-   and the `allow 192.168.1.50;` line (= FD office PC address).
+   Database admin is never proxied through the gateway.
 
 ## Phase 2 — reboot and reconnect
 
@@ -84,8 +85,8 @@ Reboot, then reconnect with a fresh UltraViewer session (keep ID/password handy)
 ```powershell
 cd C:\DesignTree
 docker compose up -d --build
-docker compose ps                       # mongo + api: healthy; gateway + dbadmin: running
-docker compose run --rm api npm run seed  # one-shot superuser login (upsert, safe to re-run)
+docker compose ps                       # mongo + api: healthy; gateway: running; dbadmin disabled
+docker compose run --rm api node src/scripts/seed.js  # one-shot superuser login (upsert, safe to re-run)
 ```
 
 ## Phase 4 — verification checklist (do not skip)
@@ -100,8 +101,8 @@ docker compose run --rm api npm run seed  # one-shot superuser login (upsert, sa
 - [ ] Upload a file (e.g. meeting reference doc), then
       `docker compose down` → `docker compose up -d` → file still downloadable
       (proves the HDD bind mount works).
-- [ ] `https://<server>/dbadmin` from the FD PC: nginx password prompt →
-      express login → tables visible. From any other PC: blocked.
+- [ ] `https://<server>/dbadmin` and `/dbadmin/` return 403 for every client.
+      The optional admin profile is off after the maintenance session.
 - [ ] `.\scripts\backup.ps1` runs clean; both artifacts listed with sizes.
 - [ ] `docker compose logs --tail=50 api gateway` shows no errors.
 
