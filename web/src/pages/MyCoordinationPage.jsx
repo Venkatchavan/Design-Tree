@@ -37,11 +37,10 @@ const SERVICES = [
 ];
 
 const AREA_KEYS = [
-  'Project Directory',
+  'Documents',
   'Meetings',
   'Meeting Scheduling & Coordination',
   'Drawings Sharing / Issuing',
-  'RFI',
   'Architectural Updates',
   'Client Updates',
   'Revision Status',
@@ -50,7 +49,7 @@ const AREA_KEYS = [
 ];
 
 const AREA_DESCRIPTIONS = {
-  'Project Directory': 'Project directory preparation / updating / coordination',
+  'Documents': 'Document preparation / updating / coordination',
   'Meetings': 'Meetings attended / participated in',
   'Meeting Scheduling & Coordination': 'Scheduling and coordinating project meetings',
   'Drawings Sharing / Issuing': 'Drawings shared / issued to Client / Architect / PMC / Team',
@@ -423,21 +422,7 @@ const APPROVAL_OPTIONS = [
   { value: 'Proposed', label: 'Pending' },
 ];
 
-const CONTACT_RESPONSIBILITY = {
-  client: 'Client approvals and sign-off',
-  architect: 'Base drawings, design coordination',
-  coordinator: 'Overall coordination, single point of contact',
-};
-
-const COMPANY_NAME = 'Datum';
-
-function projectIdOf(p) {
-  return String(p?._id ?? p?.id ?? '');
-}
-
-function orgLabel(sub) {
-  return sub ? `${COMPANY_NAME} (${sub})` : COMPANY_NAME;
-}
+function projectIdOf(p) { return String(p?._id ?? p?.id ?? ''); }
 
 function approvalLabel(value) {
   return APPROVAL_OPTIONS.find((o) => o.value === value)?.label ?? (value || '—');
@@ -541,7 +526,7 @@ export function TeamAllocationPanel({ projects, employees }) {
   const queryClient = useQueryClient();
   const [project, setProject] = useState('');
   const [service, setService] = useState('');
-  const [role, setRole] = useState('');
+  const [editing,setEditing]=useState(null);
   const [nominatedBy, setNominatedBy] = useState('');
   const [member, setMember] = useState('');
   const [status, setStatus] = useState('Approved');
@@ -560,12 +545,12 @@ export function TeamAllocationPanel({ projects, employees }) {
       const current = teamEntries(p);
       const selected = employees.find(e=>String(e._id ?? e.id)===body.member);
       const name = empName(selected);
-      const idx = current.findIndex((r) => r.service === body.service && r.employee === body.member);
+      const idx = current.findIndex(r=>editing ? r.service===editing.service && (editing.employee?r.employee===editing.employee:r.name===editing.name) : r.service===body.service && r.employee===body.member);
       const row = {
         service: body.service,
         name,
         employee:body.member,
-        role: body.role,
+        role: idx>=0?current[idx].role:undefined,
         nominatedBy: body.nominatedBy,
         approvalStatus: body.status,
       };
@@ -579,7 +564,7 @@ export function TeamAllocationPanel({ projects, employees }) {
       queryClient.invalidateQueries({ queryKey: ['project', body.project] });
       setProject('');
       setService('');
-      setRole('');
+      setEditing(null);
       setNominatedBy('');
       setMember('');
       setStatus('Approved');
@@ -594,7 +579,7 @@ export function TeamAllocationPanel({ projects, employees }) {
 
   function pickService(value) {
     setService(value);
-    setRole(TEAM_SERVICES.find((s) => s.key === value)?.role ?? '');
+
   }
 
   function submit(e) {
@@ -613,7 +598,7 @@ export function TeamAllocationPanel({ projects, employees }) {
       setErr('Team member is required.');
       return;
     }
-    save.mutate({ project, service, role: role.trim(), nominatedBy: nominatedBy || undefined, member, status });
+    save.mutate({ project, service, nominatedBy: nominatedBy || undefined, member, status });
   }
 
   return (
@@ -623,7 +608,7 @@ export function TeamAllocationPanel({ projects, employees }) {
         <div className="field-grid">
           <div className="form-row">
             <label className="form-label">Project</label>
-            <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
+            <select className="filter-select" style={{ width: '100%' }} disabled={!!editing} value={project} onChange={(e) => setProject(e.target.value)}>
               <option value="">Select project</option>
               {projects.map((p) => <option key={projectIdOf(p)} value={projectIdOf(p)}>{p.name ?? p.code ?? '—'}</option>)}
             </select>
@@ -634,10 +619,6 @@ export function TeamAllocationPanel({ projects, employees }) {
               <option value="">Select service</option>
               {TEAM_SERVICES.map((s) => <option key={s.key} value={s.key}>{s.key}</option>)}
             </select>
-          </div>
-          <div className="form-row">
-            <label className="form-label">Role / responsibility</label>
-            <input className="form-input" value={role} onChange={(e) => setRole(e.target.value)} />
           </div>
           <div className="form-row">
             <label className="form-label">Nominated by (Director)</label>
@@ -669,8 +650,9 @@ export function TeamAllocationPanel({ projects, employees }) {
         {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
         {ok && <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>{ok}</p>}
         <button type="submit" className="btn-primary" disabled={save.isPending} style={{ marginTop: 8 }}>
-          {save.isPending ? 'Saving…' : 'Record allocation'}
+          {save.isPending ? 'Saving…' : editing?'Save allocation changes':'Record allocation'}
         </button>
+        {editing&&<button type="button" className="approve-btn" onClick={()=>{setEditing(null);setProject('');setService('');setMember('');setNominatedBy('');}}>Cancel edit</button>}
       </form>
       {withTeam.length === 0 ? (
         <EmptyState text="No team allocations recorded yet." />
@@ -680,6 +662,7 @@ export function TeamAllocationPanel({ projects, employees }) {
             <div className="section-label">{p.name ?? p.code ?? '—'}</div>
             <DataTable
               columns={[
+                { key: 'edit', label: 'Action', render:r=><button type="button" className="approve-btn" onClick={()=>{setProject(projectIdOf(p));setService(r.service);setMember(r.employee||String(employeeByName(employees,r.name)?._id||''));setNominatedBy(r.nominatedBy||'');setStatus(r.approvalStatus||'Approved');setEditing(r);setOk('');}}>Edit allocation</button> },
                 { key: 'service', label: 'Service' },
                 { key: 'nominatedBy', label: 'Nominated by', render: (r) => r.nominatedBy || '—' },
                 { key: 'name', label: 'Team member' },
@@ -692,53 +675,6 @@ export function TeamAllocationPanel({ projects, employees }) {
         ))
       )}
 
-    </Panel>
-  );
-}
-
-function contactRows(project, myAllocs, employees) {
-  const c = project.contacts ?? {};
-  const rows = [];
-  const push = (name, org, role, contact, resp) => {
-    if (!name) return;
-    rows.push({ name, org: org || '—', role: role || '—', contact: contact || '—', resp: resp || '—' });
-  };
-  push(c.client?.name, c.client?.company, c.client?.designation || 'Client', c.client?.email, CONTACT_RESPONSIBILITY.client);
-  push(c.architect?.name, c.architect?.company, c.architect?.designation || 'Design architect', c.architect?.email, CONTACT_RESPONSIBILITY.architect);
-  for (const t of teamEntries(project)) {
-    const emp = employeeByName(employees, t.name);
-    push(t.name, orgLabel(t.service), 'Principal team lead', emp?.email, `${t.service} queries and submissions`);
-  }
-  const coord = coordinatorFor(projectIdOf(project), myAllocs, employees);
-  if (coord) push(empName(coord), orgLabel('Coordinator'), 'SPOC', coord.email, CONTACT_RESPONSIBILITY.coordinator);
-  return rows;
-}
-
-function ProjectContactsPanel({ projects, myAllocs, employees, loading }) {
-  return (
-    <Panel title="Project contacts & coordination">
-      {loading ? (
-        <EmptyState text="Loading…" />
-      ) : projects.length === 0 ? (
-        <EmptyState text="No project contacts yet." />
-      ) : (
-        projects.map((p) => (
-          <div key={projectIdOf(p)} style={{ marginBottom: 16 }}>
-            <div className="section-label">{p.name ?? p.code ?? '—'}</div>
-            <DataTable
-              columns={[
-                { key: 'name', label: 'Name' },
-                { key: 'org', label: 'Organisation' },
-                { key: 'role', label: 'Role' },
-                { key: 'contact', label: 'Contact' },
-                { key: 'resp', label: 'Coordination responsibility' },
-              ]}
-              rows={contactRows(p, myAllocs, employees)}
-              emptyText="No project contacts yet."
-            />
-          </div>
-        ))
-      )}
     </Panel>
   );
 }
@@ -762,7 +698,7 @@ export function DirectoryTab({ myAllocs, activeProjects, activeLoading, canEdit 
     <>
       {canEdit && <TeamAllocationPanel projects={projects} employees={employees} />}
       <InhouseTeamPanel projects={projects} myAllocs={myAllocs} employees={employees} loading={activeLoading} />
-      <ProjectContactsPanel projects={projects} myAllocs={myAllocs} employees={employees} loading={activeLoading} />
+
     </>
   );
 }

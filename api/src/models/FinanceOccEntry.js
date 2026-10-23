@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 // Finance Operation Control Center (OCC) — reference: FIN_OCC_HTML iframe app.
@@ -118,4 +119,4 @@ financeOccSchema.index({ kind: 1, status: 1, createdAt: -1 });
 
 export const FinanceOccEntry =
   mongoose.models.FinanceOccEntry ??
-  mongoose.model('FinanceOccEntry', financeOccSchema);
+  mongoose.model('FinanceOccEntry', auditProjectSchema(financeOccSchema));

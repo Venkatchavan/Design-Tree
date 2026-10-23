@@ -1,3 +1,5 @@
+import { serviceNames } from '../lib/services.js';
+import { CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -292,6 +294,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
   const canRevCreate = canRevisionCreateRole(role);
   const canRecruitStatus = canRecruitStatusRole(role);
 
+  const [revisionTab,setRevisionTab]=useState('log');
   const [tab, setTab] = useState(projectWorkspace ? 'overview' : 'assign');
   const [selId, setSelId] = useState('');
   const [allocOpen, setAllocOpen] = useState(false);
@@ -312,6 +315,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
   const teamsQ = useQuery({
     queryKey: ['my-teams', { role, super: superUser }],
     queryFn: () => (superUser ? teamsApi.list() : teamsMineApi.list()),
+    refetchInterval: 10000,
   });
   const teams = useMemo(() => {
     const d = teamsQ.data;
@@ -590,7 +594,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
       { key: 'assign', label: 'Assign work' },
       { key: 'deliverables', label: 'Deliverables' },
       { key: 'awaiting', label: 'Awaiting response' },
-      { key: 'revisions', label: 'Revision log' },
+      { key: 'revision', label: 'Revision' },
       { key: 'drawings', label: 'Drawing register' },
       { key: 'recruitment', label: 'Recruitment requests' },
     ]) : workspaceTabs;
@@ -609,7 +613,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
   return (
     <>
       <div className="page-head">
-        <div className="page-title">{projectWorkspace ? 'Project team workspace' : isTL ? 'Assign work' : 'My projects and team'}</div>
+        <div className="page-title">{projectWorkspace ? 'Project team workspace' : isTL ? 'My team' : 'My projects and team'}</div>
         <div className="page-sub">
           {selectedTeam ? `${(selectedTeam.lead && typeof selectedTeam.lead === 'object' ? [selectedTeam.lead.firstName, selectedTeam.lead.lastName].filter(Boolean).join(' ') : selectedTeam.lead) || 'Team Lead'} · ${selectedTeam.service ?? 'Structural'}` : (teamsQ.data?.items?.[0] ? `${(teamsQ.data.items[0].lead && typeof teamsQ.data.items[0].lead === 'object' ? [teamsQ.data.items[0].lead.firstName, teamsQ.data.items[0].lead.lastName].filter(Boolean).join(' ') : teamsQ.data.items[0].lead) || 'Team Lead'} · ${teamsQ.data.items[0].service ?? 'Structural'}` : (me ? `${empName(selfEmployee ?? me.employee ?? me)} · ${bootstrap?.role?.label ?? role}` : (teamsQ.isLoading ? 'Loading…' : `role ${role || '—'}`)))}
         </div>
@@ -644,6 +648,8 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
         <KpiCard label="Open revisions" value={openRevisionCount} accent="violet" />
       </div>
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
+      {tab==='revision'&&<Tabs tabs={[{key:'entry',label:'Revision entry'},{key:'log',label:'Revision log'}]} active={revisionTab} onChange={setRevisionTab}/>}
+      <CoordinationPanel service={selectedTeam?.service}/>
       {tab === 'completion' && projectWorkspace && <StageRequestPanel projectId={projectId} />}
       {tab === 'meetings' && <SpocMeetings projectId={projectId} readOnly />}
       <>
@@ -701,42 +707,13 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
 
           {tab === 'team' && (
             <>
-              <Panel title={`My team — ${members.length} people`}>
-                {members.length === 0 ? (
-                  <EmptyState text="No members in this team yet." />
-                ) : (
-                  roleGroups.map((g) => (
-                    <div key={g.key} style={{ marginBottom: 14 }}>
-                      <div className="section-label">{g.key} ({g.members.length})</div>
-                      {role === 'assoc_technical_director' ? (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-                          {g.members.map((m, i) => {
-                            const exp = expText(memberEmp(m));
-                            return (
-                              <span key={memberId(m) || i} className="roster-chip" style={{ cursor: 'default' }}>
-                                {memberName(m)}{exp ? ` · ${exp}` : ''}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                      <ul style={{ fontSize: 13.5, paddingLeft: 18, margin: '6px 0' }}>
-                        {g.members.map((m, i) => {
-                          const e = memberEmp(m);
-                          const exp = expText(e);
-                          return (
-                            <li key={memberId(m) || i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                              <span>{memberName(m)}{exp ? ` · ${exp}` : ''}</span>
-                              <button type="button" className="approve-btn" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => setAllocOpen(true)}>Edit</button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                      )}
-                    </div>
-                  ))
-                )}
-                </Panel>
+              {([...new Map(teams.flatMap(t=>(t.projects??[]).map(p=>[idOf(p),p]))).values()]).map(p=>{
+                const projectTeams=teams.filter(t=>(t.projects??[]).some(project=>idOf(project)===idOf(p)));
+                const confirmed=new Set(projectTeams.filter(t=>t.allocationProject).flatMap(t=>serviceNames([t.service])));
+                const roster=projectTeams.filter(t=>t.allocationProject||!serviceNames([t.service]).some(service=>confirmed.has(service))).flatMap(t=>(t.members??[]).map(m=>({...m,service:t.service})));
+                const unique=[...new Map(roster.map(m=>[memberId(m)+'-'+m.service,m])).values()];
+                return <Panel key={idOf(p)} title={p.name||p.code||'Project'} sub="Project team"><DataTable columns={[{key:'name',label:'Team member',render:memberName},{key:'service',label:'Service'},{key:'designation',label:'Designation',render:m=>memberEmp(m)?.designation||'—'},{key:'experience',label:'Experience',render:m=>expText(memberEmp(m))}]} rows={unique} emptyText="No confirmed members yet."/></Panel>;
+              })}
               <Panel title="Team efficiency this week" sub="Hours spent in each stage of project design">
                 <DataTable
                   columns={[
@@ -901,7 +878,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
             </>
           )}
 
-          {tab === 'revisions' && (
+          {(tab === 'revisions'||(tab==='revision'&&revisionTab==='log')) && (
             <>
               <Panel title="Revision log" sub="Structural revisions across my projects, from raised to cleared — includes revisions requested by client or architect and logged by the SPOC">
                 {!canApprove && (
@@ -967,6 +944,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
 
           {tab === 'drawings' && (
             <>
+              {isTL&&<DrawingEntryPanel teamProjects={teamProjects} revisionValues={teamDrawings.map(d=>d.rev||d.revNo).filter(Boolean)}/>}
               <Panel title="Structural drawing register" sub="Uploaded by design engineers and drafters, across my projects">
               <DataTable
                 columns={[
@@ -987,9 +965,9 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
             </>
           )}
 
-          {tab === 'revision-entry' && (
+          {(tab === 'revision-entry'||(tab==='revision'&&revisionTab==='entry')) && (
             <>
-              <RevisionEntryPanel teamProjects={teamProjects} canCreate={canRevCreate} />
+              <RevisionEntryPanel teamProjects={teamProjects} members={members} canCreate={canRevCreate} />
               <Panel title="Email notifications sent" sub="One line per recipient, generated when a revision is submitted">
                 <DataTable
                   columns={[
@@ -1177,7 +1155,7 @@ function blankDrawing() {
   return { drawingNo: '', title: '', service: '', stage: '', rev: '', date: '', issuedTo: '', method: '' };
 }
 
-function DrawingEntryPanel({ teamProjects }) {
+function DrawingEntryPanel({ teamProjects, revisionValues=[] }) {
   const queryClient = useQueryClient();
   const [projectId, setProjectId] = useState('');
   const [rows, setRows] = useState([blankDrawing()]);
@@ -1248,7 +1226,7 @@ function DrawingEntryPanel({ teamProjects }) {
                     {TL_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </td>
-                <td><input className="form-input" value={r.rev} placeholder="R00" onChange={(e) => patchRow(i, { rev: e.target.value })} /></td>
+                <td><select aria-label="Drawing revision" className="filter-select" value={r.rev} onChange={e=>patchRow(i,{rev:e.target.value})}>{[...new Set([r.rev,...revisionValues,...Array.from({length:100},(_,n)=>`R${String(n).padStart(2,'0')}`)])].map(v=><option key={v}>{v}</option>)}</select></td>
                 <td><input type="date" className="form-input" value={r.date} onChange={(e) => patchRow(i, { date: e.target.value })} /></td>
                 <td>
                   <select className="filter-select" value={r.issuedTo} onChange={(e) => patchRow(i, { issuedTo: e.target.value })}>
@@ -1483,46 +1461,17 @@ function DecideModal({ entry, onClose, decide }) {
   );
 }
 
-function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverables, delivLog }) {
-  const queryClient = useQueryClient();
-  const [selMembers, setSelMembers] = useState([]);
-  const [project, setProject] = useState('');
-  const [stage, setStage] = useState('');
-  const [deliverable, setDeliverable] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [priority, setPriority] = useState('Medium');
-  const [notes, setNotes] = useState('');
-  const [err, setErr] = useState('');
-  const [drawProject, setDrawProject] = useState('');
-  const [uploadFile, setUploadFile] = useState(null);
-  const [drawRows, setDrawRows] = useState([{ drawingNo: '', title: '', service: '', stage: '', rev: 'R00', date: '', issuedTo: '', method: '' }]);
-  const [drawErr, setDrawErr] = useState('');
-  const [delivRows, setDelivRows] = useState(null);
-  const [delivErr, setDelivErr] = useState('');
-
-  function editableDelivRows() {
-    if (delivRows) return delivRows;
-    return deliverables
-      .filter((d) => !drawProject || idOf(d.project) === drawProject)
-      .map((d) => ({
-        _id: String(d._id),
-        stage: d.stage ?? '',
-        deliverable: d.deliverable ?? '',
-        assignedTo: d.assignedTo?._id ?? d.assignedTo ?? '',
-        assignedName: typeof d.assignedTo === 'object' && d.assignedTo ? empName(d.assignedTo) : '',
-        plannedDate: String(d.plannedDate ?? '').slice(0, 10),
-        dueDate: String(d.dueDate ?? '').slice(0, 10),
-        status: d.status ?? 'Not started',
-      }));
-  }
-
-  function setDelivRow(id, patch) {
-    setDelivRows((prev) => {
-      const base = prev ?? editableDelivRows();
-      return base.map((r) => (String(r._id ?? r._key) === String(id) ? { ...r, ...patch } : r));
-    });
-  }
-
+function AssignWorkPanel({members,roleGroups,teamProjects,myTasks}) {
+  const queryClient=useQueryClient();
+  const [section,setSection]=useState('deliverables');
+  const [selMembers,setSelMembers]=useState([]);
+  const [project,setProject]=useState('');
+  const [stage,setStage]=useState('');
+  const [deliverable,setDeliverable]=useState('');
+  const [dueDate,setDueDate]=useState('');
+  const [priority,setPriority]=useState('Medium');
+  const [notes,setNotes]=useState('');
+  const [err,setErr]=useState('');
   const allIds = members.map(memberId).filter(Boolean);
   const create = useMutation({
     mutationFn: (body) => tasksApi.create(body),
@@ -1567,102 +1516,9 @@ function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverab
     });
   }
 
-  function setDrawRow(i, patch) {
-    setDrawRows((rs) => rs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
-  }
-
-  async function handleDrawingList(e) {
-    e.preventDefault();
-    setDrawErr('');
-    const rows = drawRows.filter((r) => r.drawingNo.trim() || r.title.trim());
-    if (rows.length === 0) {
-      setDrawErr('Enter at least one drawing row.');
-      return;
-    }
-    if (!drawProject) {
-      setDrawErr('Select a project first (drawings are filed against it).');
-      return;
-    }
-    try {
-      for (const r of rows) {
-        if (!r.drawingNo.trim() || !r.title.trim()) throw new Error('Each drawing row needs a number and a title.');
-        await drawingsApi.create({
-          project: drawProject,
-          drawingNo: r.drawingNo.trim(),
-          title: r.title.trim(),
-          service: r.service || undefined,
-          stage: r.stage || undefined,
-          rev: r.rev || undefined,
-          date: r.date || undefined,
-          issuedTo: r.issuedTo || undefined,
-          method: r.method || undefined,
-        });
-      }
-      queryClient.invalidateQueries({ queryKey: ['drawings'] });
-      setDrawRows([{ drawingNo: '', title: '', service: '', stage: '', rev: 'R00', date: '', issuedTo: '', method: '' }]);
-    } catch (ex) {
-      setDrawErr(ex.message);
-    }
-  }
-
-  const saveDelivList = useMutation({
-    mutationFn: async (rows) => {
-      for (const r of rows) {
-        if (r._id) {
-          await deliverablesApi.update(r._id, {
-            stage: r.stage || undefined,
-            deliverable: r.deliverable || undefined,
-            assignedTo: r.assignedTo || undefined,
-            plannedDate: r.plannedDate || undefined,
-            dueDate: r.dueDate || undefined,
-            status: r.status || undefined,
-          });
-        } else {
-          if (!r.deliverable.trim()) continue;
-          await deliverablesApi.create({
-            project: drawProject || project || undefined,
-            stage: r.stage || undefined,
-            deliverable: r.deliverable.trim(),
-            assignedTo: r.assignedTo || undefined,
-            plannedDate: r.plannedDate || undefined,
-            dueDate: r.dueDate || undefined,
-            status: r.status || undefined,
-          });
-        }
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deliverables'] });
-      queryClient.invalidateQueries({ queryKey: ['deliverables-log'] });
-      setDelivRows(null);
-      setDelivErr('');
-    },
-    onError: (e) => setDelivErr(e.message),
-  });
-
-  function addDelivRow() {
-    setDelivRows((prev) => {
-      const base = prev ?? editableDelivRows();
-      return [...base, { _key: `new-${Date.now()}`, stage: '', deliverable: '', assignedTo: '', assignedName: '', plannedDate: '', dueDate: '', status: 'Not started' }];
-    });
-  }
-
-  function removeDelivRow(id) {
-    setDelivRows((prev) => {
-      const base = prev ?? editableDelivRows();
-      // Only unsaved rows can be removed (no delete API for saved rows).
-      return base.filter((r) => !(r._key && String(r._key) === String(id)));
-    });
-  }
-
-  function pickDelivProject(v) {
-    setDrawProject(v);
-    setDelivRows(null);
-  }
-
-  return (
-    <>
-      <Panel title="Assign work to a team member" sub="Creates a task that appears in that designer's “My work” view, grouped by stage">
+  return <><Tabs tabs={[{key:'deliverables',label:'List of Deliverables'},{key:'task',label:'Assign Task'},{key:'mine',label:'Work Assigned by Me'}]} active={section} onChange={setSection}/>
+    {section==='deliverables'&&<DeliverableListPanel teamProjects={teamProjects} members={members}/>}
+    {section==='task'&&(      <Panel title="Assign work to a team member" sub="Creates a task that appears in that designer's “My work” view, grouped by stage">
         <form onSubmit={handleCreate}>
           <div className="form-row">
             <label className="form-label">Team member(s)</label>
@@ -1742,135 +1598,8 @@ function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverab
           </button>
         </form>
       </Panel>
-      <Panel title="Upload a list of drawings" sub="Bulk-add multiple drawings to the register at once, instead of one at a time">
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          if (uploadFile) {
-            setDrawErr('Spreadsheet import is not supported here — type the rows below.');
-            return;
-          }
-          handleDrawingList(e);
-        }}>
-          <div className="form-row" style={{ maxWidth: 360 }}>
-            <label className="form-label">Project *</label>
-            <select className="filter-select" style={{ width: '100%' }} value={drawProject} onChange={(e) => setDrawProject(e.target.value)}>
-              <option value="">Select project</option>
-              {teamProjects.map((p) => (
-                <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
-                  {p.name} ({p.code ?? ''})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="form-row"><label className="form-label">Drawing list file</label><input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} /></div>
-          {drawErr && <div className="login-error" role="alert" style={{ display: 'block' }}>{drawErr}</div>}
-          <button type="submit" className="btn-primary">Upload list</button>
-        </form>
-      </Panel>
-      <Panel title="Enter drawing details" sub="No file to upload? Type the drawing details straight into the register. Leave unused rows blank.">
-        <div className="form-row" style={{ maxWidth: 360, marginBottom: 10 }}>
-          <label className="form-label">Project *</label>
-          <select className="filter-select" style={{ width: '100%' }} value={drawProject} onChange={(e) => setDrawProject(e.target.value)}>
-            <option value="">Select project</option>
-            {teamProjects.map((p) => (
-              <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
-                {p.name} ({p.code ?? ''})
-              </option>
-            ))}
-          </select>
-        </div>
-        <DataTable
-          columns={[
-            { key: 'drawingNo', label: 'Drawing no. *', render: (r) => <input className="form-input" placeholder="e.g. S-302" value={r.drawingNo} onChange={(e) => setDrawRow(r._i, { drawingNo: e.target.value })} /> },
-            { key: 'title', label: 'Title', render: (r) => <input className="form-input" placeholder="Drawing title" value={r.title} onChange={(e) => setDrawRow(r._i, { title: e.target.value })} /> },
-            { key: 'service', label: 'Service', render: (r) => <input className="form-input" value={r.service} onChange={(e) => setDrawRow(r._i, { service: e.target.value })} /> },
-            { key: 'stage', label: 'Stage', render: (r) => <input className="form-input" placeholder="Preliminary concept" value={r.stage} onChange={(e) => setDrawRow(r._i, { stage: e.target.value })} /> },
-            { key: 'rev', label: 'Rev', render: (r) => <input className="form-input" value={r.rev} onChange={(e) => setDrawRow(r._i, { rev: e.target.value })} /> },
-            { key: 'date', label: 'Date', render: (r) => <input className="form-input" type="date" value={r.date} onChange={(e) => setDrawRow(r._i, { date: e.target.value })} /> },
-            { key: 'issuedTo', label: 'Issued to', render: (r) => <input className="form-input" value={r.issuedTo} onChange={(e) => setDrawRow(r._i, { issuedTo: e.target.value })} /> },
-            { key: 'method', label: 'Method', render: (r) => <input className="form-input" value={r.method} onChange={(e) => setDrawRow(r._i, { method: e.target.value })} /> },
-            { key: 'remove', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => setDrawRows((rs) => rs.filter((_, j) => j !== r._i))}>Remove</button> },
-          ]}
-          rows={drawRows.map((r, i) => ({ ...r, _i: i }))}
-          emptyText="No rows."
-        />
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <button type="button" className="approve-btn" onClick={() => setDrawRows((rs) => [...rs, { drawingNo: '', title: '', service: '', stage: '', rev: 'R00', date: '', issuedTo: '', method: '' }])}>
-            + Add row
-          </button>
-          <button type="button" className="btn-primary" onClick={handleDrawingList}>
-            Add to register
-          </button>
-        </div>
-        {drawErr && <div className="login-error" role="alert" style={{ display: 'block' }}>{drawErr}</div>}
-      </Panel>
-      <Panel title="List of deliverables" sub="Editable list for the project — change any field in place, add or remove rows, then save">
-        <div className="form-row" style={{ maxWidth: 360, marginBottom: 10 }}>
-          <label className="form-label">Project</label>
-          <select className="filter-select" style={{ width: '100%' }} value={drawProject} onChange={(e) => pickDelivProject(e.target.value)}>
-            <option value="">All projects</option>
-            {teamProjects.map((p) => (
-              <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
-                {p.name} ({p.code ?? ''})
-              </option>
-            ))}
-          </select>
-        </div>
-        <DataTable
-          columns={[
-            { key: 'stage', label: 'Stage', render: (r) => <input className="form-input" value={r.stage} onChange={(e) => setDelivRow(r._id ?? r._key, { stage: e.target.value })} /> },
-            { key: 'deliverable', label: 'Deliverable', render: (r) => <input className="form-input" value={r.deliverable} onChange={(e) => setDelivRow(r._id ?? r._key, { deliverable: e.target.value })} /> },
-            { key: 'assignedTo', label: 'Assigned to', render: (r) => <input className="form-input" value={r.assignedTo ?? ''} placeholder={r.assignedName ?? ''} onChange={(e) => setDelivRow(r._id ?? r._key, { assignedTo: e.target.value })} /> },
-            { key: 'plannedDate', label: 'Planned date', render: (r) => <input className="form-input" type="date" value={String(r.plannedDate ?? '').slice(0, 10)} onChange={(e) => setDelivRow(r._id ?? r._key, { plannedDate: e.target.value })} /> },
-            { key: 'dueDate', label: 'Due date', render: (r) => <input className="form-input" type="date" value={String(r.dueDate ?? '').slice(0, 10)} onChange={(e) => setDelivRow(r._id ?? r._key, { dueDate: e.target.value })} /> },
-            { key: 'status', label: 'Status', render: (r) => <input className="form-input" value={r.status} onChange={(e) => setDelivRow(r._id ?? r._key, { status: e.target.value })} /> },
-            { key: 'remove', label: '', render: (r) => (r._key ? <button type="button" className="approve-btn" onClick={() => removeDelivRow(r._key)}>Remove</button> : '—') },
-          ]}
-          rows={delivRows ?? editableDelivRows()}
-          emptyText="No deliverables."
-        />
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <button type="button" className="approve-btn" onClick={addDelivRow}>
-            + Add deliverable
-          </button>
-          <button type="button" className="btn-primary" disabled={saveDelivList.isPending} onClick={() => saveDelivList.mutate(delivRows ?? editableDelivRows())}>
-            {saveDelivList.isPending ? 'Saving…' : 'Save list'}
-          </button>
-        </div>
-        {delivErr && <div className="login-error" role="alert" style={{ display: 'block' }}>{delivErr}</div>}
-        {saveDelivList.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{saveDelivList.error.message}</div>}
-      </Panel>
-      <Panel title="Deliverables log" sub="Every deliverable added, changed or removed from the list above, newest first">
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
-          <span className="form-label">Project</span>
-          <select className="filter-select" value={drawProject} onChange={(e) => pickDelivProject(e.target.value)}>
-            <option value="">All projects</option>
-            {teamProjects.map((p) => (
-              <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
-                {p.name} ({p.code ?? ''})
-              </option>
-            ))}
-          </select>
-        </div>
-        {delivLog.length === 0 ? (
-          <EmptyState text="No deliverable changes logged yet. Edit the list above and press “Save list”." />
-        ) : (
-          <DataTable
-            columns={[
-              { key: 'when', label: 'When', render: (r) => fmtDate(r.at ?? r.createdAt) },
-              { key: 'project', label: 'Project', render: (r) => projLabel(r.project) },
-              { key: 'action', label: 'Action' },
-              { key: 'stage', label: 'Stage' },
-              { key: 'deliverable', label: 'Deliverable' },
-              { key: 'details', label: 'Details', render: (r) => r.details ?? r.remarks ?? '—' },
-              { key: 'by', label: 'By', render: (r) => (r.by && typeof r.by === 'object' ? empName(r.by) : (r.by ? String(r.by).slice(-6) : '—')) },
-            ]}
-            rows={delivLog}
-            emptyText="No deliverable changes logged yet. Edit the list above and press “Save list”."
-          />
-        )}
-      </Panel>
-      <Panel title="Tasks assigned by me" sub="Most recent first · appears live in each designer's own “My work” view">
+)}
+    {section==='mine'&&(      <Panel title="Tasks assigned by me" sub="Most recent first · appears live in each designer's own “My work” view">
         {myTasks.length === 0 ? (
           <EmptyState text="No tasks assigned by you yet." />
         ) : (
@@ -1889,8 +1618,8 @@ function AssignWorkPanel({ members, roleGroups, teamProjects, myTasks, deliverab
           />
         )}
       </Panel>
-    </>
-  );
+)}
+  </>;
 }
 
 function DeliverableAddPanel({ teamProjects, members }) {
@@ -1971,7 +1700,7 @@ function DeliverableAddPanel({ teamProjects, members }) {
   );
 }
 
-function RevisionEntryPanel({ teamProjects, canCreate }) {
+function RevisionEntryPanel({ teamProjects, members=[], canCreate }) {
   const queryClient = useQueryClient();
   const [project, setProject] = useState('');
   const [stage, setStage] = useState('');
@@ -2060,7 +1789,7 @@ function RevisionEntryPanel({ teamProjects, canCreate }) {
           </div>
           <div className="form-row">
             <label className="form-label">Assigned to *</label>
-            <input className="form-input" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} placeholder="Select team member" />
+            <select aria-label="Revision assigned to" className="filter-select" value={assignedTo} onChange={e=>setAssignedTo(e.target.value)}><option value="">Select team member</option>{members.map(m=><option key={memberId(m)} value={memberId(m)}>{memberName(m)}</option>)}</select>
           </div>
           <div className="form-row">
             <label className="form-label">Raised by</label>

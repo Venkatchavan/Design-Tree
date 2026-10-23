@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const MEETING_CATEGORIES = ['Scheduled', 'Sudden'];
@@ -161,4 +162,4 @@ const meetingSchema = new mongoose.Schema(
 );
 
 export const Meeting =
-  mongoose.models.Meeting ?? mongoose.model('Meeting', meetingSchema);
+  mongoose.models.Meeting ?? mongoose.model('Meeting', auditProjectSchema(meetingSchema));

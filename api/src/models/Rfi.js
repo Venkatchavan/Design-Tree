@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 const rfiSchema = new mongoose.Schema(
@@ -31,4 +32,4 @@ const rfiSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-export const Rfi = mongoose.models.Rfi ?? mongoose.model('Rfi', rfiSchema);
+export const Rfi = mongoose.models.Rfi ?? mongoose.model('Rfi', auditProjectSchema(rfiSchema));

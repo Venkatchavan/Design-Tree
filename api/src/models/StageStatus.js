@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const BILLING_READINESS = ['Billed', 'Ready for billing', 'Pending'];
@@ -49,4 +50,4 @@ stageStatusSchema.index({ project: 1, service: 1, stage: 1 }, { unique: true });
 
 export const StageStatus =
   mongoose.models.StageStatus ??
-  mongoose.model('StageStatus', stageStatusSchema);
+  mongoose.model('StageStatus', auditProjectSchema(stageStatusSchema));

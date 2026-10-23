@@ -84,7 +84,7 @@ router.post(
 // Finance OCC bill / PO documents (PDF or image, up to 20 MB each).
 router.post(
   '/finance-occ/:id/files',
-  requireInternal(),
+  (req,res,next)=>req.user.role==='finance'?next():res.status(403).json({message:'Finance manages these attachments.'}),
   (req, res, next) =>
     financeOccUpload(req, res, (err) =>
       err ? next(err) : addFinanceOccDocs(req, res, next),

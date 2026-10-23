@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const RECRUITMENT_STATUSES = [
@@ -39,4 +40,4 @@ const recruitmentSchema = new mongoose.Schema(
 
 export const Recruitment =
   mongoose.models.Recruitment ??
-  mongoose.model('Recruitment', recruitmentSchema);
+  mongoose.model('Recruitment', auditProjectSchema(recruitmentSchema));

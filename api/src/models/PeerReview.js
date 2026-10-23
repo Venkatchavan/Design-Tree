@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 const checklistItemSchema = new mongoose.Schema(
@@ -71,4 +72,4 @@ const peerReviewSchema = new mongoose.Schema(
 
 export const PeerReview =
   mongoose.models.PeerReview ??
-  mongoose.model('PeerReview', peerReviewSchema);
+  mongoose.model('PeerReview', auditProjectSchema(peerReviewSchema));

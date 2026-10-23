@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 // Per-project team and status figures for the BIM and GBS workspaces.
@@ -60,4 +61,4 @@ serviceDashboardSchema.index({ project: 1, service: 1 }, { unique: true });
 
 export const ServiceDashboard =
   mongoose.models.ServiceDashboard ??
-  mongoose.model('ServiceDashboard', serviceDashboardSchema);
+  mongoose.model('ServiceDashboard', auditProjectSchema(serviceDashboardSchema));

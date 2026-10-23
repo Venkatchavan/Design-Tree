@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const TRANSMITTAL_STATUSES = [
@@ -86,4 +87,4 @@ transmittalSchema.index(
 
 export const Transmittal =
   mongoose.models.Transmittal ??
-  mongoose.model('Transmittal', transmittalSchema);
+  mongoose.model('Transmittal', auditProjectSchema(transmittalSchema));

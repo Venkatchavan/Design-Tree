@@ -15,11 +15,11 @@ export async function startLocalFixture(port = 0) {
   const { default: bcrypt } = await api('node_modules/bcryptjs/index.js');
   await mongoose.connect(mongo.getUri());
   const models = {};
-  for (const name of ['User', 'Employee', 'Branch', 'Project', 'Team', 'SpocAllocation', 'Certificate', 'Meeting', 'TransmittalRecord', 'StageStatus']) Object.assign(models, await api(`src/models/${name}.js`));
+  for (const name of ['User', 'Employee', 'Branch', 'Project', 'Team', 'SpocAllocation', 'Certificate', 'Meeting', 'TransmittalRecord', 'StageStatus', 'ProjectAudit', 'FinanceOccEntry', 'PeerReview', 'Drawing']) Object.assign(models, await api(`src/models/${name}.js`));
   const password = 'LocalFlow-' + randomBytes(12).toString('hex');
   const passwordHash = await bcrypt.hash(password, 4);
   const cast = {};
-  for (const [key, role] of Object.entries({ admin: 'admin_billing', dmh: 'design_mgmt_head', td: 'technical_director', md: 'founding_director', associate: 'associate_director', atd: 'assoc_technical_director', finance: 'finance', tl: 'team_lead', spoc: 'coordinator', engineer: 'engineer_drafter', outsider: 'engineer_drafter', qs: 'qs' })) {
+  for (const [key, role] of Object.entries({ admin: 'admin_billing', dmh: 'design_mgmt_head', td: 'technical_director', md: 'founding_director', associate: 'associate_director', atd: 'assoc_technical_director', finance: 'finance', tl: 'team_lead', spoc: 'coordinator', engineer: 'engineer_drafter', outsider: 'engineer_drafter', qs: 'qs', wd:'working_director', ed:'executive_director', peer:'peer_reviewer', peerhead:'peer_review_head', marketing:'marketing' })) {
     const employee = await models.Employee.create({ empId: `TEST-${key}`, firstName: `Test ${key}`, lastName: 'Workflow', designation: key === 'tl' ? 'Team Lead' : role, department: 'Structural', branch: 'Test HQ', experience: '5' });
     const user = await models.User.create({ name: `Test ${key}`, email: `${key}@datum-test.example`, role, employee: employee._id, passwordHash });
     cast[key] = { email: user.email, employee: String(employee._id), user: String(user._id), role };
@@ -30,6 +30,9 @@ export async function startLocalFixture(port = 0) {
   await models.Team.create({ name: 'Assigned Structural team', service: 'STR', branch: 'Test HQ', lead: cast.tl.employee, projects: [project._id], members: [{ employee: cast.engineer.employee }, { employee: cast.qs.employee }] });
   await models.Team.create({ name: 'Unrelated team', service: 'HVAC', branch: 'Test HQ', lead: cast.outsider.employee, projects: [other._id], members: [{ employee: cast.outsider.employee }] });
   await models.SpocAllocation.create({ project: project._id, coordinator: cast.spoc.employee, status: 'Approved', services: ['SMEPF'] });
+  await models.Team.create({name:'Assigned Peer Review team',service:'Peer Review',branch:'Test HQ',projects:[project._id],lead:cast.peerhead.employee,members:[{employee:cast.peer.employee}]});
+  await models.PeerReview.create({project:project._id,status:'Pending',submission:'Peer fixture'});
+  await models.Project.create({name:'Marketing-owned portfolio',code:'TEST-MARKETING',origin:'marketing',status:'Active'});
   const { createApp } = await api('src/app.js');
   const server = await new Promise(resolve => { const s = createApp().listen(port, '127.0.0.1', () => resolve(s)); });
   const {initRealtime} = await api('src/realtime/io.js');

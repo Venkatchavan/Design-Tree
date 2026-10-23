@@ -1,3 +1,4 @@
+import { CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -2066,6 +2067,7 @@ export default function WorkTrackingPage({ bootstrap, user }) {
           </div>
         </Panel>
       )}
+      <CoordinationPanel service={({qs:'QS',qaqc:'QA/QC',bim:'BIM',gbs:'GBS',peer:'Peer Review'})[variant]}/>
       <Tabs
         tabs={[
           { key: 'work', label: 'Log work' },

@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 // SPOC ↔ project allocation (§5.1 step 17, §4.22 Project Directory).
@@ -30,4 +31,4 @@ spocAllocationSchema.index({ project: 1, coordinator: 1 }, { unique: true });
 
 export const SpocAllocation =
   mongoose.models.SpocAllocation ??
-  mongoose.model('SpocAllocation', spocAllocationSchema);
+  mongoose.model('SpocAllocation', auditProjectSchema(spocAllocationSchema));

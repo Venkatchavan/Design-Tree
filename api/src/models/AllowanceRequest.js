@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 import {
   FLOW_STATUSES,
@@ -65,4 +66,4 @@ allowanceRequestSchema.pre('validate', function deriveStatus() {
 
 export const AllowanceRequest =
   mongoose.models.AllowanceRequest ??
-  mongoose.model('AllowanceRequest', allowanceRequestSchema);
+  mongoose.model('AllowanceRequest', auditProjectSchema(allowanceRequestSchema));

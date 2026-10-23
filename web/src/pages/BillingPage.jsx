@@ -19,9 +19,9 @@ const STATUSES = ['Pending', 'Ready for billing', 'Billed', 'Flagged'];
 const SERVICES_10 = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS'];
 const STAGES_5 = ['CD', 'SD', 'DD', 'TD', 'GFC'];
 const STAGE_STATUS = ['Not Started', 'In Progress', 'PTL Requested', 'Pending SPOC confirm', 'Completed'];
-const WRITERS = new Set([ 'working_director', 'admin_billing', 'executive_director']);
+const WRITERS = new Set(['admin_billing']);
 const STAGE_WRITERS = new Set(['admin_billing', 'executive_director', 'coordinator', 'design_mgmt_head', 'team_lead']);
-const DIRECTOR_READONLY = new Set(['founding_director', 'working_director', 'executive_director']);
+const DIRECTOR_READONLY = new Set(['founding_director', 'working_director', 'executive_director','associate_director','technical_director','assoc_technical_director']);
 const money = (v) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 const moneyCr = (v) => {
   const n = Number(v ?? 0);
@@ -174,7 +174,7 @@ export default function BillingPage({ bootstrap }) {
             { key: 'currentStatus', label: 'Current status' },
             { key: 'delayDays', label: 'Delay', render: (r) => delayLabel(r) },
             { key: 'billingReadiness', label: 'Billing readiness', render: (r) => <StatusPill status={r.billingReadiness}>{readinessLabel(r)}</StatusPill> },
-            { key: 'actions', label: '', render: (r) => r.billingReadiness === 'Ready for billing' ? <button type="button" className="approve-btn" disabled={stageBilledMut.isPending} onClick={() => stageBilledMut.mutate(r._id)}>Mark billed</button> : '—' },
+            { key: 'actions', label: '', render: (r) => canPostClaimOrStage && r.billingReadiness === 'Ready for billing' ? <button type="button" className="approve-btn" disabled={stageBilledMut.isPending} onClick={() => stageBilledMut.mutate(r._id)}>Mark billed</button> : '—' },
           ]} rows={stageFiltered} emptyText="No stage readiness records yet." />
           )}
         </Panel>
@@ -210,7 +210,7 @@ export default function BillingPage({ bootstrap }) {
           { key: 'scope', label: 'Scope of work', render: (r) => r.scope?.map((s) => `${s.service}: ${s.scope || '—'}`).join(' · ') || '—' },
           { key: 'quotedFee', label: 'Quoted fee', render: (r) => money(r.quotedFee ?? r.scopedTotal) },
           { key: 'hospitality', label: 'Hospitality', render: (r) => r.hospitality ? 'Client-arranged' : '—' },
-          { key: 'edit', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality })}>Edit</button> },
+          { key: 'edit', label: '', render: (r) => canWrite ? <button type="button" className="approve-btn" onClick={() => setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality })}>Edit</button> : null },
         ]} rows={quoteRows} emptyText="Create a project first to see quoted fees." /></Panel>
       </> : <>
         <Panel title="Project quoted fee" sub="The contracted fee per project — read automatically by Finance's Project Cost & Performance tracker, so it only needs to be set here"><DataTable columns={[
@@ -218,7 +218,7 @@ export default function BillingPage({ bootstrap }) {
           { key: 'scope', label: 'Scope of work', render: (r) => r.scope?.map((s) => `${s.service}: ${s.scope || '—'}`).join(' · ') || '—' },
           { key: 'quotedFee', label: 'Quoted fee', render: (r) => money(r.quotedFee ?? r.scopedTotal) },
           { key: 'hospitality', label: 'Hospitality (client-arr.)', render: (r) => r.hospitality ? 'Client-arranged' : '—' },
-          { key: 'edit', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality })}>Edit</button> },
+          { key: 'edit', label: '', render: (r) => canWrite ? <button type="button" className="approve-btn" onClick={() => setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality })}>Edit</button> : null },
         ]} rows={quoteRows} emptyText="Create a project first to see quoted fees." /></Panel>
         <Panel title="Set / update quoted fee"><form onSubmit={updateQuote} className="field-grid">
           <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={quote.project} onChange={(e) => setQuote({ ...quote, project: e.target.value })}><option value="">--Select project--</option>{quoteRows.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}</select></div>
