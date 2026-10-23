@@ -176,7 +176,8 @@ export default function Sidebar({
   useEffect(() => {
     try {
       const raw = localStorage.getItem(storageKey);
-      setOrder(raw ? JSON.parse(raw) : null);
+      const parsed = raw ? JSON.parse(raw) : null;
+      setOrder(Array.isArray(parsed) ? parsed.filter((k) => typeof k === 'string') : null);
     } catch {
       setOrder(null);
     }
