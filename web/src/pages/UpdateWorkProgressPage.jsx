@@ -270,7 +270,7 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
         )}
       </Panel>
 
-      <Panel title="2. What are you logging work against?">
+      {!isPTL && <Panel title="2. What are you logging work against?">
         <div className="form-row" style={{ maxWidth: 420, marginBottom: 0 }}>
           <label className="form-label">Assigned Daily Work from PTL/TL</label>
           <select
@@ -288,7 +288,7 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
             ))}
           </select>
         </div>
-      </Panel>
+      </Panel>}
 
       <Panel title="3. Update work progress">
         <form onSubmit={handleSubmit}>

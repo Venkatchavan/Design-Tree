@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const BOOKING_STATUSES = [
@@ -50,4 +51,4 @@ const travelBookingSchema = new mongoose.Schema(
 
 export const TravelBooking =
   mongoose.models.TravelBooking ??
-  mongoose.model('TravelBooking', travelBookingSchema);
+  mongoose.model('TravelBooking', auditProjectSchema(travelBookingSchema));

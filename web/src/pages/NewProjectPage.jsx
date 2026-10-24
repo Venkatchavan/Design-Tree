@@ -1,8 +1,8 @@
+import ContactPicker from '../components/ContactPicker.jsx';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { employeesApi, projectsApi } from '../lib/api.js';
-import { marketingApi } from '../lib/phase4aApi.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
 import Panel from '../components/Panel.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -32,13 +32,12 @@ const PRINCIPAL_TEAM_LEAD_SERVICES = [
 const CONTACT_KINDS = [
   { key: 'client', label: 'Client Contact', contactType: 'Client' },
   { key: 'architect', label: 'Architect Contact', contactType: 'Architect' },
-  { key: 'pmc', label: 'PMC Contact', contactType: 'PMC' },
-  { key: 'peerReview', label: 'Peer Review Contact', contactType: 'Peer Review' },
   { key: 'billing', label: 'Contact Person for Billing', contactType: 'Client' },
 ];
 
 const BLANK = {
   name: '',
+  sourcePerson: '', referral: '', startDate: '', expectedCompletion: '', actualCompletion: '',
   state: '',
   projectType: '',
   branch: '',
@@ -102,109 +101,6 @@ function F({ label, children }) {
     <div className="form-row">
       <label className="form-label">{label}</label>
       {children}
-    </div>
-  );
-}
-
-function ContactPicker({ label, contactType, value, onPick, onClear }) {
-  const [q, setQ] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ name: '', organization: '', phone: '', email: '' });
-  const [err, setErr] = useState('');
-  const searchQ = useQuery({
-    queryKey: ['contact-search', q],
-    queryFn: () => marketingApi.contacts.list({ search: q }),
-    enabled: q.trim().length >= 2,
-  });
-  const create = useMutation({
-    mutationFn: (body) => marketingApi.contacts.create(body),
-    onSuccess: (data) => {
-      onPick(data?.item ?? data);
-      setAdding(false);
-      setDraft({ name: '', organization: '', phone: '', email: '' });
-      setErr('');
-      setQ('');
-    },
-    onError: (e) => setErr(e.message),
-  });
-
-  if (value) {
-    return (
-      <div className="form-row">
-        <label className="form-label">{label}</label>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span><b>{value.name}</b>{value.organization ? ` · ${value.organization}` : ''}{value.phone ? ` · ${value.phone}` : ''}</span>
-          <button type="button" className="approve-btn" onClick={onClear}>Change</button>
-        </div>
-      </div>
-    );
-  }
-  if (adding) {
-    return (
-      <div className="form-row">
-        <label className="form-label">{label} — new</label>
-        <div className="field-grid">
-          <F label="Name *"><input required className="form-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></F>
-          <F label="Organization *"><input required className="form-input" value={draft.organization} onChange={(e) => setDraft({ ...draft, organization: e.target.value })} /></F>
-          <F label="Phone *"><input required className="form-input" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} /></F>
-          <F label="Email"><input type="email" className="form-input" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></F>
-        </div>
-        {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={create.isPending || !draft.name.trim() || !draft.organization.trim() || !draft.phone.trim()}
-            onClick={() => create.mutate({
-              type: contactType,
-              name: draft.name.trim(),
-              organization: draft.organization.trim(),
-              phone: draft.phone.trim(),
-              email: draft.email.trim() || undefined,
-            })}
-          >
-            {create.isPending ? 'Saving…' : 'Save contact'}
-          </button>
-          <button type="button" className="approve-btn" onClick={() => setAdding(false)}>Cancel</button>
-        </div>
-      </div>
-    );
-  }
-  const hits = searchQ.data?.items ?? arr(searchQ.data);
-  function arr(v) {
-    return Array.isArray(v) ? v : (v?.items ?? []);
-  }
-  return (
-    <div className="form-row">
-      <label className="form-label">{label}</label>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <input
-          className="form-input"
-          style={{ maxWidth: 260 }}
-          placeholder="Search Contacts..."
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <button type="button" className="approve-btn" onClick={() => { setAdding(true); setDraft((d) => ({ ...d, name: q })); }}>Add</button>
-      </div>
-      {q.trim().length >= 2 && (
-        <div className="location-results">
-          {searchQ.isLoading ? <div className="location-result-row">Searching…</div>
-            : hits.length === 0 ? <div className="location-result-row">No matches — use Add to create it.</div>
-              : hits.slice(0, 8).map((c) => (
-                <div
-                  key={c._id ?? c.id}
-                  className="location-result-row"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => { onPick({ company: c.organization, name: c.name, phone: c.phone, email: c.email }); setQ(''); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { onPick({ company: c.organization, name: c.name, phone: c.phone, email: c.email }); setQ(''); } }}
-                >
-                  <b>{c.name}</b>{c.organization ? ` · ${c.organization}` : ''}{c.phone ? ` · ${c.phone}` : ''}
-                </div>
-              ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -310,6 +206,8 @@ export default function NewProjectPage() {
     const fee = numOrUndef(form.fee);
     return {
       name: form.name.trim(),
+      sourcePerson: form.sourcePerson.trim(), referral: form.referral.trim(),
+      startDate: form.startDate || undefined, expectedCompletion: form.expectedCompletion || undefined, actualCompletion: form.actualCompletion || undefined,
       state: form.state || undefined,
       projectType: form.projectType || undefined,
       branch: form.branch || undefined,
@@ -350,8 +248,6 @@ export default function NewProjectPage() {
       contacts: {
         client: projectContact(form.contacts.client),
         architect: projectContact(form.contacts.architect),
-        pmc: projectContact(form.contacts.pmc),
-        peerReview: projectContact(form.contacts.peerReview),
         billing: projectContact(form.contacts.billing),
       },
     };
@@ -481,6 +377,7 @@ export default function NewProjectPage() {
         <Panel title="Information">
           <div className="field-grid">
             <F label="Project Name"><input className="form-input" placeholder="e.g. Business park - Tower A" value={form.name} onChange={(e) => set('name', e.target.value)} required /></F>
+            {['sourcePerson','referral','startDate','expectedCompletion','actualCompletion'].map((key)=><F key={key} label={({sourcePerson:'Source person',referral:'Referral',startDate:'Start date',expectedCompletion:'Expected completion',actualCompletion:'Actual completion'})[key]}><input className="form-input" aria-label={key} type={key==='sourcePerson'||key==='referral'?'text':'date'} value={form[key]} onChange={e=>set(key,e.target.value)}/></F>)}
             <F label="Job Number">
               <div className="field-grid" style={{ gridTemplateColumns: 'minmax(150px, 0.7fr) minmax(180px, 1fr)', gap: 8 }}>
                 <select
@@ -675,7 +572,7 @@ export default function NewProjectPage() {
           </F>
         </Panel>
 
-        <Panel title="Contact Details" sub="Client, architect, PMC and peer review points of contact for this project, and who to reach for billing">
+        <Panel title="Contact Details" sub="Client, architect and billing contacts. PMC and Peer Review are maintained by the assigned SPOC.">
           {CONTACT_KINDS.map((c) => (
             <ContactPicker
               key={c.key}

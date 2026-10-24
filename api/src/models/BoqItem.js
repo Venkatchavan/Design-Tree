@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 // QS/BOQ line items. QS logs items directly (Draft → Submitted → Approved,
@@ -39,4 +40,4 @@ boqItemSchema.pre('validate', function autoAmount() {
 boqItemSchema.index({ project: 1, itemNo: 1 }, { unique: true, sparse: true });
 
 export const BoqItem =
-  mongoose.models.BoqItem ?? mongoose.model('BoqItem', boqItemSchema);
+  mongoose.models.BoqItem ?? mongoose.model('BoqItem', auditProjectSchema(boqItemSchema));

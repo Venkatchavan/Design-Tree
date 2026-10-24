@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 const bimWorkOrderSchema = new mongoose.Schema(
@@ -30,4 +31,4 @@ const bimWorkOrderSchema = new mongoose.Schema(
 
 export const BimWorkOrder =
   mongoose.models.BimWorkOrder ??
-  mongoose.model('BimWorkOrder', bimWorkOrderSchema);
+  mongoose.model('BimWorkOrder', auditProjectSchema(bimWorkOrderSchema));

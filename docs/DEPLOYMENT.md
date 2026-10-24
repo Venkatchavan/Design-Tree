@@ -1,7 +1,13 @@
 # Deployment run sheet — in-house Windows server via UltraViewer
 
+<<<<<<< HEAD
 Target: single Windows 10/11 host, Docker Desktop, direct IP access on
 HTTP **80** and HTTPS **443**. No domain name, no Cloudflare tunnel.
+=======
+Target: single Windows 10/11 host, Docker Desktop, LAN access over
+`https://<server>` with an internal trusted certificate. Read
+`CONTAINER_SECURITY_UPDATE.md` and `ENVIRONMENT.md` first; every `EDIT-ME` below is marked in its file.
+>>>>>>> ebf855a0b34d7337a162904c96f0600c409a1610
 
 - Public IP: `103.169.236.122`
 - LAN IP: `192.168.1.50`
@@ -55,6 +61,7 @@ one internal host:port.
 4. Create host folders: `E:\DesignTree\uploads`, `E:\DesignTree\backups`.
    (The database lives in the Docker named volume `designtree_mongo-data`,
    not a host folder — no folder needed for it.)
+<<<<<<< HEAD
 5. Copy `.env.example` → `.env`, fill every `REPLACE_WITH_…` value. Set:
    - `CLIENT_ORIGIN=https://103.169.236.122,http://103.169.236.122,http://192.168.1.50`
    - `PUBLIC_IP=103.169.236.122`
@@ -68,6 +75,57 @@ one internal host:port.
 8. Edit `gateway/locations.conf` EDIT-ME spot: the `allow 192.168.1.50;` line
    (= FD office PC address).
 9. Remove any old Cloudflare tunnel container/service — not used.
+=======
+5. Copy `.env.example` → `.env`, fill every `REPLACE_WITH_…` value.
+6. TLS (`certs/`, all host-local, never committed):
+   - Internal CA (2026-10-11, v2): `certs/ca.key` (RSA 4096, keep secret) +
+     `certs/ca.crt` (self-signed, 10y, `CN=DesignTree LAN CA`,
+     SHA256 `93:49:40:FB:71:C3:BB:7B:8F:7B:15:4B:BA:29:DB:59:63:3D:D2:10:F1:0E:0F:B8:CE:39:A4:55:BD:2C:49:2E`).
+     The CN is deliberately DIFFERENT from the pre-2026 `DesignTree Internal
+     CA`: Firefox resolves issuers by subject name, and a same-name CA with a
+     different key makes clients report "invalid signature" instead of trying
+     the right CA. Never re-use an old CA subject for a new CA key.
+     **Back up `ca.key` with the deploy secrets outside the repo** — losing it
+     means rebuilding trust on every office PC. Distribute only `ca.crt`.
+     (Superseded same-name CA archived as `ca-samename-20261011.*` — never install.)
+   - Server cert: new `server.key` + CSR, signed by the CA (SANs =
+     `IP:192.168.1.50,IP:103.169.236.122`, 825d, with SKID/AKID).
+     SAN/extension list lives in `certs/server.ext`; verify with
+     `openssl verify -CAfile certs/ca.crt certs/server.crt` (must say `OK`)
+     plus a key↔cert modulus match before swapping into `server.crt/.key`.
+     Back up the previous pair first.
+   - Server cert: new `server.key` + CSR, signed by the CA (SANs =
+     `IP:192.168.1.50,IP:103.169.236.122`, 825d). SAN list lives in
+     `certs/server.ext`; verify with
+     `openssl verify -CAfile certs/ca.crt certs/server.crt` (must say `OK`)
+     plus a key↔cert modulus match before swapping into `server.crt/.key`.
+     Back up the previous pair (`prev-<date>-*`) first.
+   - After any cert swap: `docker compose restart gateway` (a plain `up -d`
+     does nothing — image config is unchanged; nginx reads the mounted files
+     at start). Confirm with
+     `openssl s_client -connect 192.168.1.50:443 -CAfile certs/ca.crt`
+     → `Verify return code: 0 (ok)`.
+   - Trust (once per office PC): use the `rollout/` folder — copy
+     `install-designtree-ca.bat` + `designtree-lan-ca.crt` together to the PC
+     (USB/share), double-click the `.bat`, accept the UAC prompt. It verifies
+     the CA file fingerprint, installs into Local Machine Trusted Root, sets
+     the Firefox machine policy to use the Windows store, and verifies the
+     install. Then fully restart the browser: clean padlock, no click-through.
+     If the script reports a fingerprint mismatch, stop — the folder copy is
+     stale. (Manual fallback: elevated `certutil -addstore root ca.crt` +
+     Firefox `about:config security.enterprise_roots.enabled=true`.)
+     Thereafter reissues stay trusted — no per-PC work until the CA itself
+     expires (2036). Refresh `rollout/designtree-lan-ca.crt` if the CA is ever
+     replaced (the installer refuses stale files).
+   - Note: bare-IP certs still warn for outsiders (no public CA for bare IPs)
+     — expected. Ports are never part of certs, so `:8443` needs no change.
+7. Database admin is disabled by default. No gateway password file is required.
+   Temporary loopback-only access uses the explicit `dbadmin` profile; see
+   `CONTAINER_SECURITY_UPDATE.md` before enabling the legacy image.
+8. Edit `gateway/nginx.conf` EDIT-ME spots: `server_name` (= CLIENT_ORIGIN hosts,
+   space-separated, e.g. `103.169.236.122 192.168.1.50`)
+   Database admin is never proxied through the gateway.
+>>>>>>> ebf855a0b34d7337a162904c96f0600c409a1610
 
 ## Phase 2 — reboot and reconnect
 
@@ -78,10 +136,16 @@ Reboot, then reconnect with a fresh UltraViewer session (keep ID/password handy)
 
 ```powershell
 cd C:\DesignTree
+<<<<<<< HEAD
 docker compose up -d --build --remove-orphans
 docker compose ps                       # mongo + api: healthy; gateway/dbadmin/certbot: running
 docker compose run --rm api npm run seed  # one-shot superuser login (upsert, safe to re-run)
 docker compose logs -f certbot          # watch the IP certificate request
+=======
+docker compose up -d --build
+docker compose ps                       # mongo + api: healthy; gateway: running; dbadmin disabled
+docker compose run --rm api node src/scripts/seed.js  # one-shot superuser login (upsert, safe to re-run)
+>>>>>>> ebf855a0b34d7337a162904c96f0600c409a1610
 ```
 
 The gateway starts immediately on HTTP/HTTPS. LAN `443` always uses the
@@ -110,8 +174,13 @@ reloads nginx automatically within 60 seconds.
 - [ ] Upload a file (e.g. meeting reference doc), then
       `docker compose down` → `docker compose up -d` → file still downloadable
       (proves the HDD bind mount works).
+<<<<<<< HEAD
 - [ ] `http://<server>/dbadmin` from the FD PC: nginx password prompt →
       express login → tables visible. From any other PC: blocked.
+=======
+- [ ] `https://<server>/dbadmin` and `/dbadmin/` return 403 for every client.
+      The optional admin profile is off after the maintenance session.
+>>>>>>> ebf855a0b34d7337a162904c96f0600c409a1610
 - [ ] `.\scripts\backup.ps1` runs clean; both artifacts listed with sizes.
 - [ ] `docker compose logs --tail=50 api gateway certbot` shows no errors.
 

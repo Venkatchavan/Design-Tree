@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 // Company-wide historical register of printed/issued transmittals (§4.9).
@@ -35,4 +36,4 @@ transmittalRecordSchema.pre('validate', function autoTotal() {
 
 export const TransmittalRecord =
   mongoose.models.TransmittalRecord ??
-  mongoose.model('TransmittalRecord', transmittalRecordSchema);
+  mongoose.model('TransmittalRecord', auditProjectSchema(transmittalRecordSchema));

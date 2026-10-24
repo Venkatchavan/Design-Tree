@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const SPOC_SERVICES = [
@@ -13,6 +14,7 @@ export const SPOC_SERVICES = [
   'GBS',
 ];
 export const SPOC_WORK_AREAS = [
+  'Documents',
   'Project Directory',
   'Meetings',
   'Meeting Scheduling & Coordination',
@@ -77,4 +79,4 @@ spocEntrySchema.pre('validate', function autoTotal() {
 });
 
 export const SpocEntry =
-  mongoose.models.SpocEntry ?? mongoose.model('SpocEntry', spocEntrySchema);
+  mongoose.models.SpocEntry ?? mongoose.model('SpocEntry', auditProjectSchema(spocEntrySchema));

@@ -15,7 +15,7 @@ export async function portfolio(_req, res, next) {
   try {
     const [projects, briefs] = await Promise.all([
       Project.find(
-        {},
+        { origin: 'marketing' },
         { name: 1, code: 1, clientName: 1, branch: 1, status: 1, completion: 1, currentStage: 1, location: 1, contacts: 1, description: 1 },
       ).sort({ name: 1 }),
       MarketingBrief.find({}),
@@ -56,6 +56,7 @@ export async function portfolio(_req, res, next) {
 
 export async function getBrief(req, res, next) {
   try {
+    if (!(await Project.exists({_id:req.query.project ?? req.params.projectId,origin:'marketing'}))) return res.status(404).json({message:'Portfolio project not found.'});
     const doc = await MarketingBrief.findOne({
       project: req.query.project ?? req.params.projectId,
     }).populate('project', 'name code clientName currentStage completion status location branch contacts description');
@@ -71,6 +72,7 @@ export async function saveBrief(req, res, next) {
     return res.status(400).json({ message: 'Invalid data.' });
   }
   try {
+    if (!(await Project.exists({_id:parsed.data.project,origin:'marketing'}))) return res.status(404).json({message:'Portfolio project not found.'});
     const doc = await MarketingBrief.findOneAndUpdate(
       { project: parsed.data.project },
       { ...parsed.data, updatedBy: req.user.id },

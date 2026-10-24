@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 const conveyanceSchema = new mongoose.Schema(
@@ -32,4 +33,4 @@ const conveyanceSchema = new mongoose.Schema(
 
 export const Conveyance =
   mongoose.models.Conveyance ??
-  mongoose.model('Conveyance', conveyanceSchema);
+  mongoose.model('Conveyance', auditProjectSchema(conveyanceSchema));

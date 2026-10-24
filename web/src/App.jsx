@@ -1,3 +1,4 @@
+import PeerDashboardPage from './pages/PeerDashboardPage.jsx';
 import { useQuery } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { bootstrapApi, meApi } from './lib/api.js'
@@ -44,6 +45,7 @@ import TravelBookingPage from './pages/TravelBookingPage.jsx'
 import AnnouncementsPage from './pages/AnnouncementsPage.jsx'
 
 const VIEW_COMPONENTS = {
+  'peer-dashboard': PeerDashboardPage,
   announcements: AnnouncementsPage,
   'announcement-detail': AnnouncementsPage,
   dashboard: DashboardPage,
@@ -93,6 +95,8 @@ const VIEW_COMPONENTS = {
 
 // Non-nav views and the nav view whose presence grants their route.
 const EXTRA_ROUTES = [
+  {key:'work-tracking',when:'peer-dashboard',parent:'peer-dashboard'},
+  {key:'project-detail',when:'peer-dashboard',parent:'peer-dashboard'},
   { key: 'announcement-detail', when: 'announcements', parent: 'announcements' },
   { key: 'project-detail', when: 'dashboard', parent: 'dashboard' },
   { key: 'new-project', when: 'dashboard', parent: 'dashboard' },

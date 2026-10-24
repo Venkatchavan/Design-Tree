@@ -1,4 +1,4 @@
-import MyTeamPage from './MyTeamPage.jsx';
+import { SpocContacts, ProjectEdit, ProjectAudit, CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import StageApprovalPanel from '../components/StageApprovalPanel.jsx';
 import { DirectoryTab } from './MyCoordinationPage.jsx';
 import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
@@ -25,7 +25,7 @@ import LocationModal from '../components/LocationModal.jsx';
 
 const COORD_TABS = [
   { key: 'overview', label: 'Overview' },
-  { key: 'documents', label: 'Documents' },
+  { key: 'documents', label: 'Project Directory' },
   { key: 'meetings', label: 'Meetings' },
   { key: 'deliverables', label: 'Deliverables & drawings' },
   { key: 'revisions', label: 'Revision logs' },
@@ -609,9 +609,10 @@ export default function ProjectDetailPage({ bootstrap }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [modal, setModal] = useState(null);
+  const [detailsOpen,setDetailsOpen]=useState(false);
   const [locOpen, setLocOpen] = useState(false);
   const [spocId, setSpocId] = useState('');
-  const [top, setTop] = useState(bootstrap?.role?.key === 'team_lead' ? 'team-workspace' : 'coordinator');
+  const [top, setTop] = useState('coordinator');
   const [coord, setCoord] = useState('overview');
   const [documentsTab, setDocumentsTab] = useState('directory');
   const [stageStatusFilter, setStageStatusFilter] = useState('');
@@ -745,7 +746,6 @@ export default function ProjectDetailPage({ bootstrap }) {
   const contacts = asObj(project.contacts);
   const client = asObj(contacts.client);
   const architect = asObj(contacts.architect);
-  const pmc = asObj(contacts.pmc);
   const billing = asObj(contacts.billing);
   const loc = asObj(project.location);
 
@@ -943,7 +943,7 @@ export default function ProjectDetailPage({ bootstrap }) {
       <Panel title="Project summary">
         <div className="field-grid">
           <Field label="Project" value={project.name} />
-          <Field label="Code" value={project.code} mono />
+          <Field label="Job number" value={project.jobNumber} mono />
           <Field label="Client" value={project.clientName || contactText(contacts.client)} />
           <Field label="Status" value={<StatusPill tone={statusTone(project.status)}>{project.status ?? '—'}</StatusPill>} />
 
@@ -991,6 +991,7 @@ export default function ProjectDetailPage({ bootstrap }) {
           </div>
         )}
         {isAdmin && <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+          <button type="button" className="approve-btn" onClick={() => setDetailsOpen(true)}>Edit project details</button>
           <button type="button" className="approve-btn" onClick={() => setModal('owner')}>Change owner</button>
           <button type="button" className="approve-btn" onClick={() => setModal('dates')}>Edit dates</button>
           <button type="button" className="approve-btn" onClick={() => setLocOpen(true)}>Change Location</button>
@@ -1009,7 +1010,7 @@ export default function ProjectDetailPage({ bootstrap }) {
         </div>
       </Panel>
 
-      <Panel title="Client and contacts">
+      <Panel title="Project contacts">
         <div className="field-grid">
           <Field label="Client name" value={client.company || client.name || project.clientName} />
           <Field label="Client SPOC" value={project.clientSpoc} />
@@ -1019,12 +1020,12 @@ export default function ProjectDetailPage({ bootstrap }) {
           <Field label="Architect" value={architect.company || architect.name} />
           <Field label="Architect email" value={architect.email} />
           <Field label="Architect contact" value={architect.phone} />
-          <Field label="PMC" value={pmc.company || pmc.name} />
-          <Field label="PMC email" value={pmc.email} />
-          <Field label="PMC contact" value={pmc.phone} />
         </div>
       </Panel>
 
+      <Panel title="Client contact details"><div className="field-grid">{[['pmc','PMC'],['peerReview','Peer Review']].map(([key,label])=><div key={key}><b>{label}</b><div>{contacts[key]?.name||contacts[key]?.company||'—'}</div><div>{contacts[key]?.email}</div><div>{contacts[key]?.phone}</div></div>)}</div></Panel>
+      {detailsOpen&&<ProjectEdit project={project} onClose={()=>setDetailsOpen(false)}/>}
+      {(['admin_billing','founding_director','working_director','executive_director','associate_director','technical_director','assoc_technical_director'].includes(role))&&<ProjectAudit projectId={id}/>}
       <Panel title="Scope and services">
         <DataTable
           columns={[
@@ -1135,8 +1136,7 @@ export default function ProjectDetailPage({ bootstrap }) {
       )}
 
       <StageApprovalPanel projectId={id} role={role} />
-      <Tabs tabs={role === 'team_lead' ? [{ key: 'team-workspace', label: 'Team workspace' }, ...TOP_TABS] : TOP_TABS} active={top} onChange={setTop} />
-      {top === 'team-workspace' && <MyTeamPage key={id} bootstrap={bootstrap} projectId={id} projectWorkspace />}
+      <Tabs tabs={TOP_TABS} active={top} onChange={setTop} />
 
       {top === 'coordinator' && (
         <>
@@ -1169,7 +1169,7 @@ export default function ProjectDetailPage({ bootstrap }) {
             )}
             <Tabs tabs={DOCUMENT_TABS} active={documentsTab} onChange={setDocumentsTab} />
             {documentsTab === 'directory' && <>
-              <DirectoryTab myAllocs={teamQ.data?.allocations ?? []} activeProjects={[project]} activeLoading={teamQ.isLoading} canEdit={role === 'coordinator'} />
+              <><div>{role==='coordinator'&&<SpocContacts key={id} project={project}/>}</div><DirectoryTab myAllocs={teamQ.data?.allocations ?? []} activeProjects={[project]} activeLoading={teamQ.isLoading} canEdit={role === 'coordinator'} /></>
               <Panel title="Project team"><DataTable columns={[
                 { key: 'service', label: 'Service' }, { key: 'team', label: 'Team' },
                 { key: 'name', label: 'Member', render: r => empName(r.employee) },
@@ -1254,6 +1254,7 @@ export default function ProjectDetailPage({ bootstrap }) {
             </>
           )}
 
+          {coord === 'coordination' && <CoordinationPanel projectId={id} canEdit={['coordinator','design_mgmt_head','technical_director'].includes(role)}/>}
           {coord === 'coordination' && (
             isTD ? (
             <Panel title="Coordination log">

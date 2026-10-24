@@ -49,6 +49,7 @@ export const tasks = makeCrud(Task, {
   scopedByProject: true,
   create: taskSchema,
   update: taskUpdateSchema,
+  decorate:(body,req)=>({...body,...(req.method==='POST'?{createdBy:req.user.id}:{})}),
   filters: (req) => {
     const f = {};
     if (req.query.project) f.project = req.query.project;

@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const VARIATION_APPROVAL_STATUSES = ['Pending', 'Approved', 'Rejected'];
@@ -38,4 +39,4 @@ const variationSchema = new mongoose.Schema(
 );
 
 export const Variation =
-  mongoose.models.Variation ?? mongoose.model('Variation', variationSchema);
+  mongoose.models.Variation ?? mongoose.model('Variation', auditProjectSchema(variationSchema));

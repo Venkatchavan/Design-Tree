@@ -314,6 +314,7 @@ export async function createProject(req, res, next) {
       if (!employee) return res.status(400).json({ message: 'Choose a valid team lead.' });
       row.name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId;
     }
+    if(parsed.data.contacts?.pmc || parsed.data.contacts?.peerReview) return res.status(400).json({message:'PMC and Peer Review contacts are maintained by the assigned SPOC.'});
     const selectedSpoc = parsed.data.activation?.spoc;
     if (selectedSpoc && !(await Employee.exists({ _id: selectedSpoc }))) {
       return res.status(400).json({ message: 'Choose a valid SPOC.' });
@@ -323,6 +324,7 @@ export async function createProject(req, res, next) {
     const activationStatus = parsed.data.activation?.status ?? 'Pending';
     const project = await Project.create({
       ...parsed.data,
+      origin: 'admin_billing', createdBy: req.user.id,
       code,
       jobNumber,
       services: parsed.data.services ?? [],
@@ -400,7 +402,13 @@ export async function updateProject(req, res, next) {
       }
     }
     if (parsed.data.code) parsed.data.code = parsed.data.code.toUpperCase();
-    const project = await Project.findByIdAndUpdate(req.params.id, parsed.data, {
+    const update={...parsed.data};
+    if(update.contacts){
+      if(Object.hasOwn(update.contacts,'pmc')||Object.hasOwn(update.contacts,'peerReview'))return res.status(403).json({message:'Use the SPOC contact workflow.'});
+      for(const [key,value]of Object.entries(update.contacts))update['contacts.'+key]=value;
+      delete update.contacts;
+    }
+    const project = await Project.findByIdAndUpdate(req.params.id, {$set:update}, {
       new: true,
       returnDocument: 'after',
       runValidators: true,

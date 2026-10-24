@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 import { PROJECT_SERVICES } from '../config/services.js';
 
@@ -40,6 +41,8 @@ const contactSchema = new mongoose.Schema(
 
 const projectSchema = new mongoose.Schema(
   {
+    origin: { type: String, enum: ['admin_billing','marketing'], default: 'admin_billing', immutable: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', immutable: true },
     name: { type: String, required: true, trim: true, index: true },
     code: {
       type: String,
@@ -202,4 +205,4 @@ projectSchema.pre('validate', function setClientName() {
 });
 
 export const Project =
-  mongoose.models.Project ?? mongoose.model('Project', projectSchema);
+  mongoose.models.Project ?? mongoose.model('Project', auditProjectSchema(projectSchema));

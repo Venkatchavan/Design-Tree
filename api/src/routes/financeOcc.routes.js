@@ -1,3 +1,4 @@
+import { DIRECTOR_ROLES } from '../config/roles.js';
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import {
@@ -17,6 +18,7 @@ import {
 
 const router = Router();
 router.use(requireAuth);
+router.use((req,res,next)=>DIRECTOR_ROLES.includes(req.user.role)&&req.method!=='GET'?res.status(403).json({message:'Directors view Finance only.'}):next());
 
 // Reference: financeocc visible to director/working/exec/finance only (admin blocked).
 router.get('/summary', requireView('finance-occ'), financeOccSummary);

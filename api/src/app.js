@@ -1,3 +1,5 @@
+import { withRequestContext } from './utils/requestContext.js';
+import coordinationRoutes from './routes/coordination.routes.js';
 import cookieParser from 'cookie-parser';
 import announcementRoutes from './routes/announcements.routes.js';
 import { startAnnouncementWorker } from './services/announcements.js';
@@ -48,6 +50,7 @@ export function createApp() {
       credentials: true,
     }),
   );
+  app.use(withRequestContext);
   app.use(express.json());
   app.use(cookieParser());
 
@@ -59,6 +62,7 @@ export function createApp() {
   app.use('/api/meta', metaRoutes);
   app.use('/api/branches', branchesRoutes);
   app.use('/api/projects', projectsRoutes);
+  app.use('/api/coordination-items', coordinationRoutes);
   app.use('/api/employees', employeesRoutes);
   app.use('/api/employee-meetings', employeeMeetingsRoutes);
   app.use('/api/users', usersRoutes);

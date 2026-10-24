@@ -1,5 +1,6 @@
 # DesignTree production stack — single in-house Windows server.
 #
+<<<<<<< HEAD
 #   browser ──80/443──▶ gateway ─┬─ /          SPA static files
 #                                 ├─ /api/      api:5000 (cookie auth untouched)
 #                                 └─ /dbadmin/  mongo-express (FD only: IP + basic-auth + app login)
@@ -7,6 +8,11 @@
 # IP-based deployment: no domain, no Cloudflare tunnel. HTTPS uses a
 # Let's Encrypt certificate for the public IP (short-lived, auto-renewed by
 # the certbot sidecar); port 80 serves the app + ACME challenges.
+=======
+#   browser ──443──▶ gateway ─┬─ /          SPA static files
+#                             ├─ /api/      api:5000 (cookie auth untouched)
+#                             └─ /dbadmin/  blocked (optional admin is host-loopback only)
+>>>>>>> ebf855a0b34d7337a162904c96f0600c409a1610
 #
 # Data survival:
 #   - mongo-data (NAMED VOLUME designtree_mongo-data — this is where the live
@@ -19,13 +25,14 @@
 # RUNBOOK RULE: backups still run before every upgrade — see docs/BACKUP_RESTORE.md.
 #
 # First boot:  docker compose up -d --build
-#              docker compose run --rm api npm run seed   (one-shot FD login)
+#              docker compose run --rm api node src/scripts/seed.js   (one-shot FD login)
 
 name: designtree
 
 services:
   mongo:
-    image: mongo:7
+    # Stay on MongoDB 7: security patch, with no database-major migration.
+    image: mongo:7.0.45@sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7
     container_name: designtree-mongo
     restart: unless-stopped
     environment:
@@ -115,8 +122,12 @@ services:
       - "${HTTPS_PORT:-443}:443"
       - "${HTTPS_PUBLIC_PORT:-4433}:4433"
     volumes:
+<<<<<<< HEAD
       # Bootstrap cert (used until the Let's Encrypt IP cert is issued) and
       # the dbadmin password file (host-local, never committed).
+=======
+      # TLS certificates are created on the host, never committed.
+>>>>>>> ebf855a0b34d7337a162904c96f0600c409a1610
       - type: bind
         source: ./certs
         target: /etc/nginx/bootstrap
@@ -128,10 +139,6 @@ services:
       - type: bind
         source: ./certs/acme-webroot
         target: /var/www/certbot
-        read_only: true
-      - type: bind
-        source: ./gateway/.htpasswd
-        target: /etc/nginx/.htpasswd
         read_only: true
     networks:
       - frontend
@@ -165,7 +172,10 @@ services:
         condition: service_started
 
   mongo-express:
-    image: mongo-express:1
+    # The upstream stable image still embeds EOL Node 18. Keep it out of
+    # normal deployments; explicit, temporary local maintenance access only.
+    profiles: [dbadmin]
+    image: mongo-express:1.0.2@sha256:1b23d7976f0210dbec74045c209e52fbb26d29b2e873d6c6fa3d3f0ae32c2a64
     container_name: designtree-dbadmin
     restart: unless-stopped
     # Permanent loopback-only direct access (no app downtime to enable):

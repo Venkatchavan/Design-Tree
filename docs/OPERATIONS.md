@@ -7,10 +7,17 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
 | Task | Command |
 |---|---|
 | Start / stop | `docker compose up -d` / `docker compose down` (keeps all data) |
+<<<<<<< HEAD
 | Status | `docker compose ps` (want: `mongo` + `api` healthy, `gateway` + `dbadmin` + `certbot` running) |
 | Logs | `docker compose logs -f api`, `docker compose logs --tail=100 gateway`, `docker compose logs -f certbot` |
 | Update to a new build | backup first → `git pull` → `docker compose up -d --build` → smoke-test |
 | Re-seed superuser login | `docker compose run --rm api npm run seed` (upsert — safe to re-run) |
+=======
+| Status | `docker compose ps` (want: `mongo` + `api` healthy, `gateway` running; `dbadmin` disabled) |
+| Logs | `docker compose logs -f api`, `docker compose logs --tail=100 gateway` |
+| Update to a new build | follow `CONTAINER_SECURITY_UPDATE.md`: backup → pull pinned images/build → smoke-test |
+| Re-seed superuser login | `docker compose run --rm api node src/scripts/seed.js` (upsert — safe to re-run) |
+>>>>>>> ebf855a0b34d7337a162904c96f0600c409a1610
 | Rotate app secret | set new `JWT_SECRET` in `.env` → `up -d` (logs everyone out, by design) |
 | Change dbadmin password | set new `ME_CONFIG_BASICAUTH_PASSWORD` in `.env` → `docker compose up -d --no-deps mongo-express` (only dbadmin restarts, no app downtime) |
 
@@ -25,6 +32,7 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
   see the project portal only.
 - Topbar project search appears for roles with dashboard access (≥2 chars,
   top 8 hits).
+<<<<<<< HEAD
 - Health: `<scheme>://<server>/api/health` → `{"ok":true}` (first check when
   anything looks wrong).
 - DB admin: `http://127.0.0.1:18081/dbadmin/` on the server itself (express login
@@ -33,6 +41,18 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
   then open the same URL locally. `<scheme>://<server>/dbadmin` via gateway stays
   `403` (Docker Desktop NAT masks all clients as `172.18.0.1`, so its nginx
   `allow` never matches — closed by design).
+=======
+- Health: `https://<server>/api/health` → `{"ok":true}` (first check when anything looks wrong).
+- DB admin: disabled by default. Explicit temporary activation:
+  `docker compose --profile dbadmin up -d mongo-express`; stop after use with
+  `docker compose stop mongo-express`. The legacy image has an EOL runtime;
+  see `CONTAINER_SECURITY_UPDATE.md`. When enabled, use
+  `http://127.0.0.1:18081/dbadmin/` on the server itself (express login
+  with `ME_CONFIG_BASICAUTH_*` from root `.env`). Loopback-bound only — LAN/WAN
+  cannot reach it. FD remote: `ssh -N -L 18081:127.0.0.1:18081 <user>@192.168.1.50`
+  then open the same URL locally. `https://<server>/dbadmin` via gateway stays
+  `403` by explicit policy for every client.
+>>>>>>> ebf855a0b34d7337a162904c96f0600c409a1610
 - MongoDB port is **not published** — there is no direct DB access from the LAN.
 
 ## Troubleshooting
@@ -52,8 +72,8 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
 | Sign-out blocked (man-hour / attendance reason) | Engineer/Drafter + Coordinator need today's hours (`My work` / `My coordination`); late (>09:45) or short (<8h) days need a reason on the sign-out modal — not an error |
 | Uploaded file 404 after redeploy | Uploads bind broken (`HOST_UPLOADS_DIR` wrong / `D:\` unshared) — files went to the container layer; fix mount, restore from backup |
 | `mongo` unhealthy | Wrong `MONGO_ROOT_*` (special chars must be URL-encoded); check `docker compose logs mongo` |
-| `/dbadmin` 403 via gateway | Expected: nginx `allow` cannot see real IPs under Docker Desktop NAT (all clients appear as `172.18.0.1`) → use loopback `http://127.0.0.1:18081/dbadmin/` on the server or SSH tunnel |
-| `/dbadmin` asks twice | Normal: nginx basic-auth first, express login second — three gates total |
+| `/dbadmin` 403 via gateway | Expected: gateway explicitly blocks DB admin for every client → use the temporary profile and loopback `http://127.0.0.1:18081/dbadmin/` on the server or SSH tunnel |
+| `/dbadmin` on gateway | Always blocked; temporary maintenance uses loopback and mongo-express basic authentication |
 | `down -v` was run | Database volume DELETED (named volume, not a bind) — restore from the newest backup pair per `BACKUP_RESTORE.md`. Uploads (host bind) survive; the DB does not. Never run `down -v` / `volume prune` again without a verified backup |
 | Backup/restore aborts on `CLIENT_ORIGIN` | Root `.env` holds development (`localhost`) values — likely copied from `api/.env`; refill it from `.env.example` with production values |
 

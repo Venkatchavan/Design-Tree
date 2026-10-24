@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 const discrepancySchema = new mongoose.Schema(
@@ -38,4 +39,4 @@ const discrepancySchema = new mongoose.Schema(
 
 export const Discrepancy =
   mongoose.models.Discrepancy ??
-  mongoose.model('Discrepancy', discrepancySchema);
+  mongoose.model('Discrepancy', auditProjectSchema(discrepancySchema));

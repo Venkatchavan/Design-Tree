@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 const briefSchema = new mongoose.Schema(
@@ -65,9 +66,9 @@ const contactSchema = new mongoose.Schema(
 
 export const MarketingBrief =
   mongoose.models.MarketingBrief ??
-  mongoose.model('MarketingBrief', briefSchema);
+  mongoose.model('MarketingBrief', auditProjectSchema(briefSchema));
 export const CollateralRequest =
   mongoose.models.CollateralRequest ??
-  mongoose.model('CollateralRequest', collateralSchema);
+  mongoose.model('CollateralRequest', auditProjectSchema(collateralSchema));
 export const Contact =
-  mongoose.models.Contact ?? mongoose.model('Contact', contactSchema);
+  mongoose.models.Contact ?? mongoose.model('Contact', auditProjectSchema(contactSchema));

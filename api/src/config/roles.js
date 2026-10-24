@@ -7,6 +7,8 @@ export const SUPER_ROLES = ['founding_director', 'working_director', 'executive_
 
 // Directive roles (founding director → assoc technical director): exempt from
 // own man-hour entry + sign-out gate, view-only for others' hours.
+export const DIRECTOR_ROLES = ['founding_director','working_director','executive_director','associate_director','technical_director','assoc_technical_director'];
+
 export const DIRECTIVE_ROLES = [
   'founding_director',
   'working_director',
@@ -45,9 +47,9 @@ export const ROLES = [
   { key: 'qaqc_head', label: 'QA/QC Specifications Head', designation: 'QA/QC Specifications Head', home: 'qaqc-specs' },
   { key: 'bim_head', label: 'BIM Head', designation: 'BIM Head', home: 'bim-head' },
   { key: 'gbs_head', label: 'GBS Head', designation: 'GBS Head', home: 'gbs-head' },
-  { key: 'peer_review_head', label: 'Peer Review Head', designation: 'Peer Review Head', home: 'peer-review-head' },
+  { key: 'peer_review_head', label: 'Peer Review Head', designation: 'Peer Review Head', home: 'peer-dashboard' },
   { key: 'qs_head', label: 'QS Head', designation: 'QS Head', home: 'work-tracking' },
-  { key: 'peer_reviewer', label: 'Peer Review', designation: 'Peer Reviewer, Mechanical', home: 'work-tracking' },
+  { key: 'peer_reviewer', label: 'Peer Review', designation: 'Peer Reviewer, Mechanical', home: 'peer-dashboard' },
   { key: 'client', label: 'Client', designation: 'Client', home: 'project-portal' },
   { key: 'architect', label: 'Architect', designation: 'Architect of record', home: 'project-portal' },
 ];
@@ -61,6 +63,7 @@ export function isSuperRole(role) {
 // Every view: route path, display title, subtitle, build phase.
 // `guard` further restricts beyond nav membership where needed.
 export const VIEWS = {
+  'peer-dashboard': {path:'/peer-review/dashboard',label:'Peer Review dashboard',phase:4},
   'announcements': { path: '/announcements', label: 'Announcements', sub: 'Company notices for all branches', phase: 4 },
   'announcement-detail': { path: '/announcements/:id', label: 'Announcement', sub: 'Company notice', via: 'announcements', phase: 4 },
   'dashboard': { path: '/dashboard', label: 'Dashboard', sub: 'Company project dashboard', phase: 1 },
@@ -299,11 +302,8 @@ export const NAV_BY_ROLE = {
   { view: 'my-meetings' },
   ],
   peer_reviewer: [
-    { view: 'update-work-progress' },
-    { view: 'leave-travel' },
-    { view: 'employee-support' },
-    { view: 'work-tracking' },
-  { view: 'my-meetings' },
+    {view:'peer-dashboard',label:'Dashboard'},
+    {view:'leave-travel'}, {view:'employee-support'}, {view:'my-meetings'},
   ],
   marketing: [
     { view: 'marketing' },
@@ -354,11 +354,8 @@ export const NAV_BY_ROLE = {
   { view: 'my-meetings' },
   ],
   peer_review_head: [
-    { view: 'peer-review-head', label: 'Peer Review Head' },
-    { view: 'update-work-progress' },
-    { view: 'leave-travel' },
-    { view: 'employee-support' },
-  { view: 'my-meetings' },
+    {view:'peer-dashboard',label:'Dashboard'},
+    {view:'leave-travel'}, {view:'employee-support'}, {view:'my-meetings'},
   ],
   qs_head: [
     { view: 'work-tracking' },
@@ -404,6 +401,7 @@ export const INTERNAL_ROLES = ROLE_KEYS.filter(
 // Second-layer page guard (§2.7): nav membership + view flags + superuser.
 export function canAccess(role, view) {
   if (!VIEWS[view]) return false;
+  if (['peer_reviewer','peer_review_head'].includes(role) && ['work-tracking','project-detail'].includes(view)) return true;
   if (['announcements', 'announcement-detail'].includes(view)) return ROLE_KEYS.includes(role) && !['client', 'architect', 'superuser'].includes(role);
   if (VIEWS[view].financeOnly && role !== 'finance') return false;
   if (VIEWS[view].adminOnly && role !== 'admin_billing') return false;
