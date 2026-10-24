@@ -1,8 +1,12 @@
 # DesignTree production stack — single in-house Windows server.
 #
-#   browser ──443──▶ gateway ─┬─ /          SPA static files
-#                             ├─ /api/      api:5000 (cookie auth untouched)
-#                             └─ /dbadmin/  mongo-express (FD only: IP + basic-auth + app login)
+#   browser ──80/443──▶ gateway ─┬─ /          SPA static files
+#                                 ├─ /api/      api:5000 (cookie auth untouched)
+#                                 └─ /dbadmin/  mongo-express (FD only: IP + basic-auth + app login)
+#
+# IP-based deployment: no domain, no Cloudflare tunnel. HTTPS uses a
+# Let's Encrypt certificate for the public IP (short-lived, auto-renewed by
+# the certbot sidecar); port 80 serves the app + ACME challenges.
 #
 # Data survival:
 #   - mongo-data (NAMED VOLUME designtree_mongo-data — this is where the live
@@ -101,19 +105,29 @@ services:
     image: designtree-gateway:latest
     container_name: designtree-gateway
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
+      # Router: WAN:80 → host 80 (HTTP + ACME), WAN:443 → host 4433 (public
+      # HTTPS with the Let's Encrypt IP cert). Host 443 stays LAN-only HTTPS
+      # with the bootstrap cert (SANs: LAN IP + public IP) for the LAN CA.
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
-      # Public alt-port: the office WAN's 443 is taken by the mail server's
-      # webmail, so the router forwards WAN:8443 here. LAN keeps using 443
-      # directly. Two host ports → one container port is fine.
-      - "${HTTPS_PUBLIC_PORT:-8443}:443"
+      - "${HTTPS_PUBLIC_PORT:-4433}:4433"
     volumes:
-      # TLS cert + dbadmin password file. Read-only mounts; the real
-      # files are created on the host during deployment (never committed).
+      # Bootstrap cert (used until the Let's Encrypt IP cert is issued) and
+      # the dbadmin password file (host-local, never committed).
       - type: bind
         source: ./certs
-        target: /etc/nginx/certs
+        target: /etc/nginx/bootstrap
+        read_only: true
+      - type: bind
+        source: ./certs/letsencrypt
+        target: /etc/letsencrypt
+        read_only: true
+      - type: bind
+        source: ./certs/acme-webroot
+        target: /var/www/certbot
         read_only: true
       - type: bind
         source: ./gateway/.htpasswd
@@ -124,6 +138,31 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+  # Requests and renews a Let's Encrypt certificate for the public IP.
+  # Needs WAN:80 forwarded to the gateway for HTTP-01 validation. Writes
+  # into the shared certs volume; the gateway reloads nginx automatically.
+  certbot:
+    image: certbot/certbot:latest
+    container_name: designtree-certbot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - type: bind
+        source: ./certs/letsencrypt
+        target: /etc/letsencrypt
+      - type: bind
+        source: ./certs/acme-webroot
+        target: /var/www/certbot
+      - type: bind
+        source: ./scripts/certbot-entrypoint.sh
+        target: /opt/designtree/certbot-entrypoint.sh
+        read_only: true
+    entrypoint: ["/bin/sh", "/opt/designtree/certbot-entrypoint.sh"]
+    depends_on:
+      gateway:
+        condition: service_started
 
   mongo-express:
     image: mongo-express:1

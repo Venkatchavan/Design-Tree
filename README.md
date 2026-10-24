@@ -16,7 +16,7 @@ Single source of truth for roles/navigation is
 | `docs/` | Deployment, operations, backup and environment guides |
 | `e2e/` | Playwright UI + API suite (serial `specs/01-09`, isolated `designtree-e2e` DB). See `e2e/README.md` |
 | `project-reference/` | Source design mockup (not shipped in images) |
-| `certs/` | TLS cert + key (host-local, never committed) |
+| `certs/` | Bootstrap cert + Let's Encrypt working dirs (host-local, never committed) |
 
 ## Roles & auth (summary)
 
@@ -74,11 +74,17 @@ npm run test                  # api + web must already be running (see e2e/READM
 
 ## Production deployment (in-house Windows server, Docker)
 
+Direct IP access on 80 (HTTP) and 443 (HTTPS) — no domain, no Cloudflare.
+Public HTTPS uses a free Let's Encrypt certificate for the public IP, issued
+and renewed automatically by the `certbot` sidecar. LAN HTTPS stays on the
+internal CA certificate. Router must forward WAN:80 → host:80 and WAN:443 →
+host:4433; host 443 remains the LAN listener.
+
 ```
-browser ──443──▶ gateway ─┬─ /          SPA static files
-                           ├─ /api/      api:5000 (cookie auth untouched)
-                           ├─ /socket.io/ api:5000 (bell pushes, Upgrade headers)
-                           └─ /dbadmin/  mongo-express (IP allowlist + basic-auth + app login)
+browser ──80/443──▶ gateway ─┬─ /          SPA static files
+                              ├─ /api/      api:5000 (cookie auth untouched)
+                              ├─ /socket.io/ api:5000 (bell pushes, Upgrade headers)
+                              └─ /dbadmin/  mongo-express (IP allowlist + basic-auth + app login)
 ```
 
 Full run sheet: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
@@ -91,14 +97,17 @@ E2E guide: [`e2e/README.md`](e2e/README.md).
 Short version (on the server, repo root):
 
 ```powershell
-Copy-Item .env.example .env   # then fill in secrets
-# ... place certs/server.crt + server.key in certs/, gateway/.htpasswd per docs ...
-docker compose up -d --build
+Copy-Item .env.example .env   # then fill in secrets + CLIENT_ORIGIN for the server IP
+# ... create gateway/.htpasswd per docs ...
+docker compose up -d --build --remove-orphans
 docker compose run --rm api npm run seed   # one-shot superuser login (upsert, safe to re-run)
 ```
 
 Expect `docker compose ps` to show `mongo` + `api` as `healthy` and
-`gateway` + `dbadmin` as `running`.
+`gateway` + `dbadmin` + `certbot` as `running`. Users browse to the public
+IP (`https://103.169.236.122`, or `http://103.169.236.122` once WAN:80 is
+forwarded) or on LAN to `http://192.168.1.50` / `https://192.168.1.50`
+(install `rollout\install-designtree-ca.bat` once per LAN PC).
 
 ## Data safety rules (read before touching docker)
 

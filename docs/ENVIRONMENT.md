@@ -8,12 +8,16 @@ Copy `.env.example` to `.env` and fill every `REPLACE_WITH_…` value.
 
 | Name | Required | Default | Example | What breaks if wrong |
 |---|---|---|---|---|
-| `NODE_ENV` | yes | `development` | `production` | `secure` cookies need `production`+TLS; dev values leak debug behaviour |
+| `NODE_ENV` | yes | `development` | `production` | Enables production behaviour; cookie `Secure` is controlled separately by `COOKIE_SECURE` |
 | `PORT` | no | `5000` | `5000` | Must match compose/gateway expectation (`api:5000`); change all three together or not at all |
 | `VITE_API_URL` | no | `""` | *(empty)* | Keep empty: same-origin `/api`. Only set for split-domain hosting (not this deployment) |
-| `CLIENT_ORIGIN` | yes | dev URL | `https://designtree.local` or `https://103.169.236.122:8443,https://192.168.1.50` | Comma-separated allowlist for CORS + socket.io; each entry needs `https://` and must match the URL users type (port included when non-standard) and the TLS cert + nginx `server_name` |
-| `HTTP_PORT` / `HTTPS_PORT` | no | `80` / `443` | `80` / `443` | Host port bindings for gateway (LAN-side) |
-| `HTTPS_PUBLIC_PORT` | no | `8443` | `8443` | Extra host→443 mapping for the public alt-port (office WAN 443 is taken by webmail; router forwards WAN:8443 → server:443) |
+| `CLIENT_ORIGIN` | yes | dev URL | `https://103.169.236.122,http://103.169.236.122,http://192.168.1.50` | Comma-separated allowlist for CORS + socket.io; each entry needs scheme + host and must match the URL users type |
+| `HTTP_PORT` / `HTTPS_PORT` | no | `80` / `443` | `80` / `443` | Host port bindings for HTTP and LAN HTTPS; router forwards WAN:80 → `HTTP_PORT` |
+| `HTTPS_PUBLIC_PORT` | no | `4433` | `4433` | Host port for the public Let's Encrypt listener; router forwards WAN:443 → this port, so the public URL stays `https://<public-ip>` |
+| `PUBLIC_IP` | yes (TLS) | — | `103.169.236.122` | The IP the Let's Encrypt certificate is issued for; certbot/gateway read it |
+| `CERTBOT_EMAIL` | yes (TLS) | — | `admin@example.com` | ACME account contact; certbot refuses to register without it |
+| `CERTBOT_STAGING` | no | `0` | `0` | `1` uses the Let's Encrypt staging CA (untrusted test certs) |
+| `COOKIE_SECURE` | no | `false` | `false` | Normally leave `false`: cookies are marked Secure automatically on HTTPS and non-Secure on HTTP LAN. `true` forces Secure everywhere |
 | `JWT_SECRET` | yes | — | 64-char hex | App refuses to boot without it; rotating logs everyone out (by design) |
 | `JWT_EXPIRES_IN` | no | `1d` | `1d` | Session lifetime |
 | `COOKIE_NAME` | no | `token` | `token` | Must match across deploys or all sessions invalidate |
@@ -24,7 +28,7 @@ Copy `.env.example` to `.env` and fill every `REPLACE_WITH_…` value.
 | `SEED_NAME` / `SEED_EMAIL` / `SEED_PASSWORD` | one-shot | — | superuser details | `npm run seed` upserts the superuser login; rotate the password in-app right after |
 | `ME_CONFIG_BASICAUTH_USERNAME` / `_PASSWORD` | yes | — | FD-only creds | mongo-express login screen (gate 3 of 3 for `/dbadmin`) |
 | `DBADMIN_USER` | doc | — | `founding-director` | Username baked into `gateway/.htpasswd` (nginx gate 2); keep identical to express user for sanity |
-| `DBADMIN_ALLOW_IP` | doc | — | `192.168.1.50` | Reminder of the FD PC address mirrored in `gateway/nginx.conf` (nginx gate 1) |
+| `DBADMIN_ALLOW_IP` | doc | — | `192.168.1.50` | Reminder of the FD PC address mirrored in `gateway/locations.conf` (nginx gate 1) |
 
 ## Notes
 
@@ -33,6 +37,14 @@ Copy `.env.example` to `.env` and fill every `REPLACE_WITH_…` value.
 - `UPLOAD_DIR=/data/uploads` is fixed in `api/Dockerfile` (container path);
   the host side is `HOST_UPLOADS_DIR`. Do not set `UPLOAD_DIR` in `.env`.
 - Generate secrets with: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
+- Let's Encrypt issues for the **public IP only** (no domain). Public HTTPS
+  arrives on host `HTTPS_PUBLIC_PORT` (4433) via the router's WAN:443 forward.
+- Let's Encrypt cannot issue certificates for private IPs. LAN
+  `https://192.168.1.50` is served on host 443 by the internal bootstrap
+  certificate; run `rollout\install-designtree-ca.bat` on each LAN PC to
+  trust it (or use `http://192.168.1.50`).
+- The old `HTTPS_PUBLIC_PORT_2` variable is unused. Remove it from `.env`
+  if present. `HTTPS_PUBLIC_PORT` is used and defaults to `4433`.
 - Local development keeps using `api/.env` (localhost Mongo, dev origin) —
   the root `.env` is production-only and must never be copied back into `api/`.
 - E2E uses `e2e/.env` (`E2E_BASE_URL` / `E2E_API_URL` / `E2E_MONGO_URI` /
