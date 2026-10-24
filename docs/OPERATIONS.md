@@ -7,19 +7,12 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
 | Task | Command |
 |---|---|
 | Start / stop | `docker compose up -d` / `docker compose down` (keeps all data) |
-<<<<<<< HEAD
-| Status | `docker compose ps` (want: `mongo` + `api` healthy, `gateway` + `dbadmin` + `certbot` running) |
+| Status | `docker compose ps` (want: `mongo` + `api` healthy, `gateway` + `certbot` running; `dbadmin` disabled unless the profile is active) |
 | Logs | `docker compose logs -f api`, `docker compose logs --tail=100 gateway`, `docker compose logs -f certbot` |
 | Update to a new build | backup first → `git pull` → `docker compose up -d --build` → smoke-test |
 | Re-seed superuser login | `docker compose run --rm api npm run seed` (upsert — safe to re-run) |
-=======
-| Status | `docker compose ps` (want: `mongo` + `api` healthy, `gateway` running; `dbadmin` disabled) |
-| Logs | `docker compose logs -f api`, `docker compose logs --tail=100 gateway` |
-| Update to a new build | follow `CONTAINER_SECURITY_UPDATE.md`: backup → pull pinned images/build → smoke-test |
-| Re-seed superuser login | `docker compose run --rm api node src/scripts/seed.js` (upsert — safe to re-run) |
->>>>>>> ebf855a0b34d7337a162904c96f0600c409a1610
 | Rotate app secret | set new `JWT_SECRET` in `.env` → `up -d` (logs everyone out, by design) |
-| Change dbadmin password | set new `ME_CONFIG_BASICAUTH_PASSWORD` in `.env` → `docker compose up -d --no-deps mongo-express` (only dbadmin restarts, no app downtime) |
+| Change dbadmin password | set new `ME_CONFIG_BASICAUTH_PASSWORD` in `.env` → `docker compose --profile dbadmin up -d --no-deps mongo-express` (only dbadmin restarts, no app downtime) |
 
 ## Access map
 
@@ -32,27 +25,16 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
   see the project portal only.
 - Topbar project search appears for roles with dashboard access (≥2 chars,
   top 8 hits).
-<<<<<<< HEAD
 - Health: `<scheme>://<server>/api/health` → `{"ok":true}` (first check when
   anything looks wrong).
-- DB admin: `http://127.0.0.1:18081/dbadmin/` on the server itself (express login
-  with `ME_CONFIG_BASICAUTH_*` from root `.env`). Loopback-bound only — LAN/WAN
-  cannot reach it. FD remote: `ssh -N -L 18081:127.0.0.1:18081 <user>@192.168.1.50`
-  then open the same URL locally. `<scheme>://<server>/dbadmin` via gateway stays
-  `403` (Docker Desktop NAT masks all clients as `172.18.0.1`, so its nginx
-  `allow` never matches — closed by design).
-=======
-- Health: `https://<server>/api/health` → `{"ok":true}` (first check when anything looks wrong).
-- DB admin: disabled by default. Explicit temporary activation:
-  `docker compose --profile dbadmin up -d mongo-express`; stop after use with
-  `docker compose stop mongo-express`. The legacy image has an EOL runtime;
-  see `CONTAINER_SECURITY_UPDATE.md`. When enabled, use
+- DB admin: disabled by default. For temporary access, start it explicitly with
+  `docker compose --profile dbadmin up -d mongo-express`, then open
   `http://127.0.0.1:18081/dbadmin/` on the server itself (express login
   with `ME_CONFIG_BASICAUTH_*` from root `.env`). Loopback-bound only — LAN/WAN
   cannot reach it. FD remote: `ssh -N -L 18081:127.0.0.1:18081 <user>@192.168.1.50`
-  then open the same URL locally. `https://<server>/dbadmin` via gateway stays
-  `403` by explicit policy for every client.
->>>>>>> ebf855a0b34d7337a162904c96f0600c409a1610
+  then open the same URL locally. `<scheme>://<server>/dbadmin` via gateway stays
+  `403` (explicit policy for every client). Stop it after use with
+  `docker compose stop mongo-express`.
 - MongoDB port is **not published** — there is no direct DB access from the LAN.
 
 ## Troubleshooting
@@ -79,7 +61,7 @@ All commands run in PowerShell from the repo root (`C:\DesignTree`).
 
 ## What NOT to do
 
-- Never commit `.env`, `gateway/.htpasswd`, or certificate material.
+- Never commit `.env` or certificate material.
 - Do not edit `certs/letsencrypt/` by hand — the `certbot` container owns it.
   Keep `certs/server.crt` + `server.key` as the bootstrap pair.
 - Never store files in `api/uploads/` on the server — that path is the dev

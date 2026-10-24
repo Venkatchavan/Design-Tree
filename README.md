@@ -11,7 +11,7 @@ Single source of truth for roles/navigation is
 |---|---|
 | `api/` | Express 5 + Mongoose API (`node server.js`, default `:5000`). Routes in `api/src/routes/`, logic in `api/src/controllers/`, models in `api/src/models/` |
 | `web/` | React 19 + Vite SPA (dev `:5173`, `/api` + `/socket.io` proxied to `:5000` in dev). See `web/README.md` |
-| `gateway/` | nginx reverse proxy + TLS + `/dbadmin` gates (production). `gateway/nginx.conf` |
+| `gateway/` | nginx reverse proxy + TLS (production). `gateway/nginx.conf` |
 | `scripts/` | Manual `backup.ps1` / `restore.ps1` (production data safety) |
 | `docs/` | Deployment, operations, backup and environment guides |
 | `e2e/` | Playwright UI + API suite (serial `specs/01-09`, isolated `designtree-e2e` DB). See `e2e/README.md` |
@@ -84,7 +84,7 @@ host:4433; host 443 remains the LAN listener.
 browser ──80/443──▶ gateway ─┬─ /          SPA static files
                               ├─ /api/      api:5000 (cookie auth untouched)
                               ├─ /socket.io/ api:5000 (bell pushes, Upgrade headers)
-                              └─ /dbadmin/  mongo-express (IP allowlist + basic-auth + app login)
+                              └─ /dbadmin/  blocked (optional admin is host-loopback only)
 ```
 
 Full run sheet: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
@@ -98,13 +98,13 @@ Short version (on the server, repo root):
 
 ```powershell
 Copy-Item .env.example .env   # then fill in secrets + CLIENT_ORIGIN for the server IP
-# ... create gateway/.htpasswd per docs ...
 docker compose up -d --build --remove-orphans
 docker compose run --rm api npm run seed   # one-shot superuser login (upsert, safe to re-run)
 ```
 
 Expect `docker compose ps` to show `mongo` + `api` as `healthy` and
-`gateway` + `dbadmin` + `certbot` as `running`. Users browse to the public
+`gateway` + `certbot` as `running` (`dbadmin` stays off unless the profile is
+active). Users browse to the public
 IP (`https://103.169.236.122`, or `http://103.169.236.122` once WAN:80 is
 forwarded) or on LAN to `http://192.168.1.50` / `https://192.168.1.50`
 (install `rollout\install-designtree-ca.bat` once per LAN PC).

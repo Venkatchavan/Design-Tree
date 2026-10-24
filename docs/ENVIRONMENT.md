@@ -26,9 +26,7 @@ Copy `.env.example` to `.env` and fill every `REPLACE_WITH_…` value.
 | `HOST_UPLOADS_DIR` | yes | — | `D:/designtree-uploads` | Uploads bind mount; forward slashes in compose; folder must exist and be Docker-shared |
 | `HOST_BACKUPS_DIR` | yes | — | `E:/DesignTree/backup` | `mongodump` archives land here; scripts read it too |
 | `SEED_NAME` / `SEED_EMAIL` / `SEED_PASSWORD` | one-shot | — | superuser details | `npm run seed` upserts the superuser login; rotate the password in-app right after |
-| `ME_CONFIG_BASICAUTH_USERNAME` / `_PASSWORD` | yes | — | FD-only creds | mongo-express login screen (gate 3 of 3 for `/dbadmin`) |
-| `DBADMIN_USER` | doc | — | `founding-director` | Username baked into `gateway/.htpasswd` (nginx gate 2); keep identical to express user for sanity |
-| `DBADMIN_ALLOW_IP` | doc | — | `192.168.1.50` | Reminder of the FD PC address mirrored in `gateway/locations.conf` (nginx gate 1) |
+| `ME_CONFIG_BASICAUTH_USERNAME` / `_PASSWORD` | yes | — | FD-only creds | mongo-express login screen; only reachable on host loopback via the `dbadmin` profile |
 
 ## Notes
 

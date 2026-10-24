@@ -1,18 +1,12 @@
 # DesignTree production stack — single in-house Windows server.
 #
-<<<<<<< HEAD
 #   browser ──80/443──▶ gateway ─┬─ /          SPA static files
 #                                 ├─ /api/      api:5000 (cookie auth untouched)
-#                                 └─ /dbadmin/  mongo-express (FD only: IP + basic-auth + app login)
+#                                 └─ /dbadmin/  blocked (optional admin is host-loopback only)
 #
 # IP-based deployment: no domain, no Cloudflare tunnel. HTTPS uses a
 # Let's Encrypt certificate for the public IP (short-lived, auto-renewed by
 # the certbot sidecar); port 80 serves the app + ACME challenges.
-=======
-#   browser ──443──▶ gateway ─┬─ /          SPA static files
-#                             ├─ /api/      api:5000 (cookie auth untouched)
-#                             └─ /dbadmin/  blocked (optional admin is host-loopback only)
->>>>>>> ebf855a0b34d7337a162904c96f0600c409a1610
 #
 # Data survival:
 #   - mongo-data (NAMED VOLUME designtree_mongo-data — this is where the live
@@ -122,12 +116,10 @@ services:
       - "${HTTPS_PORT:-443}:443"
       - "${HTTPS_PUBLIC_PORT:-4433}:4433"
     volumes:
-<<<<<<< HEAD
-      # Bootstrap cert (used until the Let's Encrypt IP cert is issued) and
-      # the dbadmin password file (host-local, never committed).
-=======
       # TLS certificates are created on the host, never committed.
->>>>>>> ebf855a0b34d7337a162904c96f0600c409a1610
+      # `certs/` holds the bootstrap pair (used until the Let's Encrypt IP
+      # cert is issued); `certs/letsencrypt` + `certs/acme-webroot` are
+      # shared with the certbot sidecar.
       - type: bind
         source: ./certs
         target: /etc/nginx/bootstrap
