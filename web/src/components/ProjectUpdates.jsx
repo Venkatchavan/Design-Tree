@@ -81,6 +81,31 @@ export function SpocContacts({ project }) {
   );
 }
 
+export function ProjectHold({ project }) {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState(project.status === 'On Hold' ? 'On Hold' : 'Active');
+  const [reason, setReason] = useState('');
+  const save = useMutation({
+    mutationFn: () => projectsApi.updateHold(project._id, { status, reason: reason.trim() }),
+    onSuccess: () => {
+      for (const key of ['project', 'projects', 'projects-stats', 'projects-summary', 'projects-filters', 'my-teams', 'spoc-assigned-projects']) qc.invalidateQueries({ queryKey: [key] });
+      setReason('');
+    },
+  });
+  return <Panel title="Project hold status" sub="Project status only; stage completion and billing approvals are retained.">
+    <p>Current status: <b>{project.status}</b></p>
+    {project.hold?.reason && <p>Last status reason: {project.hold.reason}</p>}
+    {['Active', 'On Hold'].includes(project.status) ? <form onSubmit={e => { e.preventDefault(); save.mutate(); }}>
+      <div className="field-grid">
+        <label className="form-label">Project status<select aria-label="Project hold status" className="filter-select" value={status} onChange={e => setStatus(e.target.value)}><option>Active</option><option>On Hold</option></select></label>
+        <label className="form-label">Reason<textarea aria-label="Project status reason" className="form-input" required maxLength={2000} value={reason} onChange={e => setReason(e.target.value)} /></label>
+      </div>
+      {errBox(save.error)}{save.isSuccess && <p role="status">Project status saved.</p>}
+      <button type="submit" className="btn-primary" disabled={save.isPending || !reason.trim()}>{save.isPending ? 'Saving…' : 'Save project status'}</button>
+    </form> : <p>Completed projects cannot be placed on hold here.</p>}
+  </Panel>;
+}
+
 export function CoordinationPanel({ projectId, canEdit = false, service }) {
   const qc = useQueryClient(),
     [draft, setDraft] = useState({
@@ -326,6 +351,10 @@ export function ProjectEdit({ project, onClose }) {
       qc.invalidateQueries({ queryKey: ['project', project._id] });
       qc.invalidateQueries({ queryKey: ['projects'] });
       qc.invalidateQueries({ queryKey: ['project-audit', project._id] });
+      qc.invalidateQueries({ queryKey: ['projects-stats'] });
+      qc.invalidateQueries({ queryKey: ['projects-summary'] });
+      qc.invalidateQueries({ queryKey: ['my-teams'] });
+      qc.invalidateQueries({ queryKey: ['spoc-assigned-projects'] });
       onClose();
     },
   });

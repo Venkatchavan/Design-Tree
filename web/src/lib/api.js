@@ -77,6 +77,9 @@ export const attendanceApi = {
 };
 
 export const projectsApi = {
+  reconcileTeam: (id) => request(`/api/projects/${id}/reconcile-team`, { method: 'POST' }),
+  summary: (params = {}) => request(`/api/projects/status-summary${toQuery(params)}`),
+  updateHold: (id, body) => request(`/api/projects/${id}/hold`, { method: 'PUT', body: JSON.stringify(body) }),
   list: (params = {}) => request(`/api/projects${toQuery(params)}`),
   stats: () => request('/api/projects/stats'),
   filters: () => request('/api/projects/filters'),

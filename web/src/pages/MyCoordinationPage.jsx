@@ -558,7 +558,7 @@ export function TeamAllocationPanel({ projects, employees }) {
       else current.push(row);
       return projectsApi.saveTeamLeads(body.project, { principalTeamLeads: toTeamPayload(current) });
     },
-    onSuccess: (_data, body) => {
+    onSuccess: (data, body) => {
       for (const key of ['projects','teams','my-teams','teams-allocation-projects']) queryClient.invalidateQueries({queryKey:[key]});
       queryClient.invalidateQueries({ queryKey: ['project-team', body.project] });
       queryClient.invalidateQueries({ queryKey: ['project', body.project] });
@@ -569,12 +569,22 @@ export function TeamAllocationPanel({ projects, employees }) {
       setMember('');
       setStatus('Approved');
       setErr('');
-      setOk('Team allocation recorded.');
+      setOk('Team allocation recorded.' + (data.allocationWarnings?.length ? ' ' + data.allocationWarnings.join(' ') : ''));
     },
     onError: (e) => {
       setErr(e.message);
       setOk('');
     },
+  });
+
+  const refreshAllocation = useMutation({
+    mutationFn: () => projectsApi.reconcileTeam(project),
+    onSuccess: data => {
+      for (const key of ['projects', 'project', 'project-team', 'teams', 'my-teams']) queryClient.invalidateQueries({ queryKey: [key] });
+      setErr('');
+      setOk(data.allocationWarnings?.length ? data.allocationWarnings.join(' ') : 'Saved team allocations refreshed.');
+    },
+    onError: e => setErr(e.message),
   });
 
   function pickService(value) {
@@ -653,6 +663,7 @@ export function TeamAllocationPanel({ projects, employees }) {
           {save.isPending ? 'Saving…' : editing?'Save allocation changes':'Record allocation'}
         </button>
         {editing&&<button type="button" className="approve-btn" onClick={()=>{setEditing(null);setProject('');setService('');setMember('');setNominatedBy('');}}>Cancel edit</button>}
+        <button type="button" className="approve-btn" disabled={!project || refreshAllocation.isPending} onClick={() => refreshAllocation.mutate()}>Refresh saved team allocations</button>
       </form>
       {withTeam.length === 0 ? (
         <EmptyState text="No team allocations recorded yet." />

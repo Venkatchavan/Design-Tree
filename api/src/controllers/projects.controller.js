@@ -13,6 +13,7 @@ import {
   finalApprovalSchema,
   projectSchema,
   projectUpdateSchema,
+  projectHoldSchema,
   spocContactsSchema,
   teamConfirmationSchema,
   teamLeadsSchema,
@@ -36,9 +37,13 @@ function escapeRegExp(s) {
 
 async function syncProjectLeadTeams(project) {
   const groups = new Map();
+  const unresolvedServices = new Set((project.principalTeamLeads ?? [])
+    .filter(row => !row.employee && row.approvalStatus !== 'Proposed' && (row.name || row.names?.length))
+    .map(row => expandServices([row.service]).join(' + ') || row.service));
   for (const row of project.principalTeamLeads ?? []) {
     if (!row.employee || row.approvalStatus === 'Proposed') continue;
     const service = expandServices([row.service]).join(' + ') || row.service;
+    if (!service || unresolvedServices.has(service)) continue;
     if (!groups.has(service)) groups.set(service, []);
     groups.get(service).push(row);
   }
@@ -65,9 +70,45 @@ async function syncProjectLeadTeams(project) {
     );
   }
   await Team.updateMany(
-    { allocationProject: project._id, allocationService: { $nin: [...groups.keys()] } },
+    { allocationProject: project._id, allocationService: { $nin: [...groups.keys(), ...unresolvedServices] } },
     { $set: { active: false, projects: [] } },
   );
+}
+
+// Older nominations stored names only. Resolve an exact, unique employee name;
+// ambiguous names remain visible for the SPOC to correct instead of guessing.
+async function resolveAllocationNames(rows) {
+  const normalized = value => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+  const employees = await Employee.find({ status: { $ne: 'Exited' } }).select('firstName middleName lastName empId').lean();
+  const warnings = [];
+  const expanded = rows.flatMap(original => {
+    const row = original.toObject ? original.toObject() : { ...original };
+    return row.names?.length ? row.names.map(name => ({ ...row, name, names: [], employee: row.names.length === 1 ? row.employee : undefined })) : [row];
+  });
+  const resolved = expanded.map(original => {
+    const row = original.toObject ? original.toObject() : { ...original };
+    if (row.employee || row.approvalStatus === 'Proposed' || !row.name) return row;
+    const name = normalized(row.name);
+    const matches = employees.filter(e => [e.empId, [e.firstName, e.lastName].filter(Boolean).join(' '),
+      [e.firstName, e.middleName, e.lastName].filter(Boolean).join(' ')].some(value => normalized(value) === name));
+    if (matches.length === 1) row.employee = matches[0]._id;
+    else warnings.push(`${row.name}: ${matches.length ? 'multiple employees match; choose an employee' : 'no employee match; choose an employee'}.`);
+    return row;
+  });
+  return { rows: resolved, warnings };
+}
+
+export async function reconcileProjectTeam(req, res, next) {
+  try {
+    if (!await projectVisible(req.user, req.params.id)) return res.status(404).json({ message: 'Project not found.' });
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ message: 'Project not found.' });
+    const resolved = await resolveAllocationNames(project.principalTeamLeads ?? []);
+    project.principalTeamLeads = resolved.rows;
+    await project.save();
+    await syncProjectLeadTeams(project);
+    return res.json({ project, allocationWarnings: resolved.warnings });
+  } catch (err) { return next(err); }
 }
 
 // Admin-only sequential identifiers for the New Project form, initialized
@@ -154,6 +195,21 @@ export async function listProjects(req, res, next) {
   } catch (err) {
     return next(err);
   }
+}
+
+export async function projectSummary(req, res, next) {
+  try {
+    const ids = await projectScopeIds(req.user);
+    const filter = ids ? { _id: { $in: ids } } : {};
+    if (req.query.branch) filter.branch = req.query.branch;
+    if (req.query.service) filter.$or = [{ services: req.query.service }, { 'scope.service': req.query.service }];
+    if (req.query.search) {
+      const rx = new RegExp(escapeRegExp(req.query.search), 'i');
+      filter.$and = [{ $or: [{ name: rx }, { code: rx }, { clientName: rx }] }];
+    }
+    const items = await Project.find(filter).select('name code status currentStage').sort({ name: 1 }).lean();
+    return res.json({ items, total: items.length });
+  } catch (err) { return next(err); }
 }
 
 export async function projectStats(req, res, next) {
@@ -425,6 +481,41 @@ export async function updateProject(req, res, next) {
   }
 }
 
+export async function updateProjectHold(req, res, next) {
+  try {
+    const parsed = projectHoldSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: 'Choose a status and enter a reason.' });
+    const me = await User.findById(req.user.id).select('employee').lean();
+    const { SpocAllocation } = await import('../models/SpocAllocation.js');
+    const assigned = me?.employee && await SpocAllocation.exists({
+      project: req.params.id, coordinator: me.employee, status: 'Approved',
+    });
+    if (!assigned) return res.status(404).json({ message: 'Project not found.' });
+    const previous = await Project.findById(req.params.id).lean();
+    if (!previous) return res.status(404).json({ message: 'Project not found.' });
+    if (!['Active', 'On Hold'].includes(previous.status)) {
+      return res.status(409).json({ message: 'Only active or held projects can use this action. Completed projects stay completed.' });
+    }
+    const at = new Date(), { status, reason } = parsed.data;
+    const project = await Project.findOneAndUpdate(
+      { _id: previous._id, status: previous.status, updatedAt: previous.updatedAt },
+      { $set: { status, 'hold.reason': reason, 'hold.updatedBy': req.user.id, 'hold.updatedAt': at },
+        $push: { 'hold.history': { from: previous.status, to: status, reason, by: req.user.id, at } } },
+      { returnDocument: 'after', runValidators: true },
+    );
+    if (!project) return res.status(409).json({ message: 'Project changed. Refresh before saving its status.' });
+    try {
+      const { notify, userIdsForEmployees } = await import('../models/Notification.js');
+      const teams = await Team.find({ projects: project._id, active: { $ne: false } }).select('lead members').lean();
+      const users = await userIdsForEmployees(teams.flatMap(t => [t.lead, ...(t.members ?? []).map(m => m.employee)]));
+      await notify({ project: project._id, users, roles: ['design_mgmt_head'],
+        title: `${project.name}: ${status}`, detail: reason, type: 'project-status',
+        link: { view: 'project-detail', id: String(project._id) } });
+    } catch { /* Saved status remains available through normal query refresh. */ }
+    return res.json({ project });
+  } catch (err) { return next(err); }
+}
+
 // PUT /api/projects/:id/spoc-contacts — SPOC-owned PMC / Peer Review
 // contacts (admin does not know these; no link with directory sections).
 export async function saveSpocContacts(req, res, next) {
@@ -521,6 +612,8 @@ export async function saveTeamLeads(req, res, next) {
         row.name = [employee.firstName,employee.lastName].filter(Boolean).join(' ') || employee.empId;
       }
     }
+    const allocation = set.principalTeamLeads ? await resolveAllocationNames(set.principalTeamLeads) : null;
+    if (allocation) set.principalTeamLeads = allocation.rows;
     const project = await Project.findByIdAndUpdate(req.params.id, { $set: set }, {
       new: true,
       returnDocument: 'after',
@@ -545,7 +638,7 @@ export async function saveTeamLeads(req, res, next) {
     } catch {
       /* best-effort */
     }
-    return res.status(200).json({ project });
+    return res.status(200).json({ project, allocationWarnings: allocation?.warnings ?? [] });
   } catch (err) {
     return next(err);
   }

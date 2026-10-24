@@ -43,7 +43,7 @@ export async function myTeams(req, res, next) {
     // scoped path) so My Team reflects instead of rendering "No team assigned".
     if (role === 'associate_director' || role === 'assoc_technical_director') {
       const teams = await Team.find({active:{$ne:false}}).sort({allocationProject:-1,updatedAt:-1})
-        .populate('projects', 'name code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services')
+        .populate('projects', 'name code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services hold')
         .populate('lead', memberSelect)
         .populate('members.employee', memberSelect);
       return res.status(200).json({ items: teams, total: teams.length });
@@ -53,7 +53,7 @@ export async function myTeams(req, res, next) {
       active:{$ne:false},
       $or: [{ lead: me.employee }, { 'members.employee': me.employee }],
     }).sort({allocationProject:-1,updatedAt:-1})
-      .populate('projects', 'name code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services')
+      .populate('projects', 'name code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services hold')
       .populate('lead', memberSelect)
       .populate('members.employee', memberSelect);
     return res.status(200).json({ items: teams, total: teams.length });

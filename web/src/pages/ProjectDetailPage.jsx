@@ -1,4 +1,4 @@
-import { SpocContacts, ProjectEdit, ProjectAudit, CoordinationPanel } from '../components/ProjectUpdates.jsx';
+import { SpocContacts, ProjectEdit, ProjectHold, CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import StageApprovalPanel from '../components/StageApprovalPanel.jsx';
 import { DirectoryTab } from './MyCoordinationPage.jsx';
 import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
@@ -1025,7 +1025,7 @@ export default function ProjectDetailPage({ bootstrap }) {
 
       <Panel title="Client contact details"><div className="field-grid">{[['pmc','PMC'],['peerReview','Peer Review']].map(([key,label])=><div key={key}><b>{label}</b><div>{contacts[key]?.name||contacts[key]?.company||'—'}</div><div>{contacts[key]?.email}</div><div>{contacts[key]?.phone}</div></div>)}</div></Panel>
       {detailsOpen&&<ProjectEdit project={project} onClose={()=>setDetailsOpen(false)}/>}
-      {(['admin_billing','founding_director','working_director','executive_director','associate_director','technical_director','assoc_technical_director'].includes(role))&&<ProjectAudit projectId={id}/>}
+      {role === 'coordinator' && <ProjectHold key={project._id + ':' + project.status} project={project} />}
       <Panel title="Scope and services">
         <DataTable
           columns={[

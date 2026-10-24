@@ -24,11 +24,14 @@ import {
   nextProjectCode,
   projectFilters,
   projectStats,
+  projectSummary,
   recordFinalApproval,
   saveSpocContacts,
   saveTeamConfirmation,
   saveTeamLeads,
   updateProject,
+  updateProjectHold,
+  reconcileProjectTeam,
 } from '../controllers/projects.controller.js';
 import {
   importProjects,
@@ -48,6 +51,7 @@ const PROJECT_READERS = INTERNAL_ROLES.filter((r) => r !== 'superuser');
 router.get('/', requireRole(...PROJECT_READERS), listProjects);
 router.get('/stats', requireView('dashboard'), projectStats);
 router.get('/filters', requireRole(...PROJECT_READERS), projectFilters);
+router.get('/status-summary', requireRole(...PROJECT_READERS), projectSummary);
 router.get('/next-code', denyRoles(...NO_PROJECT_WRITES), requireRole('admin_billing'), nextProjectCode);
 router.get('/next-job-number', denyRoles(...NO_PROJECT_WRITES), requireRole('admin_billing'), nextJobNumber);
 router.get('/peer-dashboard', requireRole('peer_reviewer','peer_review_head'), async(req,res,next)=>{
@@ -70,6 +74,8 @@ router.get('/:id/history', requireRole('admin_billing',...DIRECTOR_ROLES), async
   }catch(e){next(e);}
 });
 router.get('/:id/team', requireAuth, getProjectTeam);
+router.put('/:id/hold', requireRole('coordinator'), updateProjectHold);
+router.post('/:id/reconcile-team', requireRole('coordinator', 'technical_director', 'design_mgmt_head'), reconcileProjectTeam);
 router.get('/:id/gfc-readiness', requireInternal(), gfcReadiness);
 // SPOC-owned contacts + team leads (admin is read-only on these).
 // Principal team leads may also be entered by the Technical Director

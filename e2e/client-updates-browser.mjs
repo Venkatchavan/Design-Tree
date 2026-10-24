@@ -151,7 +151,7 @@ try {
     },
   );
   await check(
-    'Project summary Job number, comprehensive editor, saved changes and audit history',
+    'Project summary Job number, comprehensive editor, saved changes and retained server audit',
     ['R-CU13', 'R-CU14', 'R-CU15'],
     async () => {
       await expect(
@@ -170,11 +170,11 @@ try {
       await expect(
         a.getByText('UI corrected source', { exact: true }),
       ).toBeVisible();
-      await expect(
-        panel(a, 'Project update history')
-          .getByText('Test admin', { exact: true })
-          .first(),
-      ).toBeVisible();
+      await expect(panel(a, 'Project update history')).toHaveCount(0);
+      const auditResponse = await a.request.get(base + '/api/projects/' + created + '/history');
+      assert(auditResponse.ok());
+      const audit = await auditResponse.json();
+      assert(audit.items.some(row => row.changes.some(change => change.field === 'sourcePerson' && change.updated === 'UI corrected source')));
       await a.reload();
       await expect(
         a.getByText('UI corrected source', { exact: true }),

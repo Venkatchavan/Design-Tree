@@ -1,4 +1,4 @@
-import { serviceNames } from '../lib/services.js';
+import { projectMembers } from '../lib/projectRoster.js';
 import { CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
 import { useEffect, useMemo, useState } from 'react';
@@ -708,10 +708,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
           {tab === 'team' && (
             <>
               {([...new Map(teams.flatMap(t=>(t.projects??[]).map(p=>[idOf(p),p]))).values()]).map(p=>{
-                const projectTeams=teams.filter(t=>(t.projects??[]).some(project=>idOf(project)===idOf(p)));
-                const confirmed=new Set(projectTeams.filter(t=>t.allocationProject).flatMap(t=>serviceNames([t.service])));
-                const roster=projectTeams.filter(t=>t.allocationProject||!serviceNames([t.service]).some(service=>confirmed.has(service))).flatMap(t=>(t.members??[]).map(m=>({...m,service:t.service})));
-                const unique=[...new Map(roster.map(m=>[memberId(m)+'-'+m.service,m])).values()];
+                const unique=projectMembers(teams, p, true);
                 return <Panel key={idOf(p)} title={p.name||p.code||'Project'} sub="Project team"><DataTable columns={[{key:'name',label:'Team member',render:memberName},{key:'service',label:'Service'},{key:'designation',label:'Designation',render:m=>memberEmp(m)?.designation||'—'},{key:'experience',label:'Experience',render:m=>expText(memberEmp(m))}]} rows={unique} emptyText="No confirmed members yet."/></Panel>;
               })}
               <Panel title="Team efficiency this week" sub="Hours spent in each stage of project design">
@@ -824,7 +821,8 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
             <AssignWorkPanel
               members={members}
               roleGroups={roleGroups}
-              teamProjects={teamProjects}
+              teamProjects={[...new Map(teams.flatMap(t => (t.projects ?? []).map(p => [idOf(p),p]))).values()]}
+              teams={teams}
               myTasks={myAssignedTasks}
               deliverables={teamDeliverables}
               delivLog={delivLog}
@@ -1461,17 +1459,19 @@ function DecideModal({ entry, onClose, decide }) {
   );
 }
 
-function AssignWorkPanel({members,roleGroups,teamProjects,myTasks}) {
+function AssignWorkPanel({members: selectedMembers,roleGroups: selectedGroups,teamProjects,myTasks,teams=[]}) {
   const queryClient=useQueryClient();
   const [section,setSection]=useState('deliverables');
   const [selMembers,setSelMembers]=useState([]);
-  const [project,setProject]=useState('');
+  const [project,setProject]=useState(teamProjects.length === 1 ? idOf(teamProjects[0]) : '');
   const [stage,setStage]=useState('');
   const [deliverable,setDeliverable]=useState('');
   const [dueDate,setDueDate]=useState('');
   const [priority,setPriority]=useState('Medium');
   const [notes,setNotes]=useState('');
   const [err,setErr]=useState('');
+  const members = teams.length ? projectMembers(teams, project) : selectedMembers;
+  const roleGroups = teams.length ? [{ key: 'Project team', members }] : selectedGroups;
   const allIds = members.map(memberId).filter(Boolean);
   const create = useMutation({
     mutationFn: (body) => tasksApi.create(body),
@@ -1499,6 +1499,10 @@ function AssignWorkPanel({members,roleGroups,teamProjects,myTasks}) {
     }
     if (!project) {
       setErr('Select a project.');
+      return;
+    }
+    if (selMembers.some(id => !allIds.includes(id))) {
+      setErr('The project team changed. Select its current members.');
       return;
     }
     if (!deliverable.trim()) {
@@ -1559,7 +1563,7 @@ function AssignWorkPanel({members,roleGroups,teamProjects,myTasks}) {
           <div className="field-grid">
             <div className="form-row">
               <label className="form-label">Project *</label>
-              <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
+              <select aria-label="Task project" className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => { if (e.target.value !== project) { setProject(e.target.value); setSelMembers([]); } }}>
                 <option value="">Select project</option>
                 {teamProjects.map((p) => (
                   <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
