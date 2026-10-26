@@ -283,6 +283,7 @@ export default function ProjectDetailPage({ bootstrap }) {
   const q = useQuery({
     queryKey: ['project', id],
     queryFn: () => projectsApi.get(id),
+    refetchInterval: 10000,
   });
   const isAdmin = role === 'admin_billing';
   const isTD = role === 'technical_director';
@@ -685,7 +686,7 @@ export default function ProjectDetailPage({ bootstrap }) {
         </div>
       </Panel>
 
-      <Panel title="Client contact details"><div className="field-grid">{[['pmc','PMC'],['peerReview','Peer Review']].map(([key,label])=><div key={key}><b>{label}</b><div>{contacts[key]?.name||contacts[key]?.company||'—'}</div><div>{contacts[key]?.email}</div><div>{contacts[key]?.phone}</div></div>)}</div></Panel>
+      <Panel title="Client contact details"><div className="field-grid">{[['pmc','PMC'],['peerReview','Peer Review']].map(([key,label])=><div key={key}><b>{label}</b><div>{contacts[key]?.name||(!contacts[key]?.company?'—':'')}</div>{contacts[key]?.company&&<div>{contacts[key].company}</div>}{contacts[key]?.designation&&<div>{contacts[key].designation}</div>}<div>{contacts[key]?.email}</div><div>{contacts[key]?.phone}</div></div>)}</div></Panel>
       {detailsOpen&&<ProjectEdit project={project} onClose={()=>setDetailsOpen(false)}/>}
       {role === 'coordinator' && <ProjectHold key={project._id + ':' + project.status} project={project} />}
       <Panel title="Scope and services">

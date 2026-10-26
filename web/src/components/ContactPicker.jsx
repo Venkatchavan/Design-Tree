@@ -56,7 +56,7 @@ export default function ContactPicker({
         >
           <span>
             <b>{value.name}</b>
-            {value.organization ? ` · ${value.organization}` : ''}
+            {value.company || value.organization ? ` · ${value.company || value.organization}` : ''}
             {value.phone ? ` · ${value.phone}` : ''}
           </span>
           <button type="button" className="approve-btn" onClick={onClear}>

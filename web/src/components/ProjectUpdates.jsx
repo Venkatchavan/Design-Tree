@@ -37,46 +37,53 @@ const contact = (c) =>
     : null;
 
 export function SpocContacts({ project }) {
-  const qc = useQueryClient(),
-    [draft, setDraft] = useState(project.contacts ?? {});
+  const qc = useQueryClient();
+  // Drafts contain only changed fields. Never resubmit a stale copy of the
+  // other SPOC contact when linking a newly selected or created contact.
+  const [draft, setDraft] = useState({});
+  const [notice, setNotice] = useState('');
   const save = useMutation({
-    mutationFn: () =>
-      projectsApi.saveSpocContacts(project._id, {
-        pmc: contact(draft.pmc),
-        peerReview: contact(draft.peerReview),
-      }),
-    onSuccess: () => {
+    mutationFn: patch => projectsApi.saveSpocContacts(project._id, patch),
+    onSuccess: (data, patch) => {
+      qc.setQueryData(['project', project._id], previous => {
+        if (!previous?.project) return data;
+        const saved = Object.fromEntries(Object.keys(patch).map(key => [key, data.project.contacts?.[key] ?? null]));
+        return { ...previous, project: { ...previous.project, contacts: { ...previous.project.contacts, ...saved } } };
+      });
+      setDraft(current => Object.fromEntries(Object.entries(current).filter(([key]) => !Object.hasOwn(patch, key))));
       qc.invalidateQueries({ queryKey: ['project', project._id] });
       qc.invalidateQueries({ queryKey: ['projects'] });
+      setNotice('Contacts saved.');
     },
   });
+  function pick(key, value) {
+    const normalized = contact(value);
+    setDraft(current => ({ ...current, [key]: normalized }));
+    setNotice('');
+    save.mutate({ [key]: normalized });
+  }
+  function retry() {
+    const patch = Object.fromEntries(Object.entries(draft).map(([key,value]) => [key,contact(value)]));
+    if (Object.keys(patch).length) { setNotice(''); save.mutate(patch); }
+  }
   return (
     <Panel title="PMC and Peer Review contacts">
-      <div className="field-grid">
-        {[
-          ['pmc', 'PMC'],
-          ['peerReview', 'Peer Review'],
-        ].map(([key, label]) => (
-          <ContactPicker
-            key={key}
-            label={label + ' Contact'}
-            contactType={label}
-            value={draft[key]}
-            onPick={(v) => setDraft((d) => ({ ...d, [key]: v }))}
-            onClear={() => setDraft((d) => ({ ...d, [key]: null }))}
-          />
-        ))}
-      </div>
+      <p>Selecting or creating a contact saves it to this project.</p>
+      <fieldset disabled={save.isPending} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <div className="field-grid">
+          {[['pmc', 'PMC'], ['peerReview', 'Peer Review']].map(([key, label]) => (
+            <ContactPicker key={key} label={label + ' Contact'} contactType={label}
+              value={Object.hasOwn(draft,key) ? draft[key] : project.contacts?.[key]}
+              onPick={value => pick(key,value)}
+              onClear={() => { setDraft(current => ({ ...current, [key]: null })); setNotice(''); save.reset(); }}
+            />
+          ))}
+        </div>
+      </fieldset>
       {errBox(save.error)}
-      {save.isSuccess && <p role="status">Contacts saved.</p>}
-      <button
-        type="button"
-        className="btn-primary"
-        disabled={save.isPending}
-        onClick={() => save.mutate()}
-      >
-        Save contacts
-      </button>
+      {save.isPending && <p role="status">Saving project contacts…</p>}
+      {notice && !save.isPending && !save.isError && <p role="status">{notice}</p>}
+      <button type="button" className="btn-primary" disabled={save.isPending} onClick={retry}>Save contacts</button>
     </Panel>
   );
 }
