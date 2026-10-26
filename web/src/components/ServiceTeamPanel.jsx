@@ -15,8 +15,6 @@ const WRITER_ROLES = new Set([
   'gbs_head',
   'team_lead',
   'technical_director',
-  'assoc_technical_director',
-  'associate_director',
   'executive_director',
 ]);
 

@@ -1,3 +1,4 @@
+import DirectorTeamsPage from './DirectorTeamsPage.jsx';
 import { projectMembers } from '../lib/projectRoster.js';
 import { CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
@@ -283,7 +284,28 @@ function ProposeCoordinatorPanel() {
   );
 }
 
-export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace = false }) {
+export default function MyTeamPage(props) {
+  const [workspace,setWorkspace]=useState('directory');
+  const role=props.bootstrap?.role?.key;
+  if (['associate_director','technical_director'].includes(role)) return <DirectorTeamsPage/>;
+  if (role==='assoc_technical_director') return <>
+    <Tabs tabs={[{key:'directory',label:'My Team'},{key:'work',label:'Assign work'}]} active={workspace} onChange={setWorkspace}/>
+    {workspace==='directory'?<DirectorTeamsPage/>:<DirectorAssignWork/>}
+  </>;
+  return <WorkingTeamPage {...props}/>;
+}
+
+function DirectorAssignWork() {
+  const teamsQ=useQuery({queryKey:['director-teams'],queryFn:teamsMineApi.list,refetchInterval:10000});
+  const tasksQ=useQuery({queryKey:['tasks'],queryFn:()=>tasksApi.list({})});
+  const teams=teamsQ.data?.items??[];
+  const projects=[...new Map(teams.flatMap(t=>(t.projects??[]).map(p=>[idOf(p),p]))).values()];
+  if(teamsQ.isLoading)return <EmptyState text="Loading your project teams…"/>;
+  if(teamsQ.isError)return <div className="login-error" role="alert" style={{display:'block'}}>{teamsQ.error.message}</div>;
+  return <AssignWorkPanel key={projects.map(p=>idOf(p)).join(':')} members={[]} roleGroups={[]} teamProjects={projects} teams={teams} includeLeads myTasks={tasksQ.data?.items??[]}/>;
+}
+
+function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace = false }) {
   const bootstrap = useBootstrapProp(bootstrapProp);
   const role = bootstrap?.role?.key ?? '';
   const navigate = useNavigate();
@@ -823,6 +845,7 @@ export default function MyTeamPage({ bootstrap: bootstrapProp, projectId, projec
               roleGroups={roleGroups}
               teamProjects={[...new Map(teams.flatMap(t => (t.projects ?? []).map(p => [idOf(p),p]))).values()]}
               teams={teams}
+              includeLeads={['technical_director','assoc_technical_director'].includes(role)}
               myTasks={myAssignedTasks}
               deliverables={teamDeliverables}
               delivLog={delivLog}
@@ -1459,7 +1482,7 @@ function DecideModal({ entry, onClose, decide }) {
   );
 }
 
-function AssignWorkPanel({members: selectedMembers,roleGroups: selectedGroups,teamProjects,myTasks,teams=[]}) {
+function AssignWorkPanel({members: selectedMembers,roleGroups: selectedGroups,teamProjects,myTasks,teams=[],includeLeads=false}) {
   const queryClient=useQueryClient();
   const [section,setSection]=useState('deliverables');
   const [selMembers,setSelMembers]=useState([]);
@@ -1470,8 +1493,8 @@ function AssignWorkPanel({members: selectedMembers,roleGroups: selectedGroups,te
   const [priority,setPriority]=useState('Medium');
   const [notes,setNotes]=useState('');
   const [err,setErr]=useState('');
-  const members = teams.length ? projectMembers(teams, project) : selectedMembers;
-  const roleGroups = teams.length ? [{ key: 'Project team', members }] : selectedGroups;
+  const members = teams.length ? projectMembers(teams, project, includeLeads) : selectedMembers;
+  const roleGroups = teams.length ? [...new Set(members.map(m=>m.service))].map(service=>({ key: service, members: members.filter(m=>m.service===service) })) : selectedGroups;
   const allIds = members.map(memberId).filter(Boolean);
   const create = useMutation({
     mutationFn: (body) => tasksApi.create(body),
@@ -1567,7 +1590,7 @@ function AssignWorkPanel({members: selectedMembers,roleGroups: selectedGroups,te
                 <option value="">Select project</option>
                 {teamProjects.map((p) => (
                   <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
-                    {p.name} ({p.code ?? ''})
+                    {p.jobNumber || 'Job number not recorded'} · {p.name}
                   </option>
                 ))}
               </select>
@@ -1674,7 +1697,7 @@ function DeliverableAddPanel({ teamProjects, members }) {
               <option value="">Select project</option>
               {teamProjects.map((p) => (
                 <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
-                  {p.name} ({p.code ?? ''})
+                  {p.jobNumber || 'Job number not recorded'} · {p.name}
                 </option>
               ))}
             </select>
@@ -1774,7 +1797,7 @@ function RevisionEntryPanel({ teamProjects, members=[], canCreate }) {
               <option value="">Select project</option>
               {teamProjects.map((p) => (
                 <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
-                  {p.name} ({p.code ?? ''})
+                  {p.jobNumber || 'Job number not recorded'} · {p.name}
                 </option>
               ))}
             </select>

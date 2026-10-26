@@ -17,8 +17,6 @@ const DASHBOARD_WRITERS = new Set([
   'qaqc_head',
   'team_lead',
   'technical_director',
-  'assoc_technical_director',
-  'associate_director',
   'executive_director',
 ]);
 const ALERT_WRITERS = new Set(['founding_director', 'working_director', 'executive_director', 'qaqc', 'team_lead']);

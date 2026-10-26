@@ -10,7 +10,6 @@ router.use(requireAuth);
 const REVIEW_WRITERS = [
   'design_mgmt_head',
   'technical_director',
-  'assoc_technical_director',
   'associate_director',
   'executive_director',
 ];

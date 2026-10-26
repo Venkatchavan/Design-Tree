@@ -13,8 +13,6 @@ const DASHBOARD_WRITERS = new Set([
   'working_director',
   'team_lead',
   'technical_director',
-  'assoc_technical_director',
-  'associate_director',
   'executive_director',
 ]);
 // Mirrors the write list on the discrepancy API; superusers pass server-side.

@@ -1,3 +1,4 @@
+import { directorTeams } from '../utils/directorTeams.js';
 import { Team } from '../models/Team.js';
 import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
@@ -313,6 +314,14 @@ export async function getProjectTeam(req, res, next) {
     const project = await Project.findById(req.params.id).lean();
     if (!project) return res.status(404).json({ message: 'Project not found.' });
     if (!(await projectVisible(req.user, project._id))) return res.status(404).json({ message: 'Project not found.' });
+    const scoped = await directorTeams(req.user);
+    if (scoped) {
+      const teams = scoped.filter(t=>t.projects.some(p=>String(p._id)===String(project._id)));
+      if (!teams.length) return res.status(404).json({message:'Project team not found.'});
+      return res.json({ project:{_id:project._id,name:project.name,jobNumber:project.jobNumber},
+        committedServices:[...new Set(teams.map(t=>t.service))], responsible:[], allocations:[],
+        members:teams.flatMap(t=>[...(t.lead?[{employee:t.lead,service:t.service,team:t.name}]:[]),...t.members.map(m=>({employee:m.employee,service:t.service,team:t.name}))]) });
+    }
     const bundle = await projectTeamBundle(project);
     return res.status(200).json({
       project: {

@@ -21,8 +21,6 @@ const DASHBOARD_WRITERS = [
   'qaqc',
   'qaqc_head',
   'technical_director',
-  'assoc_technical_director',
-  'associate_director',
   'executive_director',
 ];
 

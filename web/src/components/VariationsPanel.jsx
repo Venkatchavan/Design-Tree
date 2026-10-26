@@ -25,9 +25,8 @@ const WRITER_ROLES = new Set([
   'design_mgmt_head',
   'admin_billing',
   'executive_director',
-  'associate_director',
   'technical_director',
-  'assoc_technical_director',
+  'associate_director',
 ]);
 const EMPTY_FORM = {
   service: '',

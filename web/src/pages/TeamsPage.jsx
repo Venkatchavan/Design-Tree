@@ -1,3 +1,4 @@
+import DirectorTeamsPage from './DirectorTeamsPage.jsx';
 import { TeamAllocationPanel } from './MyCoordinationPage.jsx';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -5,6 +6,11 @@ import { projectsApi, employeesApi, teamsApi } from '../lib/api.js';
 import EmptyState from '../components/EmptyState.jsx';
 
 export default function TeamsPage({bootstrap}) {
+  if (['associate_director','technical_director','assoc_technical_director'].includes(bootstrap?.role?.key)) return <DirectorTeamsPage bootstrap={bootstrap}/>;
+  return <CompanyTeamsPage bootstrap={bootstrap}/>;
+}
+
+function CompanyTeamsPage({bootstrap}) {
   const canAllocate = bootstrap?.role?.key === 'design_mgmt_head';
   const projects = useQuery({queryKey:['teams-allocation-projects'],queryFn:()=>projectsApi.list({}),enabled:canAllocate});
   const employees = useQuery({queryKey:['teams-allocation-employees'],queryFn:()=>employeesApi.list({}),enabled:canAllocate});

@@ -31,7 +31,9 @@ test('project members see assigned records only, including direct IDs', async ()
     assert.equal((await call(role, `/api/projects/${f.other}/team`)).status, 404);
   }
   assert.equal((await call('spoc','/api/spoc/allocations','POST',{project:f.other,coordinator:f.cast.spoc.employee,services:['STR']})).status,403);
-  const team = await call('td', `/api/projects/${f.project}/team`);
+  // The 26 October director scope requires an explicit reporting link.
+  assert.equal((await call('td', `/api/projects/${f.project}/team`)).status,404);
+  const team = await call('admin', `/api/projects/${f.project}/team`);
   assert(team.data.allocations.some(a => a.coordinator._id === f.cast.spoc.employee));
   const teams=await call('engineer','/api/teams');assert(teams.data.items.every(t=>t.name !== 'Unrelated team'));
   const detail=await call('dmh',`/api/teams/${teams.data.items[0].id}`);assert.equal(detail.status,200);assert(detail.data.team.members.some(m=>m.employee.experience));
@@ -72,16 +74,16 @@ test('Finance alone can access bookings; role navigation reflects requirements',
   // TD/Assoc-TD have no design-mgmt or billing-status access.
   {
     const nav = (await call('td', '/api/meta/bootstrap')).data.nav.map(n => n.view);
-    assert(!nav.includes('design-mgmt')); assert(!nav.includes('billing-status')); assert(nav.includes('qs-head')); assert(!nav.includes('qs-log'));
+    assert(!nav.includes('design-mgmt')); assert(!nav.includes('billing-status')); assert(!nav.includes('qs-head')); assert(!nav.includes('qs-log')); assert(nav.includes('my-team'));
   }
   for (const role of ['associate']) {
     const nav = (await call(role, '/api/meta/bootstrap')).data.nav.map(n => n.view);
-    assert(!nav.includes('design-mgmt')); assert(nav.includes('billing-status')); assert(nav.includes('qs-head')); assert(!nav.includes('qs-log'));
-    assert(nav.includes('qaqc-specs')); assert(nav.includes('bim-head')); assert(nav.includes('gbs-head')); assert(nav.includes('peer-review-head'));
+    assert(!nav.includes('design-mgmt')); assert(nav.includes('billing-status')); assert(!nav.includes('qs-head')); assert(!nav.includes('qs-log')); assert(nav.includes('my-team'));
+    assert(nav.includes('qaqc-specs')); assert(!nav.includes('bim-head')); assert(!nav.includes('gbs-head')); assert(!nav.includes('peer-review-head'));
   }
   {
     const nav = (await call('atd', '/api/meta/bootstrap')).data.nav.map(n => n.view);
-    assert(!nav.includes('design-mgmt')); assert(!nav.includes('billing-status')); assert(nav.includes('qs-log'));
+    assert(!nav.includes('design-mgmt')); assert(!nav.includes('billing-status')); assert(!nav.includes('qs-log')); assert(!nav.includes('qs-head')); assert(nav.includes('my-team'));
   }
   const nav = (await call('dmh', '/api/meta/bootstrap')).data.nav.map(n => n.view);
   assert(nav.includes('design-mgmt')); assert(nav.includes('certificates'));

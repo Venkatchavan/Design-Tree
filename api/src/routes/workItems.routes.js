@@ -13,8 +13,6 @@ const WORK_ITEM_WRITERS = [
   'team_lead',
   'design_mgmt_head',
   'technical_director',
-  'assoc_technical_director',
-  'associate_director',
   'executive_director',
 ];
 
