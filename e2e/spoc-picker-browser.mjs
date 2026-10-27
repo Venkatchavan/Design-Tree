@@ -1,0 +1,37 @@
+import {readFile,writeFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import assert from 'node:assert/strict';
+import {chromium,expect} from '@playwright/test';
+const f=JSON.parse(await readFile('/tmp/designtree-stakeholder-fixture.json','utf8'));assert(f.isolated);
+const base='http://127.0.0.1:5173',out=resolve(import.meta.dirname,'../../spoc-picker-review-2026-10-27/evidence');
+const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE});
+const checks=[],errors=[];
+try{
+ const context=await browser.newContext({serviceWorkers:'block',viewport:{width:1440,height:1000}});
+ assert((await context.request.post(base+'/api/auth/login',{data:{email:f.cast.td.email,password:f.password}})).ok());
+ const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+ const panel=page.locator('.panel').filter({has:page.locator('.panel-title',{hasText:'Open this project for a team'})});
+ await page.goto(base+'/projects/'+f.project);await expect(page.locator('#pd-spoc option')).toHaveCount(207);
+ const labels=await page.locator('#pd-spoc option').allTextContents();assert(labels.some(l=>l.includes('Picker SPOC 204')));assert(!labels.some(l=>l.includes('Test engineer')));
+ await expect(panel.getByRole('button',{name:'Activate project',exact:true})).toBeDisabled();
+ await panel.locator('summary').click();await expect(panel.getByText(/SPOC missing employee link:/)).toBeVisible();
+ checks.push({name:'Dropdown contains all 206 eligible SPOCs, excludes other roles and explains missing employee links',passed:true});
+ await context.route('**/api/employees/spoc-options',r=>r.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'SPOC list unavailable'})}));
+ await page.reload();await expect(panel.getByRole('alert')).toContainText('SPOC list unavailable');await expect(panel.getByRole('button',{name:'Activate project',exact:true})).toBeDisabled();
+ await context.unroute('**/api/employees/spoc-options');await panel.getByRole('button',{name:'Retry SPOC list'}).click();await expect(page.locator('#pd-spoc option')).toHaveCount(207);
+ checks.push({name:'Failed SPOC lookup is visible, blocks activation and supports retry',passed:true});
+ await context.route('**/api/employees/spoc-options',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],total:0,unavailable:[]})}));
+ await page.reload();await expect(panel.getByText(/No eligible SPOCs are available/)).toBeVisible();await expect(panel.getByRole('button',{name:'Activate project',exact:true})).toBeDisabled();
+ await context.unroute('**/api/employees/spoc-options');await page.reload();await expect(page.locator('#pd-spoc option')).toHaveCount(207);
+ checks.push({name:'Empty eligible list gives HR guidance and cannot activate without a SPOC',passed:true});
+ await page.locator('#pd-spoc').selectOption(f.cast.spoc.employee);
+ await panel.screenshot({path:resolve(out,'spoc-picker-fixed.png')});
+ const activated=page.waitForResponse(r=>r.url().endsWith('/activate')&&r.request().method()==='POST');
+ await panel.getByRole('button',{name:'Activate project',exact:true}).click();assert.equal((await activated).status(),200);
+ await expect(page.locator('#pd-spoc')).toHaveCount(0);
+ const spoc=await browser.newContext();assert((await spoc.request.post(base+'/api/auth/login',{data:{email:f.cast.spoc.email,password:f.password}})).ok());
+ assert.equal((await spoc.request.get(base+'/api/projects/'+f.project)).status(),200);await spoc.close();
+ checks.push({name:'Selected eligible SPOC activates the project and receives workspace access',passed:true});
+ assert.deepEqual(errors,[]);await writeFile(resolve(out,'browser-tests.json'),JSON.stringify({passed:true,checks,page_errors:errors,scope:'Disposable local API and production web bundle; company records not inspected'},null,2)+'\n');await context.close();
+ console.log('All four SPOC picker browser checks passed.');
+}finally{await browser.close()}

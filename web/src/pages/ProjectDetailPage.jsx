@@ -302,6 +302,13 @@ export default function ProjectDetailPage({ bootstrap }) {
     enabled: !!id,
     retry: false,
   });
+  const spocOptions = useQuery({
+    queryKey: ['eligible-spocs'],
+    queryFn: employeesApi.spocOptions,
+    enabled: (isAdmin || isTD) && q.data?.project?.activation?.status !== 'Activated',
+    retry: false,
+    refetchInterval: 10000,
+  });
   const stagesQ = useQuery({ queryKey: ['project-stages', id], queryFn: () => billingApi.stages({ project: id }), enabled: !!id, retry: false, refetchInterval: role === 'coordinator' ? 10_000 : false });
   const drawingsQ = useQuery({ queryKey: ['project-drawings', id], queryFn: () => drawingsApi.list({ project: id }), enabled: !!id, retry: false });
   const revisionsQ = useQuery({ queryKey: ['project-revisions', id], queryFn: () => revisionsApi.list({ project: id }), enabled: !!id, retry: false });
@@ -762,19 +769,24 @@ export default function ProjectDetailPage({ bootstrap }) {
           <>
             <div className="form-row" style={{ maxWidth: 360 }}>
               <label className="form-label" htmlFor="pd-spoc">SPOC (coordinator)</label>
-              <select id="pd-spoc" className="filter-select" value={spocId} onChange={(e) => setSpocId(e.target.value)}>
+              <select id="pd-spoc" className="filter-select" value={spocId} onChange={(e) => setSpocId(e.target.value)} disabled={spocOptions.isLoading || spocOptions.isError}>
                 <option value="">Select…</option>
-                {((employees.data?.items ?? employees.data ?? [])).map((e) => (
-                  <option key={e._id ?? e.id} value={e._id ?? e.id}>
-                    {[e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || e.email} ({e.empId ?? '—'})
+                {(spocOptions.data?.items ?? []).map((e) => (
+                  <option key={e._id} value={e._id}>
+                    {e.name} ({e.empId ?? '—'})
                   </option>
                 ))}
               </select>
+              {spocOptions.isLoading && <p>Loading SPOCs…</p>}
+              {spocOptions.isError && <div role="alert">{spocOptions.error.message} <button type="button" onClick={() => spocOptions.refetch()}>Retry SPOC list</button></div>}
+              {!spocOptions.isLoading && !spocOptions.isError && !spocOptions.data?.items?.length && <p>No eligible SPOCs are available. Ask HR to check the SPOC role, active login and employee link.</p>}
+              <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>Only active SPOC logins linked to eligible employee records appear. Other employee roles are excluded.</p>
+              {!!spocOptions.data?.unavailable?.length && <details><summary>SPOC logins needing HR review ({spocOptions.data.unavailable.length})</summary><ul>{spocOptions.data.unavailable.map((item, index) => <li key={index}>{item.name}: {item.reason}</li>)}</ul></details>}
             </div>
             {activate.isError && (
               <div className="login-error" role="alert" style={{ display: 'block' }}>{activate.error.message}</div>
             )}
-            <button type="button" className="btn-primary" disabled={activate.isPending} onClick={() => activate.mutate(spocId ? { coordinator: spocId } : {})}>
+            <button type="button" className="btn-primary" disabled={activate.isPending || spocOptions.isLoading || spocOptions.isError || !(spocOptions.data?.items ?? []).some(employee => employee._id === spocId)} onClick={() => activate.mutate({ coordinator: spocId })}>
               {activate.isPending ? 'Activating…' : 'Activate project'}
             </button>
             <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>

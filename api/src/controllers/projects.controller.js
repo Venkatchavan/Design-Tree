@@ -1,4 +1,5 @@
 import { directorTeams } from '../utils/directorTeams.js';
+import { eligibleSpocs } from '../utils/spocOptions.js';
 import { Team } from '../models/Team.js';
 import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
@@ -666,6 +667,10 @@ export async function activateProject(req, res, next) {
 
     let allocation = null;
     const coordinatorId = parsed.data.coordinator ?? project.activation?.spoc?.toString();
+    const options = await eligibleSpocs();
+    if (!coordinatorId || !options.items.some(employee => employee._id === String(coordinatorId))) {
+      return res.status(400).json({ message: 'Select an active SPOC whose login is linked to an eligible employee. Ask HR to review a missing name or employee link.' });
+    }
     if (coordinatorId) {
       const coordinator = await Employee.findById(coordinatorId);
       if (!coordinator) {

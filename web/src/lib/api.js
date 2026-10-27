@@ -157,6 +157,7 @@ export const metaApi = {
 };
 
 export const employeesApi = {
+  spocOptions: () => request('/api/employees/spoc-options'),
   list: (params = {}) => directoryList('/api/employees', params),
   filters: () => request('/api/employees/filters'),
   get: (id) => request(`/api/employees/${id}`),
