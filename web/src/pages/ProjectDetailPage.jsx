@@ -813,7 +813,7 @@ export default function ProjectDetailPage({ bootstrap }) {
         <>
           <Tabs tabs={coordTabs} active={coord} onChange={setCoord} />
 
-          {(!isTD && coord !== 'overview') && (
+          {(!['associate_director', 'technical_director', 'assoc_technical_director'].includes(role) && coord !== 'overview') && (
           <Panel title="Assigned SPOC">
             <p>{assignedSpocLabel}</p>
           </Panel>

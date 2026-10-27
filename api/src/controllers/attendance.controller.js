@@ -62,11 +62,14 @@ export async function recordLogin(userId, role, now = new Date()) {
     const workingDay = await isWorkingDay(dayKey);
     const existing = await AttendanceDay.findOne({ employee: employeeId, date: dayKey });
     if (existing) {
+      let changed = false;
       if (!existing.loginAt) {
         existing.loginAt = now;
         existing.workingDay = workingDay;
-        await existing.save();
+        changed = true;
       }
+      if (existing.logoutAt) { existing.logoutAt = null; changed = true; }
+      if (changed) await existing.save();
       return {
         late: needsLateReason(existing),
         reasonGiven: !!existing.lateReason?.trim(),
@@ -101,12 +104,15 @@ export async function attendanceStatus(req, res, next) {
     const dayKey = istDayKey(new Date());
     const doc = await AttendanceDay.findOne({ employee: employeeId, date: dayKey });
     if (!doc?.loginAt) return res.status(200).json({ required: false, noLogin: true });
-    const dur = durationHours(doc) ?? (new Date() - new Date(doc.loginAt)) / 3600000;
+    // This endpoint describes an authenticated live session, not a prior closed interval.
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(doc.loginAt).getTime()) / 1000));
+    const dur = elapsedSeconds / 3600;
     return res.status(200).json({
       required: true,
       late: needsLateReason(doc),
-      underHours: dur < ATTENDANCE_STANDARD_HOURS,
+      underHours: doc.workingDay && dur < ATTENDANCE_STANDARD_HOURS,
       durationHours: Math.round(dur * 10) / 10,
+      elapsedSeconds,
       lateReason: doc.lateReason ?? null,
       earlyLogoutReason: doc.earlyLogoutReason ?? null,
       loginAt: doc.loginAt,

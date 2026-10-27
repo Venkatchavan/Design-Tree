@@ -10,6 +10,26 @@ const id = value => String(value?._id ?? value ?? '');
 const normalized = value => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 export const teamService = value => expandServices([value]).join(' + ');
 
+export function employeeOwnership(user, employees, users) {
+  const aliases = new Map();
+  function add(key, employee) {
+    key = normalized(key);if (!key) return;
+    if (!aliases.has(key)) aliases.set(key, new Set());aliases.get(key).add(id(employee));
+  }
+  for (const e of employees) for (const key of [e._id,e.empId,e.email,[e.firstName,e.lastName].filter(Boolean).join(' '),[e.firstName,e.middleName,e.lastName].filter(Boolean).join(' ')]) add(key,e._id);
+  const active = new Set(employees.map(e=>id(e)));
+  for (const u of users) if (active.has(id(u.employee))) for (const key of [u._id,u.name,u.email]) add(key,u.employee);
+  const resolve = key => {const matches=aliases.get(normalized(key));return matches?.size===1?[...matches][0]:null;};
+  const me=users.find(u=>id(u)===id(user.id));const own=id(me?.employee);
+  const reporting = new Set(active.has(own) ? [own] : []);
+  let changed=true;
+  while(changed){changed=false;for(const e of employees){
+    if (reporting.has(id(e))) continue;
+    if (resolve(e.director)===own || reporting.has(resolve(e.reportingManager))) {reporting.add(id(e));changed=true;}
+  }}
+  return { own, active, reporting, resolve };
+}
+
 // Ownership comes from persisted exact links, never a department-wide default.
 // Ambiguous legacy names resolve to nobody; missing mappings return no teams.
 export async function directorTeams(user) {
@@ -23,23 +43,8 @@ export async function directorTeams(user) {
       .populate('members.employee', 'firstName lastName empId designation department status experience').lean(),
     ServiceDashboard.find({ technicalDirector: { $exists: true, $ne: '' } }).select('project service technicalDirector').lean(),
   ]);
-  const aliases = new Map();
-  function add(key, employee) {
-    key = normalized(key);if (!key) return;
-    if (!aliases.has(key)) aliases.set(key, new Set());aliases.get(key).add(id(employee));
-  }
-  for (const e of employees) for (const key of [e._id,e.empId,e.email,[e.firstName,e.lastName].filter(Boolean).join(' '),[e.firstName,e.middleName,e.lastName].filter(Boolean).join(' ')]) add(key,e._id);
-  const active = new Set(employees.map(e=>id(e)));
-  for (const u of users) if (active.has(id(u.employee))) for (const key of [u._id,u.name,u.email]) add(key,u.employee);
-  const resolve = key => {const matches=aliases.get(normalized(key));return matches?.size===1?[...matches][0]:null;};
-  const me=users.find(u=>id(u)===id(user.id));const own=id(me?.employee);
+  const {own,active,reporting,resolve}=employeeOwnership(user,employees,users);
   if (!active.has(own)) return [];
-  const reporting = new Set([own]);
-  let changed=true;
-  while(changed){changed=false;for(const e of employees){
-    if (reporting.has(id(e))) continue;
-    if (resolve(e.director)===own || reporting.has(resolve(e.reportingManager))) {reporting.add(id(e));changed=true;}
-  }}
   const pairs=new Set(dashboards.filter(d=>resolve(d.technicalDirector)===own)
     .flatMap(d=>expandServices([d.service]).map(service=>id(d.project)+':'+service)));
   return teams.flatMap(t=>{

@@ -1,4 +1,12 @@
 import { directorTeams } from '../utils/directorTeams.js';
+import { directorDirectory } from '../utils/directorDirectory.js';
+
+export async function reportingDirectory(req,res,next) {
+  try{return res.json(await directorDirectory(req.user,false,req.query.branch??''));}catch(error){return next(error);}
+}
+export async function companyDirectory(req,res,next) {
+  try{return res.json(await directorDirectory(req.user,true,req.query.branch??''));}catch(error){return next(error);}
+}
 import { applyMeetingAudience } from '../middlewares/meetingAccess.js';
 import { projectScopeIds } from '../utils/projectScope.js';
 import { Meeting } from '../models/Meeting.js';

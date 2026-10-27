@@ -197,6 +197,7 @@ export const branchesApi = {
 };
 
 export const teamsApi = {
+  directory: (company = false, branch = '') => request(`/api/teams/${company ? 'company' : 'reporting'}-directory${toQuery({ branch })}`),
   list: () => request('/api/teams'),
   get: (id) => request(`/api/teams/${id}`),
   create: (body) =>

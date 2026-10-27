@@ -79,7 +79,8 @@ test('Finance alone can access bookings; role navigation reflects requirements',
   for (const role of ['associate']) {
     const nav = (await call(role, '/api/meta/bootstrap')).data.nav.map(n => n.view);
     assert(!nav.includes('design-mgmt')); assert(nav.includes('billing-status')); assert(!nav.includes('qs-head')); assert(!nav.includes('qs-log')); assert(nav.includes('my-team'));
-    assert(nav.includes('qaqc-specs')); assert(!nav.includes('bim-head')); assert(!nav.includes('gbs-head')); assert(!nav.includes('peer-review-head'));
+    assert(!nav.includes('qaqc-specs')); // Superseded by 27 October PDF page 6.
+    assert(!nav.includes('bim-head')); assert(!nav.includes('gbs-head')); assert(!nav.includes('peer-review-head'));
   }
   {
     const nav = (await call('atd', '/api/meta/bootstrap')).data.nav.map(n => n.view);

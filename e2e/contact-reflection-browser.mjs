@@ -3,7 +3,7 @@ import{resolve}from'node:path';
 import assert from'node:assert/strict';
 import{chromium,expect}from'@playwright/test';
 const f=JSON.parse(await readFile('/tmp/designtree-stakeholder-fixture.json','utf8'));assert(f.isolated);
-const out=resolve(import.meta.dirname,'../../contact-reflection-2026-10-26/evidence'),base='http://127.0.0.1:5173';await mkdir(out,{recursive:true});
+const out=process.env.TEST_REPORT_DIR?resolve(process.env.TEST_REPORT_DIR):resolve(import.meta.dirname,'../../contact-reflection-2026-10-26/evidence'),base='http://127.0.0.1:5173';await mkdir(out,{recursive:true});
 const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE});
 const contexts=[],checks=[],errors=[],run=Date.now();
 const panel=(p,title)=>p.locator('.panel').filter({has:p.locator('.panel-title',{hasText:new RegExp('^'+title+'$')})});

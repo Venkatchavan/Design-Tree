@@ -6,7 +6,7 @@ import { projectsApi, employeesApi, teamsApi } from '../lib/api.js';
 import EmptyState from '../components/EmptyState.jsx';
 
 export default function TeamsPage({bootstrap}) {
-  if (['associate_director','technical_director','assoc_technical_director'].includes(bootstrap?.role?.key)) return <DirectorTeamsPage bootstrap={bootstrap}/>;
+  if (['associate_director','technical_director','assoc_technical_director'].includes(bootstrap?.role?.key)) return <DirectorTeamsPage company />;
   return <CompanyTeamsPage bootstrap={bootstrap}/>;
 }
 
