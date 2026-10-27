@@ -1,7 +1,18 @@
 export const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
+async function fetchApi(path, options) {
+  try {
+    return await fetch(`${API_BASE}${path}`, options);
+  } catch (cause) {
+    if (!(cause instanceof TypeError)) throw cause;
+    const error = new Error('Cannot connect to DesignTree. Check your connection and try again. If this continues, contact your administrator.', { cause });
+    error.code = 'NETWORK_ERROR';
+    throw error;
+  }
+}
+
 export async function request(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchApi(path, {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     ...options,
@@ -48,10 +59,23 @@ export function toQuery(params = {}) {
   return s ? `?${s}` : '';
 }
 
+async function directoryList(path, params) {
+  if (params.page != null || params.limit != null) return request(`${path}${toQuery(params)}`);
+  let data = await request(`${path}${toQuery({ ...params, page: 1, limit: 200 })}`);
+  const records = new Map(data.items.map(item => [String(item.id ?? item._id), item]));
+  for (let page = 2; data.hasMore; page++) {
+    data = await request(`${path}${toQuery({ ...params, page, limit: 200 })}`);
+    const before = records.size;
+    for (const item of data.items) records.set(String(item.id ?? item._id), item);
+    if (data.hasMore && records.size === before) throw new Error('The directory changed while loading. Please refresh and try again.');
+  }
+  return { ...data, items: [...records.values()], page: 1, hasMore: false };
+}
+
 export async function requestMultipart(path, file, field = 'file') {
   const form = new FormData();
   form.append(field, file);
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchApi(path, {
     credentials: 'include',
     method: 'POST',
     body: form,
@@ -133,7 +157,7 @@ export const metaApi = {
 };
 
 export const employeesApi = {
-  list: (params = {}) => request(`/api/employees${toQuery(params)}`),
+  list: (params = {}) => directoryList('/api/employees', params),
   filters: () => request('/api/employees/filters'),
   get: (id) => request(`/api/employees/${id}`),
   create: (body) =>
@@ -146,7 +170,7 @@ export const employeesApi = {
 };
 
 export const usersApi = {
-  list: (params = {}) => request(`/api/users${toQuery(params)}`),
+  list: (params = {}) => directoryList('/api/users', params),
   create: (body) =>
     request('/api/users', { method: 'POST', body: JSON.stringify(body) }),
   // External portal identity (client / architect) — never linked to employees.

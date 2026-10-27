@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { ROLE_KEYS, USER_ADMIN_ROLES, isSuperRole } from '../config/roles.js';
 import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
+import { directoryPage } from '../utils/directoryPage.js';
 import { requireActiveBranch } from '../utils/branches.js';
 import {
   employeeLoginSchema,
@@ -15,6 +16,7 @@ function escapeRegExp(s) {
 
 export async function listEmployees(req, res, next) {
   try {
+    const { page, limit, skip } = directoryPage(req.query);
     const { branch, department, status, search } = req.query;
     const filter = {};
     if (branch) filter.branch = branch;
@@ -37,10 +39,10 @@ export async function listEmployees(req, res, next) {
       ];
     }
     const [items, total] = await Promise.all([
-      Employee.find(filter).sort({ createdAt: -1 }).limit(200),
+      Employee.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
       Employee.countDocuments(filter),
     ]);
-    return res.status(200).json({ items, total });
+    return res.status(200).json({ items, total, page, limit, hasMore: skip + items.length < total });
   } catch (err) {
     return next(err);
   }

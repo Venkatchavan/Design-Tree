@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { ROLE_KEYS, roleLabel } from '../config/roles.js';
 import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
+import { directoryPage } from '../utils/directoryPage.js';
 import {
   adminCreateUserSchema,
   adminUpdateUserSchema,
@@ -23,6 +24,7 @@ function toPublicUser(u) {
 
 export async function listUsers(req, res, next) {
   try {
+    const { page, limit, skip } = directoryPage(req.query);
     const { role, active, search } = req.query;
     const filter = {};
     if (role) filter.role = role;
@@ -36,10 +38,10 @@ export async function listUsers(req, res, next) {
       filter.$or = [{ name: rx }, { email: rx }];
     }
     const [items, total] = await Promise.all([
-      User.find(filter).sort({ createdAt: -1 }).limit(200),
+      User.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
       User.countDocuments(filter),
     ]);
-    return res.status(200).json({ items: items.map(toPublicUser), total });
+    return res.status(200).json({ items: items.map(toPublicUser), total, page, limit, hasMore: skip + items.length < total });
   } catch (err) {
     return next(err);
   }

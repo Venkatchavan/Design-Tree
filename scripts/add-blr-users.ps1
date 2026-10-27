@@ -1,8 +1,6 @@
-# Adds the BLR employees as logins (password designtree@123).
-# Run with Docker Desktop and the stack (docker compose up -d) running.
-# Existing emails are skipped.
-#
-#   powershell -ExecutionPolicy Bypass -File .\scripts\add-blr-users.ps1
+# Audit BLR logins by default. Rebuild/recreate the API image before use.
+# Use -Apply only after reviewing the audit. New-joiner emails remain pending.
+param([switch]$Apply)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -20,9 +18,16 @@ if (-not $running) {
   exit 1
 }
 
-$source = Join-Path $root 'api\src\scripts\add-blr-users.js'
-docker cp $source designtree-api:/app/src/scripts/add-blr-users.js
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+# Use the rebuilt API image: the importer now includes shared audit and roster modules.
+# Existing accounts are preserved; default execution only audits.
+if ($Apply -and -not $env:BLR_INITIAL_PASSWORD) {
+  Write-Error 'Set BLR_INITIAL_PASSWORD before using -Apply.'
+  exit 1
+}
 
-docker compose exec api node src/scripts/add-blr-users.js
+if ($Apply) {
+  docker compose exec -e BLR_INITIAL_PASSWORD api node src/scripts/add-blr-users.js --apply
+} else {
+  docker compose exec api node src/scripts/add-blr-users.js --dry-run
+}
 exit $LASTEXITCODE
