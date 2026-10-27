@@ -1482,20 +1482,23 @@ function DecideModal({ entry, onClose, decide }) {
   );
 }
 
-function AssignWorkPanel({members: selectedMembers,roleGroups: selectedGroups,teamProjects,myTasks,teams=[],includeLeads=false}) {
+function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
   const queryClient=useQueryClient();
   const [section,setSection]=useState('deliverables');
   const [selMembers,setSelMembers]=useState([]);
-  const [project,setProject]=useState(teamProjects.length === 1 ? idOf(teamProjects[0]) : '');
+  const [chosenProject,setProject]=useState('');
+  const project = chosenProject || (teamProjects.length === 1 ? idOf(teamProjects[0]) : '');
   const [stage,setStage]=useState('');
   const [deliverable,setDeliverable]=useState('');
   const [dueDate,setDueDate]=useState('');
   const [priority,setPriority]=useState('Medium');
   const [notes,setNotes]=useState('');
   const [err,setErr]=useState('');
-  const members = teams.length ? projectMembers(teams, project, includeLeads) : selectedMembers;
-  const roleGroups = teams.length ? [...new Set(members.map(m=>m.service))].map(service=>({ key: service, members: members.filter(m=>m.service===service) })) : selectedGroups;
-  const allIds = members.map(memberId).filter(Boolean);
+  const roster = useQuery({ queryKey: ['task-assignees', project], queryFn: () => tasksApi.assignees(project), enabled: !!project, retry: false, refetchInterval: 10000 });
+  const eligible = (roster.data?.items ?? []).filter(member => includeLeads || !member.isLead);
+  const members = [...new Map(eligible.map(member => [memberId(member) + (includeLeads ? ':' + member.service : ''), member])).values()];
+  const roleGroups = [...new Set(members.map(m => m.service))].map(service => ({ key: service || 'Project team', members: members.filter(m => m.service === service) }));
+  const allIds = [...new Set(members.map(memberId).filter(Boolean))];
   const create = useMutation({
     mutationFn: (body) => tasksApi.create(body),
     onSuccess: () => {
@@ -1557,8 +1560,8 @@ function AssignWorkPanel({members: selectedMembers,roleGroups: selectedGroups,te
                 None
               </button>
             </div>
-            {members.length === 0 ? (
-              <EmptyState text="No team members to assign." />
+            {project && roster.isLoading ? <EmptyState text="Loading the allocated project team…" /> : roster.isError ? <div role="alert">{roster.error.message} <button type="button" onClick={() => roster.refetch()}>Retry team list</button></div> : members.length === 0 ? (
+              <EmptyState text={project ? 'No confirmed team members are allocated to this project. Ask the SPOC or authorized team administrator to save the project allocation.' : 'Select a project to load its allocated team members.'} />
             ) : (
               roleGroups.map((g) => (
                 <div key={g.key} style={{ marginBottom: 8 }}>
@@ -1620,7 +1623,7 @@ function AssignWorkPanel({members: selectedMembers,roleGroups: selectedGroups,te
             <textarea className="form-input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any context, reference drawings, or specific instructions" />
           </div>
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-          <button type="submit" className="btn-primary" disabled={create.isPending}>
+          <button type="submit" className="btn-primary" disabled={create.isPending || !project || roster.isLoading || roster.isError || !selMembers.length}>
             {create.isPending ? 'Assigning…' : 'Assign task'}
           </button>
         </form>

@@ -1,4 +1,5 @@
-import { directorTeams, isTeamDirector } from '../utils/directorTeams.js';
+import { isTeamDirector } from '../utils/directorTeams.js';
+import { taskRoster } from '../utils/taskRoster.js';
 import { canReadProject } from '../utils/projectScope.js';
 import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { z } from 'zod';
@@ -32,19 +33,25 @@ import {
 const POP_EMP = 'firstName lastName empId designation';
 const POP_PROJ = 'name code branch';
 
+export async function taskAssignees(req, res, next) {
+  try {
+    const project = req.query.project;
+    if (typeof project !== 'string' || !/^[0-9a-fA-F]{24}$/.test(project)) return res.status(400).json({ message: 'Select a valid project.' });
+    if (!await canReadProject(req.user, project)) return res.status(403).json({ message: 'Project is not assigned to you.' });
+    return res.json(await taskRoster(req.user, project));
+  } catch (error) { return next(error); }
+}
+
 export async function taskMemberAccess(req,res,next) {
   try {
     const existing = req.params.id ? await Task.findById(req.params.id) : null;
     if (existing && isTeamDirector(req.user) && String(existing.createdBy)!==String(req.user.id)) return res.status(404).json({message:'Task not found.'});
     const project = req.body.project || existing?.project;
     if (!project || !await canReadProject(req.user,project)) return res.status(403).json({message:'Project is not assigned to you.'});
-    const {Team} = await import('../models/Team.js');
-    const scoped = await directorTeams(req.user);
-    const teams = scoped ? scoped.filter(t=>t.projects.some(p=>String(p._id)===String(project))) : await Team.find({projects:project,active:{$ne:false}}).select('lead members').lean();
-    const empId = value => String(value?._id ?? value ?? '');
-    const allowed = new Set(teams.flatMap(t=>[empId(t.lead),...t.members.map(m=>empId(m.employee))]).filter(Boolean));
+    const roster = await taskRoster(req.user, project);
+    const allowed = new Set(roster.items.map(m => String(m.employee._id)));
     const members = req.body.members ?? existing?.members ?? [];
-    if(!allowed.size && scoped) return res.status(403).json({message:'No team is assigned to you for this project.'});
+    if(!allowed.size && isTeamDirector(req.user)) return res.status(403).json({message:'No team is assigned to you for this project.'});
     if(Array.isArray(members) && members.some(id=>!allowed.has(String(id))))return res.status(400).json({message:'Assign work to members of your authorized project team only.'});
     return next();
   }catch(err){return next(err);}

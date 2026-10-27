@@ -1,0 +1,34 @@
+import {readFile,writeFile}from'node:fs/promises';
+import{resolve}from'node:path';
+import assert from'node:assert/strict';
+import{chromium,expect}from'@playwright/test';
+const f=JSON.parse(await readFile('/tmp/designtree-stakeholder-fixture.json','utf8'));assert(f.isolated);
+const base='http://127.0.0.1:5173',out=resolve(import.meta.dirname,'../../tl-assignment-review-2026-10-27/evidence');
+const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE});
+const checks=[],errors=[];
+try{
+ const c=await browser.newContext({serviceWorkers:'block',viewport:{width:1440,height:1000}});
+ assert((await c.request.post(base+'/api/auth/login',{data:{email:f.cast.tl.email,password:f.password}})).ok());
+ const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));
+ const panel=p.locator('.panel').filter({has:p.locator('.panel-title',{hasText:'Assign work to a team member'})});
+ await p.goto(base+'/my-team');await p.getByRole('tab',{name:'Assign work',exact:true}).click();await p.getByRole('tab',{name:'Assign Task',exact:true}).click().catch(async error=>{await p.screenshot({path:resolve(out,'browser-failure.png'),fullPage:true});await writeFile(resolve(out,'browser-failure.json'),JSON.stringify({error:error.message,page_errors:errors,body:await p.locator('body').innerText()},null,2));throw error});
+ await expect(panel.getByLabel('Task project')).toContainText('JOB-26-442');
+ await expect(panel.getByLabel('Task project')).not.toContainText('Job number not recorded');
+ await expect(panel.getByLabel('Test engineer Workflow',{exact:true})).toBeVisible();
+ checks.push({name:'Saved job number and confirmed project member appear despite an empty TL team row',passed:true});
+ const task='TL saved project roster task '+Date.now();
+ await panel.getByLabel('Test engineer Workflow',{exact:true}).check();await panel.getByPlaceholder('Bore hole location and specifications').fill(task);
+ const created=p.waitForResponse(r=>r.url().endsWith('/api/work/tasks')&&r.request().method()==='POST');await panel.getByRole('button',{name:'Assign task',exact:true}).click();assert.equal((await created).status(),201);
+ const engineer=await browser.newContext();assert((await engineer.request.post(base+'/api/auth/login',{data:{email:f.cast.engineer.email,password:f.password}})).ok());
+ const mine=await engineer.request.get(base+'/api/work/tasks/mine');assert((await mine.json()).items.some(t=>t.deliverable===task));await engineer.close();
+ checks.push({name:'TL task reaches the allocated engineer My work data',passed:true});
+ await panel.screenshot({path:resolve(out,'tl-assignment-fixed.png')});
+ await c.route('**/api/work/tasks/assignees*',r=>r.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Project roster unavailable'})}));
+ await p.reload();await p.getByRole('tab',{name:'Assign work',exact:true}).click();await p.getByRole('tab',{name:'Assign Task',exact:true}).click();await expect(panel.getByRole('alert')).toContainText('Project roster unavailable');await expect(panel.getByRole('button',{name:'Assign task',exact:true})).toBeDisabled();
+ await c.unroute('**/api/work/tasks/assignees*');await panel.getByRole('button',{name:'Retry team list'}).click();await expect(panel.getByLabel('Test engineer Workflow',{exact:true})).toBeVisible();
+ checks.push({name:'Roster errors remain visible and can be retried without showing a false unallocated state',passed:true});
+ await c.route('**/api/work/tasks/assignees*',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],total:0})}));
+ await p.reload();await p.getByRole('tab',{name:'Assign work',exact:true}).click();await p.getByRole('tab',{name:'Assign Task',exact:true}).click();await expect(panel.getByText(/No confirmed team members are allocated/)).toBeVisible();await expect(panel.getByRole('button',{name:'Assign task',exact:true})).toBeDisabled();
+ checks.push({name:'A truly empty roster requires saved allocation and never invents team members',passed:true});
+ assert.deepEqual(errors,[]);await writeFile(resolve(out,'browser-tests.json'),JSON.stringify({passed:true,checks,page_errors:errors,scope:'Disposable local API/MongoDB and production frontend bundle; client allocation not inspected'},null,2)+'\n');await c.close();console.log('All four TL assignment browser checks passed.');
+}finally{await browser.close()}
