@@ -59,7 +59,7 @@ export function toQuery(params = {}) {
   return s ? `?${s}` : '';
 }
 
-async function directoryList(path, params) {
+export async function directoryList(path, params) {
   if (params.page != null || params.limit != null) return request(`${path}${toQuery(params)}`);
   let data = await request(`${path}${toQuery({ ...params, page: 1, limit: 200 })}`);
   const records = new Map(data.items.map(item => [String(item.id ?? item._id), item]));

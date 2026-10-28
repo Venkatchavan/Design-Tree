@@ -46,7 +46,7 @@ function weekLabel(r) {
 export default function QaqcServicePanel({ projectId, codes, dashboard, principalTeamLeads, visits, discrepancies, weeklyRows, role, readOnly = false }) {
   const d = dashboard ?? {};
   const canEdit = DASHBOARD_WRITERS.has(role) && !readOnly;
-  const canAlerts = ALERT_WRITERS.has(role);
+  const canAlerts = ALERT_WRITERS.has(role) && !readOnly;
   const qc = useQueryClient();
   const [tab, setTab] = useState('overview');
   const [draft, setDraft] = useState(null);

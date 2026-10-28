@@ -53,12 +53,13 @@ export async function createUser(req, res, next) {
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid user data.' });
     }
+    if (req.user.role === 'hr' && EXTERNAL_PORTAL_ROLES.includes(parsed.data.role)) return res.status(403).json({message:'External access is managed by Admin.'});
     if (!ROLE_KEYS.includes(parsed.data.role)) {
       return res.status(400).json({ message: 'Unknown role.' });
     }
     if (parsed.data.employeeId && EXTERNAL_PORTAL_ROLES.includes(parsed.data.role)) {
       return res.status(400).json({
-        message: 'External roles don\u2019t get employee records \u2014 create them under HR \u2192 External access.',
+        message: 'External roles don\u2019t get employee records \u2014 ask Admin to manage external access.',
       });
     }
     const clash = await User.findOne({ email: parsed.data.email });
@@ -96,6 +97,7 @@ export async function createUser(req, res, next) {
 }
 
 export async function createPortalUser(req, res, next) {
+  if (req.user.role === 'hr') return res.status(403).json({message:'External access is managed by Admin.'});
   // External portal identity (client / architect): standalone login with NO
   // employee record. Externals are outside Datum, not employees. Project
   // assignment stays Admin-only per project (ProjectDetail portal section).
@@ -136,6 +138,11 @@ export async function updateUser(req, res, next) {
     if (parsed.data.role && !ROLE_KEYS.includes(parsed.data.role)) {
       return res.status(400).json({ message: 'Unknown role.' });
     }
+    if (req.user.role === 'hr') {
+      const existing = await User.findById(req.params.id).select('role');
+      if (!existing) return res.status(404).json({message:'User not found.'});
+      if (EXTERNAL_PORTAL_ROLES.includes(existing.role) || EXTERNAL_PORTAL_ROLES.includes(parsed.data.role)) return res.status(403).json({message:'External access is managed by Admin.'});
+    }
     const patch = {};
     if (parsed.data.role) patch.role = parsed.data.role;
     if (parsed.data.isActive !== undefined)
@@ -160,7 +167,7 @@ export async function updateUser(req, res, next) {
         const role = parsed.data.role ?? target.role;
         if (EXTERNAL_PORTAL_ROLES.includes(role)) {
           return res.status(400).json({
-            message: 'External roles don\u2019t get employee records \u2014 create them under HR \u2192 External access.',
+            message: 'External roles don\u2019t get employee records \u2014 ask Admin to manage external access.',
           });
         }
         patch.employee = employee._id;

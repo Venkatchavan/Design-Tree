@@ -29,6 +29,8 @@ import {
 
 const router = Router();
 router.use(requireAuth);
+// Leadership may read the marked service and review logs, but cannot enter them.
+router.use(['/peer-reviews','/discrepancies'],(req,res,next)=>['GET','HEAD'].includes(req.method)?next():denyRoles('founding_director','working_director','executive_director')(req,res,next));
 router.use(async (req,res,next) => {
   try {
     if (req.body?.project && !await canReadProject(req.user,req.body.project)) return res.status(403).json({message:'Project is not assigned to you.'});

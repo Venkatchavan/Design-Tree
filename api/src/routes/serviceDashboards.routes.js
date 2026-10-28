@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { requireInternal, requireRole } from '../middlewares/requireRole.js';
+import { denyRoles, requireInternal, requireRole } from '../middlewares/requireRole.js';
 import {
   listServiceDashboards,
   saveServiceDashboard,
@@ -8,6 +8,8 @@ import {
 
 const router = Router();
 router.use(requireAuth);
+// Client PDF 28 October: explicit leadership log-only restriction before super-role bypass.
+router.use((req,res,next)=>['GET','HEAD'].includes(req.method)?next():denyRoles('founding_director','working_director','executive_director')(req,res,next));
 
 // BIM / GBS leads and technical directors maintain their team and status figures.
 const DASHBOARD_WRITERS = [

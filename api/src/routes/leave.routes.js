@@ -5,6 +5,7 @@ import {
   requireInternal,
   requireRole,
 } from '../middlewares/requireRole.js';
+import {travelLog} from '../controllers/travelLog.controller.js';
 import { SUPER_ROLES } from '../config/roles.js';
 import { FLOW_APPROVER_ROLES } from '../config/approvalFlow.js';
 import {
@@ -56,6 +57,7 @@ router.patch('/leave/:id', requireInternal(), editLeave);
 router.patch('/leave/:id/decision', ...decisionGuards, decideLeave);
 
 // Travel (+settlement)
+router.get('/travel/log', requireRole('hr','admin_billing'), travelLog);
 router.get('/travel/mine', requireInternal(), myTravels);
 router.get('/travel', requireInternal(), travels.list);
 router.post('/travel', requireInternal(), createTravel);
@@ -79,11 +81,10 @@ router.get(
   approvalQueue,
 );
 
-// Holidays — directors (FD/WD/ED) manage the company calendar alongside
-// HR/Admin. Superusers keep their bypass here on purpose.
+// Calendar entry remains HR/Admin only; board roles retain calendar reads for working-day policy.
 const HOLIDAY_WRITERS = ['hr', 'admin_billing', 'executive_director'];
 router.get('/holidays', requireInternal(), listHolidays);
-router.post('/holidays', requireRole(...HOLIDAY_WRITERS), holidays.create);
-router.delete('/holidays/:id', requireRole(...HOLIDAY_WRITERS), deleteHoliday);
+router.post('/holidays', denyRoles(...SUPER_ROLES), requireRole(...HOLIDAY_WRITERS), holidays.create);
+router.delete('/holidays/:id', denyRoles(...SUPER_ROLES), requireRole(...HOLIDAY_WRITERS), deleteHoliday);
 
 export default router;

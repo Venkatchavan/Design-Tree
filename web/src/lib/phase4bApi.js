@@ -1,4 +1,4 @@
-import { API_BASE, request, toQuery } from './api.js';
+import { API_BASE, request, toQuery, directoryList } from './api.js';
 
 export const UNAVAILABLE_REASONS = [
   'Another scheduled meeting',
@@ -29,6 +29,7 @@ export const leaveApi = {
 };
 
 export const travelApi = {
+  log: (params = {}) => directoryList('/api/leave-travel/travel/log', params),
   mine: () => request('/api/leave-travel/travel/mine'),
   list: (params = {}) => request(`/api/leave-travel/travel${toQuery(params)}`),
   create: (body) =>

@@ -19,8 +19,8 @@ const WRITER_ROLES = new Set([
 ]);
 const EMPTY_FORM = { date: '', stage: '', reviewer: '', waitingOn: '', outcome: 'Pending' };
 
-export default function StageReviewPanel({ projectId, reviews, role }) {
-  const canWrite = WRITER_ROLES.has(role);
+export default function StageReviewPanel({ projectId, reviews, role, readOnly = false }) {
+  const canWrite = WRITER_ROLES.has(role) && !readOnly;
   const qc = useQueryClient();
   const [form, setForm] = useState(null);
 
