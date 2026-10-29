@@ -180,6 +180,9 @@ function ShellRoutes({ user }) {
   return (
     <Routes>
       <Route path="/" element={<Navigate to={homePath} replace />} />
+      {['technical_director', 'assoc_technical_director'].includes(user?.role) && (
+        <Route path="/teams" element={<Navigate to="/my-team" replace />} />
+      )}
       {allowedViews.map((viewKey) => (
         <Route
           key={viewKey}

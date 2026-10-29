@@ -10,6 +10,16 @@ import {
   workEntrySchema,
 } from '../validation/workEntry.schema.js';
 import { User } from '../models/User.js';
+import { directorTeams } from '../utils/directorTeams.js';
+
+async function directorEntryScope(user, team) {
+  const scoped = await directorTeams(user);
+  if (scoped === null) return null;
+  return scoped.filter(row => !team || String(row._id) === String(team)).map(row => ({
+    project: { $in: row.projects.map(p => p._id) },
+    employee: { $in: [row.lead?._id, ...row.members.map(m => m.employee?._id)].filter(Boolean) },
+  }));
+}
 
 async function resolveEmployee(req, explicitId) {
   if (explicitId) {
@@ -132,6 +142,11 @@ export async function listWorkEntries(req, res, next) {
       if (!t) return res.status(404).json({ message: 'Team not found.' });
       filter.employee = { $in: t.members.map((m) => m.employee) };
     }
+    const scope = await directorEntryScope(req.user, team);
+    if (scope !== null) {
+      if (scope.length) filter.$and = [{ $or: scope }];
+      else filter._id = { $in: [] };
+    }
     const [items, total, ...statusCounts] = await Promise.all([
       WorkEntry.find(filter)
         .populate('employee', 'firstName lastName empId designation department branch')
@@ -163,6 +178,10 @@ export async function decideWorkEntry(req, res, next) {
     }
     const old = await WorkEntry.findById(req.params.id);
     if (!old || !await canReadProject(req.user,old.project)) return res.status(404).json({message:'Work entry not found.'});
+    const scope = await directorEntryScope(req.user);
+    if (scope !== null && (!scope.length || !await WorkEntry.exists({ _id: old._id, $or: scope }))) {
+      return res.status(404).json({ message: 'Work entry not found.' });
+    }
     const entry = await WorkEntry.findByIdAndUpdate(
       req.params.id,
       {

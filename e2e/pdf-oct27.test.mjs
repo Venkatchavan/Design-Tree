@@ -46,6 +46,7 @@ test('attendance is live for each covered login and exempt roles and nonworking 
 });
 test('AD TD ATD lose only the requested QAQC sidebar entry',async()=>{
  const {NAV_BY_ROLE}=await import('../api/src/config/roles.js');
- for(const role of ['associate_director','technical_director','assoc_technical_director']){assert(!NAV_BY_ROLE[role].some(n=>n.view==='qaqc-specs'));assert(NAV_BY_ROLE[role].some(n=>n.view==='my-team'));assert(NAV_BY_ROLE[role].some(n=>n.view==='teams'))}
+ // 29 October supersedes the separate Teams navigation for TD/ATD only.
+ for(const role of ['associate_director','technical_director','assoc_technical_director']){assert(!NAV_BY_ROLE[role].some(n=>n.view==='qaqc-specs'));assert(NAV_BY_ROLE[role].some(n=>n.view==='my-team'));assert.equal(NAV_BY_ROLE[role].some(n=>n.view==='teams'),role==='associate_director')}
  assert(NAV_BY_ROLE.qaqc_head.some(n=>n.view==='qaqc-specs'));
 });

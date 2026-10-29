@@ -1,6 +1,6 @@
 import{readFile,writeFile}from'node:fs/promises';import{resolve}from'node:path';import assert from'node:assert/strict';import{chromium,expect}from'@playwright/test';
 const f=JSON.parse(await readFile('/tmp/designtree-stakeholder-fixture.json','utf8'));assert(f.isolated);
-const base='http://127.0.0.1:5173',out=resolve(import.meta.dirname,'../../client-pdf-review-2026-10-28/evidence');
+const base='http://127.0.0.1:5173',out=resolve(process.env.TEST_EVIDENCE_DIR || resolve(import.meta.dirname,'../../client-pdf-review-2026-10-28/evidence'));
 const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE});const checks=[],errors=[];
 async function session(role){const c=await browser.newContext({serviceWorkers:'block',viewport:{width:1440,height:1100}});assert((await c.request.post(base+'/api/auth/login',{data:{email:f.cast[role].email,password:f.password}})).ok());const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));return{c,p}}
 function done(name){checks.push({name,passed:true})}
