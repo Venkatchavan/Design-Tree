@@ -9,9 +9,9 @@ import { apiUrl, apiLogin, apiLogout } from '../helpers/api';
  * §2 ADMIN — CREATE NEW PROJECT (admin@designtree.test).
  * Scorecard #3: Detail opens; Active +1 (row DT-2601 on dashboard).
  *
- * NewProjectPage (redesigned) has no manual Code field — the UI creates the
- * project, then the code is set to DT-2601 via API so specs 03-09 keep
- * locating the project by its stable code.
+ * NewProjectPage now shows an optional Code field (Salesforce prefill can
+ * populate it). The UI creates the project, then the code is set to DT-2601
+ * via API so specs 03-09 keep locating the project by its stable code.
  */
 test.describe.serial('02 admin create project', () => {
   test('S2.1-S2.7 fill New project, save, set code DT-2601', async ({ page, request }) => {

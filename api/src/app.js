@@ -29,6 +29,7 @@ import portalRoutes from './routes/portal.routes.js';
 import reportsRoutes from './routes/reports.routes.js';
 import supportRoutes from './routes/support.routes.js';
 import registerRoutes from './routes/register.routes.js';
+import salesforceRoutes from './routes/salesforce.routes.js';
 import metaRoutes from './routes/meta.routes.js';
 import projectsRoutes from './routes/projects.routes.js';
 import functionsRoutes from './routes/functions.routes.js';
@@ -62,6 +63,7 @@ export function createApp() {
   app.use('/api/meta', metaRoutes);
   app.use('/api/branches', branchesRoutes);
   app.use('/api/projects', projectsRoutes);
+  app.use('/api/integrations/salesforce', salesforceRoutes);
   app.use('/api/coordination-items', coordinationRoutes);
   app.use('/api/employees', employeesRoutes);
   app.use('/api/employee-meetings', employeeMeetingsRoutes);

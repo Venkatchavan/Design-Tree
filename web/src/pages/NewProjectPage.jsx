@@ -1,4 +1,5 @@
 import ContactPicker from '../components/ContactPicker.jsx';
+import SalesforceImportPanel from '../components/SalesforceImportPanel.jsx';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -37,6 +38,10 @@ const CONTACT_KINDS = [
 
 const BLANK = {
   name: '',
+  code: '',
+  usedFor: '',
+  clientName: '',
+  related: { projectDirector: '' },
   sourcePerson: '', referral: '', startDate: '', expectedCompletion: '', actualCompletion: '',
   state: '',
   projectType: '',
@@ -105,10 +110,11 @@ function F({ label, children }) {
   );
 }
 
-export default function NewProjectPage() {
+export default function NewProjectPage({ bootstrap }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [form, setForm] = useState(cloneBlank);
+  const [salesforceSource, setSalesforceSource] = useState(null);
   const [jobNumberMode, setJobNumberMode] = useState('automatic');
   const [formError, setFormError] = useState('');
   const [saveMode, setSaveMode] = useState('save');
@@ -137,6 +143,59 @@ export default function NewProjectPage() {
     }));
   }
 
+  // Salesforce prefill replaces the fields Salesforce owns; Datum workflow
+  // fields (scope, fee, team, SPOC, BIM, billing contacts) are left alone.
+  function applySalesforce(item) {
+    const p = item.prefill ?? {};
+    setForm((f) => ({
+      ...f,
+      name: p.name ?? '',
+      code: p.code ?? '',
+      usedFor: p.usedFor ?? '',
+      clientName: p.clientName ?? '',
+      jobNumber: p.jobNumber ?? '',
+      entityName: p.entityName ?? '',
+      state: p.state ?? '',
+      projectType: p.projectType ?? '',
+      branch: p.branch ?? '',
+      services: p.services ?? [],
+      location: { ...BLANK.location, ...(p.location ?? {}) },
+      contacts: { ...f.contacts, client: p.contacts?.client ?? null },
+      related: { ...f.related, projectDirector: p.related?.projectDirector ?? '' },
+    }));
+    setJobNumberMode(p.jobNumber ? 'manual' : 'automatic');
+    setSalesforceSource(item);
+    setFormError('');
+  }
+
+  function clearSalesforce() {
+    const blank = cloneBlank();
+    setForm((f) => ({
+      ...f,
+      name: blank.name,
+      code: blank.code,
+      usedFor: blank.usedFor,
+      clientName: blank.clientName,
+      jobNumber: blank.jobNumber,
+      entityName: blank.entityName,
+      state: blank.state,
+      projectType: blank.projectType,
+      branch: blank.branch,
+      services: blank.services,
+      location: blank.location,
+      contacts: { ...f.contacts, client: null },
+      related: { ...f.related, projectDirector: blank.related.projectDirector },
+    }));
+    setJobNumberMode('automatic');
+    setSalesforceSource(null);
+    setFormError('');
+  }
+
+  const setRelated = (key, value) =>
+    setForm((f) => ({ ...f, related: { ...f.related, [key]: value } }));
+
+  const isAdmin = (bootstrap?.role?.key ?? '') === 'admin_billing';
+
   const branchOptionsQ = useBranchOptions();
   const branchOptions = branchOptionItems(branchOptionsQ.data);
 
@@ -157,8 +216,8 @@ export default function NewProjectPage() {
   const teamLeads = employees.filter((employee) => /team lead|team leader|\btl\b|\bptl\b/i.test(employee.designation ?? ''));
   const coordinators = employees.filter((employee) => /coordinator|spoc/i.test(employee.designation ?? ''));
 
-  const stateOptions = unionOptions(BASE_STATES, projectRows.map((p) => p.state));
-  const projectTypeOptions = unionOptions(BASE_PROJECT_TYPES, projectRows.map((p) => p.projectType));
+  const stateOptions = unionOptions(BASE_STATES, [...projectRows.map((p) => p.state), form.state]);
+  const projectTypeOptions = unionOptions(BASE_PROJECT_TYPES, [...projectRows.map((p) => p.projectType), form.projectType]);
   const serviceOptions = BASE_SERVICES;
   const entityOptions = unionOptions([], projectRows.map((p) => p.entityName));
 
@@ -167,9 +226,11 @@ export default function NewProjectPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['projects-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['salesforce-projects'] });
       if (saveMode === 'new') {
         setForm(cloneBlank());
         setJobNumberMode('automatic');
+        setSalesforceSource(null);
         setTeamImportError('');
         setFormError('');
       } else {
@@ -206,6 +267,12 @@ export default function NewProjectPage() {
     const fee = numOrUndef(form.fee);
     return {
       name: form.name.trim(),
+      code: form.code.trim() || undefined,
+      usedFor: form.usedFor.trim() || undefined,
+      clientName: form.clientName.trim() || undefined,
+      related: form.related.projectDirector.trim()
+        ? { projectDirector: form.related.projectDirector.trim() }
+        : undefined,
       sourcePerson: form.sourcePerson.trim(), referral: form.referral.trim(),
       startDate: form.startDate || undefined, expectedCompletion: form.expectedCompletion || undefined, actualCompletion: form.actualCompletion || undefined,
       state: form.state || undefined,
@@ -250,6 +317,15 @@ export default function NewProjectPage() {
         architect: projectContact(form.contacts.architect),
         billing: projectContact(form.contacts.billing),
       },
+      ...(salesforceSource?.source?.id
+        ? {
+            salesforceRecordId: salesforceSource.source.id,
+            salesforceObject: salesforceSource.source.object,
+            salesforceProjectCode: salesforceSource.source.projectCode || undefined,
+            salesforceLastModifiedAt: salesforceSource.source.lastModifiedAt || undefined,
+            salesforceInstanceUrl: salesforceSource.source.instanceUrl || undefined,
+          }
+        : {}),
     };
   }
 
@@ -344,6 +420,36 @@ export default function NewProjectPage() {
         <div className="login-error" role="alert" style={{ display: 'block' }}>{formError}</div>
       )}
 
+      {isAdmin && (
+        <SalesforceImportPanel
+          selected={salesforceSource}
+          onSelect={applySalesforce}
+          onClear={clearSalesforce}
+        />
+      )}
+
+      {salesforceSource?.warnings?.length > 0 && (
+        <div
+          role="status"
+          style={{
+            background: 'var(--amber-bg)',
+            color: 'var(--amber-dark)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            padding: '11px 14px',
+            marginBottom: 22,
+            fontSize: 13,
+          }}
+        >
+          <b>Review the Salesforce prefill before saving</b>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+            {salesforceSource.warnings.map((warning, index) => (
+              <li key={`${warning.field}-${index}`}>{warning.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <form
         onSubmit={(e) => handleSubmit(e, 'save')}
       >
@@ -377,6 +483,8 @@ export default function NewProjectPage() {
         <Panel title="Information">
           <div className="field-grid">
             <F label="Project Name"><input className="form-input" placeholder="e.g. Business park - Tower A" value={form.name} onChange={(e) => set('name', e.target.value)} required /></F>
+            <F label="Project Code"><input className="form-input" placeholder="Generated automatically" value={form.code} onChange={(e) => set('code', e.target.value)} /></F>
+            <F label="Used For"><input className="form-input" placeholder="e.g. WO or Proposal" value={form.usedFor} onChange={(e) => set('usedFor', e.target.value)} /></F>
             {['sourcePerson','referral','startDate','expectedCompletion','actualCompletion'].map((key)=><F key={key} label={({sourcePerson:'Source person',referral:'Referral',startDate:'Start date',expectedCompletion:'Expected completion',actualCompletion:'Actual completion'})[key]}><input className="form-input" aria-label={key} type={key==='sourcePerson'||key==='referral'?'text':'date'} value={form[key]} onChange={e=>set(key,e.target.value)}/></F>)}
             <F label="Job Number">
               <div className="field-grid" style={{ gridTemplateColumns: 'minmax(150px, 0.7fr) minmax(180px, 1fr)', gap: 8 }}>
@@ -436,6 +544,9 @@ export default function NewProjectPage() {
                 <option value="">--None--</option>
                 {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
+            </F>
+            <F label="Project Director">
+              <input className="form-input" placeholder="e.g. Name from Salesforce" value={form.related.projectDirector} onChange={(e) => setRelated('projectDirector', e.target.value)} />
             </F>
             <F label="Building / Street Address 1"><input className="form-input" value={form.location.address1} onChange={(e) => setLoc('address1', e.target.value)} /></F>
             <F label="Building / Street Address 2"><input className="form-input" value={form.location.address2} onChange={(e) => setLoc('address2', e.target.value)} /></F>

@@ -162,6 +162,24 @@ export const projectSchema = z.object({
   status: z.enum(PROJECT_STATUSES).optional(),
   completion: z.number().min(0).max(100).optional(),
   currentStage: z.enum(STAGES).optional(),
+  // Salesforce import metadata. Set by the import flow, never edited by
+  // hand: updateProject strips these keys so a normal edit cannot relink or
+  // unlink a project. `salesforceRecordId` is the duplicate-prevention key.
+  salesforceRecordId: z.string().trim().optional(),
+  salesforceObject: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z][A-Za-z0-9_]*$/, 'Invalid Salesforce object')
+    .optional(),
+  salesforceProjectCode: z.string().trim().optional(),
+  salesforceLastModifiedAt: z.coerce.date().nullable().optional(),
+  salesforceSyncedAt: z.coerce.date().nullable().optional(),
+  salesforceInstanceUrl: z
+    .string()
+    .trim()
+    .url()
+    .refine((value) => /^https?:\/\//i.test(value), 'Invalid Salesforce URL')
+    .optional(),
 });
 
 export const projectUpdateSchema = projectSchema.partial();

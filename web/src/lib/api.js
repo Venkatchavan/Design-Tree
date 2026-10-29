@@ -156,6 +156,22 @@ export const metaApi = {
   geocode: (q) => request(`/api/meta/geocode${toQuery({ q })}`),
 };
 
+// Read-only Salesforce lookup for Admin/Billing. The server holds the
+// credentials; the browser only sends the search term.
+export const salesforceApi = {
+  status: () => request('/api/integrations/salesforce/status'),
+  search: ({ q, includeProposals = false, limit } = {}) =>
+    request(
+      `/api/integrations/salesforce/projects${toQuery({
+        q,
+        includeProposals: includeProposals ? '1' : '',
+        limit,
+      })}`,
+    ),
+  get: (id) =>
+    request(`/api/integrations/salesforce/projects/${encodeURIComponent(id)}`),
+};
+
 export const employeesApi = {
   spocOptions: () => request('/api/employees/spoc-options'),
   list: (params = {}) => directoryList('/api/employees', params),

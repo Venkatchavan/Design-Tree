@@ -360,6 +360,10 @@ export default function ProjectDetailPage({ bootstrap }) {
   }
 
   const project = q.data?.project ?? {};
+  const salesforceUrl =
+    project.salesforceRecordId && project.salesforceInstanceUrl
+      ? `${project.salesforceInstanceUrl}/lightning/r/${project.salesforceObject || 'Project__c'}/${project.salesforceRecordId}/view`
+      : null;
   const documentProjectOptions = [...new Map(
     [...listOf(assignedProjectsQ.data), project]
       .filter((candidate) => idOf(candidate))
@@ -619,6 +623,20 @@ export default function ProjectDetailPage({ bootstrap }) {
 
           <Field label="Current stage" value={project.currentStage} />
           <Field label="Contract completion" value={fmtDate(project.expectedCompletion)} />
+          {isAdmin && (salesforceUrl || project.salesforceRecordId) && (
+            <Field
+              label="Salesforce"
+              value={
+                salesforceUrl ? (
+                  <a href={salesforceUrl} target="_blank" rel="noreferrer">
+                    {project.salesforceProjectCode || 'Open record'} ↗
+                  </a>
+                ) : (
+                  project.salesforceProjectCode || 'Linked'
+                )
+              }
+            />
+          )}
         </div>
       </Panel>
 
@@ -635,6 +653,8 @@ export default function ProjectDetailPage({ bootstrap }) {
           <Field label="Referral" value={project.referral} />
           <Field label="Project type" value={project.projectType} />
           <Field label="Category" value={project.category} />
+          <Field label="Used for" value={project.usedFor} />
+          <Field label="Project director" value={project.related?.projectDirector} />
           <Field label="Project owner" value={project.owner} />
           <Field label="Start date" value={fmtDate(project.startDate)} />
           <Field label="Expected completion" value={fmtDate(project.expectedCompletion)} />

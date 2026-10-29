@@ -33,6 +33,19 @@ const CREATOR_ROLES = ['admin_billing'];
 
 export { CREATOR_ROLES };
 
+// Import metadata is server-managed: createProject accepts it from the
+// import flow, updateProject strips it so edits cannot relink a project.
+const SALESFORCE_FIELDS = [
+  'salesforceRecordId',
+  'salesforceObject',
+  'salesforceProjectCode',
+  'salesforceLastModifiedAt',
+  'salesforceSyncedAt',
+  'salesforceInstanceUrl',
+];
+
+const SALESFORCE_ID = /^(?:[A-Za-z0-9]{15}|[A-Za-z0-9]{18})$/;
+
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -367,6 +380,40 @@ export async function createProject(req, res, next) {
         .status(400)
         .json({ message: 'Invalid project data.', issues: validationIssues(parsed.error) });
     }
+    const salesforceRecordId = parsed.data.salesforceRecordId?.trim() ?? '';
+    if (salesforceRecordId && !SALESFORCE_ID.test(salesforceRecordId)) {
+      return res.status(400).json({ message: 'Invalid Salesforce record id.' });
+    }
+    if (salesforceRecordId) {
+      const existing = await Project.findOne(
+        { salesforceRecordId },
+        { _id: 1, name: 1, code: 1 },
+      ).lean();
+      if (existing) {
+        return res.status(409).json({
+          message: `This Salesforce project is already imported as ${existing.code} — ${existing.name}.`,
+          projectId: existing._id,
+          project: existing,
+        });
+      }
+    }
+    // Never trust client-sent import metadata beyond the id itself; the
+    // remaining values describe the Salesforce record and are stamped here.
+    const salesforceMeta = salesforceRecordId
+      ? {
+          salesforceObject: parsed.data.salesforceObject?.trim() || 'Project__c',
+          salesforceProjectCode: parsed.data.salesforceProjectCode?.trim() || '',
+          salesforceLastModifiedAt: parsed.data.salesforceLastModifiedAt ?? undefined,
+          salesforceInstanceUrl: (parsed.data.salesforceInstanceUrl?.trim() || '').replace(/\/+$/, ''),
+        }
+      : null;
+    for (const key of SALESFORCE_FIELDS) delete parsed.data[key];
+    if (salesforceMeta) {
+      Object.assign(parsed.data, salesforceMeta, {
+        salesforceRecordId,
+        salesforceSyncedAt: new Date(),
+      });
+    }
     if (parsed.data.branch) {
       try {
         parsed.data.branch = await requireActiveBranch(parsed.data.branch);
@@ -444,6 +491,18 @@ export async function createProject(req, res, next) {
     return res.status(201).json({ project });
   } catch (err) {
     if (err?.code === 11000) {
+      if (err?.keyPattern?.salesforceRecordId || err?.keyValue?.salesforceRecordId) {
+        const duplicateId = err.keyValue?.salesforceRecordId;
+        const existing = duplicateId
+          ? await Project.findOne({ salesforceRecordId: duplicateId }, { _id: 1, name: 1, code: 1 }).lean()
+          : null;
+        return res.status(409).json({
+          message: existing
+            ? `This Salesforce project is already imported as ${existing.code} — ${existing.name}.`
+            : 'This Salesforce project is already imported.',
+          ...(existing ? { projectId: existing._id, project: existing } : {}),
+        });
+      }
       return res
         .status(409)
         .json({ message: 'A project with this code already exists.' });
@@ -460,6 +519,7 @@ export async function updateProject(req, res, next) {
         .status(400)
         .json({ message: 'Invalid project data.', issues: validationIssues(parsed.error) });
     }
+    for (const key of SALESFORCE_FIELDS) delete parsed.data[key];
     if (parsed.data.branch !== undefined) {
       try {
         parsed.data.branch = await requireActiveBranch(parsed.data.branch);

@@ -204,6 +204,22 @@ const projectSchema = new mongoose.Schema(
     quotedFee: { type: Number, min: 0 },
     quotedHospitality: { type: Boolean, default: false },
     portalUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    // Salesforce link (read-only import). The record id is the idempotency
+    // key for "Import from Salesforce": sparse+unique lets normal projects
+    // omit it while preventing the same Salesforce record being imported
+    // twice.
+    salesforceRecordId: {
+      type: String,
+      trim: true,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    salesforceObject: { type: String, trim: true },
+    salesforceProjectCode: { type: String, trim: true },
+    salesforceLastModifiedAt: { type: Date },
+    salesforceSyncedAt: { type: Date },
+    salesforceInstanceUrl: { type: String, trim: true },
   },
   { timestamps: true },
 );

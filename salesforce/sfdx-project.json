@@ -1,0 +1,12 @@
+{
+  "packageDirectories": [
+    {
+      "path": "metadata",
+      "default": true
+    }
+  ],
+  "name": "designtree-salesforce-dev",
+  "namespace": "",
+  "sfdcLoginUrl": "https://login.salesforce.com",
+  "sourceApiVersion": "68.0"
+}
