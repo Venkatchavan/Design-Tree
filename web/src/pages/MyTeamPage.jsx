@@ -1,4 +1,5 @@
 import DirectorTeamsPage from './DirectorTeamsPage.jsx';
+import DesignTeamPage from './DesignTeamPage.jsx';
 import { projectMembers } from '../lib/projectRoster.js';
 import { CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
@@ -285,6 +286,7 @@ function ProposeCoordinatorPanel() {
 }
 
 export default function MyTeamPage(props) {
+  if (props.bootstrap?.capabilities?.designTeam) return <DesignTeamPage />;
   const role=props.bootstrap?.role?.key;
   if (['associate_director','technical_director'].includes(role)) return <DirectorTeamsPage/>;
   return <WorkingTeamPage {...props}/>;

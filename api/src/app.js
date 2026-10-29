@@ -1,4 +1,5 @@
 import { withRequestContext } from './utils/requestContext.js';
+import designTeamRoutes from './routes/designTeam.routes.js';
 import coordinationRoutes from './routes/coordination.routes.js';
 import cookieParser from 'cookie-parser';
 import announcementRoutes from './routes/announcements.routes.js';
@@ -83,6 +84,7 @@ export function createApp() {
   app.use('/api/drawing-acks', drawingAcksRoutes);
   app.use('/api/work-items', workItemsRoutes);
   app.use('/api/design', designmgmtRoutes);
+  app.use('/api/design-team', designTeamRoutes);
   app.use('/api/marketing', marketingRoutes);
   app.use('/api/leave-travel', leaveRoutes);
   app.use('/api/support', supportRoutes);

@@ -117,7 +117,12 @@ export function auditProjectSchema(schema) {
       if (!['updateMany', 'deleteMany'].includes(op)) q.limit(1);
       this._auditBefore = await q;
     });
-    schema.post(op, async function () {
+    schema.post(op, async function (result) {
+      // A compare-and-set may lose after its preimage was read. Never attribute
+      // another request's successful change to this unmatched update/delete.
+      if (result == null) return;
+      if (result.matchedCount === 0 && !result.upsertedCount) return;
+      if (result.deletedCount === 0) return;
       const before = this._auditBefore ?? [];
       if (!before.length && this.getOptions().upsert) {
         const after = await this.model.findOne(this.getFilter()).lean();

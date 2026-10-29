@@ -87,7 +87,8 @@ test('Finance alone can access bookings; role navigation reflects requirements',
     assert(!nav.includes('design-mgmt')); assert(!nav.includes('billing-status')); assert(!nav.includes('qs-log')); assert(!nav.includes('qs-head')); assert(nav.includes('my-team'));
   }
   const nav = (await call('dmh', '/api/meta/bootstrap')).data.nav.map(n => n.view);
-  assert(nav.includes('design-mgmt')); assert(nav.includes('certificates'));
+  // 29 October explanation places DMH management under My Team.
+  assert(!nav.includes('design-mgmt')); assert(nav.includes('my-team')); assert(nav.includes('certificates'));
 });
 
 test('billing requires PTL then SPOC then TD/ATD and MD is read-only', async () => {

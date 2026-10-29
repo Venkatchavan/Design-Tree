@@ -180,6 +180,10 @@ function ShellRoutes({ user }) {
   return (
     <Routes>
       <Route path="/" element={<Navigate to={homePath} replace />} />
+      {user?.role === 'design_mgmt_head' && <>
+        <Route path="/design-management" element={<Navigate to="/my-team" replace />} />
+        <Route path="/teams" element={<Navigate to="/my-team" replace />} />
+      </>}
       {['technical_director', 'assoc_technical_director'].includes(user?.role) && (
         <Route path="/teams" element={<Navigate to="/my-team" replace />} />
       )}
