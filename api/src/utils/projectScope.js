@@ -12,8 +12,10 @@ export async function projectScopeIds(user) {
   const empId = me.employee;
   if (user.role === 'coordinator') {
     const { SpocAllocation } = await import('../models/SpocAllocation.js');
-    const rows = await SpocAllocation.find({ coordinator: empId, status: { $in: ['Approved', 'Proposed'] } }).select('project').lean();
-    return [...new Set(rows.map((r) => String(r.project)))];
+    const rows = await SpocAllocation.find({ coordinator: empId, active: { $ne: false }, status: { $in: ['Approved', 'Proposed'] } }).select('project').lean();
+    const { Project } = await import('../models/Project.js');
+    const projects = await Project.find({ $or: [{ _id: { $in: rows.map(r=>r.project) } }, { 'activation.spoc': empId }] }).select('activation.spoc').lean();
+    return projects.filter(p=>!p.activation?.spoc || String(p.activation.spoc)===String(empId)).map(p=>String(p._id));
   }
   const { Team } = await import('../models/Team.js');
   const teams = await Team.find({ $or: [{ lead: empId }, { 'members.employee': empId }] })

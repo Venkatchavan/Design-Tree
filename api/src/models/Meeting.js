@@ -146,6 +146,8 @@ const meetingSchema = new mongoose.Schema(
       nextMeeting: { type: Date },
     },
     momDoc: { type: String, trim: true },
+    momCirculatedAt: { type: Date },
+    momCirculatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     momDocPath: { type: String, trim: true },
     cancelReason: { type: String, trim: true },
     actions: [actionSchema],

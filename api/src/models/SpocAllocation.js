@@ -17,6 +17,7 @@ const spocAllocationSchema = new mongoose.Schema(
       index: true,
     },
     services: [{ type: String, trim: true }],
+    active: { type: Boolean, default: true },
     status: {
       type: String,
       enum: ['Proposed', 'Approved'],

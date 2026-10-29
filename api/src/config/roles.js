@@ -42,7 +42,7 @@ export const ROLES = [
   { key: 'bim', label: 'BIM', designation: 'BIM Lead', home: 'work-tracking' },
   { key: 'gbs', label: 'GBS', designation: 'GBS Lead', home: 'work-tracking' },
   { key: 'marketing', label: 'Marketing', designation: 'Marketing Lead', home: 'marketing' },
-  { key: 'design_mgmt_head', label: 'Design Management Head', designation: 'Design Management Head', home: 'design-mgmt' },
+  { key: 'design_mgmt_head', label: 'Design Management Head', designation: 'Design Management Head', home: 'my-team' },
   { key: 'finance', label: 'Finance', designation: 'Finance Head', home: 'finance' },
   { key: 'qaqc_head', label: 'QA/QC Specifications Head', designation: 'QA/QC Specifications Head', home: 'qaqc-specs' },
   { key: 'bim_head', label: 'BIM Head', designation: 'BIM Head', home: 'bim-head' },
@@ -163,8 +163,8 @@ const FULL_LEADERSHIP_NAV = [
 ];
 
 export const NAV_BY_ROLE = {
-  founding_director: FULL_LEADERSHIP_NAV,
-  working_director: FULL_LEADERSHIP_NAV,
+  founding_director: [...FULL_LEADERSHIP_NAV, { view: 'my-team' }],
+  working_director: [...FULL_LEADERSHIP_NAV, { view: 'my-team' }],
   executive_director: FULL_LEADERSHIP_NAV,
   // Associate/Technical Directors intentionally have no `hr` entry:
   // canAccess(role, 'hr') is false and the client never mounts /hr for them.
@@ -184,7 +184,6 @@ export const NAV_BY_ROLE = {
     { view: 'dashboard', label: 'Dashboard' },
     { view: 'dashboard', label: 'Projects' },
     { view: 'certificates', label: 'Completion Certificates' },
-    { view: 'teams' },
     { view: 'transmittal-log' },
     { view: 'my-meetings' },
     { view: 'leave-travel' },
@@ -195,7 +194,6 @@ export const NAV_BY_ROLE = {
     { view: 'dashboard', label: 'Dashboard' },
     { view: 'dashboard', label: 'Projects' },
     { view: 'certificates', label: 'Completion Certificates' },
-    { view: 'teams' },
     { view: 'transmittal-log' },
     { view: 'my-meetings' },
     { view: 'leave-travel' },
@@ -300,9 +298,8 @@ export const NAV_BY_ROLE = {
   { view: 'my-meetings' },
   ],
   design_mgmt_head: [
-    { view: 'design-mgmt' },
+    { view: 'my-team' },
     { view: 'certificates' },
-    { view: 'teams' },
     { view: 'transmittal-log' },
     { view: 'billing-status' },
     { view: 'update-work-progress' },
@@ -388,6 +385,8 @@ export const INTERNAL_ROLES = ROLE_KEYS.filter(
 // Second-layer page guard (§2.7): nav membership + view flags + superuser.
 export function canAccess(role, view) {
   if (!VIEWS[view]) return false;
+  // Retain the existing DMH workflow API while its menu moves under My Team.
+  if (role === 'design_mgmt_head' && view === 'design-mgmt') return true;
   if (['peer_reviewer','peer_review_head'].includes(role) && ['work-tracking','project-detail'].includes(view)) return true;
   if (['announcements', 'announcement-detail'].includes(view)) return ROLE_KEYS.includes(role) && !['client', 'architect', 'superuser'].includes(role);
   if (VIEWS[view].financeOnly && role !== 'finance') return false;

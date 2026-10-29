@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { designTeamAccess } from '../utils/designTeam.js';
 import {
   ATTENDANCE_LATE_CUTOFF,
   ATTENDANCE_STANDARD_HOURS,
@@ -20,7 +21,9 @@ const router = Router();
 
 // Single source of truth for roles/nav/views — the client builds its
 // sidebar and route guards from this instead of duplicating the registry.
-router.get('/bootstrap', requireAuth, (req, res) => {
+router.get('/bootstrap', requireAuth, async (req, res, next) => {
+  try {
+  const designAccess = await designTeamAccess(req.user);
   const role = req.user.role;
   res.status(200).json({
     roles: ROLES,
@@ -28,6 +31,7 @@ router.get('/bootstrap', requireAuth, (req, res) => {
     role: { key: role, label: roleLabel(role) },
     home: homeView(role),
     nav: navFor(role),
+    capabilities: { designTeam: designAccess.head },
     policy: {
       attendance: {
         lateCutoff: ATTENDANCE_LATE_CUTOFF,
@@ -38,6 +42,7 @@ router.get('/bootstrap', requireAuth, (req, res) => {
       },
     },
   });
+  } catch (error) { next(error); }
 });
 
 // OpenStreetMap Nominatim proxy for the New Project location search.

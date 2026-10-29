@@ -1,4 +1,5 @@
 import DirectorTeamsPage from './DirectorTeamsPage.jsx';
+import DesignTeamPage from './DesignTeamPage.jsx';
 import { projectMembers } from '../lib/projectRoster.js';
 import { CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
@@ -285,24 +286,10 @@ function ProposeCoordinatorPanel() {
 }
 
 export default function MyTeamPage(props) {
-  const [workspace,setWorkspace]=useState('directory');
+  if (props.bootstrap?.capabilities?.designTeam) return <DesignTeamPage />;
   const role=props.bootstrap?.role?.key;
   if (['associate_director','technical_director'].includes(role)) return <DirectorTeamsPage/>;
-  if (role==='assoc_technical_director') return <>
-    <Tabs tabs={[{key:'directory',label:'My Team'},{key:'work',label:'Assign work'}]} active={workspace} onChange={setWorkspace}/>
-    {workspace==='directory'?<DirectorTeamsPage/>:<DirectorAssignWork/>}
-  </>;
   return <WorkingTeamPage {...props}/>;
-}
-
-function DirectorAssignWork() {
-  const teamsQ=useQuery({queryKey:['director-teams'],queryFn:teamsMineApi.list,refetchInterval:10000});
-  const tasksQ=useQuery({queryKey:['tasks'],queryFn:()=>tasksApi.list({})});
-  const teams=teamsQ.data?.items??[];
-  const projects=[...new Map(teams.flatMap(t=>(t.projects??[]).map(p=>[idOf(p),p]))).values()];
-  if(teamsQ.isLoading)return <EmptyState text="Loading your project teams…"/>;
-  if(teamsQ.isError)return <div className="login-error" role="alert" style={{display:'block'}}>{teamsQ.error.message}</div>;
-  return <AssignWorkPanel key={projects.map(p=>idOf(p)).join(':')} members={[]} roleGroups={[]} teamProjects={projects} teams={teams} includeLeads myTasks={tasksQ.data?.items??[]}/>;
 }
 
 function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace = false }) {
@@ -317,7 +304,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
   const canRecruitStatus = canRecruitStatusRole(role);
 
   const [revisionTab,setRevisionTab]=useState('log');
-  const [tab, setTab] = useState(projectWorkspace ? 'overview' : 'assign');
+  const [tab, setTab] = useState(projectWorkspace || ['team_lead', 'assoc_technical_director'].includes(role) ? 'overview' : 'assign');
   const [selId, setSelId] = useState('');
   const [allocOpen, setAllocOpen] = useState(false);
   const [decideEntry, setDecideEntry] = useState(null);
@@ -350,12 +337,14 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
   const selectedTeam = useMemo(() => {
     if (teams.length === 0) return null;
     if (selId) {
-      const hit = teams.find((t) => String(t._id ?? t.id) === String(selId));
+      const hit = teams.find((t) => String(t.scopeKey ?? t._id ?? t.id) === String(selId));
       if (hit) return hit;
     }
     return teams[0];
   }, [teams, selId]);
   const selectedId = selectedTeam ? String(selectedTeam._id ?? selectedTeam.id) : '';
+  const selectedKey = selectedTeam ? String(selectedTeam.scopeKey ?? selectedTeam._id ?? selectedTeam.id) : '';
+  const scopedProjectId = projectId || (role === 'assoc_technical_director' ? idOf(selectedTeam?.projects?.[0]) : undefined);
   const teamProjects = (selectedTeam?.projects ?? []).filter(p => !projectId || idOf(p) === String(projectId));
   const teamProjectIds = useMemo(
     () => new Set(teamProjects.map((p) => String(p._id ?? p.id))),
@@ -364,8 +353,8 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
   const members = selectedTeam?.members ?? [];
 
   const entriesQ = useQuery({
-    queryKey: ['team-work-entries', selectedId, projectId],
-    queryFn: () => workEntriesApi.list({ team: selectedId, project: projectId || undefined }),
+    queryKey: ['team-work-entries', selectedKey, scopedProjectId],
+    queryFn: () => workEntriesApi.list({ team: selectedId, project: scopedProjectId }),
     enabled: !!selectedId,
   });
   const entries = entriesQ.data?.items ?? [];
@@ -573,9 +562,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
   const [showAllWeekly, setShowAllWeekly] = useState(false);
 
   const isTL = role === 'team_lead';
-  useEffect(() => {
-    if (isTL && !projectWorkspace) setTab('overview');
-  }, [isTL, projectWorkspace]);
+  const isATD = role === 'assoc_technical_director';
   const emailRows = teamRevisions.flatMap((r) => (r.emailLog ?? []).map((line, i) => ({
     key: `${String(r._id ?? '')}-${i}`,
     revision: r.drawing ?? r.details ?? '—',
@@ -609,7 +596,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       { key: 'recruitment', label: 'Recruitment requests' },
     ];
 
-  const tabs = isTL ? (projectWorkspace ? [...workspaceTabs.filter(t => t.key !== 'assign'), { key: 'meetings', label: 'Meetings' }, { key: 'completion', label: 'Stage completion' }] : [
+  const tabs = (isTL || isATD) ? (projectWorkspace ? [...workspaceTabs.filter(t => t.key !== 'assign'), { key: 'meetings', label: 'Meetings' }, { key: 'completion', label: 'Stage completion' }] : [
       { key: 'overview', label: 'Overview' },
       { key: 'team', label: 'Project & team' },
       { key: 'monitoring', label: 'Team work monitoring' },
@@ -619,6 +606,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       { key: 'revision', label: 'Revision' },
       { key: 'drawings', label: 'Drawing register' },
       { key: 'recruitment', label: 'Recruitment requests' },
+      ...(isATD ? [{ key: 'people', label: 'People' }] : []),
     ]) : workspaceTabs;
   const activeProjects = useMemo(
     () => teamProjects.filter((p) => String(p.status ?? '') !== 'Completed'),
@@ -635,7 +623,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
   return (
     <>
       <div className="page-head">
-        <div className="page-title">{projectWorkspace ? 'Project team workspace' : isTL ? 'My team' : 'My projects and team'}</div>
+        <div className="page-title">{projectWorkspace ? 'Project team workspace' : isTL || isATD ? 'My team' : 'My projects and team'}</div>
         <div className="page-sub">
           {selectedTeam ? `${(selectedTeam.lead && typeof selectedTeam.lead === 'object' ? [selectedTeam.lead.firstName, selectedTeam.lead.lastName].filter(Boolean).join(' ') : selectedTeam.lead) || 'Team Lead'} · ${selectedTeam.service ?? 'Structural'}` : (teamsQ.data?.items?.[0] ? `${(teamsQ.data.items[0].lead && typeof teamsQ.data.items[0].lead === 'object' ? [teamsQ.data.items[0].lead.firstName, teamsQ.data.items[0].lead.lastName].filter(Boolean).join(' ') : teamsQ.data.items[0].lead) || 'Team Lead'} · ${teamsQ.data.items[0].service ?? 'Structural'}` : (me ? `${empName(selfEmployee ?? me.employee ?? me)} · ${bootstrap?.role?.label ?? role}` : (teamsQ.isLoading ? 'Loading…' : `role ${role || '—'}`)))}
         </div>
@@ -651,12 +639,12 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
           <select
             className="filter-select"
             style={{ width: '100%' }}
-            value={selectedId}
+            value={selectedKey}
             onChange={(e) => setSelId(e.target.value)}
           >
             {teams.map((t) => (
-              <option key={String(t._id ?? t.id)} value={String(t._id ?? t.id)}>
-                {t.name ?? '—'}
+              <option key={String(t.scopeKey ?? t._id ?? t.id)} value={String(t.scopeKey ?? t._id ?? t.id)}>
+                {[t.name, t.service, t.projects?.[0]?.jobNumber].filter(Boolean).join(' · ') || '—'}
               </option>
             ))}
           </select>
@@ -670,8 +658,9 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
         <KpiCard label="Open revisions" value={openRevisionCount} accent="violet" />
       </div>
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
+      {tab === 'people' && isATD && <DirectorTeamsPage />}
       {tab==='revision'&&<Tabs tabs={[{key:'entry',label:'Revision entry'},{key:'log',label:'Revision log'}]} active={revisionTab} onChange={setRevisionTab}/>}
-      <CoordinationPanel service={selectedTeam?.service}/>
+      {(!isATD || selectedTeam) && <CoordinationPanel projectId={scopedProjectId} service={selectedTeam?.service}/>}
       {tab === 'completion' && projectWorkspace && <StageRequestPanel projectId={projectId} />}
       {tab === 'meetings' && <SpocMeetings projectId={projectId} readOnly />}
       <>

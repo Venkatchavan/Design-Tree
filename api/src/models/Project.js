@@ -124,6 +124,7 @@ const projectSchema = new mongoose.Schema(
     description: { type: String, trim: true },
     requirements: { type: String, trim: true },
     complexity: { type: String, enum: PROJECT_COMPLEXITIES, trim: true },
+    coordinationStatus: { type: String, enum: ['Active','On Hold','Delayed','Awaiting info','Ready for billing','Completed'], trim: true },
     priority: { type: String, enum: PROJECT_PRIORITIES, trim: true },
     category: { type: String, enum: PROJECT_CATEGORIES, trim: true },
     referral: { type: String, trim: true },
