@@ -78,8 +78,43 @@ export function bookingStatus(b, today = day(new Date())) {
   if (day(b.departureDate)) return 'Booked';
   return b.status || 'Not added';
 }
+export function hasKnownAmount(value) {
+  return value != null && String(value).trim() !== '';
+}
+// A removed hotel does not settle its paid amount or earlier change fees.
+export function hasStayCosts(booking = {}) {
+  return !!(
+    booking.hotel ||
+    (hasKnownAmount(booking.hotelAmount) && minor(booking.hotelAmount) > 0) ||
+    booking.history?.some(
+      (event) =>
+        event.before?.hotel ||
+        event.after?.hotel ||
+        ['originalMinor', 'newMinor', 'paidMinor', 'feeMinor'].some(
+          (key) => event.stay?.[key] > 0,
+        ),
+    )
+  );
+}
+export function sameTravelDetail(key, left, right) {
+  if (['departureDate', 'returnDate'].includes(key))
+    return day(left) === day(right);
+  if (key === 'hotelDatesSameAsTravel')
+    return (left ?? null) === (right ?? null);
+  return String(left ?? '').trim() === String(right ?? '').trim();
+}
+function baselineAmount(input, saved) {
+  if (!hasKnownAmount(saved)) return minor(input);
+  const baseline = minor(saved);
+  if (input != null && (!hasKnownAmount(input) || minor(input) !== baseline)) {
+    throw new Error(
+      'The original / paid amount must match the saved current amount. Use Edit for corrections before any recorded travel change.',
+    );
+  }
+  return baseline;
+}
 export function rescheduleCost(input = {}, fallback) {
-  const originalMinor = minor(input.originalAmount ?? fallback);
+  const originalMinor = baselineAmount(input.originalAmount, fallback);
   const newMinor =
     input.newAmount === '' || input.newAmount == null
       ? originalMinor
@@ -94,7 +129,7 @@ export function rescheduleCost(input = {}, fallback) {
   };
 }
 export function cancellationCost(input = {}, fallback) {
-  const paidMinor = minor(input.amountPaid ?? fallback),
+  const paidMinor = baselineAmount(input.amountPaid, fallback),
     feeMinor = minor(input.fee);
   if (feeMinor > paidMinor)
     throw new Error(

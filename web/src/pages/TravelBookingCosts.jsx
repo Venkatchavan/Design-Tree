@@ -1,11 +1,11 @@
 import { AmountField } from './TravelBookingFields.jsx';
 import { money } from './travelBookingUtils.js';
-import { cancellationCost } from '../lib/travelBooking.js';
+import { cancellationCost, hasKnownAmount } from '../lib/travelBooking.js';
 import { BookingSummary, BookingFees } from './TravelBookingLog.jsx';
-function CancellationPreview({ data }) {
+function CancellationPreview({ data, knownAmount }) {
   let cost, error;
   try {
-    cost = cancellationCost(data);
+    cost = cancellationCost(data, knownAmount);
   } catch (e) {
     error = e.message;
   }
@@ -18,15 +18,38 @@ function CancellationPreview({ data }) {
     </p>
   );
 }
-export function BookingCostFields({ title, data, setData, label, cancel }) {
+export function BookingCostFields({
+  title,
+  data,
+  setData,
+  label,
+  cancel,
+  knownAmount,
+  retained = false,
+}) {
+  const known = hasKnownAmount(knownAmount);
+  const hint = known ? 'saved current amount' : 'not recorded; enter amount';
   return (
     <section className="travel-form-section">
       <h2>{title}</h2>
+      {retained && (
+        <p>
+          No current hotel. Recorded stay amounts and fees remain payable or
+          refundable until recorded here.
+        </p>
+      )}
+      {known && (
+        <p>
+          Original and paid amounts use the saved current amount. Corrections
+          use Edit before any recorded travel change.
+        </p>
+      )}
       <div className="travel-form-grid">
         {cancel ? (
           <>
             <AmountField
-              label={`${label} amount paid (₹)`}
+              label={`${label} amount paid (₹) — ${hint}`}
+              readOnly={known}
               value={data.amountPaid}
               onChange={(v) => setData((x) => ({ ...x, amountPaid: v }))}
             />
@@ -39,7 +62,8 @@ export function BookingCostFields({ title, data, setData, label, cancel }) {
         ) : (
           <>
             <AmountField
-              label={`Original ${label.toLowerCase()} amount (₹)`}
+              label={`Original ${label.toLowerCase()} amount (₹) — ${hint}`}
+              readOnly={known}
               value={data.originalAmount}
               onChange={(v) => setData((x) => ({ ...x, originalAmount: v }))}
             />
@@ -56,7 +80,7 @@ export function BookingCostFields({ title, data, setData, label, cancel }) {
           </>
         )}
       </div>
-      {cancel && <CancellationPreview data={data} />}
+      {cancel && <CancellationPreview data={data} knownAmount={knownAmount} />}
     </section>
   );
 }

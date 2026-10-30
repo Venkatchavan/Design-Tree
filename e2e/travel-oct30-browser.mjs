@@ -52,7 +52,9 @@ try {
     '2098-11-03',
   );
   await page.getByRole('button', { name: 'Add booking', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('Travel booking added.');
+  await expect(
+    page.locator('#view-travel-booking > p[role="status"]'),
+  ).toHaveText('Travel booking added.');
   const row = page.locator('.travel-row').filter({ hasText: 'Browser city' });
   await expect(row).toBeVisible();
   await row.getByRole('link', { name: 'Reschedule', exact: true }).click();
@@ -69,11 +71,30 @@ try {
   await page
     .getByLabel('Reason for reschedule *')
     .selectOption('Site not ready');
+  await expect(
+    page.getByLabel('Original flight amount', { exact: false }),
+  ).not.toBeEditable();
   await page.getByLabel('New flight amount', { exact: false }).fill('120.25');
   await page.getByRole('button', { name: 'Save new dates' }).click();
-  await expect(page.getByRole('status')).toHaveText(
-    'New dates saved. Booking rescheduled.',
-  );
+  await expect(
+    page.locator('#view-travel-booking > p[role="status"]'),
+  ).toHaveText('New dates saved. Booking rescheduled.');
+  await row.getByRole('link', { name: 'Reschedule', exact: true }).click();
+  await page.getByLabel('Hotel', { exact: true }).fill('');
+  await page.getByLabel('Reason for reschedule *').selectOption('Other');
+  await expect(
+    page.getByLabel('Original hotel amount', { exact: false }),
+  ).toHaveValue('50.20');
+  await expect(
+    page.getByLabel('Original hotel amount', { exact: false }),
+  ).not.toBeEditable();
+  await page.getByRole('button', { name: 'Save new dates' }).click();
+  await expect(
+    page.locator('#view-travel-booking > p[role="status"]'),
+  ).toHaveText('New dates saved. Booking rescheduled.');
+  await expect(
+    row.getByText('Recorded stay amount', { exact: false }),
+  ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   assert(
     await page.evaluate(
@@ -90,13 +111,28 @@ try {
   await expect(
     page.getByRole('heading', { name: 'Cancel trip', exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByLabel('Hotel amount paid', { exact: false }),
+  ).toHaveValue('50.20');
+  await expect(
+    page.getByLabel('Hotel amount paid', { exact: false }),
+  ).not.toBeEditable();
+  await expect(
+    page.getByLabel('Flight amount paid', { exact: false }),
+  ).toHaveValue('120.25');
+  await expect(
+    page.getByLabel('Flight amount paid', { exact: false }),
+  ).not.toBeEditable();
+  await page
+    .getByLabel('Hotel cancellation fee', { exact: false })
+    .fill('2.10');
   await page
     .getByLabel('Reason for cancelling *')
     .selectOption('Project postponed');
   await page.getByRole('button', { name: 'Cancel this trip' }).click();
-  await expect(page.getByRole('status')).toHaveText(
-    'Trip cancelled. Fees and refunds are recorded.',
-  );
+  await expect(
+    page.locator('#view-travel-booking > p[role="status"]'),
+  ).toHaveText('Trip cancelled. Fees and refunds are recorded.');
   await expect(
     page.locator('.travel-status').filter({ hasText: 'Cancelled' }),
   ).toBeVisible();
@@ -120,7 +156,7 @@ try {
   ).toBeVisible();
   assert.deepEqual(errors, []);
   console.log(
-    'PASS: shared non-director add/reschedule/refresh/cancel; director view-only/deep-link guard; mobile no horizontal scrolling; no page errors.',
+    'PASS: shared non-director add/reschedule/refresh/hotel removal/cancel; saved baselines read-only and retained stay visible; director view-only/deep-link guard; mobile no horizontal scrolling; no page errors.',
   );
 } finally {
   await browser?.close();

@@ -305,6 +305,22 @@ test('Kolkata day boundaries and browser/server money formulas agree exactly', a
   assert.equal(server.day('2026-10-30T18:29:59.999Z'), '2026-10-30');
   assert.equal(server.day('2026-10-30T18:30:00.000Z'), '2026-10-31');
   for (const module of [server, browser]) {
+    assert.throws(
+      () => module.rescheduleCost({ originalAmount: '1' }, '0.00'),
+      /saved current amount/,
+    );
+    assert.throws(
+      () => module.cancellationCost({ amountPaid: '' }, '0.00'),
+      /saved current amount/,
+    );
+    assert.equal(
+      module.rescheduleCost({ originalAmount: '1.01', newAmount: '1.02' })
+        .differenceMinor,
+      1,
+    );
+    assert.equal(module.hasKnownAmount(null), false);
+    assert.equal(module.hasKnownAmount(''), false);
+    assert.equal(module.hasKnownAmount('0.00'), true);
     assert.deepEqual(
       module.rescheduleCost({
         originalAmount: '0.10',
@@ -362,4 +378,168 @@ test('full booking list pagination and invalid pages keep shared log complete', 
   );
   for (const query of ['?page=0', '?limit=-1', '?page=1.5', '?page=Infinity'])
     assert.equal((await call('finance', query)).status, 400);
+});
+
+test('hotel removal retains paid stay through later reschedule and cancellation', async () => {
+  for (const method of ['PUT', 'POST']) {
+    let b = await create();
+    const path = '/' + b._id;
+    const r = await call(
+      'finance',
+      path + (method === 'POST' ? '/reschedule' : ''),
+      method,
+      method === 'POST'
+        ? {
+            expectedVersion: 0,
+            changes: { hotel: '' },
+            reason: 'Site not ready',
+          }
+        : { expectedVersion: 0, hotel: '' },
+    );
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    b = r.data.item;
+    assert.equal(b.hotelAmount, '50.20');
+    const history = b.history;
+    const moved = await call('finance', path + '/reschedule', 'POST', {
+      expectedVersion: b.__v,
+      changes: { toCity: 'Delhi' },
+      reason: 'Other',
+      stay: { fee: '0.10' },
+    });
+    assert.equal(moved.status, 200, JSON.stringify(moved.data));
+    b = moved.data.item;
+    assert.equal(b.history.at(-1).stay.originalMinor, 5020);
+    assert.equal(b.hotelAmount, '50.20');
+    const cancelled = await call('finance', path + '/cancel', 'POST', {
+      expectedVersion: b.__v,
+      reason: 'Project postponed',
+      stay: { amountPaid: '50.20', fee: '2.10' },
+    });
+    assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+    assert.equal(cancelled.data.item.cancellation.stay.paidMinor, 5020);
+    assert.equal(cancelled.data.item.cancellation.stay.refundMinor, 4810);
+    assert.equal(cancelled.data.item.hotelAmount, '50.20');
+    if (history)
+      assert.deepEqual(
+        cancelled.data.item.history.slice(0, history.length),
+        history,
+      );
+  }
+});
+test('known saved fares reject cleared or conflicting operation baselines across repeated changes', async () => {
+  let b = await create();
+  const path = '/' + b._id;
+  for (const value of ['0', '', '99.99']) {
+    const r = await call('finance', path + '/reschedule', 'POST', {
+      expectedVersion: 0,
+      changes: { toCity: 'Delhi' },
+      reason: 'Other',
+      transport: { originalAmount: value, newAmount: '120.25' },
+    });
+    assert.equal(r.status, 400, JSON.stringify(r.data));
+  }
+  let r = await call('finance', path + '/reschedule', 'POST', {
+    expectedVersion: 0,
+    changes: { toCity: 'Delhi' },
+    reason: 'Other',
+    transport: { newAmount: '120.25' },
+  });
+  assert.equal(r.status, 200);
+  b = r.data.item;
+  assert.equal(b.costs.differenceMinor, 2015);
+  const history = b.history;
+  r = await call('finance', path + '/reschedule', 'POST', {
+    expectedVersion: b.__v,
+    changes: { preferredSeat: 'Window' },
+    reason: 'Other',
+    transport: { originalAmount: '100.10', newAmount: '130.00' },
+  });
+  assert.equal(r.status, 400);
+  for (const value of ['0', '', '100.10']) {
+    r = await call('finance', path + '/cancel', 'POST', {
+      expectedVersion: b.__v,
+      reason: 'Other',
+      transport: { amountPaid: value },
+    });
+    assert.equal(r.status, 400, JSON.stringify(r.data));
+  }
+  r = await call('finance', path + '/cancel', 'POST', {
+    expectedVersion: b.__v,
+    reason: 'Other',
+    stay: { amountPaid: '0' },
+  });
+  assert.equal(r.status, 400);
+  r = await call('finance', path + '/cancel', 'POST', {
+    expectedVersion: b.__v,
+    reason: 'Other',
+  });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.item.cancellation.totalRefundMinor, 17045);
+  assert.deepEqual(r.data.item.history.slice(0, 1), history);
+});
+test('unknown legacy amounts may be initialized explicitly and retained in typed event snapshots', async () => {
+  const { TravelBooking } = await import('../api/src/models/TravelBooking.js');
+  for (const operation of ['reschedule', 'cancel']) {
+    const b = await TravelBooking.create({
+      employee: f.cast.engineer.employee,
+      toCity: 'Mumbai',
+      departureDate: '2098-11-03',
+      returnDate: '2098-11-04',
+      hotel: 'Legacy hotel',
+    });
+    const payload =
+      operation === 'reschedule'
+        ? {
+            changes: { toCity: 'Delhi' },
+            transport: { originalAmount: '100.10', newAmount: '120.25' },
+            stay: { originalAmount: '50.20' },
+          }
+        : {
+            transport: { amountPaid: '100.10', fee: '0.10' },
+            stay: { amountPaid: '50.20' },
+          };
+    const r = await call('finance', '/' + b._id + '/' + operation, 'POST', {
+      expectedVersion: 0,
+      reason: 'Other',
+      ...payload,
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(
+      r.data.item.history[0].transport[
+        operation === 'reschedule' ? 'originalMinor' : 'paidMinor'
+      ],
+      10010,
+    );
+    assert.equal(
+      r.data.item.history[0].stay[
+        operation === 'reschedule' ? 'originalMinor' : 'paidMinor'
+      ],
+      5020,
+    );
+  }
+});
+test('missing, null, empty and whitespace-only optional text cannot manufacture reschedule fees', async () => {
+  const { TravelBooking } = await import('../api/src/models/TravelBooking.js');
+  for (const value of [undefined, null, '', '  ']) {
+    const b = await TravelBooking.create({ ...body(), fromCity: value });
+    const r = await call('finance', '/' + b._id + '/reschedule', 'POST', {
+      expectedVersion: 0,
+      changes: { fromCity: '' },
+      reason: 'Other',
+      transport: { fee: '5' },
+    });
+    assert.equal(r.status, 400, JSON.stringify(r.data));
+    const saved = await TravelBooking.findById(b._id).lean();
+    assert.equal(saved.__v, 0);
+    assert.equal(saved.history, undefined);
+    assert.equal(saved.fromCity, value == null ? value : value.trim());
+    const moved = await call('finance', '/' + b._id + '/reschedule', 'POST', {
+      expectedVersion: 0,
+      changes: { fromCity: '', toCity: 'Delhi' },
+      reason: 'Other',
+    });
+    assert.equal(moved.status, 200, JSON.stringify(moved.data));
+    const savedAfter = await TravelBooking.findById(b._id).lean();
+    assert.equal(savedAfter.fromCity, value == null ? value : value.trim());
+  }
 });

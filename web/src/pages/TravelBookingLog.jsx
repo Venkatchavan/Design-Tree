@@ -12,6 +12,7 @@ import {
   allPages,
 } from './travelBookingUtils.js';
 import './travelBooking.css';
+import { hasStayCosts, hasKnownAmount, minor } from '../lib/travelBooking.js';
 function FeeLine({ label, cost, cancel = false }) {
   if (!cost) return null;
   return (
@@ -59,7 +60,7 @@ export function BookingFees({ booking: b }) {
         cost={c?.transport || sum('transport')}
         cancel={!!c}
       />
-      {(b.hotel || changes.some((e) => e.before?.hotel || e.after?.hotel)) && (
+      {hasStayCosts(b) && (
         <FeeLine label="Stay" cost={c?.stay || sum('stay')} cancel={!!c} />
       )}
       <strong>
@@ -98,6 +99,13 @@ export function BookingSummary({ booking: b }) {
           ? [b.hotel, b.location].filter(Boolean).join(', ')
           : 'No hotel'}
       </p>
+      {!b.hotel && hasStayCosts(b) && (
+        <p>
+          {hasKnownAmount(b.hotelAmount)
+            ? `Recorded stay amount ${money(minor(b.hotelAmount))} retained.`
+            : 'Recorded stay costs retained; current amount not added.'}
+        </p>
+      )}
       <p>{b.reason || 'Purpose not added'}</p>
       <span className="travel-status">{bookingStatus(b)}</span>
     </div>
@@ -224,6 +232,11 @@ export default function TravelBookingLog({
                       ? 'Day trip, no hotel'
                       : 'No hotel'}
                 </strong>
+                {!b.hotel && hasStayCosts(b) && (
+                  <p>
+                    Recorded stay amount {money(minor(b.hotelAmount))} retained.
+                  </p>
+                )}
                 {b.hotel && (
                   <p>
                     {b.checkIn && b.checkOut

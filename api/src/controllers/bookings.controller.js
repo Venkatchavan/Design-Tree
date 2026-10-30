@@ -20,6 +20,8 @@ import {
   SEATS,
   rescheduleCost,
   cancellationCost,
+  hasStayCosts,
+  sameTravelDetail,
 } from '../utils/travelBooking.js';
 const populate = [
   {
@@ -267,9 +269,14 @@ export const rescheduleBooking = handler(async (req, res) => {
     throw fail('Only trips with a future departure date may be rescheduled.');
   if (!RESCHEDULE_REASONS.includes(data.reason))
     throw fail('Choose a reason for the reschedule.');
+  // Ignore semantically unchanged optional fields without writing unknowns as empty strings.
+  for (const key of Object.keys(data.changes)) {
+    if (sameTravelDetail(key, b[key], data.changes[key]))
+      delete data.changes[key];
+  }
   const changes = validateDetails(b, data.changes),
     after = { ...b, ...changes };
-  if (JSON.stringify(snapshot(b)) === JSON.stringify(snapshot(after)))
+  if (snapshotKeys.every((key) => sameTravelDetail(key, b[key], after[key])))
     throw fail('Nothing has changed yet. Update the dates or details first.');
   if (!upcoming(after)) throw fail('Revised departure must be in the future.');
   let transport, stay;
@@ -280,7 +287,7 @@ export const rescheduleBooking = handler(async (req, res) => {
     throw fail(e.message);
   }
   if (
-    !b.hotel &&
+    !hasStayCosts(b) &&
     !after.hotel &&
     (stay.feeMinor || stay.originalMinor || stay.newMinor)
   )
@@ -339,7 +346,7 @@ export const cancelBooking = handler(async (req, res) => {
   } catch (e) {
     throw fail(e.message);
   }
-  if (!b.hotel && (stay.paidMinor || stay.feeMinor))
+  if (!hasStayCosts(b) && (stay.paidMinor || stay.feeMinor))
     throw fail('Stay amounts require a hotel.');
   const cancellation = {
     transport,

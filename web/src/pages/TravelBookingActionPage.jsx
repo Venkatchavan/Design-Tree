@@ -20,6 +20,8 @@ import {
   rescheduleCost,
   cancellationCost,
   validDate,
+  hasStayCosts,
+  sameTravelDetail,
 } from '../lib/travelBooking.js';
 const DETAIL_KEYS = [
   'fromCity',
@@ -128,7 +130,7 @@ function BookingEditor({ action, booking: b, employees, projects }) {
     navigate = useNavigate();
   const operation = ['reschedule', 'cancel'].includes(action),
     cancel = action === 'cancel',
-    hasStay = !!(form.hotel || b?.hotel);
+    hasStay = !!(form.hotel || hasStayCosts(b));
   function set(k, v) {
     setForm((f) => {
       const n = { ...f, [k]: v };
@@ -144,18 +146,22 @@ function BookingEditor({ action, booking: b, employees, projects }) {
   }
   const changes = Object.fromEntries(
     (operation ? DETAIL_KEYS : FORM_KEYS)
-      .filter((k) => form[k] !== initial[k])
+      .filter((k) =>
+        action === 'reschedule'
+          ? !sameTravelDetail(k, form[k], initial[k])
+          : form[k] !== initial[k],
+      )
       .map((k) => [k, form[k]]),
   );
   let transportCost, stayCost, costError;
   try {
     transportCost = cancel
-      ? cancellationCost(transport)
-      : rescheduleCost(transport);
+      ? cancellationCost(transport, b?.transportFare)
+      : rescheduleCost(transport, b?.transportFare);
     stayCost = hasStay
       ? cancel
-        ? cancellationCost(stay)
-        : rescheduleCost(stay)
+        ? cancellationCost(stay, b?.hotelAmount)
+        : rescheduleCost(stay, b?.hotelAmount)
       : cancel
         ? cancellationCost()
         : rescheduleCost();
@@ -308,6 +314,7 @@ function BookingEditor({ action, booking: b, employees, projects }) {
               <BookingCostFields
                 title={cancel ? 'Transport' : 'Fare and fees — Transport'}
                 data={transport}
+                knownAmount={b?.transportFare}
                 setData={setTransport}
                 label={form.mode || 'Transport'}
                 cancel={cancel}
@@ -316,6 +323,8 @@ function BookingEditor({ action, booking: b, employees, projects }) {
                 <BookingCostFields
                   title={cancel ? 'Stay' : 'Fare and fees — Stay'}
                   data={stay}
+                  knownAmount={b?.hotelAmount}
+                  retained={!form.hotel}
                   setData={setStay}
                   label="Hotel"
                   cancel={cancel}
