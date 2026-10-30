@@ -234,7 +234,9 @@ export default function TravelBookingLog({
                 </strong>
                 {!b.hotel && hasStayCosts(b) && (
                   <p>
-                    Recorded stay amount {money(minor(b.hotelAmount))} retained.
+                    {hasKnownAmount(b.hotelAmount)
+                      ? `Recorded stay amount ${money(minor(b.hotelAmount))} retained.`
+                      : 'Recorded stay costs retained; current amount not added.'}
                   </p>
                 )}
                 {b.hotel && (
