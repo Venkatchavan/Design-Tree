@@ -151,15 +151,16 @@ export const certRequestSchema = z
   })
   .strict();
 
-export const bookingSchema = z
+// Detailed cross-field checks run after merging edits with the persisted record.
+const bookingFields = z
   .object({
     employee: objectId,
     department: strOpt,
-    project: objectId.optional(),
+    project: objectId.nullable().optional(),
     fromCity: strOpt,
     toCity: strOpt,
-    departureDate: dateOpt,
-    returnDate: dateOpt,
+    departureDate: z.string().optional(),
+    returnDate: z.string().optional(),
     mode: strOpt,
     preferredSeat: strOpt,
     checkIn: strOpt,
@@ -168,13 +169,63 @@ export const bookingSchema = z
     location: strOpt,
     nights: z.number().min(0).optional(),
     reason: strOpt,
-    extraCharges: z.number().min(0).optional(),
-    status: z.enum(BOOKING_STATUSES).optional(),
+    extraCharges: z.union([z.string(), z.number()]).optional(),
+    transportFare: z.union([z.string(), z.number()]).optional(),
+    hotelAmount: z.union([z.string(), z.number()]).optional(),
+    hotelDatesSameAsTravel: z.boolean().optional(),
   })
   .strict();
-export const bookingUpdateSchema = bookingSchema.partial();
+export const bookingSchema = bookingFields;
+export const bookingUpdateSchema = bookingFields
+  .omit({ employee: true, department: true })
+  .partial()
+  .extend({ expectedVersion: z.number().int().min(0) })
+  .strict();
 export const bookingStatusSchema = z
   .object({ status: z.enum(BOOKING_STATUSES) })
+  .strict();
+const operationMoney = z
+  .object({
+    originalAmount: z.union([z.string(), z.number()]).optional(),
+    newAmount: z.union([z.string(), z.number()]).optional(),
+    fee: z.union([z.string(), z.number()]).optional(),
+  })
+  .strict();
+const cancelMoney = z
+  .object({
+    amountPaid: z.union([z.string(), z.number()]).optional(),
+    fee: z.union([z.string(), z.number()]).optional(),
+  })
+  .strict();
+export const bookingRescheduleSchema = z
+  .object({
+    expectedVersion: z.number().int().min(0),
+    changes: bookingFields
+      .omit({
+        employee: true,
+        department: true,
+        project: true,
+        transportFare: true,
+        hotelAmount: true,
+        extraCharges: true,
+        reason: true,
+        nights: true,
+      })
+      .partial(),
+    reason: z.string(),
+    note: strOpt,
+    transport: operationMoney.optional(),
+    stay: operationMoney.optional(),
+  })
+  .strict();
+export const bookingCancelSchema = z
+  .object({
+    expectedVersion: z.number().int().min(0),
+    reason: z.string(),
+    note: strOpt,
+    transport: cancelMoney.optional(),
+    stay: cancelMoney.optional(),
+  })
   .strict();
 
 export const financeOccSchema = z

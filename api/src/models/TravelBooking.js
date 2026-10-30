@@ -2,6 +2,7 @@ import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const BOOKING_STATUSES = [
+  'Booked',
   'Pending',
   'Approved',
   'Confirmed',
@@ -11,6 +12,47 @@ export const BOOKING_STATUSES = [
   'Completed',
 ];
 
+const feeSchema = new mongoose.Schema(
+  {
+    originalMinor: Number,
+    newMinor: Number,
+    feeMinor: Number,
+    differenceMinor: Number,
+    extraCostMinor: Number,
+    paidMinor: Number,
+    refundMinor: Number,
+  },
+  { _id: false },
+);
+const eventSchema = new mongoose.Schema(
+  {
+    type: { type: String, enum: ['reschedule', 'cancel'], required: true },
+    actor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    at: { type: Date, required: true },
+    reason: { type: String, required: true },
+    note: String,
+    before: mongoose.Schema.Types.Mixed,
+    after: mongoose.Schema.Types.Mixed,
+    transport: feeSchema,
+    stay: feeSchema,
+  },
+  { _id: false },
+);
+const cancellationSchema = new mongoose.Schema(
+  {
+    transport: feeSchema,
+    stay: feeSchema,
+    totalRefundMinor: Number,
+    notRefundedMinor: Number,
+    totalFeesMinor: Number,
+    previousFeesMinor: Number,
+  },
+  { _id: false },
+);
 const travelBookingSchema = new mongoose.Schema(
   {
     employee: {
@@ -44,6 +86,16 @@ const travelBookingSchema = new mongoose.Schema(
       default: 'Pending',
       index: true,
     },
+    transportFare: { type: String },
+    hotelAmount: { type: String },
+    hotelDatesSameAsTravel: { type: Boolean },
+    history: { type: [eventSchema], default: undefined },
+    costs: {
+      feesMinor: Number,
+      differenceMinor: Number,
+      extraCostMinor: Number,
+    },
+    cancellation: cancellationSchema,
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },

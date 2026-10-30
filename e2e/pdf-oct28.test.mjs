@@ -52,7 +52,7 @@ test('HR and all board roles see historical requests plus Finance bookings with 
   assert(r.data.items.some(x=>x.source==='Request'&&x.purpose==='Historical site inspection'));
   assert(r.data.items.some(x=>x.source==='Booking'&&x.purpose==='Historical finance booking'&&x.status==='Completed'));
   assert(!JSON.stringify(r.data).includes('passwordHash'));
-  assert.equal((await call(role,'/api/travel-bookings')).status,403);
+  assert.equal((await call(role,'/api/travel-bookings')).status,200);
  }
  assert.equal((await call('engineer','/api/leave-travel/travel/log')).status,403);
  assert.equal(await f.models.TravelRequest.countDocuments(),requests);assert.equal(await f.models.TravelBooking.countDocuments(),bookings);

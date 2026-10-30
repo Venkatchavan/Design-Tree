@@ -89,7 +89,11 @@ export const VIEWS = {
   'gbs-head': { path: '/gbs', label: 'GBS', sub: 'Green-building overview and approvals', phase: 4 },
   'peer-review-head': { path: '/peer-review', label: 'Peer Review', sub: 'Peer review overview and approvals', phase: 4 },
   'qs-head': { path: '/qs', label: 'QS', sub: 'BOQ work, area settlements and leave approvals for the QS department', phase: 4 },
-  'travel-booking': { path: '/travel-booking', label: 'Travel Booking', sub: 'Travel and hotel bookings across departments', phase: 4, financeOnly: true },
+  'travel-booking-new': { path: '/travel-booking/new', label: 'New travel booking', via: 'travel-booking', phase: 4 },
+  'travel-booking-edit': { path: '/travel-booking/:id/edit', label: 'Edit travel booking', via: 'travel-booking', phase: 4 },
+  'travel-booking-reschedule': { path: '/travel-booking/:id/reschedule', label: 'Reschedule travel booking', via: 'travel-booking', phase: 4 },
+  'travel-booking-cancel': { path: '/travel-booking/:id/cancel', label: 'Cancel travel booking', via: 'travel-booking', phase: 4 },
+  'travel-booking': { path: '/travel-booking', label: 'Travel Booking', sub: 'Travel and hotel bookings across departments', phase: 4 },
   'structural': { path: '/departments/structural', label: 'Structural', sub: 'Company-wide Structural dashboard', phase: 4, boardOnly: true },
   'mechanical': { path: '/departments/mechanical', label: 'Mechanical', sub: 'Company-wide Mechanical dashboard', phase: 4, boardOnly: true },
   'electrical': { path: '/departments/electrical', label: 'Electrical', sub: 'Company-wide Electrical dashboard', phase: 4, boardOnly: true },
@@ -364,6 +368,7 @@ export function homeView(role) {
 export function navFor(role) {
   const items = [...(NAV_BY_ROLE[role] ?? [])];
   if (ROLE_KEYS.includes(role) && !['client', 'architect', 'superuser'].includes(role)) items.push({ view: 'announcements' });
+  if (INTERNAL_ROLES.includes(role) && !items.some(i => i.view === 'travel-booking')) items.push({ view: 'travel-booking' });
   return items.map((item) => {
     const def = VIEWS[item.view];
     return {
@@ -385,6 +390,7 @@ export const INTERNAL_ROLES = ROLE_KEYS.filter(
 // Second-layer page guard (§2.7): nav membership + view flags + superuser.
 export function canAccess(role, view) {
   if (!VIEWS[view]) return false;
+  if (view.startsWith('travel-booking')) return INTERNAL_ROLES.includes(role);
   // Retain the existing DMH workflow API while its menu moves under My Team.
   if (role === 'design_mgmt_head' && view === 'design-mgmt') return true;
   if (['peer_reviewer','peer_review_head'].includes(role) && ['work-tracking','project-detail'].includes(view)) return true;

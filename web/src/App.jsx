@@ -1,4 +1,5 @@
 import PeerDashboardPage from './pages/PeerDashboardPage.jsx';
+import { lazy, Suspense } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { bootstrapApi, meApi } from './lib/api.js'
@@ -42,6 +43,7 @@ import EmployeeSupportPage from './pages/EmployeeSupportPage.jsx'
 import BranchesPage from './pages/BranchesPage.jsx'
 import OfflineGate from './components/OfflineGate.jsx'
 import TravelBookingPage from './pages/TravelBookingPage.jsx'
+const TravelBookingActionPage = lazy(() => import('./pages/TravelBookingActionPage.jsx'))
 import AnnouncementsPage from './pages/AnnouncementsPage.jsx'
 
 const VIEW_COMPONENTS = {
@@ -91,10 +93,20 @@ const VIEW_COMPONENTS = {
   'employee-support': EmployeeSupportPage,
   branches: BranchesPage,
   'travel-booking': TravelBookingPage,
+  'travel-booking-new': TravelBookingActionPage,
+  'travel-booking-edit': TravelBookingActionPage,
+  'travel-booking-reschedule': TravelBookingActionPage,
+  'travel-booking-cancel': TravelBookingActionPage,
+
 }
 
 // Non-nav views and the nav view whose presence grants their route.
 const EXTRA_ROUTES = [
+  { key: 'travel-booking-new', when: 'travel-booking', parent: 'travel-booking' },
+  { key: 'travel-booking-edit', when: 'travel-booking', parent: 'travel-booking' },
+  { key: 'travel-booking-reschedule', when: 'travel-booking', parent: 'travel-booking' },
+  { key: 'travel-booking-cancel', when: 'travel-booking', parent: 'travel-booking' },
+
   {key:'work-tracking',when:'peer-dashboard',parent:'peer-dashboard'},
   {key:'project-detail',when:'peer-dashboard',parent:'peer-dashboard'},
   { key: 'announcement-detail', when: 'announcements', parent: 'announcements' },
@@ -118,7 +130,7 @@ function ShellPage({ bootstrap, user, viewKey, activeView }) {
       crumbs={['DesignTree', def.label]}
     >
       {Cmp ? (
-        <Cmp bootstrap={bootstrap} user={user} viewKey={viewKey} />
+        <Suspense fallback={<p role="status">Loading page…</p>}><Cmp bootstrap={bootstrap} user={user} viewKey={viewKey} /></Suspense>
       ) : (
         <ComingSoon title={def.label} sub={def.sub} phase={def.phase} />
       )}
