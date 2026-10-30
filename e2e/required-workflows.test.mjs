@@ -94,7 +94,10 @@ test('Internal roles can access shared bookings; role navigation reflects requir
 test('billing requires PTL then SPOC then TD/ATD and MD is read-only', async () => {
   const {ServiceDashboard}=await import('../api/src/models/ServiceDashboard.js');
   await ServiceDashboard.findOneAndUpdate({project:f.project,service:'STR'},{technicalDirector:'TEST-td'},{upsert:true});
-  await f.models.Employee.findByIdAndUpdate(f.cast.tl.employee,{reportingManager:f.cast.atd.employee});
+  await f.models.Employee.findByIdAndUpdate(f.cast.tl.employee,{reportingManager:f.cast.atd.employee,director:f.cast.td.employee});
+  // Whole SMEPF stages require a whole-bundle lead; a Structural-only fixture
+  // must not implicitly confer authority over Mechanical/Electrical/PHE/Fire.
+  await f.models.Team.updateOne({name:'Assigned Structural team'},{$set:{service:'Structural + Mechanical + Electrical + Plumbing + Fire'}});
   const identity = { project: f.project, service: 'SMEPF', stage: 'CD' };
   assert.equal((await call('admin', '/api/billing/claims', 'POST', { ...identity, amount: 100 })).status, 409);
   assert.equal((await call('admin', '/api/billing/stages', 'POST', { ...identity, expectedVersion:0, confirmCompletion: true })).status, 403);

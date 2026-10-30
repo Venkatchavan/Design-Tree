@@ -8,7 +8,7 @@ import { canReadProject } from '../utils/projectScope.js';
 import { expandServices } from '../config/services.js';
 import { directorTeams } from '../utils/directorTeams.js';
 import { stageStatusSchema } from '../validation/phase3.schema.js';
-import { STAGES, serviceKey, sameService, overlapsService, day, daysBetween, nextDay, stageMetrics, approved, currentStage } from '../utils/stageTimeline.js';
+import { STAGES, serviceKey, sameService, coversService, overlapsService, day, daysBetween, nextDay, stageMetrics, approved, currentStage } from '../utils/stageTimeline.js';
 const APPROVERS = ['technical_director', 'assoc_technical_director'];
 const id = value => String(value?._id ?? value ?? '');
 async function assignments(user, project, service) {
@@ -26,12 +26,22 @@ async function assignments(user, project, service) {
       $ne: false
     }
   }).lean()]);
-  const ptl = user.role === 'team_lead' && !!employee && ((project.principalTeamLeads ?? []).some(t => id(t.employee) === employee && t.approvalStatus !== 'Proposed' && overlapsService(t.service, service)) || teams.some(t => id(t.lead) === employee && overlapsService(t.service, service)));
-  const spoc = user.role === 'coordinator' && !!employee && (!project.activation?.spoc || id(project.activation.spoc) === employee) && (allocations.some(a => id(a.coordinator) === employee && (!(a.services ?? []).length || a.services.some(s => overlapsService(s, service)))) || id(project.activation?.spoc) === employee && (project.services ?? []).some(s => overlapsService(s, service)));
+  const projectServices = [...(project.services ?? []), ...(project.scope ?? []).map(row => row.service)];
+  const ptlServices = [
+    ...(project.principalTeamLeads ?? []).filter(t => id(t.employee) === employee && t.approvalStatus !== 'Proposed').map(t => t.service),
+    ...teams.filter(t => id(t.lead) === employee).map(t => t.service),
+  ];
+  const ptl = user.role === 'team_lead' && !!employee && coversService(ptlServices, service);
+  const spocServices = allocations.filter(a => id(a.coordinator) === employee)
+    .flatMap(a => (a.services ?? []).length ? a.services : projectServices);
+  const activatedSpoc = id(project.activation?.spoc) === employee;
+  const spoc = user.role === 'coordinator' && !!employee &&
+    (!project.activation?.spoc || activatedSpoc) &&
+    (coversService(spocServices, service) || activatedSpoc && coversService(projectServices, service));
   let approver = false;
   if (APPROVERS.includes(user.role)) {
     const owned = await directorTeams(user);
-    approver = owned.some(t => t.projects.some(p => id(p) === id(project)) && overlapsService(t.service, service));
+    approver = coversService(owned.filter(t => t.projects.some(p => id(p) === id(project))).map(t => t.service), service);
   }
   return {
     plan: ptl || approver,
@@ -177,7 +187,7 @@ async function stageNotification(user, project, service, doc, access, action) {
       id: id(director),
       role: director.role
     });
-    if (owned.some(t => t.projects.some(p => id(p) === id(project)) && overlapsService(t.service, service))) users.push(id(director));
+    if (coversService(owned.filter(t => t.projects.some(p => id(p) === id(project))).map(t => t.service), service)) users.push(id(director));
   }
   users.push(id(user.id));
   await notify({

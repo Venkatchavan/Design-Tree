@@ -16,8 +16,10 @@ try {
     technicalDirector: 'TEST-td'
   });
   await f.models.Employee.findByIdAndUpdate(f.cast.tl.employee, {
-    reportingManager: f.cast.atd.employee
+    reportingManager: f.cast.atd.employee,
+    director: f.cast.td.employee
   });
+  await f.models.Team.updateOne({name:'Assigned Structural team'}, {$set:{service:'Structural + Mechanical + Electrical + Plumbing + Fire'}});
   vite = await createServer({
     root: resolve('web'),
     configFile: resolve('web/vite.config.js'),

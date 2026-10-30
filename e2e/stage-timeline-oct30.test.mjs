@@ -15,8 +15,10 @@ before(async () => {
     technicalDirector: 'TEST-td'
   });
   await f.models.Employee.findByIdAndUpdate(f.cast.tl.employee, {
-    reportingManager: f.cast.atd.employee
+    reportingManager: f.cast.atd.employee,
+    director: f.cast.td.employee
   });
+  await f.models.Team.updateOne({name:'Assigned Structural team'}, {$set:{service:'Structural + Mechanical + Electrical + Plumbing + Fire'}});
   const sample = await f.models.User.findById(f.cast.tl.user).select('+passwordHash').lean();
   for (const [key, role, employee] of [['wrongtl', 'team_lead', f.cast.engineer.employee], ['wrongspoc', 'coordinator', f.cast.outsider.employee], ['wrongtd', 'technical_director', f.cast.outsider.employee]]) {
     const user = await f.models.User.create({
