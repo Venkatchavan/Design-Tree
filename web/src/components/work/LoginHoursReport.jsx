@@ -28,9 +28,9 @@ export default function LoginHoursReport() {
       <Panel title="Login hours by project and stage" sub="Saved work hours from daily work and SPOC entries. Attendance session duration is reported separately."><DataTable columns={[{key:'project',label:'Project'},{key:'stage',label:'Stage'},{key:'count',label:'Employees'},{key:'hours',label:'Total hours',render:r=>hoursText(r.hours)}]} rows={groups} emptyText="No work logged in this period."/></Panel>
       <Panel title="Saved work entries"><DataTable columns={[
         {key:'workDate',label:'Work date (IST)'},{key:'employee',label:'Employee',render:e=>[e.employee?.firstName,e.employee?.lastName].filter(Boolean).join(' ')||'Missing employee'},
-        {key:'project',label:'Project',render:e=>e.project?.name??'Missing project'},{key:'service',label:'Service'},{key:'stage',label:'Stage',render:e=>e.stage??'Not recorded'},
-        {key:'hours',label:'Hours',render:e=>hoursText(e.hours)}, {key:'source',label:'Source'},
-        {key:'details',label:'Activities / documents',render:e=><details><summary>View saved details</summary>{e.activities.map((a,i)=><p key={i} style={{whiteSpace:'pre-wrap'}}>{a.key} · {hoursText(a.hours)} hours<br/>{a.update}</p>)}<EntryDocuments entry={e} spoc={e.source==='SpocEntry'} readOnly/></details>},
+        {key:'project',label:'Source project',render:e=>e.project?.name??'Missing project'},{key:'service',label:'Service'},{key:'stage',label:'Source stage',render:e=>e.stage??'Not recorded'},
+        {key:'hours',label:'Reported hours',render:e=>hoursText(e.hours)}, {key:'source',label:'Source'},
+        {key:'details',label:'Source activities / documents',render:e=><details><summary>View saved details</summary>{e.activities.map((a,i)=><p key={i} style={{whiteSpace:'pre-wrap'}}>{a.key} · {hoursText(a.hours)} hours<br/>{a.update}</p>)}<EntryDocuments entry={e} spoc={e.source==='SpocEntry'} readOnly/></details>},
       ]} rows={q.data?.items??[]} emptyText="No work logged in this period."/></Panel>
     </>}
   </>;

@@ -7,7 +7,7 @@ let f, SpocEntry, WorkEntry, uploadDirectory; const cookies={};
 before(async()=>{
  uploadDirectory=await mkdtemp('/tmp/designtree-work-report-');process.env.TEST_UPLOAD_DIR=uploadDirectory;
  f=await startLocalFixture(); ({SpocEntry}=await import('../api/src/models/SpocEntry.js')); ({WorkEntry}=await import('../api/src/models/WorkEntry.js'));
- for(const key of ['spoc','dmh','md','outsider','td']){const r=await fetch(f.base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:f.cast[key].email,password:f.password})});cookies[key]=r.headers.get('set-cookie').split(';')[0];}
+ for(const key of ['spoc','dmh','md','outsider','td','engineer']){const r=await fetch(f.base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:f.cast[key].email,password:f.password})});cookies[key]=r.headers.get('set-cookie').split(';')[0];}
  await SpocEntry.init();
 });
 after(async()=>{await f?.stop();if(uploadDirectory)await rm(uploadDirectory,{recursive:true,force:true});});
@@ -131,4 +131,39 @@ test('failed attachment validation/CAS cleans only new temp uploads; an ambiguou
  const saved=await SpocEntry.findById(old.id).lean();assert.equal(saved.documents.length,3);
  for(const document of saved.documents) assert.equal(await readFile(join(uploadDirectory,document.file),'utf8'),document.name);
  assert.equal((await readdir(join(uploadDirectory,'work-documents'))).length,before.length+2);
+});
+
+test('other-project allocations have missing stage; project filters retain only matching hours and authorized source scope',async()=>{
+ const {workAllocations}=await import('../web/src/lib/workAllocations.js');
+ const source=await WorkEntry.create({project:f.project,employee:f.cast.engineer.employee,date:'2026-09-01T10:00Z',stage:'CD',hours:1.125,otherHours:[{project:f.other,hours:0.375}],notes:'Original primary work',documents:[{name:'source-only.txt',file:'source-only.txt'}]});
+ const original=await WorkEntry.findById(source.id).lean();
+ const secondary=workAllocations({key:'WorkEntry:'+source.id,source:'WorkEntry',project:{_id:f.project},stage:'CD',primaryHours:1.125,hours:1.5,otherHours:[{project:{_id:f.other},hours:0.375}]})[1];
+ assert.equal(secondary.hours,0.375);
+ for(const [project,hours,stage] of [[f.project,1.125,'CD'],[f.other,0.375,null]]) {
+   const response=await call('md',`/api/reports/work-hours?date=2026-09-01&project=${project}`);assert.equal(response.status,200);assert.equal(response.data.total,1);const item=response.data.items[0];
+   assert.equal(item.key,'WorkEntry:'+source.id);assert.equal(item.hours,hours);assert.equal(item.reportHours,hours);assert.equal(item.reportAllocations.length,1);assert.equal(String(item.reportAllocations[0].project._id),project);assert.equal(item.reportAllocations[0].stage,stage);
+   assert.equal(item.sourceRecord.hours,1.125);assert.equal(item.sourceRecord.stage,'CD');assert.equal(String(item.sourceRecord.project._id),f.project);assert.equal(item.sourceRecord.otherHours[0].hours,0.375);
+   const allocations=workAllocations(item);assert.equal(allocations.length,1);assert.equal(allocations[0].hours,hours);assert.equal(allocations[0].stage,stage);
+ }
+ const all=await call('md','/api/reports/work-hours?date=2026-09-01');assert.equal(all.data.items[0].hours,1.5);assert.deepEqual(workAllocations(all.data.items[0]).map(e=>[String(e.project._id),e.stage,e.hours]),[[f.project,'CD',1.125],[f.other,null,0.375]]);
+ const ownContext=await call('engineer',`/api/reports/work-hours?date=2026-09-01&project=${f.other}`);assert.equal(ownContext.data.total,1);assert.equal(ownContext.data.items[0].hours,0.375);
+ assert.equal((await call('engineer',`/api/projects/${f.other}`)).status,404,'Context does not grant secondary project authority');
+ assert.equal((await call('outsider',`/api/reports/work-hours?date=2026-09-01&project=${f.other}`)).data.total,0,'Secondary project access cannot expose unauthorized primary-source work');
+ assert.equal((await call('td',`/api/reports/work-hours?date=2026-09-01&project=${f.other}`)).data.total,0,'Director without source-team employee ownership remains excluded');
+ await f.models.Employee.findByIdAndUpdate(f.cast.engineer.employee,{director:f.cast.td.employee});
+ const owned=await call('td',`/api/reports/work-hours?date=2026-09-01&project=${f.other}&employee=${f.cast.engineer.employee}`);assert.equal(owned.data.total,1);assert.equal(owned.data.items[0].hours,0.375);
+ assert.equal((await call('td',`/api/reports/work-hours?date=2026-09-01&project=${f.other}&employee=${f.cast.outsider.employee}`)).data.total,0);
+ const ownFilter=await call('engineer',`/api/reports/work-hours?date=2026-09-01&project=${f.other}&mine=true`);assert.equal(ownFilter.data.total,1);
+ assert.equal((await call('outsider',`/api/work-entries/${source.id}/documents/0`)).status,404,'Secondary project context does not widen document access');
+ const reverse=await WorkEntry.create({project:f.other,employee:f.cast.engineer.employee,date:'2026-09-01T10:01Z',stage:'DD',hours:9,otherHours:[{project:f.project,hours:0.875}]});
+ for(const role of ['engineer','td']) {const restricted=await call(role,`/api/reports/work-hours?date=2026-09-01&project=${f.project}`);assert.equal(restricted.data.total,1);assert.equal(restricted.data.items[0].hours,1.125);}
+ const pages=[];for(const offset of [0,1]) {const page=await call('md',`/api/reports/work-hours?date=2026-09-01&project=${f.project}&limit=1&offset=${offset}`);assert.equal(page.data.total,2);pages.push(...page.data.items);}
+ assert.equal(new Set(pages.map(e=>e.key)).size,2);assert.equal(pages.reduce((sum,e)=>sum+e.hours,0),2);assert.equal(pages.find(e=>e.sourceId===reverse.id).reportAllocations[0].stage,null);
+ assert.deepEqual(await WorkEntry.findById(source.id).lean(),original,'Projection never rewrites source snapshots or history');
+});
+
+test('secondary project stage never inherits primary CD without saved secondary-stage evidence',async()=>{
+ const {workAllocations}=await import('../web/src/lib/workAllocations.js');
+ const allocations=workAllocations({key:'WorkEntry:stage',source:'WorkEntry',project:'A',stage:'CD',primaryHours:1.125,hours:1.5,otherHours:[{project:'B',hours:0.375}]});
+ assert.equal(allocations[0].stage,'CD');assert.equal(allocations[1].stage,null);
 });

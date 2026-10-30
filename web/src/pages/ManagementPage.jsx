@@ -189,7 +189,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
     [projects.data, workEntries.data],
   );
   const stageFilterOptions = useMemo(
-    () => [...new Set([...projectRows.map((p) => p.currentStage), ...(workEntries.data?.items ?? []).map(e => e.stage ?? 'Not recorded')].filter(Boolean))].sort((a, b) =>
+    () => [...new Set([...projectRows.map((p) => p.currentStage), ...(workEntries.data?.items ?? []).flatMap(workAllocations).map(e => e.stage ?? 'Not recorded')].filter(Boolean))].sort((a, b) =>
       String(a).localeCompare(String(b)),
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -723,7 +723,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
           </div>
           <div className="form-row">
             <label className="form-label">Stage</label>
-            <select className="filter-select" style={{ width: '100%' }} value={stage} onChange={(e) => setStage(e.target.value)}>
+            <select aria-label="Management stage" className="filter-select" style={{ width: '100%' }} value={stage} onChange={(e) => setStage(e.target.value)}>
               <option value="">All stages</option>
               {stageFilterOptions.map((s) => (
                 <option key={s} value={s}>{s}</option>
@@ -732,7 +732,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
           </div>
           <div className="form-row">
             <label className="form-label">Project</label>
-            <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
+            <select aria-label="Management project" className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
               <option value="">All projects</option>
               {projectRows.map((p) => (
                 <option key={p._id} value={p._id}>{p.name}</option>
@@ -741,11 +741,11 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
           </div>
           <div className="form-row">
             <label className="form-label">From</label>
-            <input type="date" className="form-input" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <input aria-label="Management from" type="date" className="form-input" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="form-row">
             <label className="form-label">To</label>
-            <input type="date" className="form-input" value={to} onChange={(e) => setTo(e.target.value)} />
+            <input aria-label="Management to" type="date" className="form-input" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <button type="button" className="approve-btn" onClick={resetFilters}>Reset filters</button>
         </div>

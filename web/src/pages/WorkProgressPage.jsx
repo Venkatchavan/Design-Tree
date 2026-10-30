@@ -215,7 +215,7 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
   }, [entries]);
   const stageOptions = useMemo(() => {
     const s = new Set();
-    for (const e of entries) {
+    for (const e of entries.flatMap(workAllocations)) {
       const st = e.stage ?? 'Not recorded';
       if (st && st !== '—') s.add(st);
     }
@@ -347,11 +347,11 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
                 <option value="">All departments</option>
                 {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
-              <select className="filter-select" value={fProject} onChange={(e) => setFProject(e.target.value)}>
+              <select aria-label="Work progress project" className="filter-select" value={fProject} onChange={(e) => setFProject(e.target.value)}>
                 <option value="">All projects</option>
                 {projectOptions.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
               </select>
-              <select className="filter-select" value={fStage} onChange={(e) => setFStage(e.target.value)}>
+              <select aria-label="Work progress stage" className="filter-select" value={fStage} onChange={(e) => setFStage(e.target.value)}>
                 <option value="">All stages</option>
                 {stageOptions.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
