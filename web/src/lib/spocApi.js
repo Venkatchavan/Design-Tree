@@ -19,5 +19,7 @@ export const spocApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  daySave: body => request('/api/spoc/entries/day', { method: 'POST', body: JSON.stringify(body) }),
+  entriesUpdate: (id, body) => request(`/api/spoc/entries/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   manHourStatus: () => request('/api/spoc/man-hours/status'),
 };

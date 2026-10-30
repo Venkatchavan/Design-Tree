@@ -1,3 +1,4 @@
+import { addHours } from '../utils/workHours.js';
 import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
@@ -66,14 +67,19 @@ const spocEntrySchema = new mongoose.Schema(
     revisionRemarks: { type: String, trim: true },
     totalHours: { type: Number, min: 0, default: 0 },
     documents: [{ name: String, file: String }],
+    clientKey: { type: String },
+    creationHash: { type: String },
+    history: [{ actor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, at: Date, previous: mongoose.Schema.Types.Mixed, updated: mongoose.Schema.Types.Mixed, _id: false }],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },
 );
 
+spocEntrySchema.index({ employee: 1, clientKey: 1 }, { unique: true, partialFilterExpression: { clientKey: { $type: 'string' } } });
+
 spocEntrySchema.pre('validate', function autoTotal() {
   this.totalHours = (this.areas ?? []).reduce(
-    (sum, a) => sum + (a.hours ?? 0),
+    (sum, a) => addHours(sum, a.hours),
     0,
   );
 });

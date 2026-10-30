@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarElement,
@@ -416,64 +416,8 @@ function DirectorOverviewTab() {
   );
 }
 
-function DirectorLoginHoursTab() {
-  const q = useQuery({ queryKey: ['hr-work-entries'], queryFn: () => workEntriesApi.list({}) });
-  const groups = useMemo(() => {
-    const m = new Map();
-    for (const e of q.data?.items ?? []) {
-      const pid = String(e.project?._id ?? e.project ?? '');
-      const key = `${pid}|${e.stage ?? '—'}`;
-      let g = m.get(key);
-      if (!g) {
-        g = { key, project: e.project?.name ?? e.project ?? '—', stage: e.stage ?? '—', empIds: new Set(), total: 0 };
-        m.set(key, g);
-      }
-      g.empIds.add(String(e.employee?._id ?? e.employee ?? ''));
-      g.total += Number(e.hours ?? 0);
-    }
-    return [...m.values()].map((g) => ({
-      key: g.key,
-      project: g.project,
-      stage: g.stage,
-      employees: g.empIds.size,
-      total: g.total,
-      avg: g.empIds.size > 0 ? g.total / g.empIds.size : 0,
-    }));
-  }, [q.data]);
-  const grandTotal = groups.reduce((s, g) => s + g.total, 0);
-  const projectCount = new Set(groups.map((g) => g.project)).size;
-  const avgPerStage = groups.length > 0 ? grandTotal / groups.length : 0;
-  const f1 = (n) => Number(n ?? 0).toFixed(1);
-  return (
-    <>
-      <div className="kpi-grid cols-4">
-        <KpiCard label="Total hours logged today" value={f1(grandTotal)} accent="blueprint" />
-        <KpiCard label="Projects with activity" value={projectCount} accent="forest" />
-        <KpiCard label="Stages in progress" value={groups.length} accent="teal" />
-        <KpiCard label="Avg. hours / stage" value={f1(avgPerStage)} accent="violet" />
-      </div>
-      <Panel title="Login hours by project and stage" sub="Total hours logged across all employees, grouped by project and design stage — feeds Finance's cost & performance tracking.">
-        {q.isLoading ? (
-          <EmptyState text="Loading…" />
-        ) : q.isError ? (
-          <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
-        ) : (
-          <DataTable
-            columns={[
-              { key: 'project', label: 'Project' },
-              { key: 'stage', label: 'Stage' },
-              { key: 'employees', label: 'Employees logged in' },
-              { key: 'total', label: 'Total hours', render: (r) => f1(r.total) },
-              { key: 'avg', label: 'Avg. hours / employee', render: (r) => f1(r.avg) },
-            ]}
-            rows={groups}
-            emptyText="No work entries logged yet."
-          />
-        )}
-      </Panel>
-    </>
-  );
-}
+const LoginHoursReport = lazy(() => import('../components/work/LoginHoursReport.jsx'));
+function DirectorLoginHoursTab() { return <Suspense fallback={<p>Loading work report...</p>}><LoginHoursReport /></Suspense>; }
 
 function quarterBounds(todayStr) {
   const [y, m] = todayStr.split('-').map(Number);

@@ -1,6 +1,10 @@
+import { workAllocations } from '../lib/workAllocations.js';
+import { serviceNames } from '../lib/services.js';
+import { addHours, hoursText, workReportApi } from '../lib/workReport.js';
+import WorkReportStatus from '../components/work/WorkReportStatus.jsx';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { attendanceApi, employeesApi, projectsApi, request, toQuery, workEntriesApi } from '../lib/api.js';
+import { attendanceApi, employeesApi, projectsApi, request, toQuery } from '../lib/api.js';
 import { billingApi, certificatesApi, transmittalsApi } from '../lib/phase3Api.js';
 import { reportsApi } from '../lib/phase4aApi.js';
 import { bimApi, discApi, peerApi, rfiApi, visitsApi } from '../lib/functionsApi.js';
@@ -138,11 +142,12 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
   const workEntries = useQuery({
     queryKey: ['mgmt-work-entries', from, to],
     queryFn: () =>
-      workEntriesApi.list({
+      workReportApi.list({
         ...(from ? { from } : {}),
         ...(to ? { to } : {}),
       }),
     enabled: tab === 'ptl' || tab === 'hr' || tab === 'bim',
+    refetchInterval: 10000,
   });
   const bimOrders = useQuery({
     queryKey: ['mgmt-bim'],
@@ -177,18 +182,18 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
     [projects.data],
   );
   const serviceFilterOptions = useMemo(
-    () => [...new Set(projectRows.flatMap((p) => (p.scope ?? []).map((s) => s.service)).filter(Boolean))].sort((a, b) =>
+    () => [...new Set([...projectRows.flatMap((p) => (p.scope ?? []).map((s) => s.service)), ...(workEntries.data?.items ?? []).map(e => e.service)].filter(Boolean))].sort((a, b) =>
       String(a).localeCompare(String(b)),
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projects.data],
+    [projects.data, workEntries.data],
   );
   const stageFilterOptions = useMemo(
-    () => [...new Set(projectRows.map((p) => p.currentStage).filter(Boolean))].sort((a, b) =>
+    () => [...new Set([...projectRows.map((p) => p.currentStage), ...(workEntries.data?.items ?? []).map(e => e.stage ?? 'Not recorded')].filter(Boolean))].sort((a, b) =>
       String(a).localeCompare(String(b)),
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projects.data],
+    [projects.data, workEntries.data],
   );
   const gbsTargets = useMemo(
     () =>
@@ -255,16 +260,16 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
   }, [entryRows]);
   const hoursByProject = useMemo(() => {
     const groups = {};
-    for (const e of entryRows) {
+    for (const e of entryRows.flatMap(workAllocations)) {
       const pid = String(e.project?._id ?? e.project ?? '');
       const proj = projectById(pid);
       const key = proj?.name ?? e.project?.name ?? 'Unassigned';
       const g = groups[key] ?? { name: key, pid, branch: proj?.branch ?? e.project?.branch ?? '—', stage: proj?.currentStage ?? '—', hours: 0 };
       const h = Number(e.hours ?? e.manHours ?? 0);
-      g.hours += Number.isFinite(h) ? h : 0;
+      g.hours = addHours(g.hours, Number.isFinite(h) ? h : 0);
       groups[key] = g;
     }
-    return Object.entries(groups).map(([name, g]) => ({ name, pid: g.pid, branch: g.branch, stage: g.stage, hours: Math.round(g.hours) }));
+    return Object.entries(groups).map(([name, g]) => ({ name, pid: g.pid, branch: g.branch, stage: g.stage, hours: Number(g.hours) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryRows, projects.data]);
 
@@ -518,7 +523,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
       g.hours += Number(e.hours ?? e.manHours ?? 0);
       groups[key] = g;
     }
-    return Object.values(groups).map((g) => ({ ...g, hours: Math.round(g.hours) }));
+    return Object.values(groups).map((g) => ({ ...g, hours: Number(g.hours) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bimLogEntries, projects.data]);
   const bimHoursFiltered = bimHoursByProject.filter((r) => {
@@ -616,25 +621,28 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
   const hrPresent = [...hrPresentIds].filter((id) => id && !hrTravelIds.has(id));
   const hrOnTravel = [...hrTravelIds].filter(Boolean);
   const hrAbsent = Math.max(0, hrEmployees.length - hrPresent.length - hrOnTravel.length);
-  const hrHoursRows = useMemo(() => arr(workEntries.data?.items ?? workEntries.data).filter((e) => {
+  const hrHoursRows = useMemo(() => arr(workEntries.data?.items ?? workEntries.data).flatMap(workAllocations).filter((e) => {
+    if (project && String(e.project?._id ?? e.project ?? '') !== project) return false;
+    if (service && !serviceNames([e.service ?? e.employee?.department]).some(name => serviceNames([service]).includes(name))) return false;
+    if (stage && (e.stage ?? 'Not recorded') !== stage) return false;
     if (branch) {
       const pid = String(e.project?._id ?? e.project ?? '');
       if (branchOf(e.project, pid) !== branch) return false;
     }
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [workEntries.data, branch, projects.data]);
-  const hrHoursTotal = Math.round(hrHoursRows.reduce((s, e) => s + Number(e.hours ?? 0), 0));
+  }), [workEntries.data, branch, service, stage, project, projects.data]);
+  const hrHoursTotal = hoursText(hrHoursRows.reduce((s, e) => addHours(s,e.hours), 0));
   const hrHoursByDept = useMemo(() => {
     const m = new Map();
     for (const e of hrHoursRows) {
       const dept = e.employee?.department ?? '—';
       const g = m.get(dept) ?? { dept, empIds: new Set(), hours: 0 };
       g.empIds.add(String(e.employee?._id ?? e.employee ?? ''));
-      g.hours += Number(e.hours ?? 0);
+      g.hours = addHours(g.hours,e.hours);
       m.set(dept, g);
     }
-    return [...m.values()].map((g) => ({ dept: g.dept, employees: g.empIds.size, hours: Math.round(g.hours) })).sort((a, b) => b.hours - a.hours);
+    return [...m.values()].map((g) => ({ dept: g.dept, employees: g.empIds.size, hours: Number(g.hours) })).sort((a, b) => b.hours - a.hours);
   }, [hrHoursRows]);
   const hrLeaves = useMemo(() => arr(leave.data?.items ?? leave.data), [leave.data]);
   const hrLeaveApproved = hrLeaves.filter((r) => String(r.status ?? '').toLowerCase() === 'approved').length;
@@ -1049,9 +1057,9 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
             <KpiCard label="Employees absent" value={hrAbsent} accent="amber" />
             <KpiCard label="On travel" value={hrOnTravel.length} accent="teal" />
           </div>
-          <Panel title="Login hours" sub="Use the Branch / Service / Stage filters above">
+          <Panel title="Login hours" sub={`Saved work hours - ${from || 'all dates'} to ${to || 'latest saved date'} (IST) - Branch / Service / Stage filters apply`}><WorkReportStatus query={workEntries} />
             <div className="kpi-grid cols-2" style={{ marginBottom: 12 }}>
-              <KpiCard label="Total hours (filtered)" value={hrHoursTotal} accent="blueprint" />
+              <KpiCard label="Total hours (filtered)" value={workEntries.isError || workEntries.isLoading ? '—' : hrHoursTotal} accent="blueprint" />
             </div>
             <DataTable
               columns={[

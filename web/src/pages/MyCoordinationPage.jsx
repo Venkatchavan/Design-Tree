@@ -1,17 +1,10 @@
-import EntryDocuments from '../components/EntryDocuments.jsx';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 import { employeesApi, projectsApi, request, toQuery } from '../lib/api.js';
 import { spocApi } from '../lib/spocApi.js';
 import { deliverablesApi, drawingsApi, revisionsApi } from '../lib/workApi.js';
 import { rfiApi } from '../lib/functionsApi.js';
-import {
-  SUPER_ROLES,
-  isPendingLogout,
-  performLogout,
-  takePendingLogout,
-} from '../lib/session.js';
+import { SUPER_ROLES } from '../lib/session.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -19,60 +12,10 @@ import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Field from '../components/Field.jsx';
-import { MAN_HOUR_NOTE } from '../components/SignOutButton.jsx';
 import { meetingsApi } from '../lib/phase4bApi.js';
 import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
 
-const SERVICES = [
-  'SMEPF',
-  'SMEP',
-  'MEP',
-  'STR',
-  'PHE',
-  'ELE',
-  'HVAC',
-  'FIRE',
-  'BIM',
-  'GBS',
-];
-
-const AREA_KEYS = [
-  'Documents',
-  'Meetings',
-  'Meeting Scheduling & Coordination',
-  'Drawings Sharing / Issuing',
-  'Architectural Updates',
-  'Client Updates',
-  'Revision Status',
-  'Project Status',
-  'Other',
-];
-
-const AREA_DESCRIPTIONS = {
-  'Documents': 'Document preparation / updating / coordination',
-  'Meetings': 'Meetings attended / participated in',
-  'Meeting Scheduling & Coordination': 'Scheduling and coordinating project meetings',
-  'Drawings Sharing / Issuing': 'Drawings shared / issued to Client / Architect / PMC / Team',
-  'RFI': 'RFI raised / responded / followed up',
-  'Architectural Updates': 'Updates received / followed up from Architect',
-  'Client Updates': 'Client communication / updates / follow-up',
-  'Revision Status': 'Revision follow-up and coordination; whether addressed or pending',
-  'Project Status': 'Overall project status follow-up and coordination',
-  'Other': 'Any other SPOC-related project work',
-};
-
-const REVISION_STATUSES = [
-  'Addressed',
-  'In Progress',
-  'Pending',
-  'Awaiting Client',
-  'Awaiting Architect',
-  'Awaiting Internal Team',
-];
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+const SpocDailyWork = lazy(() => import('../components/work/SpocDailyWork.jsx'));
 
 function empName(e) {
   if (!e) return '—';
@@ -97,15 +40,6 @@ function allocProjectLabel(a) {
   if (!p) return '—';
   if (typeof p === 'string') return p;
   return p.name ?? p.code ?? '—';
-}
-
-function PendingLogoutCallout() {
-  if (!isPendingLogout()) return null;
-  return (
-    <div className="login-error" role="alert" style={{ display: 'block' }}>
-      {MAN_HOUR_NOTE} Save today&apos;s entry to complete sign-out.
-    </div>
-  );
 }
 
 function useCoordinationMetrics(myAllocs) {
@@ -714,236 +648,6 @@ export function DirectoryTab({ myAllocs, activeProjects, activeLoading, canEdit 
   );
 }
 
-function blankAreas() {
-  return AREA_KEYS.map((key) => ({ key, selected: false, update: '', hours: '' }));
-}
-
-function DailyEntryTab({ myAllocs, activeProjects }) {
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const [date, setDate] = useState(todayISO());
-  const [project, setProject] = useState('');
-  const [service, setService] = useState('');
-  const [areas, setAreas] = useState(blankAreas);
-  const [err, setErr] = useState('');
-
-  const projectOptions = myAllocs.length > 0
-    ? myAllocs.map((a) => ({ id: allocProjectId(a), label: allocProjectLabel(a) })).filter((o) => o.id)
-    : (activeProjects ?? []).map((p) => ({ id: p._id ?? p.id, label: p.name ?? p.code ?? '—' }));
-
-  const listQ = useQuery({
-    queryKey: ['spoc-entries', { mine: true, date }],
-    queryFn: () => spocApi.entriesList({ mine: true, date }),
-  });
-  const allQ = useQuery({
-    queryKey: ['spoc-entries', { mine: true }],
-    queryFn: () => spocApi.entriesList({ mine: true }),
-  });
-  const dayItems = listQ.data?.items ?? [];
-  const recentItems = useMemo(
-    () => [...(allQ.data?.items ?? [])].sort((a, b) =>
-      String(b.date ?? b.createdAt ?? '').localeCompare(String(a.date ?? a.createdAt ?? '')),
-    ),
-    [allQ.data],
-  );
-  const dayTotal = useMemo(
-    () => dayItems.reduce((s, r) => s + (Number(r.totalHours) || 0), 0),
-    [dayItems],
-  );
-
-  const total = useMemo(
-    () => areas.reduce((sum, a) => sum + (a.selected ? parseFloat(a.hours) || 0 : 0), 0),
-    [areas],
-  );
-
-  function setArea(i, patch) {
-    setAreas((prev) => prev.map((a, j) => (j === i ? { ...a, ...patch } : a)));
-  }
-
-  function handleClear() {
-    setAreas(blankAreas());
-    setService('');
-    setErr('');
-  }
-
-  const save = useMutation({
-    mutationFn: (body) => spocApi.entriesCreate(body),
-    onSuccess: async () => {
-      queryClient.invalidateQueries({ queryKey: ['spoc-entries'] });
-      handleClear();
-      if (takePendingLogout()) {
-        await performLogout(queryClient);
-        navigate('/');
-      }
-    },
-    onError: (e) => setErr(e.message),
-  });
-
-  function handleSubmit(e) {
-    e.preventDefault();
-    setErr('');
-    if (!project) {
-      setErr('Project is required.');
-      return;
-    }
-    if (!service) {
-      setErr('Service is required.');
-      return;
-    }
-    const selectedAreas = areas.filter((area) => area.selected);
-    if (selectedAreas.length === 0) {
-      setErr('Select at least one work area.');
-      return;
-    }
-    save.mutate({
-      date,
-      project,
-      service,
-      areas: selectedAreas.map((a) => ({
-        key: a.key,
-        update: a.update || undefined,
-        hours: a.hours === '' ? undefined : Number(a.hours),
-      })),
-    });
-  }
-
-  return (
-    <>
-      <PendingLogoutCallout />
-      <Panel title="SPOC daily work update / man-hour entry" sub="Pick the project and service, tick the work areas you handled today, and record a short update with the man-hours spent.">
-        <form onSubmit={handleSubmit}>
-          <div className="field-grid">
-            <div className="form-row">
-              <label className="form-label">Date</label>
-              <input className="form-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </div>
-            <div className="form-row">
-              <label className="form-label">Project name</label>
-              <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
-                <option value="">Select project</option>
-                {projectOptions.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="form-row">
-              <label className="form-label">Service</label>
-              <select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}>
-                <option value="">Select service</option>
-                {SERVICES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="section-label">SPOC work performed</div>
-          <table className="data">
-            <thead>
-              <tr>
-                <th>Work area</th>
-                <th>Daily update / remarks</th>
-                <th style={{ width: 110 }}>Man-hours</th>
-              </tr>
-            </thead>
-            <tbody>
-              {areas.map((a, i) => (
-                <tr key={a.key}>
-                  <td>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                      <input
-                        type="checkbox"
-                        checked={a.selected}
-                        onChange={(e) => setArea(i, {
-                          selected: e.target.checked,
-                          update: e.target.checked ? a.update : '',
-                          hours: e.target.checked ? a.hours : '',
-                        })}
-                        aria-label={`Select ${a.key} work area`}
-                      />
-                      <span>
-                        {a.key}
-                        <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-muted)' }}>
-                          {AREA_DESCRIPTIONS[a.key] ?? ''}
-                        </span>
-                      </span>
-                    </label>
-                  </td>
-                  <td>
-                    <input
-                      className="form-input"
-                      value={a.update}
-                      onChange={(e) => setArea(i, { update: e.target.value })}
-                      placeholder="Update"
-                      aria-label={`${a.key} update`}
-                      disabled={!a.selected}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="form-input"
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      value={a.hours}
-                      onChange={(e) => setArea(i, { hours: e.target.value })}
-                      aria-label={`${a.key} hours`}
-                      disabled={!a.selected}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p style={{ fontSize: 13.5, marginTop: 12 }}>
-            Total man-hours for the project / service: <b className="mono">{total}</b> hrs · {MAN_HOUR_NOTE}
-          </p>
-          {err && (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>
-              {err}
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-            <button type="submit" className="btn-primary" disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save entry'}
-            </button>
-            <button type="button" className="approve-btn" onClick={handleClear}>
-              Clear
-            </button>
-          </div>
-          <p style={{ fontSize: 12.5, color: 'var(--ink-muted)', marginTop: 8 }}>
-            Worked on another project or service today? Save this entry, then fill the form again — each project / service is saved as its own entry.
-          </p>
-        </form>
-      </Panel>
-      <Panel title="My daily entries" sub={`Most recent first${dayTotal ? ` · ${dayTotal} hrs on ${date}` : ''}`}>
-        {allQ.isLoading ? (
-          <EmptyState text="Loading…" />
-        ) : allQ.isError ? (
-          <div className="login-error" role="alert" style={{ display: 'block' }}>
-            {allQ.error.message}
-          </div>
-        ) : (
-          <DataTable
-            columns={[
-              { key: 'date', label: 'Date', render: (r) => String(r.date ?? r.createdAt ?? '').slice(0, 10) },
-              { key: 'project', label: 'Project', render: (r) => r?.project?.name ?? r?.project?.code ?? '—' },
-              { key: 'service', label: 'Service' },
-              { key: 'totalHours', label: 'Hours', render: (r) => r.totalHours ?? '—' },
-              { key: 'documents', label: 'Documents', render: r => <EntryDocuments entry={r} spoc /> },
-            ]}
-            rows={recentItems}
-            emptyText="No entries saved yet."
-          />
-        )}
-      </Panel>
-    </>
-  );
-}
-
 function CoordinationMeetingsTab() {
   return <SpocMeetings />;
 }
@@ -1115,7 +819,7 @@ export default function MyCoordinationPage({ bootstrap, user }) {
         active={tab}
         onChange={setTab}
       />
-      {tab === 'daily' && <DailyEntryTab myAllocs={myAllocs} activeProjects={activeProjects} />}
+      {tab === 'daily' && <Suspense fallback={<p>Loading daily work…</p>}><SpocDailyWork myAllocs={myAllocs} activeProjects={activeProjects} canWrite={['coordinator', 'design_mgmt_head'].includes(roleKey)} /></Suspense>}
       {tab === 'other' && <OtherProjectsTab myAllocs={myAllocs} activeProjects={activeProjects} activeLoading={activeQ.isLoading} />}
     </>
   );

@@ -12,7 +12,7 @@ import {
 import { User } from '../models/User.js';
 import { directorTeams } from '../utils/directorTeams.js';
 
-async function directorEntryScope(user, team) {
+export async function directorEntryScope(user, team) {
   const scoped = await directorTeams(user);
   if (scoped === null) return null;
   return scoped.filter(row => !team || String(row._id) === String(team)).map(row => ({

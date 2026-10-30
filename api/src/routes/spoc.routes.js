@@ -1,3 +1,4 @@
+import { requireSpocWriter, saveSpocDay, updateSpocEntry } from '../controllers/spocDay.controller.js';
 import { entryDocumentsUpload, attachEntryDocuments, downloadEntryDocument, spocDocumentAccess } from '../controllers/entryDocuments.controller.js';
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
@@ -38,12 +39,15 @@ router.patch(
   requireRole('design_mgmt_head', 'admin_billing', 'technical_director'),
   setAllocationStatus,
 );
-router.post('/entries/:id/documents', spocDocumentAccess, entryDocumentsUpload, attachEntryDocuments);
+router.post('/entries/:id/documents', requireSpocWriter, spocDocumentAccess, entryDocumentsUpload, attachEntryDocuments);
 router.get('/entries/:id/documents/:index', spocDocumentAccess, downloadEntryDocument);
+router.post('/entries/day', requireSpocWriter, saveSpocDay);
+router.patch('/entries/:id', requireSpocWriter, updateSpocEntry);
 router.get('/entries', requireInternal(), listSpocEntries);
 router.post(
   '/entries',
   requireRole('coordinator', 'design_mgmt_head', 'technical_director'),
+  requireSpocWriter,
   createSpocEntry,
 );
 router.get('/man-hours/status', manHourStatus);

@@ -1,3 +1,5 @@
+import { addHours } from '../utils/workHours.js';
+import { workDateFilter, dayStart, workDate } from '../utils/workDates.js';
 import { canReadProject, narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { Employee } from '../models/Employee.js';
 import { SpocEntry } from '../models/SpocEntry.js';
@@ -7,8 +9,7 @@ import { spocEntrySchema } from '../validation/phase2.schema.js';
 import { MAN_HOUR_EXEMPT_ROLES } from '../config/roles.js';
 
 function todayRange() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
+  const start = dayStart(workDate());
   return { start, now: new Date() };
 }
 
@@ -50,7 +51,7 @@ export async function listSpocEntries(req, res, next) {
   try {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
-    narrowByProject(filter, 'project', await projectScopeIds(req.user));
+    if (req.query.mine !== 'true') narrowByProject(filter, 'project', await projectScopeIds(req.user));
     if (req.query.employee) filter.employee = req.query.employee;
     if (req.query.mine === 'true') {
       const me = await User.findById(req.user.id);
@@ -58,27 +59,17 @@ export async function listSpocEntries(req, res, next) {
         return res.status(200).json({ items: [], total: 0 });
       filter.employee = me.employee;
     }
-    if (req.query.from || req.query.to || req.query.date) {
-      filter.date = {};
-      if (req.query.date) {
-        const d = new Date(req.query.date);
-        const start = new Date(d);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(d);
-        end.setHours(23, 59, 59, 999);
-        filter.date.$gte = start;
-        filter.date.$lte = end;
-      } else {
-        if (req.query.from) filter.date.$gte = new Date(req.query.from);
-        if (req.query.to) filter.date.$lte = new Date(req.query.to);
-      }
-    }
+    try { const dateFilter=workDateFilter(req.query); if(dateFilter) filter.date=dateFilter; }
+    catch(err) { return res.status(400).json({message:err.message}); }
+    const limit=Math.min(200,Math.max(1,Number(req.query.limit)||100));
+    const offset=Math.max(0,Number(req.query.offset)||0);
+    const total=await SpocEntry.countDocuments(filter);
     const items = await SpocEntry.find(filter)
       .populate('employee', 'firstName lastName empId')
       .populate('project', 'name code branch')
-      .sort({ date: -1 })
-      .limit(200);
-    return res.status(200).json({ items, total: items.length });
+      .sort({ date: -1, _id: -1 })
+      .skip(offset).limit(limit);
+    return res.status(200).json({ items, total, offset, limit });
   } catch (err) {
     return next(err);
   }
@@ -112,14 +103,10 @@ export async function manHourStatus(req, res, next) {
         date: { $gte: start, $lte: now },
       }),
     ]);
-    const hours =
-      entries.reduce(
-        (s, e) =>
-          s +
-          (e.hours ?? 0) +
-          (e.otherHours ?? []).reduce((a, o) => a + (o.hours ?? 0), 0),
-        0,
-      ) + spoc.reduce((s, e) => s + (e.totalHours ?? 0), 0);
+    const hours = addHours(
+      entries.reduce((sum,e) => addHours(sum,e.hours,...(e.otherHours??[]).map(row=>row.hours)),0),
+      spoc.reduce((sum,e) => addHours(sum,e.totalHours),0),
+    );
     return res
       .status(200)
       .json({ required: true, logged: hours > 0, hours });
