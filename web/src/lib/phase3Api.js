@@ -51,6 +51,7 @@ export const billingApi = {
   updateClaim: (id, body) => request(`/api/billing/claims/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   claimStatus: (id, status) => request(`/api/billing/claims/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   stages: (params = {}) => request(`/api/billing/stages${toQuery(params)}`),
+  timeline: (project) => request(`/api/billing/stage-timeline?project=${encodeURIComponent(project)}`),
   saveStage: (body) => request('/api/billing/stages', { method: 'POST', body: JSON.stringify(body) }),
   updateStage: (id, body) => request(`/api/billing/stages/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   quotedFees: () => request('/api/billing/quoted-fees'),

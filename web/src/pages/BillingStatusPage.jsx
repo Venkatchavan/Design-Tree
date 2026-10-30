@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+import { timelineLabel } from '../lib/stageTimeline.js';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { billingApi } from '../lib/phase3Api.js';
@@ -18,7 +20,7 @@ function fmtShortDate(v) {
   return `${day} ${mon} ${String(d.getFullYear()).slice(2)}`;
 }
 
-const delayLabel = (r) => ((r.delayDays ?? 0) > 0 ? `${r.delayDays} day(s) late` : 'On time');
+const delayLabel = timelineLabel;
 
 export default function BillingStatusPage({ bootstrap }) {
   const isDirector = DIRECTOR_ROLES.has(bootstrap?.role?.key ?? '');
@@ -60,7 +62,7 @@ export default function BillingStatusPage({ bootstrap }) {
             columns={[
               { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
               { key: 'service', label: 'Service' },
-              { key: 'stage', label: 'Stage' },
+              { key: 'stage', label: 'Stage', render: r => <Link to={`/projects/${r.project?._id ?? r.project}/stage-timeline`}>{r.stage}</Link> },
               { key: 'plannedCompletion', label: 'Planned completion', render: (r) => fmtShortDate(r.plannedCompletion) },
               { key: 'currentStatus', label: 'Current status' },
               { key: 'confirmationStatus', label: 'PTL / SPOC / TD', render: (r) => r.confirmationStatus ?? '—' },

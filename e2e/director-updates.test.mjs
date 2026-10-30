@@ -97,8 +97,13 @@ test('TD project panel removal does not alter stage completion or billing state'
  const before=await f.models.StageStatus.findById(stage._id).lean();
  await call('td',`/api/projects/${f.project}`);await call('td','/api/teams/mine');
  assert.deepEqual(await f.models.StageStatus.findById(stage._id).lean(),before);
- const original=await import('node:child_process');const source=original.execFileSync('git',['show','2b4d916:api/src/controllers/billing.controller.js'],{encoding:'utf8'});
- const fs=await import('node:fs/promises');assert.equal(await fs.readFile(new URL('../api/src/controllers/billing.controller.js',import.meta.url),'utf8'),source);
+ // Reading the removed TD panel must also leave legacy approvals/billing and
+ // their genuinely unknown timeline dates intact.
+ const approved=await f.models.StageStatus.create({project:f.project,service:'Structural',stage:'SD',confirmationStatus:'TD Approved',billingReadiness:'Billed'});
+ await call('td',`/api/billing/stage-timeline?project=${f.project}`);
+ const persisted=await f.models.StageStatus.findById(approved._id).lean();
+ assert.equal(persisted.confirmationStatus,'TD Approved');assert.equal(persisted.billingReadiness,'Billed');assert.equal(persisted.actualCompletion,undefined);assert.equal(persisted.baselineCompletion,undefined);
+
 });
 
 test('one service ownership does not grant every service in a bundled team',async()=>{

@@ -102,24 +102,15 @@ export const claimStatusSchema = z
   .object({ status: z.enum(CLAIM_STATUSES) })
   .strict();
 
-export const stageStatusSchema = z
-  .object({
-    project: objectId,
-    service: strOpt,
-    stage: strOpt,
-    plannedCompletion: dateOpt,
-    currentStatus: strOpt,
-    delayDays: z.number().optional(),
-    reason: strOpt,
-    billingReadiness: z.enum(BILLING_READINESS).optional(),
-    ptlRemark: strOpt,
-    spocRemark: strOpt,
-    requestCompletion: z.boolean().optional(),
-    confirmCompletion: z.boolean().optional(),
-    approveCompletion: z.boolean().optional(),
-    tdRemark: strOpt,
-  })
-  .strict();
+const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a calendar date.').refine(value => Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value, 'Enter a valid calendar date.');
+export const stageStatusSchema = z.object({
+  project: objectId, service: z.string().trim().min(1), stage: z.enum(['CD','SD','DD','TD','GFC']),
+  expectedVersion: z.number().int().min(0),
+  planDates: z.boolean().optional(), startDate: calendarDate.optional(), plannedCompletion: calendarDate.optional(), actualCompletion: calendarDate.optional(), reason: strOpt,
+  ptlRemark: strOpt, spocRemark: strOpt, tdRemark: strOpt,
+  requestCompletion: z.boolean().optional(), confirmCompletion: z.boolean().optional(), approveCompletion: z.boolean().optional(),
+  billingReadiness: z.enum(BILLING_READINESS).optional(),
+}).strict();
 export const stageStatusUpdateSchema = stageStatusSchema.partial();
 
 export const paymentSchema = z

@@ -92,26 +92,29 @@ test('Internal roles can access shared bookings; role navigation reflects requir
 });
 
 test('billing requires PTL then SPOC then TD/ATD and MD is read-only', async () => {
-  const identity = { project: f.project, service: 'STR', stage: 'CD' };
+  const {ServiceDashboard}=await import('../api/src/models/ServiceDashboard.js');
+  await ServiceDashboard.findOneAndUpdate({project:f.project,service:'STR'},{technicalDirector:'TEST-td'},{upsert:true});
+  await f.models.Employee.findByIdAndUpdate(f.cast.tl.employee,{reportingManager:f.cast.atd.employee});
+  const identity = { project: f.project, service: 'SMEPF', stage: 'CD' };
   assert.equal((await call('admin', '/api/billing/claims', 'POST', { ...identity, amount: 100 })).status, 409);
-  assert.equal((await call('admin', '/api/billing/stages', 'POST', { ...identity, confirmCompletion: true })).status, 403);
-  assert.equal((await call('tl', '/api/billing/stages', 'POST', { ...identity, requestCompletion: true })).status, 200);
-  const confirm = await call('spoc', '/api/billing/stages', 'POST', { ...identity, confirmCompletion: true });
+  assert.equal((await call('admin', '/api/billing/stages', 'POST', { ...identity, expectedVersion:0, confirmCompletion: true })).status, 403);
+  let row=(await call('tl','/api/billing/stages','POST',{...identity,expectedVersion:0,planDates:true,startDate:'2026-08-01',plannedCompletion:'2026-08-14'})).data.item;
+  assert(row);
+  row=(await call('tl', '/api/billing/stages', 'POST', { ...identity, expectedVersion:row.__v, requestCompletion: true, actualCompletion:'2026-08-14' })).data.item;
+  const confirm = await call('spoc', '/api/billing/stages', 'POST', { ...identity, expectedVersion:row.__v, confirmCompletion: true });
   assert.equal(confirm.status, 200); assert.equal(confirm.data.item.billingReadiness, 'Pending');
   assert.equal((await call('admin', '/api/billing/stages', 'PUT', { ...identity, currentStatus: 'Completed' })).status, 404);
-  assert.equal((await call('admin', `/api/billing/stages/${confirm.data.item._id}`, 'PUT', { billingReadiness: 'Ready for billing' })).status, 409);
-  assert.equal((await call('md', '/api/billing/stages', 'POST', { ...identity, approveCompletion: true })).status, 403);
-  const approve = await call('td', '/api/billing/stages', 'POST', { ...identity, approveCompletion: true });
+  assert.equal((await call('admin', `/api/billing/stages/${confirm.data.item._id}`, 'PUT', { expectedVersion:confirm.data.item.__v, billingReadiness: 'Ready for billing' })).status, 403);
+  assert.equal((await call('md', '/api/billing/stages', 'POST', { ...identity, expectedVersion:confirm.data.item.__v, approveCompletion: true })).status, 403);
+  const approve = await call('td', '/api/billing/stages', 'POST', { ...identity, expectedVersion:confirm.data.item.__v, approveCompletion: true });
   assert.equal(approve.status, 200); assert.equal(approve.data.item.billingReadiness, 'Ready for billing');
-  assert.equal(approve.data.item.confirmationStatus, 'TD Approved'); assert.equal(approve.data.item.history.length, 3);
-  assert.equal((await call('td', '/api/billing/stages', 'POST', { ...identity, approveCompletion: true })).status, 409);
+  assert.equal(approve.data.item.confirmationStatus, 'TD Approved'); assert.equal(approve.data.item.history.length, 4);
+  assert.equal((await call('td', '/api/billing/stages', 'POST', { ...identity, expectedVersion:approve.data.item.__v, approveCompletion: true })).status, 409);
   const claim = await call('admin', '/api/billing/claims', 'POST', { ...identity, amount: 100 }); assert.equal(claim.status, 201);
   assert.equal((await call('admin', `/api/billing/claims/${claim.data.item._id}/status`, 'PATCH', { status: 'Billed' })).status, 200);
-  // Individual project view: TD / ATD can mark a stage complete directly.
-  const direct = await call('td', '/api/billing/stages', 'POST', { project: f.project, service: 'STR', stage: 'SD', approveCompletion: true });
-  assert.equal(direct.status, 200); assert.equal(direct.data.item.confirmationStatus, 'TD Approved');
-  const atdDirect = await call('atd', '/api/billing/stages', 'POST', { project: f.project, service: 'STR', stage: 'DD', approveCompletion: true });
-  assert.equal(atdDirect.status, 200); assert.equal(atdDirect.data.item.confirmationStatus, 'TD Approved');
+  // The authorized strict chain supersedes the historical director shortcut.
+  for(const role of ['td','atd'])assert.equal((await call(role,'/api/billing/stages','POST',{...identity,stage:'SD',expectedVersion:0,approveCompletion:true})).status,409);
+
 });
 
 let meetingId;

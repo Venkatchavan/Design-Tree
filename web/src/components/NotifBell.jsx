@@ -24,6 +24,8 @@ function pathForLink(link, role) {
       return '/transmittals';
     case 'revision':
       return role === 'team_lead' ? '/my-team' : '/my-coordination';
+    case 'stage-timeline':
+      return link.id ? `/projects/${link.id}/stage-timeline` : '/dashboard';
     case 'project-detail':
     case 'dashboard':
       return link.id ? `/projects/${link.id}` : '/dashboard';

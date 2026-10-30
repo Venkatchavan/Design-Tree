@@ -67,6 +67,7 @@ export const VIEWS = {
   'announcements': { path: '/announcements', label: 'Announcements', sub: 'Company notices for all branches', phase: 4 },
   'announcement-detail': { path: '/announcements/:id', label: 'Announcement', sub: 'Company notice', via: 'announcements', phase: 4 },
   'dashboard': { path: '/dashboard', label: 'Dashboard', sub: 'Company project dashboard', phase: 1 },
+  'stage-timeline': { path: '/projects/:id/stage-timeline', label: 'Stage Timeline', sub: 'Stage planning and sequential approvals', phase: 3, via: 'dashboard' },
   'project-detail': { path: '/projects/:id', label: 'Project Detail', sub: 'Design-stage timeline against plan', phase: 1, via: 'dashboard' },
   'new-project': { path: '/projects/new', label: 'New Project', sub: 'These fields become the basis for every filter downstream', phase: 1, via: 'dashboard' },
   'billing': { path: '/billing', label: 'Billing', sub: 'Company-wide claims and collections across all branches', phase: 3 },
@@ -390,6 +391,7 @@ export const INTERNAL_ROLES = ROLE_KEYS.filter(
 // Second-layer page guard (§2.7): nav membership + view flags + superuser.
 export function canAccess(role, view) {
   if (!VIEWS[view]) return false;
+  if (view === 'stage-timeline') return isSuperRole(role) || ['admin_billing','executive_director','finance','associate_director','technical_director','assoc_technical_director','design_mgmt_head','coordinator','team_lead','engineer_drafter','qs','qaqc','bim','gbs','peer_reviewer'].includes(role);
   if (view.startsWith('travel-booking')) return INTERNAL_ROLES.includes(role);
   // Retain the existing DMH workflow API while its menu moves under My Team.
   if (role === 'design_mgmt_head' && view === 'design-mgmt') return true;

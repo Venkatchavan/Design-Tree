@@ -8,6 +8,7 @@ import {
   isAttendanceExemptRole,
 } from '../config/attendance.js';
 import {
+  canAccess,
   ROLES,
   VIEWS,
   homeView,
@@ -31,7 +32,7 @@ router.get('/bootstrap', requireAuth, async (req, res, next) => {
     role: { key: role, label: roleLabel(role) },
     home: homeView(role),
     nav: navFor(role),
-    capabilities: { designTeam: designAccess.head },
+    capabilities: { designTeam: designAccess.head, stageTimeline: canAccess(role, 'stage-timeline') },
     policy: {
       attendance: {
         lateCutoff: ATTENDANCE_LATE_CUTOFF,

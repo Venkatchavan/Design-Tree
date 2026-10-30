@@ -43,6 +43,7 @@ import EmployeeSupportPage from './pages/EmployeeSupportPage.jsx'
 import BranchesPage from './pages/BranchesPage.jsx'
 import OfflineGate from './components/OfflineGate.jsx'
 import TravelBookingPage from './pages/TravelBookingPage.jsx'
+const StageTimelinePage = lazy(() => import('./pages/StageTimelinePage.jsx'))
 const TravelBookingActionPage = lazy(() => import('./pages/TravelBookingActionPage.jsx'))
 import AnnouncementsPage from './pages/AnnouncementsPage.jsx'
 
@@ -51,6 +52,7 @@ const VIEW_COMPONENTS = {
   announcements: AnnouncementsPage,
   'announcement-detail': AnnouncementsPage,
   dashboard: DashboardPage,
+  'stage-timeline': StageTimelinePage,
   'project-detail': ProjectDetailPage,
   'new-project': NewProjectPage,
   teams: TeamsPage,
@@ -208,6 +210,7 @@ function ShellRoutes({ user }) {
           }
         />
       ))}
+      {bootstrap.capabilities?.stageTimeline && <Route path={bootstrap.views['stage-timeline'].path} element={<ShellPage bootstrap={bootstrap} user={user} viewKey="stage-timeline" activeView={bootstrap.home} />} />}
       {extraRoutes.map(({ key, parent }) => (
         <Route
           key={key}
