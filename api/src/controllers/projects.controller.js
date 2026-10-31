@@ -1,3 +1,4 @@
+import { directoryPage } from '../utils/directoryPage.js';
 import { directorTeams } from '../utils/directorTeams.js';
 import { eligibleSpocs } from '../utils/spocOptions.js';
 import { Team } from '../models/Team.js';
@@ -183,6 +184,7 @@ async function generateJobNumber() {
 export async function listProjects(req, res, next) {
   try {
     const { branch, service, stage, status, search } = req.query;
+    const {page,limit,skip} = directoryPage(req.query);
     const filter = {};
     const scopeIds = await projectScopeIds(req.user);
     if (scopeIds) filter._id = { $in: scopeIds };
@@ -203,10 +205,10 @@ export async function listProjects(req, res, next) {
       }
     }
     const [items, total] = await Promise.all([
-      Project.find(filter).sort({ updatedAt: -1 }).limit(200),
+      Project.find(filter).sort({ updatedAt: -1, _id: -1 }).skip(skip).limit(limit),
       Project.countDocuments(filter),
     ]);
-    return res.status(200).json({ items, total });
+    return res.status(200).json({ items, total, page, limit, hasMore: skip + items.length < total });
   } catch (err) {
     return next(err);
   }

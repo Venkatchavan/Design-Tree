@@ -1,3 +1,5 @@
+import EmployeeSelect from '../components/EmployeeSelect.jsx';
+import TravelBookingLog from './TravelBookingLog.jsx';
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -506,7 +508,8 @@ function DirectorTravelLogTab() {
         <KpiCard label="Travel spend (qtr)" value={fmtSpend(spendQtr)} accent="copper" />
         <KpiCard label="Avg. cost / trip" value={fmtSpend(avgCost)} accent="violet" />
       </div>
-      <Panel title="Travel log" sub="All saved requests and Finance bookings, including past trips. Sources are listed separately.">
+      <TravelBookingLog readOnly embedded />
+      <Panel title="Saved travel requests and booking summary" sub="Sources remain separate. Detailed booking history and fees appear above.">
         {q.isLoading ? (
           <EmptyState text="Loading…" />
         ) : q.isError ? (
@@ -1385,7 +1388,7 @@ function TrackTab() {
     <>
       <div className="form-row" style={{ maxWidth: 360 }}>
         <label className="form-label">Employee</label>
-        <select
+        <EmployeeSelect employees={employees}
           className="filter-select"
           style={{ width: '100%' }}
           value={selectedId}
@@ -1400,7 +1403,7 @@ function TrackTab() {
               </option>
             );
           })}
-        </select>
+        </EmployeeSelect>
       </div>
       {!selectedId ? (
         <EmptyState text="Pick an employee to see their track record." />
@@ -1633,7 +1636,7 @@ function HrMeetingLogTab() {
           >
             <div className="form-row">
               <label className="form-label" htmlFor="hr-meeting-employee">Employee</label>
-              <select
+              <EmployeeSelect employees={(employeesQ.data?.items ?? [])}
                 id="hr-meeting-employee"
                 className="filter-select"
                 value={form.employee}
@@ -1646,7 +1649,7 @@ function HrMeetingLogTab() {
                     {empFullName(employee)}
                   </option>
                 ))}
-              </select>
+              </EmployeeSelect>
             </div>
             <div className="form-row">
               <label className="form-label" htmlFor="hr-meeting-date">Meeting date</label>
@@ -1715,7 +1718,7 @@ function HrMeetingLogTab() {
       <Panel title="Meeting log">
         <div className="form-row" style={{ maxWidth: 320 }}>
           <label className="form-label" htmlFor="hr-meeting-filter">Employee</label>
-          <select
+          <EmployeeSelect employees={(employeesQ.data?.items ?? [])}
             id="hr-meeting-filter"
             className="filter-select"
             value={employeeFilter}
@@ -1727,7 +1730,7 @@ function HrMeetingLogTab() {
                 {empFullName(employee)}
               </option>
             ))}
-          </select>
+          </EmployeeSelect>
         </div>
         {q.isLoading ? (
           <EmptyState text="Loading…" />

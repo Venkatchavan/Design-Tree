@@ -1,3 +1,4 @@
+import EmployeeSelect from '../components/EmployeeSelect.jsx';
 import { CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1193,12 +1194,12 @@ function QaqcTools({ projects, employees, user }) {
               </div>
               <div className="form-row">
                 <label className="form-label">Employee</label>
-                <select className="filter-select" style={{ width: '100%' }} value={cEmployee} onChange={(e) => setCEmployee(e.target.value)}>
+                <EmployeeSelect employees={(employees ?? [])} className="filter-select" style={{ width: '100%' }} value={cEmployee} onChange={(e) => setCEmployee(e.target.value)}>
                   <option value="">—</option>
                   {(employees ?? []).map((emp) => (
                     <option key={emp._id ?? emp.id} value={emp._id ?? emp.id}>{empName(emp)}</option>
                   ))}
-                </select>
+                </EmployeeSelect>
               </div>
               <div className="form-row">
                 <label className="form-label">Purpose</label>
@@ -1278,12 +1279,12 @@ function QaqcTools({ projects, employees, user }) {
               </div>
               <div className="form-row">
                 <label className="form-label">Assigned to</label>
-                <select className="filter-select" style={{ width: '100%' }} value={rAssigned} onChange={(e) => setRAssigned(e.target.value)}>
+                <EmployeeSelect employees={(employees ?? [])} className="filter-select" style={{ width: '100%' }} value={rAssigned} onChange={(e) => setRAssigned(e.target.value)}>
                   <option value="">—</option>
                   {(employees ?? []).map((emp) => (
                     <option key={emp._id ?? emp.id} value={emp._id ?? emp.id}>{empName(emp)}</option>
                   ))}
-                </select>
+                </EmployeeSelect>
               </div>
               <div className="form-row">
                 <label className="form-label">Due</label>

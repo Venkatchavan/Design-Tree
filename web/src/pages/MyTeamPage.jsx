@@ -1,3 +1,4 @@
+import EmployeeSelect, { EmployeeFilter } from '../components/EmployeeSelect.jsx';
 import DirectorTeamsPage from './DirectorTeamsPage.jsx';
 import DesignTeamPage from './DesignTeamPage.jsx';
 import { projectMembers } from '../lib/projectRoster.js';
@@ -253,10 +254,10 @@ function ProposeCoordinatorPanel() {
         </div>
         <div className="form-row">
           <label className="form-label">Coordinator</label>
-          <select className="filter-select" style={{ width: '100%' }} value={coordinator} onChange={(e) => setCoordinator(e.target.value)}>
+          <EmployeeSelect employees={coordinators} className="filter-select" style={{ width: '100%' }} value={coordinator} onChange={(e) => setCoordinator(e.target.value)}>
             <option value="">Select coordinator</option>
             {coordinators.map((e) => <option key={e._id ?? e.id} value={e._id ?? e.id}>{empName(e)}{e.designation ? ` · ${e.designation}` : ''}</option>)}
-          </select>
+          </EmployeeSelect>
         </div>
       </div>
       <div className="form-row" style={{ marginTop: 8 }}>
@@ -1131,10 +1132,10 @@ function DeliverableListPanel({ teamProjects, members }) {
                 </td>
                 <td><input className="form-input" value={r.deliverable} onChange={(e) => patchRow(i, { deliverable: e.target.value })} /></td>
                 <td>
-                  <select className="filter-select" value={r.assignedTo} onChange={(e) => patchRow(i, { assignedTo: e.target.value })}>
+                  <EmployeeSelect employees={members} className="filter-select" value={r.assignedTo} onChange={(e) => patchRow(i, { assignedTo: e.target.value })}>
                     <option value="">Unassigned</option>
                     {members.map((m) => <option key={memberId(m)} value={memberId(m)}>{memberName(m)}</option>)}
-                  </select>
+                  </EmployeeSelect>
                 </td>
                 <td><input type="date" className="form-input" value={r.plannedDate} onChange={(e) => patchRow(i, { plannedDate: e.target.value })} /></td>
                 <td><input type="date" className="form-input" value={r.dueDate} onChange={(e) => patchRow(i, { dueDate: e.target.value })} /></td>
@@ -1486,7 +1487,6 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
   const roster = useQuery({ queryKey: ['task-assignees', project], queryFn: () => tasksApi.assignees(project), enabled: !!project, retry: false, refetchInterval: 10000 });
   const eligible = (roster.data?.items ?? []).filter(member => includeLeads || !member.isLead);
   const members = [...new Map(eligible.map(member => [memberId(member) + (includeLeads ? ':' + member.service : ''), member])).values()];
-  const roleGroups = [...new Set(members.map(m => m.service))].map(service => ({ key: service || 'Project team', members: members.filter(m => m.service === service) }));
   const allIds = [...new Set(members.map(memberId).filter(Boolean))];
   const create = useMutation({
     mutationFn: (body) => tasksApi.create(body),
@@ -1552,7 +1552,7 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
             {project && roster.isLoading ? <EmptyState text="Loading the allocated project team…" /> : roster.isError ? <div role="alert">{roster.error.message} <button type="button" onClick={() => roster.refetch()}>Retry team list</button></div> : members.length === 0 ? (
               <EmptyState text={project ? 'No confirmed team members are allocated to this project. Ask the SPOC or authorized team administrator to save the project allocation.' : 'Select a project to load its allocated team members.'} />
             ) : (
-              roleGroups.map((g) => (
+              <EmployeeFilter employees={members} selectedIds={selMembers} label="Task members">{shown => [...new Set(shown.map(m => m.service))].map(service => ({key:service || 'Project team',members:shown.filter(m => m.service === service)})).map((g) => (
                 <div key={g.key} style={{ marginBottom: 8 }}>
                   <div className="section-label">{g.key}</div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1571,7 +1571,7 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
                     })}
                   </div>
                 </div>
-              ))
+              ))}</EmployeeFilter>
             )}
             {selMembers.length === 0 && <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>No team members selected</p>}
           </div>
@@ -1808,7 +1808,7 @@ function RevisionEntryPanel({ teamProjects, members=[], canCreate }) {
           </div>
           <div className="form-row">
             <label className="form-label">Assigned to *</label>
-            <select aria-label="Revision assigned to" className="filter-select" value={assignedTo} onChange={e=>setAssignedTo(e.target.value)}><option value="">Select team member</option>{members.map(m=><option key={memberId(m)} value={memberId(m)}>{memberName(m)}</option>)}</select>
+            <EmployeeSelect employees={members} aria-label="Revision assigned to" className="filter-select" value={assignedTo} onChange={e=>setAssignedTo(e.target.value)}><option value="">Select team member</option>{members.map(m=><option key={memberId(m)} value={memberId(m)}>{memberName(m)}</option>)}</EmployeeSelect>
           </div>
           <div className="form-row">
             <label className="form-label">Raised by</label>
@@ -1830,14 +1830,14 @@ function RevisionEntryPanel({ teamProjects, members=[], canCreate }) {
 
         <div className="form-row">
           <label className="form-label">Also notify</label>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {notifyOptions.map((e) => (
+          <EmployeeFilter employees={notifyOptions} selectedIds={notifyEmployees} label="Revision notifications">{shown => <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {shown.map((e) => (
               <label key={String(e._id ?? e.id)} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
                 <input type="checkbox" checked={notifyEmployees.includes(String(e._id ?? e.id))} onChange={() => toggleNotify(String(e._id ?? e.id))} />
                 {empLabel(e)}
               </label>
             ))}
-          </div>
+          </div>}</EmployeeFilter>
         </div>
         {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
         <button type="submit" className="btn-primary" disabled={create.isPending}>

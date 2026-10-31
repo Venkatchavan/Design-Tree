@@ -5,7 +5,7 @@ import { Employee } from '../models/Employee.js';
 export async function eligibleSpocs() {
   const users = await User.find({ role: 'coordinator' }).select('_id name isActive employee').lean();
   const employees = await Employee.find({ _id: { $in: users.map(u => u.employee).filter(Boolean) } })
-    .select('_id firstName middleName lastName empId status user').lean();
+    .select('_id firstName middleName lastName empId status user branch department').lean();
   const byId = new Map(employees.map(e => [String(e._id), e]));
   const links = new Map();
   for (const user of users) if (user.isActive && user.employee) {
@@ -22,7 +22,7 @@ export async function eligibleSpocs() {
     else if (employee.user && String(employee.user) !== String(user._id)) reason = 'Employee and login links conflict; HR review is required.';
     if (reason) { unavailable.push({ name: user.name, reason }); continue; }
     const name = [employee.firstName, employee.middleName, employee.lastName].filter(Boolean).join(' ') || user.name;
-    items.push({ _id: String(employee._id), name, empId: employee.empId });
+    items.push({ _id: String(employee._id), name, empId: employee.empId, branch: employee.branch, department: employee.department });
   }
   items.sort((a, b) => a.name.localeCompare(b.name) || String(a.empId).localeCompare(String(b.empId)));
   unavailable.sort((a, b) => a.name.localeCompare(b.name));

@@ -1,3 +1,4 @@
+import EmployeeSelect from '../components/EmployeeSelect.jsx';
 import { SpocContacts, ProjectEdit, ProjectHold, CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import StageApprovalPanel from '../components/StageApprovalPanel.jsx';
 import { DirectoryTab } from './MyCoordinationPage.jsx';
@@ -789,14 +790,14 @@ export default function ProjectDetailPage({ bootstrap }) {
           <>
             <div className="form-row" style={{ maxWidth: 360 }}>
               <label className="form-label" htmlFor="pd-spoc">SPOC (coordinator)</label>
-              <select id="pd-spoc" className="filter-select" value={spocId} onChange={(e) => setSpocId(e.target.value)} disabled={spocOptions.isLoading || spocOptions.isError}>
+              <EmployeeSelect employees={(spocOptions.data?.items ?? [])} id="pd-spoc" className="filter-select" value={spocId} onChange={(e) => setSpocId(e.target.value)} disabled={spocOptions.isLoading || spocOptions.isError}>
                 <option value="">Select…</option>
                 {(spocOptions.data?.items ?? []).map((e) => (
                   <option key={e._id} value={e._id}>
                     {e.name} ({e.empId ?? '—'})
                   </option>
                 ))}
-              </select>
+              </EmployeeSelect>
               {spocOptions.isLoading && <p>Loading SPOCs…</p>}
               {spocOptions.isError && <div role="alert">{spocOptions.error.message} <button type="button" onClick={() => spocOptions.refetch()}>Retry SPOC list</button></div>}
               {!spocOptions.isLoading && !spocOptions.isError && !spocOptions.data?.items?.length && <p>No eligible SPOCs are available. Ask HR to check the SPOC role, active login and employee link.</p>}

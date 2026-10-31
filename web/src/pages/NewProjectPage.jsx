@@ -1,3 +1,5 @@
+import EmployeeSelect from '../components/EmployeeSelect.jsx';
+import { BASE_PROJECT_TYPES, savedOptions } from '../lib/projectOptions.js';
 import ContactPicker from '../components/ContactPicker.jsx';
 import SalesforceImportPanel from '../components/SalesforceImportPanel.jsx';
 import { useState } from 'react';
@@ -16,10 +18,6 @@ const BASE_STATES = [
   'Haryana', 'Himachal Pradesh', 'Jammu and Kashmir', 'Jharkhand', 'Karnataka',
   'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Odisha', 'Punjab', 'Rajasthan',
   'Tamil Nadu', 'Telangana', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
-];
-const BASE_PROJECT_TYPES = [
-  'Residential', 'Commercial', 'Industrial', 'Institutional', 'Healthcare',
-  'Hospitality', 'Retail', 'Mixed-use', 'Infrastructure', 'Interior',
 ];
 const BASE_SERVICES = ['STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'SMEP', 'SMEPF', 'MEP', 'BIM', 'GBS', 'Peer Review'];
 const SERVICE_LABELS = { STR: 'Str', PHE: 'Phe', ELE: 'Elec', FIRE: 'Fire', SMEP: 'Smep', SMEPF: 'Smepf', MEP: 'Mep', BIM: 'Bim', GBS: 'Gbs' };
@@ -197,9 +195,9 @@ export default function NewProjectPage({ bootstrap }) {
   const isAdmin = (bootstrap?.role?.key ?? '') === 'admin_billing';
 
   const branchOptionsQ = useBranchOptions();
-  const branchOptions = branchOptionItems(branchOptionsQ.data);
+  const branchOptions = savedOptions(branchOptionItems(branchOptionsQ.data), [form.branch]);
 
-  const projectsQ = useQuery({ queryKey: ['projects-new-form'], queryFn: () => projectsApi.list({}) });
+  const projectsQ = useQuery({ queryKey: ['projects-new-form'], queryFn: () => projectsApi.directory({}) });
 
   const nextJobQ = useQuery({
     queryKey: ['next-job-number'],
@@ -217,7 +215,7 @@ export default function NewProjectPage({ bootstrap }) {
   const coordinators = employees.filter((employee) => /coordinator|spoc/i.test(employee.designation ?? ''));
 
   const stateOptions = unionOptions(BASE_STATES, [...projectRows.map((p) => p.state), form.state]);
-  const projectTypeOptions = unionOptions(BASE_PROJECT_TYPES, [...projectRows.map((p) => p.projectType), form.projectType]);
+  const projectTypeOptions = savedOptions(BASE_PROJECT_TYPES, [...projectRows.map((p) => p.projectType), form.projectType]);
   const serviceOptions = BASE_SERVICES;
   const entityOptions = unionOptions([], projectRows.map((p) => p.entityName));
 
@@ -592,7 +590,7 @@ export default function NewProjectPage({ bootstrap }) {
           <div className="field-grid">
             {PRINCIPAL_TEAM_LEAD_SERVICES.map(({ key, placeholder }) => (
               <F key={key} label={key}>
-                <select
+                <EmployeeSelect employees={teamLeads}
                   className="form-input"
                   aria-label={`${key} team lead`}
                   value={form.principalTeamLeads[key] ?? ''}
@@ -609,7 +607,7 @@ export default function NewProjectPage({ bootstrap }) {
                       </option>
                     );
                   })}
-                </select>
+                </EmployeeSelect>
                 {!employeesQ.isLoading && teamLeads.length === 0 && (
                   <span className="page-sub">No active team leads available.</span>
                 )}
@@ -617,7 +615,7 @@ export default function NewProjectPage({ bootstrap }) {
               </F>
             ))}
             <F label="SPOC">
-              <select
+              <EmployeeSelect employees={coordinators}
                 className="form-input"
                 aria-label="Project SPOC"
                 value={form.spoc}
@@ -630,7 +628,7 @@ export default function NewProjectPage({ bootstrap }) {
                   const name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId || employee.email;
                   return <option key={id} value={id}>{name}</option>;
                 })}
-              </select>
+              </EmployeeSelect>
               {!employeesQ.isLoading && coordinators.length === 0 && (
                 <span className="page-sub">No active coordinators available.</span>
               )}

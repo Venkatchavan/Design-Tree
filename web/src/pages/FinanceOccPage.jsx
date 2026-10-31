@@ -1,3 +1,4 @@
+import EmployeeSelect from '../components/EmployeeSelect.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, projectsApi } from '../lib/api.js';
@@ -443,6 +444,7 @@ export default function FinanceOccPage({ bootstrap }) {
     setFClient(''); setFVendor(''); setFPO(''); setFTS(''); setFRS(''); setFPay('');
   };
 
+  const empFilterCandidates = [...new Map([...travel.map(t => t.empName), ...reimb.map(r => r.empName), ...pos.map(p => p.requestedBy)].filter(Boolean).map(label => [label, {...(employees.find(e => empName(e) === label) ?? {}),label}])).values()];
   const empOpts = useMemo(() => [...new Set([...travel.map((t) => t.empName), ...reimb.map((r) => r.empName), ...pos.map((p) => p.requestedBy)].filter(Boolean))].sort(), [travel, reimb, pos]);
   const projOpts = useMemo(() => [...new Set([...pos, ...travel, ...reimb].map((x) => x.project).filter(Boolean))].sort(), [pos, travel, reimb]);
   const deptOpts = useMemo(() => [...new Set([...DEPTS, ...pos.map((p) => p.dept), ...travel.map((t) => t.dept), ...reimb.map((r) => r.dept)].filter(Boolean))].sort(), [pos, travel, reimb]);
@@ -670,7 +672,7 @@ export default function FinanceOccPage({ bootstrap }) {
         <section className="filters" aria-label="Filters">
           <div className="fld"><label htmlFor="fFrom">From date</label><input type="date" id="fFrom" value={fFrom} onChange={(e) => setFFrom(e.target.value)} /></div>
           <div className="fld"><label htmlFor="fTo">To date</label><input type="date" id="fTo" value={fTo} onChange={(e) => setFTo(e.target.value)} /></div>
-          <div className="fld"><label htmlFor="fEmp">Employee</label><select id="fEmp" value={fEmp} onChange={(e) => setFEmp(e.target.value)}><option value="">All employees</option>{empOpts.map((v) => <option key={v}>{v}</option>)}</select></div>
+          <div className="fld"><label htmlFor="fEmp">Employee</label><EmployeeSelect employees={empFilterCandidates} getValue={e => e.label} id="fEmp" value={fEmp} onChange={(e) => setFEmp(e.target.value)}><option value="">All employees</option>{empOpts.map((v) => <option key={v}>{v}</option>)}</EmployeeSelect></div>
           <div className="fld"><label htmlFor="fProj">Project</label><select id="fProj" value={fProj} onChange={(e) => setFProj(e.target.value)}><option value="">All projects</option>{projOpts.map((v) => <option key={v}>{v}</option>)}</select></div>
           <div className="fld"><label htmlFor="fDept">Department</label><select id="fDept" value={fDept} onChange={(e) => setFDept(e.target.value)}><option value="">All departments</option>{deptOpts.map((v) => <option key={v}>{v}</option>)}</select></div>
           <div className="fld"><label htmlFor="fClient">Client</label><select id="fClient" value={fClient} onChange={(e) => setFClient(e.target.value)}><option value="">All clients</option>{clientOpts.map((v) => <option key={v}>{v}</option>)}</select></div>
@@ -1258,10 +1260,10 @@ function PoForm({ po, setPo, employees, projects, record, readOnly }) {
         <Fld id="po-vendor" label="Vendor name"><input id="po-vendor" value={po.vendor} onChange={setPo('vendor')} {...dis} /></Fld>
         <Fld id="po-amt" label="PO amount (₹)"><input id="po-amt" type="number" min="0" step="1" value={po.amount} onChange={setPo('amount')} {...dis} /></Fld>
         <Fld id="po-req" label="Requested by"><input id="po-req" value={po.requestedBy} onChange={setPo('requestedBy')} {...dis} /></Fld>
-        <Fld id="po-emp" label="Employee (requester)"><select id="po-emp" value={po.employee} onChange={setPo('employee')} {...dis}>
+        <Fld id="po-emp" label="Employee (requester)"><EmployeeSelect employees={employees} id="po-emp" value={po.employee} onChange={setPo('employee')} {...dis}>
           <option value="">Select employee</option>
           {employees.map((x) => <option key={x._id ?? x.id} value={String(x._id ?? x.id)}>{empName(x)} ({x.empId ?? '—'})</option>)}
-        </select></Fld>
+        </EmployeeSelect></Fld>
         <Fld id="po-appr" label="Approval status"><select id="po-appr" value={po.approval} onChange={setPo('approval')} {...dis}>{PO_APPROVAL.map((o) => <option key={o}>{o}</option>)}</select></Fld>
         <Fld id="po-pay" label="Payment status"><select id="po-pay" value={po.payment} onChange={setPo('payment')} {...dis}>{PO_PAY.map((o) => <option key={o}>{o}</option>)}</select></Fld>
         <div className="fld full"><label htmlFor="po-rem">Remarks</label><textarea id="po-rem" value={po.remarks} onChange={setPo('remarks')} {...dis} /></div>
@@ -1278,10 +1280,10 @@ function TravelForm({ tr, setTr, employees, projects, record, readOnly, claimed,
   return (
     <>
       <fieldset><legend>Employee &amp; trip</legend>
-        <Fld id="tr-emp" label="Employee name"><select id="tr-emp" value={tr.employee} onChange={setTr('employee')} {...dis}>
+        <Fld id="tr-emp" label="Employee name"><EmployeeSelect employees={employees} id="tr-emp" value={tr.employee} onChange={setTr('employee')} {...dis}>
           <option value="">Select employee</option>
           {employees.map((x) => <option key={x._id ?? x.id} value={String(x._id ?? x.id)}>{empName(x)}</option>)}
-        </select></Fld>
+        </EmployeeSelect></Fld>
         <Fld id="tr-eid" label="Employee ID"><input id="tr-eid" value={selEmp?.empId ?? record?.empId ?? ''} disabled /></Fld>
         <Fld id="tr-proj" label="Project"><input id="tr-proj" value={projects.find((p) => String(p._id ?? p.id) === tr.project)?.name ?? ''} list="dl-tproj" onChange={(e) => {
           const hit = projects.find((p) => p.name === e.target.value);
@@ -1373,10 +1375,10 @@ function ReimbForm({ re, setRe, employees, projects, travel, readOnly, deptList,
             {trips.map((t) => <option key={t.id} value={t.id}>{t.empName} · {t.location} · {fmtD(t.from)}</option>)}
           </select>
         </div>
-        <Fld id="re-emp" label="Employee name"><select id="re-emp" value={re.employee} onChange={setRe('employee')} {...dis}>
+        <Fld id="re-emp" label="Employee name"><EmployeeSelect employees={employees} id="re-emp" value={re.employee} onChange={setRe('employee')} {...dis}>
           <option value="">Select employee</option>
           {employees.map((x) => <option key={x._id ?? x.id} value={String(x._id ?? x.id)}>{empName(x)}</option>)}
-        </select></Fld>
+        </EmployeeSelect></Fld>
         <Fld id="re-proj" label="Project"><input id="re-proj" value={projects.find((p) => String(p._id ?? p.id) === re.project)?.name ?? ''} list="dl-rproj" onChange={(e) => {
           const hit = projects.find((p) => p.name === e.target.value);
           setRe('project')({ target: { value: hit ? String(hit._id ?? hit.id) : '' } });

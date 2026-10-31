@@ -1,3 +1,5 @@
+import { leadershipProjectRows } from '../lib/leadershipProjects.js';
+import TravelBookingLog from './TravelBookingLog.jsx';
 import { workAllocations } from '../lib/workAllocations.js';
 import { serviceNames } from '../lib/services.js';
 import { addHours, hoursText, workReportApi } from '../lib/workReport.js';
@@ -27,6 +29,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
   const role = bootstrap?.role?.key ?? '';
   // Associate/Technical Directors see delivery, commercial and people overview
   // without the Finance tab (no finance API access for these roles).
+  const leadership = ['founding_director','executive_director'].includes(role);
   const hideFinance = role === 'associate_director' || role === 'technical_director';
 
   const [tab, setTab] = useState('projects');
@@ -53,7 +56,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
 
   const projects = useQuery({
     queryKey: ['projects-management'],
-    queryFn: () => projectsApi.list({}),
+    queryFn: () => projectsApi.directory({}),
   });
   const management = useQuery({
     queryKey: ['reports-management', mgmtParams],
@@ -182,7 +185,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
     [projects.data],
   );
   const serviceFilterOptions = useMemo(
-    () => [...new Set([...projectRows.flatMap((p) => (p.scope ?? []).map((s) => s.service)), ...(workEntries.data?.items ?? []).map(e => e.service)].filter(Boolean))].sort((a, b) =>
+    () => [...new Set([...projectRows.flatMap((p) => [...(p.services ?? []), ...(p.scope ?? []).map((s) => s.service)]), ...(workEntries.data?.items ?? []).map(e => e.service)].filter(Boolean))].sort((a, b) =>
       String(a).localeCompare(String(b)),
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -232,53 +235,13 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
     { key: 'hr', label: 'HR' },
     { key: 'travel', label: 'Travel log' },
     { key: 'ptl', label: 'PTL' },
-    { key: 'bim', label: 'BIM & GBS' },
-    { key: 'peer', label: 'Peer review' },
-    { key: 'qaqc', label: 'QA/QC' },
+    ...(!leadership ? [{ key: 'bim', label: 'BIM & GBS' }, { key: 'peer', label: 'Peer review' }, { key: 'qaqc', label: 'QA/QC' }] : []),
   ];
 
   const travelRows = arr(travel.data);
   const entryRows = arr(workEntries.data);
   const peerRows = arr(peers.data);
-  const ptlByProject = useMemo(() => {
-    const groups = {};
-    for (const e of entryRows) {
-      const key = e.project?.name ?? e.project ?? 'Unassigned';
-      (groups[key] ??= []).push(e);
-    }
-    return Object.entries(groups).map(([name, items]) => {
-      const pcts = items.map((e) => Number(e.progressPct)).filter((n) => Number.isFinite(n));
-      return {
-        name,
-        entries: items.length,
-        progress:
-          pcts.length > 0
-            ? `${(pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(1)}%`
-            : '—',
-      };
-    });
-  }, [entryRows]);
-  const hoursByProject = useMemo(() => {
-    const groups = {};
-    for (const e of entryRows.flatMap(workAllocations)) {
-      const pid = String(e.project?._id ?? e.project ?? '');
-      const proj = projectById(pid);
-      const key = proj?.name ?? e.project?.name ?? 'Unassigned';
-      const g = groups[key] ?? { name: key, pid, branch: proj?.branch ?? e.project?.branch ?? '—', stage: proj?.currentStage ?? '—', hours: 0 };
-      const h = Number(e.hours ?? e.manHours ?? 0);
-      g.hours = addHours(g.hours, Number.isFinite(h) ? h : 0);
-      groups[key] = g;
-    }
-    return Object.entries(groups).map(([name, g]) => ({ name, pid: g.pid, branch: g.branch, stage: g.stage, hours: Number(g.hours) }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entryRows, projects.data]);
-
-  const ptlHoursFiltered = hoursByProject.filter((r) => {
-    if (project && r.pid !== project) return false;
-    if (branch && r.branch !== branch) return false;
-    if (stage && r.stage !== stage) return false;
-    return true;
-  });
+  const ptlHoursFiltered = leadershipProjectRows(projectRows, entryRows, {project,branch,service,stage});
 
   const ptlTransmittals = useMemo(() => arr(management.data?.submissions).filter((r) => {
     if (project && r.projectId !== project) return false;
@@ -288,21 +251,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
     return true;
   }), [management.data, project, branch, service, stage]);
 
-  const ptlProgress = useMemo(() => ptlByProject.map((p) => {
-    const proj = projectRows.find((x) => x.name === p.name);
-    return {
-      name: p.name,
-      branch: proj?.branch ?? '—',
-      stage: proj?.currentStage ?? '—',
-      progress: p.progress,
-    };
-  }).filter((r) => {
-    if (project && String(projectById(project)?.name ?? '') !== r.name) return false;
-    if (branch && r.branch !== branch) return false;
-    if (stage && r.stage !== stage) return false;
-    return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [ptlByProject, projects.data, project, branch, stage]);
+  const ptlProgress = ptlHoursFiltered;
 
   function resetFilters() {
     setBranch('');
@@ -705,7 +654,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
         <div className="field-grid">
           <div className="form-row">
             <label className="form-label">Branch</label>
-            <select className="filter-select" style={{ width: '100%' }} value={branch} onChange={(e) => setBranch(e.target.value)}>
+            <select aria-label="Management branch" className="filter-select" style={{ width: '100%' }} value={branch} onChange={(e) => setBranch(e.target.value)}>
               <option value="">All branches</option>
               {branchFilterOptions.map((b) => (
                 <option key={b} value={b}>{b}</option>
@@ -714,7 +663,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
           </div>
           <div className="form-row">
             <label className="form-label">Service</label>
-            <select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}>
+            <select aria-label="Management service" className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}>
               <option value="">All services</option>
               {serviceFilterOptions.map((s) => (
                 <option key={s} value={s}>{s}</option>
@@ -1118,9 +1067,10 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
             <KpiCard label="Local allowance" value={money(travelLocalAllowance)} accent="violet" />
           </div>
           {(travel.isError && travel.error.status !== 403) && (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>{travel.error.message}</div>
+            <div className="login-error" role="alert" style={{ display: 'block' }}>{travel.error.message} <button onClick={() => travel.refetch()}>Retry travel requests</button></div>
           )}
-          <Panel title="Travel summary">
+          <TravelBookingLog readOnly embedded />
+          <Panel title="Employee travel requests" sub="Saved requests are separate from booking records above.">
             {travel.isLoading ? <EmptyState text="Loading…" /> : travel.error && travel.error.status === 403 ? (
               <EmptyState text="Travel log is not shared with your role." />
             ) : (
@@ -1139,9 +1089,16 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
               />
             )}
           </Panel>
+          <Panel title="Local allowance and other requests" sub="Saved allowance records; separate from travel bookings and employee travel requests.">
+            {allowsQ.isLoading ? <EmptyState text="Loading allowances…" /> : allowsQ.isError ? <div role="alert">{allowsQ.error.message} <button onClick={() => allowsQ.refetch()}>Retry allowances</button></div> : <DataTable rows={arr(allowsQ.data).filter(r => r.reqType !== 'Cab')} emptyText="No allowance requests yet." columns={[
+              {key:'employee',label:'Employee',render:r => [r.employee?.firstName,r.employee?.lastName].filter(Boolean).join(' ') || 'Not recorded'},
+              {key:'reqType',label:'Request type'}, {key:'project',label:'Project',render:r => r.project?.name || 'Not recorded'},
+              {key:'description',label:'Details',render:r => r.description || r.purpose || 'Not recorded'}, {key:'amount',label:'Amount',render:r => money(r.amount)}, {key:'status',label:'Status'},
+            ]} />}
+          </Panel>
           <Panel title="Cab / transportation details">
             {allowsQ.isLoading ? <EmptyState text="Loading…" /> : allowsQ.isError ? (
-              <div className="login-error" role="alert" style={{ display: 'block' }}>{allowsQ.error.message}</div>
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{allowsQ.error.message} <button onClick={() => allowsQ.refetch()}>Retry allowances</button></div>
             ) : (
               <DataTable
                 columns={[
@@ -1163,10 +1120,12 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
       {tab === 'ptl' && (
         <>
           <div className="kpi-grid cols-2" style={{ marginBottom: 12 }}>
-            <KpiCard label="My projects" value={ptlHoursFiltered.length} accent="blueprint" />
-            <KpiCard label="Hours logged" value={ptlHoursFiltered.reduce((s, r) => s + r.hours, 0)} accent="teal" />
+            <KpiCard label="Roster projects" value={ptlHoursFiltered.length} accent="blueprint" />
+            <KpiCard label="Hours logged" value={addHours(...ptlHoursFiltered.map(r => r.hours))} accent="teal" />
           </div>
-          <Panel title="Hours spent on each project" sub="Use the Branch / Service / Stage filters above">
+          <Panel title="Hours spent on each project" sub="Saved project roster, including projects without work logs. Use the filters above.">
+            <WorkReportStatus query={workEntries} />
+            {projects.isError && <div role="alert">{projects.error.message} <button onClick={() => projects.refetch()}>Retry project roster</button></div>}
             {workEntries.isLoading ? (
               <EmptyState text="Loading work entries…" />
             ) : workEntries.error ? (
@@ -1224,7 +1183,9 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
             <KpiCard label="Assigned projects" value={bimScopeIds.length} accent="blueprint" />
             <KpiCard label="Hours logged" value={bimHoursTotal} accent="teal" />
           </div>
-          <Panel title="Hours spent on each project" sub="Use the Branch / Service / Stage filters above">
+          <Panel title="Hours spent on each project" sub="Saved project roster, including projects without work logs. Use the filters above.">
+            <WorkReportStatus query={workEntries} />
+            {projects.isError && <div role="alert">{projects.error.message} <button onClick={() => projects.refetch()}>Retry project roster</button></div>}
             {workEntries.isLoading ? <EmptyState text="Loading…" /> : workEntries.isError ? (
               <div className="login-error" role="alert" style={{ display: 'block' }}>{workEntries.error.message}</div>
             ) : (

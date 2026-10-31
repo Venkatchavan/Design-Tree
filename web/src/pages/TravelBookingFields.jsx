@@ -1,3 +1,4 @@
+import EmployeeSelect from '../components/EmployeeSelect.jsx';
 import { cloneElement, useId } from 'react';
 import { MODES, SEATS, day } from '../lib/travelBooking.js';
 export function Field({ label, children }) {
@@ -71,7 +72,7 @@ export function TravelDetails({
           <h2>Employee</h2>
           <div className="travel-form-grid">
             <Field label="Employee *">
-              <select
+              <EmployeeSelect employees={employees}
                 className="form-input"
                 value={form.employee}
                 required
@@ -91,7 +92,7 @@ export function TravelDetails({
                     {e.empId ? ` (${e.empId})` : ''}
                   </option>
                 ))}
-              </select>
+              </EmployeeSelect>
             </Field>
             <Field label="Department">
               <input

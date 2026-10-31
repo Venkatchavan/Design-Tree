@@ -101,6 +101,7 @@ export const attendanceApi = {
 };
 
 export const projectsApi = {
+  directory: (params = {}) => directoryList('/api/projects', params),
   reconcileTeam: (id) => request(`/api/projects/${id}/reconcile-team`, { method: 'POST' }),
   summary: (params = {}) => request(`/api/projects/status-summary${toQuery(params)}`),
   updateHold: (id, body) => request(`/api/projects/${id}/hold`, { method: 'PUT', body: JSON.stringify(body) }),

@@ -195,6 +195,7 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
     queryKey: ['work-entries-year', year, date],
     queryFn: () => workReportApi.list({ from: `${year}-01-01`, to: date }),
     enabled: isDirector,
+    refetchInterval: 10000,
   });
   const directorSundayRows = (directorYearQ.data?.items ?? []).filter(
     (e) => e.date && new Date(`${e.workDate}T12:00:00Z`).getUTCDay() === 0,
@@ -519,10 +520,12 @@ function DirectorHolidayWork({ date }) {
   const holidaysQ = useQuery({
     queryKey: ['holidays', year],
     queryFn: () => holidaysApi.list({ year }),
+    refetchInterval: 10000,
   });
   const yearQ = useQuery({
     queryKey: ['work-entries-year', year, date],
     queryFn: () => workReportApi.list({ from: `${year}-01-01`, to: date }),
+    refetchInterval: 10000,
   });
   const holidays = holidaysQ.data?.items ?? [];
   const holidayNames = new Map(
@@ -537,7 +540,7 @@ function DirectorHolidayWork({ date }) {
         <EmptyState text="Loading…" />
       ) : holidaysQ.isError ? (
         <div className="login-error" role="alert" style={{ display: 'block' }}>
-          {holidaysQ.error.message}
+          {holidaysQ.error.message} <button onClick={() => holidaysQ.refetch()}>Retry holiday calendar</button>
         </div>
       ) : yearQ.isError ? (
         <div className="login-error" role="alert" style={{ display: 'block' }}>
@@ -574,10 +577,12 @@ function HolidayWork({ date }) {
   const holidaysQ = useQuery({
     queryKey: ['holidays', year],
     queryFn: () => holidaysApi.list({ year }),
+    refetchInterval: 10000,
   });
   const yearQ = useQuery({
     queryKey: ['work-entries-year', year, date],
     queryFn: () => workReportApi.list({ from: `${year}-01-01`, to: date }),
+    refetchInterval: 10000,
   });
   const holidays = holidaysQ.data?.items ?? [];
   const holidaySet = new Set(

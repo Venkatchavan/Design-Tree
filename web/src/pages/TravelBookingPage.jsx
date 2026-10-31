@@ -3,12 +3,12 @@ import { useLocation } from 'react-router-dom';
 import TravelBookingLog from './TravelBookingLog.jsx';
 import TravelRequestLog from './TravelRequestLog.jsx';
 import { directorRoles } from './travelBookingUtils.js';
-export default function TravelBookingPage({ bootstrap }) {
+export default function TravelBookingPage({ bootstrap, readOnly = false, embedded = false }) {
   const [tab, setTab] = useState('bookings');
   const location = useLocation();
   const role = bootstrap?.role?.key;
   return (
-    <div id="view-travel-booking">
+    <div id={embedded ? undefined : "view-travel-booking"}>
       {location.state?.confirmation && (
         <p role="status">{location.state.confirmation}</p>
       )}
@@ -27,9 +27,9 @@ export default function TravelBookingPage({ bootstrap }) {
         </button>
       </div>
       {tab === 'bookings' ? (
-        <TravelBookingLog readOnly={directorRoles.includes(role)} />
+        <TravelBookingLog readOnly={readOnly || directorRoles.includes(role)} />
       ) : (
-        <TravelRequestLog canWrite={role === 'finance'} />
+        <TravelRequestLog canWrite={!readOnly && role === 'finance'} />
       )}
     </div>
   );

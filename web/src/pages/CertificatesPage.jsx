@@ -1,3 +1,4 @@
+import EmployeeSelect from '../components/EmployeeSelect.jsx';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_BASE, request as apiRequest, employeesApi, projectsApi } from '../lib/api.js';
@@ -264,7 +265,7 @@ export default function CertificatesPage({ bootstrap }) {
           )}</div>
           <div className="form-row"><label className="form-label">Certificate no.</label><input className="form-input" placeholder="e.g. CC-STR-2026-045" value={cert.certNo} onChange={(e) => setCert({ ...cert, certNo: e.target.value })} /></div>
           <div className="form-row"><label className="form-label">Stage</label><select className="filter-select" style={{ width: '100%' }} value={cert.stage} onChange={(e) => setCert({ ...cert, stage: e.target.value })}><option value="">Select stage</option>{['CD', 'SD', 'DD', 'TD', 'GFC'].map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
-          <div className="form-row"><label className="form-label">Issued by</label><select className="filter-select" style={{ width: '100%' }} value={cert.issuedBy} onChange={(e) => setCert({ ...cert, issuedBy: e.target.value })}><option value="">Select person</option>{(employees.data?.items ?? []).map((x) => { const n = `${x.firstName ?? ''} ${x.lastName ?? ''}`.trim() || x.empId; return <option key={x._id ?? x.id} value={n}>{n}</option>; })}</select></div>
+          <div className="form-row"><label className="form-label">Issued by</label><EmployeeSelect employees={(employees.data?.items ?? [])} getValue={e => `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim() || e.empId} className="filter-select" style={{ width: '100%' }} value={cert.issuedBy} onChange={(e) => setCert({ ...cert, issuedBy: e.target.value })}><option value="">Select person</option>{(employees.data?.items ?? []).map((x) => { const n = `${x.firstName ?? ''} ${x.lastName ?? ''}`.trim() || x.empId; return <option key={x._id ?? x.id} value={n}>{n}</option>; })}</EmployeeSelect></div>
           {create.isError && <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>{create.error.message}</div>}
           <button className="btn-primary" type="submit" disabled={create.isPending}>Add certificate</button>
         </form></Panel>

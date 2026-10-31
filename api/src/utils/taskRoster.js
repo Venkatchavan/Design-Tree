@@ -6,7 +6,7 @@ import { expandServices } from '../config/services.js';
 // Called after project visibility is checked. Use this for both options and writes.
 export async function taskRoster(user, project) {
   const scoped = await directorTeams(user);
-  const fields = 'firstName middleName lastName empId designation department status';
+  const fields = 'firstName middleName lastName empId designation department branch status';
   let teams = scoped
     ? scoped.filter(team => team.projects.some(p => String(p._id) === String(project)))
     : await Team.find({ projects: project, active: { $ne: false } })

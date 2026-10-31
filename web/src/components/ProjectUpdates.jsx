@@ -1,3 +1,5 @@
+import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
+import { BASE_PROJECT_TYPES, savedOptions } from '../lib/projectOptions.js';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, request, toQuery } from '../lib/api.js';
@@ -308,6 +310,8 @@ const EDIT_FIELDS = [
   ['category', 'Category', ['', 'Category A', 'Category B', 'Category C']],
 ];
 export function ProjectEdit({ project, onClose }) {
+  const branches = useBranchOptions();
+  const projectOptions = useQuery({queryKey:['projects-edit-options'],queryFn:()=>projectsApi.directory({})});
   const qc = useQueryClient();
   const [contacts, setContacts] = useState(() =>
     Object.fromEntries(
@@ -341,7 +345,7 @@ export function ProjectEdit({ project, onClose }) {
         })),
         ...Object.fromEntries(
           EDIT_FIELDS.filter(
-            ([key]) => !['category', 'branch'].includes(key) || draft[key],
+            ([key]) => (!['category', 'branch'].includes(key) || draft[key]) && (key !== 'branch' || draft.branch !== project.branch),
           ).map(([key, , type]) => [
             key,
             type === 'date'
@@ -374,7 +378,9 @@ export function ProjectEdit({ project, onClose }) {
         }}
       >
         <div className="field-grid">
-          {EDIT_FIELDS.map(([key, label, type]) => (
+          {EDIT_FIELDS.map(([key, label, originalType]) => {
+            const type = key === 'branch' ? savedOptions(branchOptionItems(branches.data), [draft.branch]) : key === 'projectType' ? savedOptions(BASE_PROJECT_TYPES, [...(projectOptions.data?.items ?? []).map(p => p.projectType), draft.projectType]) : originalType;
+            return (
             <div className="form-row" key={key}>
               <label className="form-label" htmlFor={'edit-' + key}>
                 {label}
@@ -388,7 +394,7 @@ export function ProjectEdit({ project, onClose }) {
                     setDraft((d) => ({ ...d, [key]: e.target.value }))
                   }
                 >
-                  {type.map((v) => (
+                  {(['branch', 'projectType'].includes(key) ? ['', ...type] : type).map((v) => (
                     <option key={v} value={v}>
                       {v || 'Not set'}
                     </option>
@@ -409,8 +415,9 @@ export function ProjectEdit({ project, onClose }) {
                 />
               )}
             </div>
-          ))}
+          ); })}
         </div>
+        {branches.isError && <p role="alert">Branch options unavailable. Saved branch is retained. <button type="button" onClick={() => branches.refetch()}>Retry branches</button></p>}
         <h3>Services</h3>
         <div className="field-grid">
           {[

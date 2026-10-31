@@ -39,8 +39,8 @@ export async function directorTeams(user) {
     User.find({}).select('name email employee').lean(),
     Team.find({ active: { $ne: false } }).sort({ name: 1 })
       .populate('projects', 'name jobNumber code branch currentStage status services hold')
-      .populate('lead', 'firstName lastName empId designation department status experience')
-      .populate('members.employee', 'firstName lastName empId designation department status experience').lean(),
+      .populate('lead', 'firstName lastName empId designation department branch status experience')
+      .populate('members.employee', 'firstName lastName empId designation department branch status experience').lean(),
     ServiceDashboard.find({ technicalDirector: { $exists: true, $ne: '' } }).select('project service technicalDirector').lean(),
   ]);
   const {own,active,reporting,resolve}=employeeOwnership(user,employees,users);

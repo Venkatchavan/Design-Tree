@@ -1,3 +1,4 @@
+import EmployeeSelect from '../EmployeeSelect.jsx';
 import { serviceNames, committedServiceNames } from '../../lib/services.js';
 import { useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
@@ -262,7 +263,7 @@ function AllMeetingsTab({ meetings, projects, preset, onOpen }) {
         <div className="form-row"><label className="form-label">Category</label><select className="filter-select" style={{ width: '100%' }} value={f.category} onChange={(e) => set('category', e.target.value)}><option value="">All</option><option>Scheduled</option><option value="Sudden">Sudden / Ad-Hoc</option></select></div>
         <div className="form-row"><label className="form-label">Meeting type</label><select className="filter-select" style={{ width: '100%' }} value={f.type} onChange={(e) => set('type', e.target.value)}><option value="">All</option>{MEETING_TYPES.map((t) => (<option key={t}>{t}</option>))}</select></div>
         <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={f.service} onChange={(e) => set('service', e.target.value)}><option value="">All</option>{SERVICE_FILTERS.map((s) => (<option key={s}>{s}</option>))}</select></div>
-        <div className="form-row"><label className="form-label">SPOC / coordinator</label><select className="filter-select" style={{ width: '100%' }} value={f.responsible} onChange={(e) => set('responsible', e.target.value)}><option value="">All</option>{responsibles.map((r) => (<option key={r}>{r}</option>))}</select></div>
+        <div className="form-row"><label className="form-label">SPOC / coordinator</label><EmployeeSelect employees={responsibles.map(label=>({label,...(meetings.find(m=>m.responsible === label)?.responsibleEmployee ?? {})}))} getValue={e => e.label} className="filter-select" style={{ width: '100%' }} value={f.responsible} onChange={(e) => set('responsible', e.target.value)}><option value="">All</option>{responsibles.map((r) => (<option key={r}>{r}</option>))}</EmployeeSelect></div>
         <div className="form-row"><label className="form-label">From</label><input className="form-input" type="date" value={f.from} onChange={(e) => set('from', e.target.value)} /></div>
         <div className="form-row"><label className="form-label">To</label><input className="form-input" type="date" value={f.to} onChange={(e) => set('to', e.target.value)} /></div>
         <div className="form-row"><label className="form-label">Meeting status</label><select className="filter-select" style={{ width: '100%' }} value={f.status} onChange={(e) => set('status', e.target.value)}><option value="">All</option><option>Upcoming</option><option>Scheduled</option><option>Completed</option><option>Completed · MOM pending</option><option>Rescheduled</option><option>Cancelled</option><option>Cancelled or rescheduled</option></select></div>
@@ -490,7 +491,7 @@ function AbsenceLogTab({ onOpen, notify, projectId }) {
         <div className="field-grid">
           <div className="form-row"><label className="form-label">Project</label><select className="filter-select" style={{ width: '100%' }} disabled={!!projectId} value={project} onChange={(e) => setProject(e.target.value)}><option value="">All</option>{projectOptions.map((p) => (<option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>{p.code ? `${p.code} - ` : ''}{p.name}</option>))}</select></div>
           <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}><option value="">All</option><option>Structural</option><option>Mechanical</option><option>Electrical</option><option>Plumbing</option><option>Fire</option><option>MEP Coordination</option></select></div>
-          <div className="form-row"><label className="form-label">Team member</label><select className="filter-select" style={{ width: '100%' }} value={member} onChange={(e) => setMember(e.target.value)}><option value="">All</option>{memberOptions.map(([id, label]) => (<option key={id} value={id}>{label}</option>))}</select></div>
+          <div className="form-row"><label className="form-label">Team member</label><EmployeeSelect employees={memberOptions.map(([id,label])=>({...items.find(r=>idOf(r.employee)===id)?.employee,id,label}))} className="filter-select" style={{ width: '100%' }} value={member} onChange={(e) => setMember(e.target.value)}><option value="">All</option>{memberOptions.map(([id, label]) => (<option key={id} value={id}>{label}</option>))}</EmployeeSelect></div>
           <div className="form-row"><label className="form-label">Meeting type</label><select className="filter-select" style={{ width: '100%' }} value={type} onChange={(e) => setType(e.target.value)}><option value="">All</option>{MEETING_TYPES.map((t) => (<option key={t}>{t}</option>))}</select></div>
           <div className="form-row"><label className="form-label">From</label><input className="form-input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
           <div className="form-row"><label className="form-label">To</label><input className="form-input" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
@@ -1072,11 +1073,11 @@ function PanelActions({ meeting, held, onSaved, notify }) {
     const map = new Map();
     for (const v of meeting?.invites ?? []) {
       const id = idOf(v.employee);
-      if (id && !map.has(id)) map.set(id, { id, label: empName(v.employee), service: v.employee?.department ?? '' });
+      if (id && !map.has(id)) map.set(id, { ...v.employee, id, label: empName(v.employee), service: v.employee?.department ?? '' });
     }
     for (const v of meeting?.participants ?? []) {
       const id = idOf(v.employee);
-      if (id && !map.has(id)) map.set(id, { id, label: v.name ?? empName(v.employee), service: '' });
+      if (id && !map.has(id)) map.set(id, { ...(typeof v.employee === 'object' ? v.employee : {}), id, label: v.name ?? empName(v.employee), service: v.employee?.department ?? '' });
     }
     return [...map.values()];
   }, [meeting]);
@@ -1140,7 +1141,7 @@ function PanelActions({ meeting, held, onSaved, notify }) {
           <div className="section-label" style={{ marginTop: 10 }}>Add action item</div>
           <div className="form-row"><label className="form-label">Action / task</label><input className="form-input" value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. Issue revised shaft section" /></div>
           <div className="field-grid">
-            <div className="form-row"><label className="form-label">Responsible person</label><select className="filter-select" style={{ width: '100%' }} value={owner} onChange={(e) => setOwner(e.target.value)}><option value="">Select</option>{candidates.map((c) => (<option key={c.id} value={c.id}>{c.label}</option>))}</select></div>
+            <div className="form-row"><label className="form-label">Responsible person</label><EmployeeSelect employees={candidates} className="filter-select" style={{ width: '100%' }} value={owner} onChange={(e) => setOwner(e.target.value)}><option value="">Select</option>{candidates.map((c) => (<option key={c.id} value={c.id}>{c.label}</option>))}</EmployeeSelect></div>
             <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}><option>Structural</option><option>Mechanical</option><option>Electrical</option><option>Plumbing</option><option>Fire</option><option>MEP Coordination</option><option>SMEPF</option></select></div>
 
             <div className="form-row"><label className="form-label">Target date</label><input className="form-input" type="date" value={due} onChange={(e) => setDue(e.target.value)} /></div>

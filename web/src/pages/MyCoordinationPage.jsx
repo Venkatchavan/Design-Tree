@@ -1,3 +1,5 @@
+import EmployeeSelect from '../components/EmployeeSelect.jsx';
+import { serviceNames } from '../lib/services.js';
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, projectsApi, request, toQuery } from '../lib/api.js';
@@ -426,14 +428,18 @@ function serviceRows(project) {
 }
 
 function InhouseTeamPanel({ projects, myAllocs, employees, loading }) {
+  const [service, setService] = useState('');
+  const choices = [...new Set(projects.flatMap(p => serviceRows(p).flatMap(r => serviceNames([r.service]))))].sort();
+  const shownProjects = projects.filter(p => !service || serviceRows(p).some(r => serviceNames([r.service]).includes(service)));
   return (
     <Panel title="In-house project team — all services" sub="Service-wise, with role and coordinator details. Live from team allocation.">
+      <label className="form-label">Directory service<select className="filter-select" aria-label="Directory service" value={service} onChange={e => setService(e.target.value)}><option value="">All services</option>{choices.map(s => <option key={s}>{s}</option>)}</select></label>
       {loading ? (
         <EmptyState text="Loading…" />
-      ) : projects.length === 0 ? (
+      ) : shownProjects.length === 0 ? (
         <EmptyState text="No active projects." />
       ) : (
-        projects.map((p) => {
+        shownProjects.map((p) => {
           const coord = coordinatorFor(projectIdOf(p), myAllocs, employees);
           return (
             <div key={projectIdOf(p)} style={{ marginBottom: 16 }}>
@@ -445,7 +451,7 @@ function InhouseTeamPanel({ projects, myAllocs, employees, loading }) {
                   { key: 'role', label: 'Role / responsibility', render: (r) => r.role || '—' },
                   { key: 'coord', label: 'Coordinator / SPOC', render: () => (coord ? empName(coord) : '—') },
                 ]}
-                rows={serviceRows(p)}
+                rows={serviceRows(p).filter(r => !service || serviceNames([r.service]).includes(service))}
                 emptyText="No services."
               />
             </div>
@@ -566,23 +572,23 @@ export function TeamAllocationPanel({ projects, employees }) {
           </div>
           <div className="form-row">
             <label className="form-label">Nominated by (Director)</label>
-            <select className="filter-select" style={{ width: '100%' }} value={nominatedBy} onChange={(e) => setNominatedBy(e.target.value)}>
+            <EmployeeSelect employees={directors} getValue={e => `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim() || e.empId} className="filter-select" style={{ width: '100%' }} value={nominatedBy} onChange={(e) => setNominatedBy(e.target.value)}>
               <option value="">Select director</option>
               {directors.map((d) => {
                 const n = `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || d.empId;
                 return <option key={d._id ?? d.id} value={n}>{n}{d.designation ? `, ${d.designation}` : ''}</option>;
               })}
-            </select>
+            </EmployeeSelect>
           </div>
           <div className="form-row">
             <label className="form-label">Team member</label>
-            <select className="filter-select" style={{ width: '100%' }} value={member} onChange={(e) => setMember(e.target.value)}>
+            <EmployeeSelect employees={employees} className="filter-select" style={{ width: '100%' }} value={member} onChange={(e) => setMember(e.target.value)}>
               <option value="">Select member</option>
               {employees.map((x) => {
                 const n = `${x.firstName ?? ''} ${x.lastName ?? ''}`.trim() || x.empId;
                 return <option key={x._id ?? x.id} value={x._id ?? x.id}>{n}{x.designation ? ` · ${x.designation}` : ''}</option>;
               })}
-            </select>
+            </EmployeeSelect>
           </div>
           <div className="form-row">
             <label className="form-label">Approval status</label>

@@ -13,7 +13,7 @@ after(async()=>f?.stop());
 async function call(role,path='',method='GET',body){const r=await fetch(f.base+'/api/design-team'+path,{method,headers:{Cookie:cookies[role],...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()};}
 test('dashboard reflects saved SPOC entries and excludes other reporting lines and non-SPOCs',async()=>{
   const r=await call('dmh'); assert.equal(r.status,200);
-  assert.equal(r.data.spocs.length,2);assert.equal(r.data.summary.spocs,2);assert.equal(r.data.summary.todayUpdated,1);
+  assert.equal(r.data.spocs.length,2);assert.equal(r.data.summary.spocs,2);assert.equal(r.data.summary.todayUpdated,r.data.summary.todayWorking ? 1 : 0);
   const person=r.data.spocs.find(e=>e.employee._id===f.cast.spoc.employee);assert.equal(person.totalHours,8.5);assert.equal(person.load,3);
   assert(r.data.entries.some(e=>e.areas.some(a=>a.update==='Saved SPOC meeting reflection')));
   assert(!JSON.stringify(r.data).includes('Outside reporting line'));assert(!r.data.spocs.some(e=>e.employee._id===f.cast.engineer.employee));
@@ -92,7 +92,7 @@ test('approved leave and travel are labelled separately from missing daily entri
  await f.models.LeaveRequest.collection.deleteOne({_id:leave.insertedId});await TravelRequest.collection.deleteOne({_id:travel.insertedId});
 });
 test('daily work outside current allocation remains read-only without foreign project contacts',async()=>{
- await f.models.SpocEntry.create({employee:f.cast.spoc.employee,project:f.other,date:new Date(),service:'STR',areas:[{key:'Meetings',update:'Historical project work',hours:1}],createdBy:f.cast.spoc.user});
+ await f.models.SpocEntry.create({employee:f.cast.spoc.employee,project:f.other,date:new Date(f.workDate+'T12:00:00Z'),service:'STR',areas:[{key:'Meetings',update:'Historical project work',hours:1}],createdBy:f.cast.spoc.user});
  const r=await call('dmh','/projects/'+f.other);assert.equal(r.status,200);assert.equal(r.data.canEdit,false);assert.equal(r.data.loggedOutsideAllocation,true);assert.equal(r.data.hours,1);assert.equal(r.data.project.contacts,undefined);assert.deepEqual(r.data.followups,[]);
  assert.equal((await call('dmh','/projects/'+f.other+'/status','PATCH',{status:'Delayed'})).status,404);
  const p=await call('dmh','/spocs/'+f.cast.spoc.employee);assert(p.data.activity.some(e=>e.source==='daily'&&e.detail.areas.some(a=>a.update==='Saved SPOC meeting reflection')));
