@@ -14,8 +14,9 @@ export default function LoginHoursReport() {
   const groups=useMemo(()=>{
     const m=new Map();
     for(const e of (q.data?.items??[]).flatMap(workAllocations)) {
-      const key=`${e.project?._id??e.project}|${e.stage??''}`;
-      const g=m.get(key)??{key,project:e.project?.name??'Missing project',stage:e.stage??'Not recorded',employees:new Set(),hours:0};
+      const projectId=String(e.project?._id??e.project?.id??e.project??'');
+      const key=`${projectId}|${e.stage??''}`;
+      const g=m.get(key)??{key,projectId,project:e.project?.name??'Missing project',stage:e.stage??'Not recorded',employees:new Set(),hours:0};
       g.employees.add(e.employee?._id??e.employee);g.hours=addHours(g.hours,e.hours);m.set(key,g);
     }
     return [...m.values()].map(g=>({...g,count:g.employees.size}));
@@ -24,7 +25,7 @@ export default function LoginHoursReport() {
     <div className="field-grid"><label className="form-label">From date<input aria-label="Work report from" type="date" className="form-input" value={from} onChange={e=>setFrom(e.target.value)}/></label><label className="form-label">To date<input aria-label="Work report to" type="date" className="form-input" value={to} onChange={e=>setTo(e.target.value)}/></label></div>
     <WorkReportStatus query={q}/>
     {!q.isError&&!q.isLoading&&<>
-      <div className="kpi-grid cols-3"><KpiCard label={`Total work hours · ${from||'all dates'} to ${to||'latest saved date'} (IST)`} value={hoursText(groups.reduce((s,g)=>addHours(s,g.hours),0))}/><KpiCard label="Projects with activity" value={new Set(groups.map(g=>g.project)).size}/><KpiCard label="Source entries" value={q.data?.total??0}/></div>
+      <div className="kpi-grid cols-3"><KpiCard label={`Total work hours · ${from||'all dates'} to ${to||'latest saved date'} (IST)`} value={hoursText(groups.reduce((s,g)=>addHours(s,g.hours),0))}/><KpiCard label="Projects with activity" value={new Set(groups.map(g=>g.projectId)).size}/><KpiCard label="Source entries" value={q.data?.total??0}/></div>
       <Panel title="Login hours by project and stage" sub="Saved work hours from daily work and SPOC entries. Attendance session duration is reported separately."><DataTable columns={[{key:'project',label:'Project'},{key:'stage',label:'Stage'},{key:'count',label:'Employees'},{key:'hours',label:'Total hours',render:r=>hoursText(r.hours)}]} rows={groups} emptyText="No work logged in this period."/></Panel>
       <Panel title="Saved work entries"><DataTable columns={[
         {key:'workDate',label:'Work date (IST)'},{key:'employee',label:'Employee',render:e=>[e.employee?.firstName,e.employee?.lastName].filter(Boolean).join(' ')||'Missing employee'},

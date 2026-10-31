@@ -36,3 +36,17 @@ test('project roster pages cover saved projects beyond 200 without widening engi
  const engineer=await get('engineer',1);assert(engineer.items.every(p=>p._id===f.project));assert.equal(engineer.total,1);
  await f.models.Project.deleteMany({code:/^LOCAL-/});
 });
+test('meeting candidates with saved composite service labels match each component without widening their authorized roster',async()=>{
+ const {filterEmployees,employeeServices}=await import('../web/src/lib/employeeFilters.js');
+ const {serviceNames}=await import('../web/src/lib/services.js');
+ const {expandServices}=await import('../api/src/config/services.js');
+ const member={employee:{_id:'meeting-member',firstName:'Saved member',department:'Structural',branch:'North'},service:'Structural + Mechanical + Electrical + Plumbing + Fire'};
+ const structural={employee:{_id:'structural-only',department:'Structural',branch:'South'},service:'STR'};
+ assert(employeeServices(member).includes('Mechanical'),'a saved composite team supplies Mechanical independently of employee department');
+ assert.deepEqual(filterEmployees([member,structural],{service:'Mechanical'}),[member]);
+ assert.deepEqual(filterEmployees([member,structural],{service:'Mechanical',branch:'South',selectedIds:['meeting-member','outside-roster']}),[member]);
+ assert.deepEqual(filterEmployees([member,structural],{service:'BIM',selectedIds:['outside-roster']}),[]);
+ assert.deepEqual(filterEmployees([member,structural],{service:'BIM',selectedIds:['meeting-member']}),[member]);
+ const saved=[' STR + hvac + ELE + PHE + FIRE ','SMEPF + Peer Review + Saved specialty','mep + BIM',' +  '];
+ assert.deepEqual(serviceNames(saved),expandServices(saved),'aliases, bundles, blanks and unknown labels follow server comparisons');
+});
