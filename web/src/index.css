@@ -5539,6 +5539,21 @@ button.dt-date {
     background-size: 16px 16px;
     background-position: right 11px center;
 }
+button.dt-date.dt-kind-time {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%235c6470' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='6'/%3E%3Cpath d='M8 4.6V8l2.2 1.4'/%3E%3C/svg%3E");
+}
+/* Finance Control Center fields are styled by its own panel rules (.fld input),
+   which do not reach the styled trigger: give it the same full-width fit. */
+#finOccPanel .fld button.dt-select,
+#finOccPanel .field button.dt-select {
+    width: 100%;
+    min-width: 0;
+    min-height: 34px;
+    border-color: var(--line, var(--border));
+    border-radius: 7px;
+    background-color: var(--surface-2, var(--field-bg));
+    font-size: 13.5px;
+}
 .dt-cal {
     display: block;
     padding: 12px;
@@ -5670,9 +5685,115 @@ button.dt-date {
     font-size: 13px;
     cursor: pointer;
 }
+/* time of day (datetime-local / time) */
+.dt-cal--time {
+    padding-bottom: 10px;
+}
+.dt-cal-title--static {
+    margin-right: auto;
+    padding: 6px 8px;
+    color: var(--ink);
+    font-size: 13.5px;
+    font-weight: 600;
+}
+.dt-time {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}
+.dt-cal--time .dt-time {
+    margin-top: 4px;
+    padding-top: 0;
+    border-top: 0;
+}
+.dt-time-label {
+    margin-right: auto;
+    color: var(--ink-muted);
+    font-size: 12.5px;
+    font-weight: 500;
+}
+.dt-time-sep {
+    color: var(--ink-faint);
+    font-size: 18px;
+    font-weight: 600;
+}
+.dt-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.dt-step-btn {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--ink-faint);
+    cursor: pointer;
+}
+.dt-step-btn:hover {
+    background: var(--control-bg);
+    color: var(--ink);
+}
+.dt-step-input {
+    width: 52px;
+    height: 38px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--field-bg);
+    color: var(--ink);
+    font: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    transition:
+        border-color 0.16s ease,
+        box-shadow 0.16s ease,
+        background-color 0.16s ease;
+}
+.dt-step-input:hover {
+    border-color: var(--border-strong);
+}
+.dt-step-input:focus {
+    outline: none;
+    border-color: var(--blueprint);
+    background: #fff;
+    box-shadow: 0 0 0 3px var(--focus-ring-color);
+}
+.dt-cal-done {
+    padding: 6px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.dt-cal-done:hover {
+    background: var(--control-bg);
+}
+.dt-cal-done:focus-visible,
+.dt-step-btn:focus-visible {
+    outline: 2px solid var(--blueprint);
+    outline-offset: 1px;
+}
 .dt-cal-foot {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
+    gap: 8px;
     margin-top: 8px;
     padding-top: 8px;
     border-top: 1px solid var(--border);

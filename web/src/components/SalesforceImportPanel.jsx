@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Panel from './Panel.jsx';
 import EmptyState from './EmptyState.jsx';
@@ -116,6 +116,11 @@ export default function SalesforceImportPanel({ selected, onSelect, onClear }) {
 
   const configured = statusQ.data?.configured === true;
   const statusError = statusQ.isError ? statusQ.error.message : '';
+
+  // A failed status check hides the panel (see below); keep the reason findable.
+  useEffect(() => {
+    if (statusError) console.warn('Salesforce status check failed:', statusError);
+  }, [statusError]);
   const items = searchQ.data?.items ?? [];
 
   function submitSearch(event) {
@@ -125,28 +130,9 @@ export default function SalesforceImportPanel({ selected, onSelect, onClear }) {
     setSubmitted(value);
   }
 
-  if (statusQ.isLoading) {
-    return (
-      <Panel title="Import from Salesforce">
-        <span className="page-sub">Checking the Salesforce connection…</span>
-      </Panel>
-    );
-  }
-
-  if (statusError || (!configured && !statusQ.isLoading)) {
-    return (
-      <Panel
-        title="Import from Salesforce"
-        sub="Read-only lookup of Salesforce projects. Nothing is written back to Salesforce."
-      >
-        <div className="page-sub">
-          {statusError
-            ? `Could not check the Salesforce connection: ${statusError}`
-            : 'Salesforce is not connected on this server. Ask your administrator to configure the integration before importing projects.'}
-        </div>
-      </Panel>
-    );
-  }
+  // Salesforce is optional: without credentials on the server (or while that is
+  // still being checked, or if the check fails) the panel is not rendered at all.
+  if (!configured) return null;
 
   return (
     <Panel
