@@ -4569,6 +4569,73 @@ table.data tr.row-click:hover {
     font-weight: 500;
     border-bottom-color: var(--blueprint);
 }
+/* Segmented tab bar (components/Tabs.jsx): a sliding white pill on a soft track */
+.tabs.seg {
+    position: relative;
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    gap: 2px;
+    padding: 4px;
+    border: 0;
+    border-radius: 12px;
+    background: #f4f4f2;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.tabs.seg::-webkit-scrollbar {
+    display: none;
+}
+.tabs.seg::before {
+    content: "";
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 0;
+    width: var(--pill-w, 0px);
+    border-radius: 9px;
+    background: #fff;
+    box-shadow:
+        0 1px 2px rgba(20, 25, 35, 0.1),
+        0 0 0 1px rgba(20, 25, 35, 0.04);
+    transform: translateX(var(--pill-x, 0px));
+    pointer-events: none;
+}
+.tabs.seg.is-ready::before {
+    transition:
+        transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1),
+        width 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.tabs.seg .tab-btn {
+    position: relative;
+    z-index: 1;
+    flex: none;
+    padding: 7px 14px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--ink-muted);
+    font-size: 13px;
+    font-weight: 500;
+    transition: color 0.18s ease;
+}
+.tabs.seg .tab-btn:hover {
+    color: var(--ink);
+}
+.tabs.seg .tab-btn.active {
+    color: var(--ink);
+    font-weight: 500;
+}
+.tabs.seg .tab-btn:focus-visible {
+    outline: 2px solid var(--blueprint);
+    outline-offset: -2px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .tabs.seg.is-ready::before,
+    .tabs.seg .tab-btn {
+        transition: none;
+    }
+}
 .tab-panel {
     display: none;
 }
@@ -5696,6 +5763,45 @@ textarea.form-input {
 input[type="checkbox"],
 input[type="radio"] {
     accent-color: var(--blueprint);
+}
+
+/* File inputs: the browser's grey "Choose File" button, restyled to match. */
+input[type="file"] {
+    max-width: 100%;
+    color: var(--ink-muted);
+    font-family: var(--font-sans);
+    font-size: 12.5px;
+}
+input[type="file"]::file-selector-button {
+    margin-right: 12px;
+    padding: 7px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease;
+}
+input[type="file"]:hover:not(:disabled)::file-selector-button {
+    background: #f4f4f2;
+    border-color: var(--ink-faint);
+}
+input[type="file"]:focus-visible {
+    outline: 2px solid var(--blueprint);
+    outline-offset: 3px;
+    border-radius: 8px;
+}
+input[type="file"]:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+input[type="file"]:disabled::file-selector-button {
+    cursor: not-allowed;
 }
 .modal-box.wide {
     max-width: 720px;
