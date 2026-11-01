@@ -54,6 +54,9 @@ function slabPaths(z) {
   const rightD = iso(W, -W, z - THICK);
   return {
     top: pathOf(square(0, 0, W), z, true),
+    // Filled faces give each slab a lit top and two shaded sides.
+    leftFace: `M${pt(left)}L${pt(bottom)}L${pt(bottomD)}L${pt(leftD)}Z`,
+    rightFace: `M${pt(bottom)}L${pt(right)}L${pt(rightD)}L${pt(bottomD)}Z`,
     edge: `M${pt(left)}L${pt(leftD)}L${pt(bottomD)}L${pt(rightD)}L${pt(right)}M${pt(bottom)}L${pt(bottomD)}`,
     inset: pathOf(square(0, 0, W - 11), z, true),
   };
@@ -238,6 +241,9 @@ export default function LoginScene() {
           <filter id="login-blur" x="-20%" y="-40%" width="140%" height="180%">
             <feGaussianBlur stdDeviation="3.2" />
           </filter>
+          <filter id="login-shadow-blur" x="-40%" y="-80%" width="180%" height="260%">
+            <feGaussianBlur stdDeviation="14" />
+          </filter>
         </defs>
 
         {/* meta */}
@@ -249,6 +255,11 @@ export default function LoginScene() {
           <path className="iso-floor-grid" d={FLOOR_GRID} />
         </g>
         <path className="iso-floor-edge" d={FLOOR_EDGE} />
+        <path
+          className="iso-shadow"
+          d={pathOf(square(0, 0, W - 10), FLOOR_Z, true)}
+          filter="url(#login-shadow-blur)"
+        />
 
         {/* vertical skeleton */}
         <g className="iso-detail" style={{ '--d': '1.1s' }}>
@@ -264,6 +275,9 @@ export default function LoginScene() {
           const delay = 0.15 + i * 0.28;
           return (
             <g key={layer.tone} className={`iso-layer tone-${layer.tone}`}>
+              <path className="iso-face iso-face--left" d={p.leftFace} style={{ '--d': `${delay + 0.5}s` }} />
+              <path className="iso-face iso-face--right" d={p.rightFace} style={{ '--d': `${delay + 0.5}s` }} />
+              <path className="iso-face iso-face--top" d={p.top} style={{ '--d': `${delay + 0.5}s` }} />
               <path className="iso-draw iso-slab" pathLength="1" d={p.top} style={{ '--d': `${delay}s` }} />
               <path className="iso-draw iso-edge" pathLength="1" d={p.edge} style={{ '--d': `${delay + 0.2}s` }} />
               <path className="iso-inset" d={p.inset} />

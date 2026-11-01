@@ -5930,6 +5930,41 @@ table.data tr.row-click:hover {
     letter-spacing: 0.14em;
 }
 
+/* soft cast glow under the stack */
+.login-screen .login-iso .iso-shadow {
+    fill: rgba(91, 155, 240, 0.34);
+    stroke: none;
+}
+
+/* shaded slab faces: lit top, mid left, deep right (hover lights a slab) */
+.login-screen .login-iso .iso-face {
+    fill: var(--c);
+    stroke: none;
+    opacity: 0;
+    animation: login-fade 0.9s ease forwards;
+    animation-delay: var(--d, 0s);
+    transition: fill-opacity 0.3s ease;
+}
+.login-screen .login-iso .iso-face--top {
+    --o: 0.15;
+}
+.login-screen .login-iso .iso-face--left {
+    --o: 0.06;
+}
+.login-screen .login-iso .iso-face--right {
+    --o: 0.11;
+}
+.login-screen .login-iso .iso-face {
+    fill-opacity: var(--o);
+}
+.login-screen .login-iso .iso-layer:hover .iso-face {
+    fill-opacity: calc(var(--o) * 2.4);
+}
+/* the whole stack hovers gently */
+.login-screen .login-iso {
+    animation: login-float 7s ease-in-out infinite;
+}
+
 /* ground */
 .login-iso .iso-floor-grid {
     stroke: rgba(150, 180, 255, 0.55);
@@ -6559,6 +6594,15 @@ table.data tr.row-click:hover {
         transform: none;
     }
 }
+@keyframes login-float {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-5px);
+    }
+}
 @keyframes login-bar-in {
     from {
         transform: scaleX(0);
@@ -6698,6 +6742,13 @@ table.data tr.row-click:hover {
     .login-screen .login-button-frame::before {
         animation: none;
         transform: translateY(-50%) rotate(-40deg);
+    }
+    .login-screen .login-iso {
+        animation: none;
+    }
+    .login-screen .login-iso .iso-face {
+        animation: none;
+        opacity: 1;
     }
     .login-iso .iso-draw {
         animation: none;
