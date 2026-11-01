@@ -76,6 +76,29 @@ export default function NotifBell() {
   const items = q.data?.items ?? [];
   const unread = q.data?.unread ?? items.filter((n) => !n.read).length;
 
+  // Bell swings when new notifications arrive (harder for several at once);
+  // the count rolls to its new value and the badge shrinks away at zero.
+  // State is adjusted during render (not in an effect) when the count changes.
+  const [t, setT] = useState({ prev: null, shown: 0, swing: '', leaving: false });
+  if (q.isSuccess && t.prev !== unread) {
+    const prev = t.prev; // null on the first load: no swing
+    setT({
+      prev: unread,
+      shown: unread > 0 ? unread : t.shown, // keep the last number while the badge shrinks out
+      swing: prev !== null && unread > prev ? (unread - prev > 1 ? 'swing-strong' : 'swing') : '',
+      leaving: unread === 0 && (prev ?? 0) > 0,
+    });
+  }
+  const { swing, shown, leaving } = t;
+  useEffect(() => {
+    if (!t.swing && !t.leaving) return undefined;
+    const id = setTimeout(
+      () => setT((x) => ({ ...x, swing: '', leaving: false, shown: x.leaving ? 0 : x.shown })),
+      t.leaving ? 240 : 1100,
+    );
+    return () => clearTimeout(id);
+  }, [t.swing, t.leaving, t.prev]);
+
   const readOne = useMutation({
     mutationFn: (id) => notificationsApi.read(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
@@ -109,17 +132,30 @@ export default function NotifBell() {
     <div className="notif-wrap" ref={wrapRef}>
       <button
         type="button"
-        className="notif-bell bell"
+        className={`notif-bell bell${open ? ' is-open' : ''}`}
         onClick={() => setOpen((v) => !v)}
-        aria-label="Notifications"
+        aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+        aria-expanded={open}
+        aria-haspopup="true"
       >
-        <Bell size={16} />
-        {unread > 0 && <span className="notif-badge badge">{unread > 99 ? '99+' : unread}</span>}
+        <span key={t.prev} className={`notif-bell-icon ${swing}`.trim()}>
+          <Bell size={18} strokeWidth={1.7} fill="currentColor" />
+        </span>
+        {(unread > 0 || leaving) && (
+          <span className={`notif-badge badge${leaving ? ' is-leaving' : ''}`} aria-hidden="true">
+            <span className="notif-badge-num" key={shown}>
+              {shown > 99 ? '99+' : shown}
+            </span>
+          </span>
+        )}
       </button>
       {open && (
         <div className="notif-panel panel">
           <div className="notif-panel-head head">
-            <span>Notifications{unread > 0 ? ` (${unread})` : ''}</span>
+            <span>
+              Notifications
+              {unread > 0 && <span className="notif-count">{unread} new</span>}
+            </span>
             {items.length > 0 && (
               <button
                 type="button"
