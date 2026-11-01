@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, ScanLine } from 'lucide-react';
+import { ArrowRight, CircleAlert, Eye, EyeOff, Lock, Mail, ScanLine } from 'lucide-react';
 import { useState } from 'react';
 import { loginApi } from '../lib/api.js';
 import { attendanceApi } from '../lib/api.js';
@@ -11,6 +11,8 @@ export default function LoginPage() {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsOn, setCapsOn] = useState(false);
   // Late sign-in (after 9:45 IST): reason prompt before entering the app.
   const [lateOpen, setLateOpen] = useState(false);
   const [lateReason, setLateReason] = useState('');
@@ -60,6 +62,13 @@ export default function LoginPage() {
 
   const errorMsg = login.isError ? login.error.message : '';
 
+  // Browsers expose Caps Lock state on key events (not on focus), so we read it here.
+  function trackCaps(e) {
+    if (typeof e.getModifierState === 'function') {
+      setCapsOn(e.getModifierState('CapsLock'));
+    }
+  }
+
   function handleSubmit(e) {
     e.preventDefault();
     if (login.isPending) return;
@@ -84,9 +93,10 @@ export default function LoginPage() {
                 className="login-error"
                 id="login-error"
                 role="alert"
-                style={{ display: 'block' }}
+                style={{ display: 'flex' }}
               >
-                {errorMsg}
+                <CircleAlert size={16} strokeWidth={1.9} aria-hidden="true" />
+                <span>{errorMsg}</span>
               </div>
             )}
             <form onSubmit={handleSubmit}>
@@ -94,31 +104,75 @@ export default function LoginPage() {
                 <label className="form-label" htmlFor="loginEmail">
                   Work email
                 </label>
-                <input
-                  className="form-input"
-                  type="email"
-                  id="loginEmail"
-                  placeholder="you@designtreeconsultants.com"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+                <div className="login-field">
+                  <Mail className="login-field-icon" size={16} strokeWidth={1.8} aria-hidden="true" />
+                  <input
+                    className="form-input"
+                    type="email"
+                    id="loginEmail"
+                    placeholder="you@designtreeconsultants.com"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    autoFocus
+                    required
+                    value={email}
+                    aria-invalid={login.isError || undefined}
+                    aria-describedby={login.isError ? 'login-error' : undefined}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (login.isError) login.reset();
+                    }}
+                  />
+                </div>
               </div>
               <div className="login-form-row">
                 <label className="form-label" htmlFor="loginPassword">
                   Password
                 </label>
-                <input
-                  className="form-input"
-                  type="password"
-                  id="loginPassword"
-                  placeholder="Password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+                <div className="login-field">
+                  <Lock className="login-field-icon" size={16} strokeWidth={1.8} aria-hidden="true" />
+                  <input
+                    className="form-input has-toggle"
+                    type={showPassword ? 'text' : 'password'}
+                    id="loginPassword"
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    aria-invalid={login.isError || undefined}
+                    aria-describedby={
+                      [login.isError && 'login-error', capsOn && 'login-caps']
+                        .filter(Boolean)
+                        .join(' ') || undefined
+                    }
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (login.isError) login.reset();
+                    }}
+                    onKeyDown={trackCaps}
+                    onKeyUp={trackCaps}
+                    onBlur={() => setCapsOn(false)}
+                  />
+                  <button
+                    type="button"
+                    className="login-reveal"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? (
+                      <EyeOff size={17} strokeWidth={1.8} aria-hidden="true" />
+                    ) : (
+                      <Eye size={17} strokeWidth={1.8} aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+                {capsOn && (
+                  <p className="login-caps" id="login-caps" role="status">
+                    Caps Lock is on.
+                  </p>
+                )}
               </div>
               <div className="login-button-frame">
                 <button
@@ -142,6 +196,13 @@ export default function LoginPage() {
                 </button>
               </div>
             </form>
+            <p className="login-help">
+              Forgot your password? Ask HR or your administrator to reset it.
+            </p>
+            <p className="login-help login-help--note">
+              Sign-ins are recorded for attendance. A sign-in after 9:45 needs
+              a reason.
+            </p>
           </div>
         </section>
 

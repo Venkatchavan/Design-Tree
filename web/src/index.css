@@ -5015,18 +5015,375 @@ table.data tr.row-click:hover {
     background: var(--surface);
     color: var(--ink);
 }
+
+/* ---------- Dropdowns: soft, minimal, custom chevron ---------- */
+select.filter-select:not([multiple]):not([size]),
+select.form-input:not([multiple]):not([size]) {
+    -webkit-appearance: none;
+    appearance: none;
+    min-height: 36px;
+    padding: 7px 34px 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background-color: #f8f9fc;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%235c6470' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px 12px;
+    color: var(--ink);
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    transition:
+        border-color 0.16s ease,
+        background-color 0.16s ease,
+        box-shadow 0.16s ease;
+}
+select.filter-select:not([multiple]):not([size]):hover:not(:disabled),
+select.form-input:not([multiple]):not([size]):hover:not(:disabled) {
+    border-color: var(--border-strong);
+    background-color: #fff;
+}
+select.filter-select:not([multiple]):not([size]):focus,
+select.form-input:not([multiple]):not([size]):focus {
+    outline: none;
+    border-color: var(--blueprint);
+    background-color: #fff;
+    box-shadow: 0 0 0 3px rgba(29, 104, 214, 0.16);
+}
+select.filter-select:not([multiple]):not([size]):focus-visible,
+select.form-input:not([multiple]):not([size]):focus-visible {
+    outline: none;
+}
+select.filter-select:disabled,
+select.form-input:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    background-color: var(--surface-alt);
+}
+select.filter-select option,
+select.form-input option {
+    background: #fff;
+    color: var(--ink);
+}
+
+/* Enhanced dropdowns (lib/enhanceSelects.js): the native select stays in the
+   DOM as the source of truth; a styled button + list sit in front of it. */
+select.dt-select-native {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+}
+button.dt-select {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 36px;
+    max-width: 100%;
+    padding: 7px 34px 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background-color: #f8f9fc;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%235c6470' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px 12px;
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.35;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        border-color 0.16s ease,
+        background-color 0.16s ease,
+        box-shadow 0.16s ease;
+}
+button.dt-select.form-input {
+    width: 100%;
+}
+button.dt-select .dt-select-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+button.dt-select.is-placeholder .dt-select-label {
+    color: var(--ink-faint);
+}
+button.dt-select:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    background-color: #fff;
+}
+button.dt-select:focus-visible,
+button.dt-select[aria-expanded="true"] {
+    outline: none;
+    border-color: var(--blueprint);
+    background-color: #fff;
+    box-shadow: 0 0 0 3px rgba(29, 104, 214, 0.16);
+}
+button.dt-select:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    background-color: var(--surface-alt);
+}
+
+/* The open list */
+.dt-pop {
+    position: fixed;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    padding: 5px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #fff;
+    box-shadow:
+        0 14px 34px -10px rgba(16, 24, 40, 0.28),
+        0 2px 6px rgba(16, 24, 40, 0.08);
+    font-family: var(--font-sans);
+    transform-origin: top left;
+    animation: dt-pop-in 0.14s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.dt-pop.is-above {
+    transform-origin: bottom left;
+}
+.dt-pop-search {
+    padding: 3px 3px 6px;
+}
+.dt-pop-search input {
+    width: 100%;
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: #f4f4f2;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+}
+.dt-pop-search input:focus {
+    background: #fff;
+    border-color: rgba(27, 36, 48, 0.22);
+}
+.dt-pop-list {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.dt-opt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1.35;
+    cursor: pointer;
+}
+.dt-opt > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.dt-opt.is-empty {
+    color: var(--ink-faint);
+}
+.dt-opt.is-active {
+    background: #f1f3f8;
+}
+.dt-opt[aria-selected="true"] {
+    color: var(--blueprint-dark);
+    font-weight: 600;
+}
+.dt-opt[aria-selected="true"] svg {
+    flex: none;
+    color: var(--blueprint);
+}
+.dt-opt[aria-disabled="true"] {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.dt-group {
+    padding: 9px 10px 4px;
+    color: var(--ink-faint);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.dt-empty {
+    padding: 12px 10px;
+    color: var(--ink-faint);
+    font-size: 12.5px;
+}
+@keyframes dt-pop-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* ---------- Expanding search (lib/enhanceSearch.js) ----------
+   A soft off-white circle with a magnifier that expands into the field. */
+.dt-search {
+    --dt-search-bg: #f4f4f2;
+    --dt-search-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%231b2430' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='7' cy='7' r='4.6'/%3E%3Cpath d='m10.5 10.5 3.2 3.2'/%3E%3C/svg%3E");
+    box-sizing: border-box;
+    height: 38px;
+    border-radius: 999px;
+    transition:
+        width 0.42s cubic-bezier(0.2, 0.8, 0.2, 1),
+        padding 0.42s cubic-bezier(0.2, 0.8, 0.2, 1),
+        background-color 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+}
+/* standalone input: the input itself is the circle */
+input.dt-search {
+    padding: 0 16px 0 42px;
+    border: 1px solid transparent;
+    background-color: var(--dt-search-bg);
+    background-image: var(--dt-search-icon);
+    background-repeat: no-repeat;
+    background-size: 16px 16px;
+    background-position: 14px center;
+    color: var(--ink);
+    font-size: 13px;
+    transition:
+        width 0.42s cubic-bezier(0.2, 0.8, 0.2, 1),
+        padding 0.42s cubic-bezier(0.2, 0.8, 0.2, 1),
+        background-position 0.42s cubic-bezier(0.2, 0.8, 0.2, 1),
+        background-color 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+}
+input.dt-search::placeholder {
+    color: #8b8f97;
+    transition: color 0.2s ease 0.15s;
+}
+input.dt-search:focus {
+    outline: none;
+    background-color: #fff;
+    border-color: rgba(27, 36, 48, 0.22);
+    box-shadow: 0 0 0 3px rgba(27, 36, 48, 0.08);
+}
+input.dt-search.is-open {
+    width: var(--dt-w) !important;
+    max-width: none !important;
+}
+input.dt-search.is-collapsed {
+    width: 38px !important;
+    min-width: 38px !important;
+    max-width: 38px !important;
+    padding: 0 !important;
+    background-position: center center;
+    color: transparent;
+    caret-color: transparent;
+    cursor: pointer;
+}
+input.dt-search.is-collapsed::placeholder {
+    color: transparent;
+    transition-delay: 0s;
+}
+input.dt-search.is-collapsed:hover {
+    background-color: #eceae6;
+}
+input.dt-search.is-collapsed:focus {
+    box-shadow: 0 0 0 3px rgba(27, 36, 48, 0.1);
+}
+
+/* top-bar search: the .search container is the circle */
+.search.dt-search-box {
+    padding: 0 14px;
+    gap: 8px;
+    overflow: hidden;
+    background: var(--dt-search-bg);
+    color: var(--ink);
+    cursor: text;
+}
+.search.dt-search-box:focus-within {
+    background: #fff;
+    box-shadow:
+        0 0 0 1px rgba(27, 36, 48, 0.22),
+        0 0 0 4px rgba(27, 36, 48, 0.08);
+}
+.search.dt-search-box.is-open {
+    width: var(--dt-w) !important;
+}
+.search.dt-search-box.is-collapsed {
+    width: 38px !important;
+    padding: 0 !important;
+    gap: 0;
+    justify-content: center;
+    cursor: pointer;
+}
+.search.dt-search-box.is-collapsed:hover {
+    background: #eceae6;
+}
+.search.dt-search-box .topbar-search-input,
+.search.dt-search-box input {
+    transition:
+        opacity 0.2s ease 0.1s,
+        width 0.42s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.search.dt-search-box.is-collapsed input {
+    width: 0;
+    flex: 0 0 0;
+    opacity: 0;
+    pointer-events: none;
+    transition-delay: 0s;
+}
+.search.dt-search-box svg {
+    flex: none;
+    color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dt-pop {
+        animation: none;
+    }
+    .dt-search,
+    input.dt-search {
+        transition: none;
+    }
+}
 .btn-primary {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: var(--ink);
+    background: linear-gradient(180deg, #313d4f 0%, var(--ink) 100%);
     color: #fff;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 8px 14px;
     font-size: 13px;
     font-weight: 500;
     white-space: nowrap;
+    cursor: pointer;
+    /* thin edge + top highlight + soft drop shadow; no layout-shifting border */
+    box-shadow:
+        inset 0 0 0 1px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.16),
+        0 1px 2px rgba(10, 20, 40, 0.3),
+        0 6px 12px -8px rgba(10, 20, 40, 0.55);
+    transition:
+        filter 0.16s ease,
+        transform 0.12s ease,
+        box-shadow 0.16s ease;
 }
 .btn-primary,
 .approve-btn {
@@ -5036,8 +5393,22 @@ table.data tr.row-click:hover {
     width: fit-content;
     max-width: 100%;
 }
-.btn-primary:hover {
-    background: var(--blueprint-dark);
+.btn-primary:hover:not(:disabled) {
+    filter: brightness(1.18);
+}
+.btn-primary:active:not(:disabled) {
+    filter: brightness(0.95);
+    transform: translateY(1px);
+    box-shadow:
+        inset 0 0 0 1px rgba(0, 0, 0, 0.45),
+        inset 0 2px 4px rgba(0, 0, 0, 0.35),
+        0 1px 1px rgba(10, 20, 40, 0.3);
+}
+.btn-primary:disabled {
+    cursor: not-allowed;
+    filter: saturate(0.6) brightness(1.15);
+    opacity: 0.6;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 .btn-primary .icon {
     width: 14px;
@@ -5685,12 +6056,19 @@ table.data tr.row-click:hover {
 }
 .login-error {
     display: none;
+    align-items: flex-start;
+    gap: 9px;
     background: var(--rust-bg);
     color: var(--rust-dark);
     font-size: 12.5px;
-    padding: 9px 12px;
+    line-height: 1.45;
+    padding: 10px 12px;
     border-radius: var(--radius);
-    margin-bottom: 14px;
+    margin-bottom: 16px;
+}
+.login-error svg {
+    flex: none;
+    margin-top: 1px;
 }
 
 /* Discipline tones, shared by the scene and the readout */
@@ -6124,96 +6502,140 @@ table.data tr.row-click:hover {
 .login-screen .login-form-row .form-input:hover {
     border-color: var(--border-strong);
 }
-
-/* ---------- Sign-in button: white / black text, orbiting blue→violet ring ---------- */
-.login-screen .login-button-frame {
+.login-screen .login-field {
     position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    width: 100%;
-    margin-top: 8px;
-    padding: 2px;
-    border-radius: 11px;
-    background: rgba(29, 43, 99, 0.16);
-    box-shadow: 0 10px 24px -14px rgba(29, 43, 99, 0.55);
-    transition: box-shadow 0.25s ease;
 }
-.login-screen .login-button-frame:hover {
-    box-shadow: 0 14px 30px -12px rgba(91, 155, 240, 0.6);
+.login-screen .login-field .form-input {
+    padding-left: 40px;
 }
-.login-screen .login-button-frame:focus-within {
-    outline: 2px solid #5b9bf0;
-    outline-offset: 3px;
+.login-screen .login-field .form-input.has-toggle {
+    padding-right: 46px;
 }
-.login-screen .login-button-frame::before {
-    content: "";
+.login-screen .login-field-icon {
     position: absolute;
-    z-index: 0;
-    left: -50%;
+    left: 14px;
     top: 50%;
-    width: 200%;
-    aspect-ratio: 1;
     transform: translateY(-50%);
+    color: var(--ink-faint);
     pointer-events: none;
-    background: conic-gradient(
-        from 0deg,
-        transparent 0deg 205deg,
-        rgba(91, 155, 240, 0.3) 245deg,
-        #5b9bf0 282deg,
-        #8c7df2 322deg,
-        #2b3f9c 349deg,
-        transparent 357deg 360deg
-    );
-    animation: login-ring-spin 4.8s linear infinite;
+    transition: color 0.18s ease;
+}
+.login-screen .login-field:focus-within .login-field-icon {
+    color: var(--blueprint);
+}
+.login-screen .login-field .form-input[aria-invalid="true"] {
+    border-color: var(--rust-dark);
+}
+.login-screen .login-reveal {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ink-muted);
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease;
+}
+.login-screen .login-reveal:hover {
+    background: var(--surface-alt);
+    color: var(--ink);
+}
+.login-screen .login-reveal:focus-visible {
+    outline: 2px solid var(--blueprint);
+    outline-offset: 0;
+}
+.login-screen .login-caps {
+    margin: 7px 0 0;
+    color: var(--rust-dark);
+    font-size: 12px;
+    font-weight: 500;
+}
+.login-screen .login-help {
+    margin: 18px 0 0;
+    color: var(--ink-muted);
+    font-size: 12.5px;
+    line-height: 1.55;
+}
+.login-screen .login-help--note {
+    margin-top: 10px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    color: var(--ink-faint);
+    font-size: 12px;
+}
+
+/* ---------- Sign-in button: vivid blue gradient, thin edge ---------- */
+.login-screen .login-button-frame {
+    width: 100%;
+    margin: 10px 0 6px;
 }
 .login-screen .login-btn {
-    position: relative;
-    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 10px;
     width: 100%;
-    min-height: 46px;
-    padding: 10px 14px;
-    border: 0;
-    border-radius: 9px;
-    background: #fff;
-    color: #0a0e1a;
+    min-height: 48px;
+    padding: 10px 16px;
+    border: 1px solid #1f4fc4;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #3f82f8 0%, #2a63ea 100%);
+    color: #fff;
     font-family: var(--font-sans);
-    font-size: 13.5px;
+    font-size: 14.5px;
     font-weight: 600;
-    letter-spacing: -0.005em;
+    letter-spacing: 0;
     cursor: pointer;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.28),
+        0 1px 2px rgba(20, 50, 130, 0.35),
+        0 8px 16px -10px rgba(42, 99, 234, 0.7);
     transition:
-        background 0.18s ease,
-        transform 0.18s ease;
+        filter 0.16s ease,
+        transform 0.12s ease,
+        box-shadow 0.16s ease;
 }
-.login-screen .login-btn:hover {
-    background: #f3f6fd;
+.login-screen .login-btn:hover:not(:disabled) {
+    filter: brightness(1.07) saturate(1.05);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.32),
+        0 1px 2px rgba(20, 50, 130, 0.35),
+        0 12px 20px -10px rgba(42, 99, 234, 0.8);
 }
-.login-screen .login-btn:active {
-    transform: scale(0.99);
+.login-screen .login-btn:active:not(:disabled) {
+    filter: brightness(0.96);
+    transform: translateY(1px);
+    box-shadow:
+        inset 0 2px 4px rgba(10, 30, 90, 0.3),
+        0 1px 1px rgba(20, 50, 130, 0.3);
 }
 .login-screen .login-btn:disabled {
-    cursor: wait;
-    opacity: 0.8;
+    cursor: progress;
+    filter: brightness(0.94);
 }
 .login-screen .login-btn:focus-visible {
-    outline: none;
+    outline: 2px solid #2a63ea;
+    outline-offset: 3px;
 }
 .login-screen .login-button-arrow {
-    color: #0a0e1a;
     transition: transform 0.18s ease;
 }
-.login-screen .login-button-frame:hover .login-button-arrow {
+.login-screen .login-btn:hover:not(:disabled) .login-button-arrow {
     transform: translateX(3px);
 }
 .login-screen .login-button-spinner {
-    width: 14px;
-    height: 14px;
-    border: 1.5px solid rgba(10, 14, 26, 0.22);
-    border-top-color: #0a0e1a;
+    width: 15px;
+    height: 15px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #fff;
     border-radius: 50%;
     animation: login-spinner 0.8s linear infinite;
 }
@@ -6275,11 +6697,6 @@ table.data tr.row-click:hover {
 }
 
 /* ---------- Keyframes ---------- */
-@keyframes login-ring-spin {
-    to {
-        transform: translateY(-50%) rotate(1turn);
-    }
-}
 @keyframes login-spinner {
     to {
         transform: rotate(1turn);
@@ -6384,10 +6801,6 @@ table.data tr.row-click:hover {
     .login-iso .iso-route-flow,
     .login-iso .iso-ping {
         animation: none;
-    }
-    .login-screen .login-button-frame::before {
-        animation: none;
-        transform: translateY(-50%) rotate(-40deg);
     }
     .login-screen .login-iso .iso-face {
         animation: none;
