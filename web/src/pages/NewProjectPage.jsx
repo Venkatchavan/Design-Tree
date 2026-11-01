@@ -39,7 +39,7 @@ const BLANK = {
   code: '',
   usedFor: '',
   clientName: '',
-  related: { projectDirector: '' },
+  related: { projectDirector: '', projectDirectorDesignation: '', projectHead: '', projectHeadDesignation: '' },
   sourcePerson: '', referral: '', startDate: '', expectedCompletion: '', actualCompletion: '',
   state: '',
   projectType: '',
@@ -59,6 +59,16 @@ const BLANK = {
 
 function cloneBlank() {
   return JSON.parse(JSON.stringify(BLANK));
+}
+
+// Only send the related-user fields that have a value.
+function relatedPayload(related) {
+  const out = {};
+  for (const key of ['projectDirector', 'projectDirectorDesignation', 'projectHead', 'projectHeadDesignation']) {
+    const value = String(related?.[key] ?? '').trim();
+    if (value) out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function numOrUndef(v) {
@@ -159,9 +169,17 @@ export default function NewProjectPage({ bootstrap }) {
       services: p.services ?? [],
       location: { ...BLANK.location, ...(p.location ?? {}) },
       contacts: { ...f.contacts, client: p.contacts?.client ?? null },
-      related: { ...f.related, projectDirector: p.related?.projectDirector ?? '' },
+      related: {
+        ...f.related,
+        projectDirector: p.related?.projectDirector ?? '',
+        projectDirectorDesignation: p.related?.projectDirectorDesignation ?? '',
+        projectHead: p.related?.projectHead ?? '',
+        projectHeadDesignation: p.related?.projectHeadDesignation ?? '',
+      },
     }));
-    setJobNumberMode(p.jobNumber ? 'manual' : 'automatic');
+    // The job number belongs to Salesforce for imported projects: copied as-is,
+    // left blank when Salesforce has none, never auto-generated.
+    setJobNumberMode('salesforce');
     setSalesforceSource(item);
     setFormError('');
   }
@@ -182,7 +200,7 @@ export default function NewProjectPage({ bootstrap }) {
       services: blank.services,
       location: blank.location,
       contacts: { ...f.contacts, client: null },
-      related: { ...f.related, projectDirector: blank.related.projectDirector },
+      related: { ...f.related, ...blank.related },
     }));
     setJobNumberMode('automatic');
     setSalesforceSource(null);
@@ -268,9 +286,7 @@ export default function NewProjectPage({ bootstrap }) {
       code: form.code.trim() || undefined,
       usedFor: form.usedFor.trim() || undefined,
       clientName: form.clientName.trim() || undefined,
-      related: form.related.projectDirector.trim()
-        ? { projectDirector: form.related.projectDirector.trim() }
-        : undefined,
+      related: relatedPayload(form.related),
       sourcePerson: form.sourcePerson.trim(), referral: form.referral.trim(),
       startDate: form.startDate || undefined, expectedCompletion: form.expectedCompletion || undefined, actualCompletion: form.actualCompletion || undefined,
       state: form.state || undefined,
@@ -278,7 +294,7 @@ export default function NewProjectPage({ bootstrap }) {
       branch: form.branch || undefined,
       services: form.services ?? [],
       entityName: form.entityName.trim() || undefined,
-      jobNumber: jobNumberMode === 'manual' ? form.jobNumber.trim() || undefined : undefined,
+      jobNumber: jobNumberMode === 'automatic' ? undefined : form.jobNumber.trim() || undefined,
       location: form.location.label.trim()
         ? {
             label: form.location.label.trim(),
@@ -486,24 +502,39 @@ export default function NewProjectPage({ bootstrap }) {
             {['sourcePerson','referral','startDate','expectedCompletion','actualCompletion'].map((key)=><F key={key} label={({sourcePerson:'Source person',referral:'Referral',startDate:'Start date',expectedCompletion:'Expected completion',actualCompletion:'Actual completion'})[key]}><input className="form-input" aria-label={key} type={key==='sourcePerson'||key==='referral'?'text':'date'} value={form[key]} onChange={e=>set(key,e.target.value)}/></F>)}
             <F label="Job Number">
               <div className="field-grid" style={{ gridTemplateColumns: 'minmax(150px, 0.7fr) minmax(180px, 1fr)', gap: 8 }}>
-                <select
-                  className="form-input"
-                  aria-label="Job number mode"
-                  value={jobNumberMode}
-                  onChange={(e) => {
-                    setJobNumberMode(e.target.value);
-                    if (e.target.value === 'automatic') set('jobNumber', '');
-                  }}
-                >
-                  <option value="automatic">Automatic</option>
-                  <option value="manual">Manual</option>
-                </select>
-                {jobNumberMode === 'manual' ? (
-                  <input className="form-input" placeholder="Enter job number" value={form.jobNumber} onChange={(e) => set('jobNumber', e.target.value)} required />
+                {jobNumberMode === 'salesforce' ? (
+                  <>
+                    <span style={{ alignSelf: 'center', fontSize: 13 }}>From Salesforce</span>
+                    <input
+                      className="form-input"
+                      aria-label="Salesforce job number"
+                      value={form.jobNumber}
+                      placeholder="No job number in Salesforce"
+                      readOnly
+                    />
+                  </>
                 ) : (
-                  <span style={{ color: 'var(--ink-muted)', alignSelf: 'center' }}>
-                    {nextJobQ.data?.jobNumber ? `Next: ${nextJobQ.data.jobNumber}` : 'Generated automatically'}
-                  </span>
+                  <>
+                    <select
+                      className="form-input"
+                      aria-label="Job number mode"
+                      value={jobNumberMode}
+                      onChange={(e) => {
+                        setJobNumberMode(e.target.value);
+                        if (e.target.value === 'automatic') set('jobNumber', '');
+                      }}
+                    >
+                      <option value="automatic">Automatic</option>
+                      <option value="manual">Manual</option>
+                    </select>
+                    {jobNumberMode === 'manual' ? (
+                      <input className="form-input" placeholder="Enter job number" value={form.jobNumber} onChange={(e) => set('jobNumber', e.target.value)} required />
+                    ) : (
+                      <span style={{ color: 'var(--ink-muted)', alignSelf: 'center' }}>
+                        {nextJobQ.data?.jobNumber ? `Next: ${nextJobQ.data.jobNumber}` : 'Generated automatically'}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             </F>
@@ -545,6 +576,15 @@ export default function NewProjectPage({ bootstrap }) {
             </F>
             <F label="Project Director">
               <input className="form-input" placeholder="e.g. Name from Salesforce" value={form.related.projectDirector} onChange={(e) => setRelated('projectDirector', e.target.value)} />
+            </F>
+            <F label="Project Director Designation">
+              <input className="form-input" value={form.related.projectDirectorDesignation} onChange={(e) => setRelated('projectDirectorDesignation', e.target.value)} />
+            </F>
+            <F label="Project Head">
+              <input className="form-input" value={form.related.projectHead} onChange={(e) => setRelated('projectHead', e.target.value)} />
+            </F>
+            <F label="Project Head Designation">
+              <input className="form-input" value={form.related.projectHeadDesignation} onChange={(e) => setRelated('projectHeadDesignation', e.target.value)} />
             </F>
             <F label="Building / Street Address 1"><input className="form-input" value={form.location.address1} onChange={(e) => setLoc('address1', e.target.value)} /></F>
             <F label="Building / Street Address 2"><input className="form-input" value={form.location.address2} onChange={(e) => setLoc('address2', e.target.value)} /></F>

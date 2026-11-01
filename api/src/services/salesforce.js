@@ -31,6 +31,32 @@ const PROJECT_FIELDS = [
   'LastModifiedDate',
 ];
 
+// Present on the client's org but not on every fixture. They are selected
+// only when the object's describe lists them, so a missing one is skipped
+// instead of failing the whole query.
+const OPTIONAL_FIELDS = [
+  'Building_Street_Address__c',
+  'Building_Street_Address_2__c',
+  'City_and_State_Zip_Code__c',
+  'Project_Director_Designation__c',
+  'Project_Head__c',
+  'Project_Head_Designation__c',
+  'Has_Proposal__c',
+];
+
+// On the client's org these are lookups (Job Number, Entity, Customer Group,
+// Contact), so the column holds a record id and the readable value lives on
+// the relationship. On a dev org they may be plain text. The describe call
+// decides which, per field.
+const LOOKUP_FIELDS = [
+  'Job_Numbers__c',
+  'Entity_Name__c',
+  'Customer_Group__c',
+  'Contact_Person_Name__c',
+];
+const CONTACT_SUBFIELDS = ['Name', 'Salutation', 'Title', 'Email', 'Phone'];
+const SCHEMA_TTL_MS = 60 * 60 * 1000;
+
 // Salesforce service labels -> DesignTree canonical service codes.
 const SERVICE_ALIASES = new Map([
   ['str', 'STR'],
@@ -69,6 +95,29 @@ export class SalesforceError extends Error {
 
 function text(value) {
   return value == null ? '' : String(value).trim();
+}
+
+// Readable value of a field that is text on one org and a lookup on another.
+// Never returns a bare Salesforce id: if the relationship was not selected the
+// result is blank, so an id can not end up in the New Project form.
+function lookupText(record, field, sub = 'Name') {
+  const rel = field.replace(/__c$/, '__r');
+  const related = record?.[rel];
+  if (related && typeof related === 'object') return text(related[sub]);
+  if (sub !== 'Name') return '';
+  const raw = text(record?.[field]);
+  return looksLikeId(raw) ? '' : raw;
+}
+
+// A bare Salesforce id: 15 or 18 letters and digits with both present. Job
+// numbers such as "TS-2526-604" contain "-", so they never match.
+function looksLikeId(value) {
+  return /^(?:[A-Za-z0-9]{15}|[A-Za-z0-9]{18})$/.test(value) && /\d/.test(value) && /[A-Za-z]/.test(value);
+}
+
+function validEmail(value) {
+  const v = text(value);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? v.toLowerCase() : '';
 }
 
 function escapeSoqlString(value) {
@@ -118,11 +167,19 @@ export function normalizeProject(
 ) {
   const name = text(record?.Name);
   const projectCode = text(record?.Project_Code__c);
-  const jobNumber = text(record?.Job_Numbers__c);
-  const usedFor = text(record?.Used_For__c);
-  const entityName = text(record?.Entity_Name__c);
-  const customerGroup = text(record?.Customer_Group__c);
-  const contactName = text(record?.Contact_Person_Name__c);
+  const jobNumber = lookupText(record, 'Job_Numbers__c');
+  // Used For is often blank on real records; the work-order / proposal flags
+  // are what the client maintains, so fall back to them.
+  const usedFor =
+    text(record?.Used_For__c) ||
+    (record?.Has_Work_Order__c === true ? 'WO' : record?.Has_Proposal__c === true ? 'Proposal' : '');
+  const entityName = lookupText(record, 'Entity_Name__c');
+  const customerGroup = lookupText(record, 'Customer_Group__c');
+  const contactName = lookupText(record, 'Contact_Person_Name__c');
+  const contactEmail = validEmail(lookupText(record, 'Contact_Person_Name__c', 'Email'));
+  const contactPhone = lookupText(record, 'Contact_Person_Name__c', 'Phone');
+  const contactTitle = lookupText(record, 'Contact_Person_Name__c', 'Title');
+  const contactSalutation = lookupText(record, 'Contact_Person_Name__c', 'Salutation');
   const locationLabel = text(record?.Location__c);
   const state = text(record?.State__c);
 
@@ -173,9 +230,10 @@ export function normalizeProject(
     branch,
     location: {
       label: locationLabel,
-      address1: '',
-      address2: '',
-      city: '',
+      address1: text(record?.Building_Street_Address__c),
+      address2: text(record?.Building_Street_Address_2__c),
+      // One free-text field on the Salesforce side ("City and State Zip Code").
+      city: text(record?.City_and_State_Zip_Code__c),
       state,
       zip: '',
     },
@@ -184,8 +242,12 @@ export function normalizeProject(
       ? {
           contacts: {
             client: {
+              ...(contactSalutation ? { salutation: contactSalutation } : {}),
               ...(contactName ? { name: contactName } : {}),
+              ...(contactTitle ? { designation: contactTitle } : {}),
               ...(customerGroup ? { company: customerGroup } : {}),
+              ...(contactPhone ? { phone: contactPhone } : {}),
+              ...(contactEmail ? { email: contactEmail } : {}),
             },
           },
         }
@@ -193,6 +255,13 @@ export function normalizeProject(
     related: {
       ...(text(record?.Project_Director__c)
         ? { projectDirector: text(record.Project_Director__c) }
+        : {}),
+      ...(text(record?.Project_Director_Designation__c)
+        ? { projectDirectorDesignation: text(record.Project_Director_Designation__c) }
+        : {}),
+      ...(text(record?.Project_Head__c) ? { projectHead: text(record.Project_Head__c) } : {}),
+      ...(text(record?.Project_Head_Designation__c)
+        ? { projectHeadDesignation: text(record.Project_Head_Designation__c) }
         : {}),
     },
   };
@@ -361,9 +430,78 @@ export function createSalesforceService({
     }
   }
 
-  function selectClause() {
+  // Field types of the project object, from Salesforce's describe call. Used
+  // to tell lookups from text and to skip optional fields the org lacks. If
+  // describe fails the connector falls back to the plain-text field list.
+  let cachedSchema = null;
+  let schemaInFlight = null;
+
+  async function loadSchema() {
     const cfg = readSettings();
-    return `SELECT ${PROJECT_FIELDS.join(', ')} FROM ${cfg.projectObject}`;
+    try {
+      const data = await apiRequest(
+        `/services/data/v${cfg.apiVersion}/sobjects/${cfg.projectObject}/describe`,
+      );
+      const fields = new Map();
+      for (const f of Array.isArray(data?.fields) ? data.fields : []) {
+        fields.set(f.name, {
+          type: f.type,
+          relationshipName: f.relationshipName ?? null,
+          referenceTo: Array.isArray(f.referenceTo) ? f.referenceTo : [],
+        });
+      }
+      return { object: cfg.projectObject, fields, loadedAt: now() };
+    } catch (err) {
+      if (err instanceof SalesforceError && err.code === 'SALESFORCE_AUTH') throw err;
+      return { object: cfg.projectObject, fields: null, loadedAt: now() };
+    }
+  }
+
+  async function getSchema() {
+    const cfg = readSettings();
+    if (
+      cachedSchema &&
+      cachedSchema.object === cfg.projectObject &&
+      now() - cachedSchema.loadedAt < SCHEMA_TTL_MS
+    ) {
+      return cachedSchema;
+    }
+    if (!schemaInFlight) {
+      schemaInFlight = loadSchema()
+        .then((schema) => {
+          cachedSchema = schema;
+          return schema;
+        })
+        .finally(() => {
+          schemaInFlight = null;
+        });
+    }
+    return schemaInFlight;
+  }
+
+  // Relationship path for a lookup field, or null when the field is plain text.
+  function lookupOf(schema, field) {
+    const meta = schema.fields?.get(field);
+    return meta?.type === 'reference' && meta.relationshipName ? meta : null;
+  }
+
+  async function selectClause() {
+    const cfg = readSettings();
+    const schema = await getSchema();
+    const columns = [...PROJECT_FIELDS];
+    if (schema.fields) {
+      for (const field of OPTIONAL_FIELDS) if (schema.fields.has(field)) columns.push(field);
+      for (const field of LOOKUP_FIELDS) {
+        const meta = lookupOf(schema, field);
+        if (!meta) continue;
+        const subs =
+          field === 'Contact_Person_Name__c' && meta.referenceTo.includes('Contact')
+            ? CONTACT_SUBFIELDS
+            : ['Name'];
+        for (const sub of subs) columns.push(`${meta.relationshipName}.${sub}`);
+      }
+    }
+    return { schema, soql: `SELECT ${columns.join(', ')} FROM ${cfg.projectObject}` };
   }
 
   async function searchProjects({ q, includeProposals = false, limit = 20 } = {}) {
@@ -376,18 +514,25 @@ export function createSalesforceService({
     }
 
     const like = `'%${escapeLike(term)}%'`;
+    const { schema, soql: selectSoql } = await selectClause();
+    // LIKE does not work on a lookup column, so search the related record's name.
+    const searchable = (field) => {
+      const meta = lookupOf(schema, field);
+      return meta ? `${meta.relationshipName}.Name` : field;
+    };
     const matches = [
       `Name LIKE ${like}`,
       `Project_Code__c LIKE ${like}`,
-      `Customer_Group__c LIKE ${like}`,
-      `Entity_Name__c LIKE ${like}`,
+      `${searchable('Customer_Group__c')} LIKE ${like}`,
+      `${searchable('Entity_Name__c')} LIKE ${like}`,
+      `${searchable('Job_Numbers__c')} LIKE ${like}`,
     ];
     const filters = [`(${matches.join(' OR ')})`];
     if (!includeProposals) filters.push('Has_Work_Order__c = true');
 
     const size = Math.min(50, Math.max(1, Number(limit) || 20));
     const cfg = readSettings();
-    const soql = `${selectClause()} WHERE ${filters.join(' AND ')} ORDER BY LastModifiedDate DESC LIMIT ${size}`;
+    const soql = `${selectSoql} WHERE ${filters.join(' AND ')} ORDER BY LastModifiedDate DESC LIMIT ${size}`;
     const data = await apiRequest(
       `/services/data/v${cfg.apiVersion}/query?q=${encodeURIComponent(soql)}`,
     );
@@ -408,7 +553,8 @@ export function createSalesforceService({
     }
 
     const cfg = readSettings();
-    const soql = `${selectClause()} WHERE Id = '${recordId}' LIMIT 1`;
+    const { soql: selectSoql } = await selectClause();
+    const soql = `${selectSoql} WHERE Id = '${recordId}' LIMIT 1`;
     const data = await apiRequest(
       `/services/data/v${cfg.apiVersion}/query?q=${encodeURIComponent(soql)}`,
     );
@@ -428,6 +574,9 @@ export function createSalesforceService({
     searchProjects,
     getProjectRecord,
     _clearToken: clearToken,
+    _clearSchema: () => {
+      cachedSchema = null;
+    },
   };
 }
 

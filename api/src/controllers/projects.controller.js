@@ -435,7 +435,10 @@ export async function createProject(req, res, next) {
       return res.status(400).json({ message: 'Choose a valid SPOC.' });
     }
     const code = (parsed.data.code?.trim() || await generateProjectCode()).toUpperCase();
-    const jobNumber = parsed.data.jobNumber?.trim() || await generateJobNumber();
+    // Salesforce owns the job number of imported projects: keep what it sent
+    // (possibly blank) instead of generating a WO number.
+    const jobNumber = parsed.data.jobNumber?.trim()
+      || (salesforceRecordId ? '' : await generateJobNumber());
     const activationStatus = parsed.data.activation?.status ?? 'Pending';
     const project = await Project.create({
       ...parsed.data,

@@ -181,6 +181,23 @@ Field mapping:
 | `Used_For__c` | `usedFor` |
 | `State__c` / `Location__c` / `Project_Type__c` | matching form fields |
 
+Also read when the org has them (checked with Salesforce's describe call, so a
+missing field is skipped): `Building_Street_Address__c` / `_2__c` and
+`City_and_State_Zip_Code__c` → location lines, `Project_Director_Designation__c`,
+`Project_Head__c`, `Project_Head_Designation__c`, `Has_Proposal__c`.
+
+Lookups vs text: on the client's org `Job_Numbers__c`, `Entity_Name__c`,
+`Customer_Group__c` and `Contact_Person_Name__c` are lookups, so the connector
+selects `Job_Numbers__r.Name` etc. and searches the related name. On this dev
+org they are text and are read directly. The connector never imports a bare
+record id. For the contact lookup it also reads Salutation, Title, Email and
+Phone. `Used_For__c` is blank on many real records, so a work order
+(`Has_Work_Order__c`) imports as `WO` and a proposal as `Proposal`.
+
+The job number is copied from Salesforce and is read-only in the form. If
+Salesforce has none it stays blank; DesignTree never generates one for an
+imported project.
+
 Unknown branches and services are reported as warnings and left blank/omitted.
 The unique sparse `salesforceRecordId` index prevents the same Salesforce record
 being imported twice; a duplicate returns `409` with the existing project.
