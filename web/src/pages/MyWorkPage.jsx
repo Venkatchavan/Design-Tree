@@ -135,7 +135,6 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
   const [date, setDate] = useState(todayISO());
   const [extraHoursReason, setExtraHoursReason] = useState('');
   const [err, setErr] = useState('');
-  const [ok, setOk] = useState('');
   const pendingLogout = isPendingLogout();
   // Day's extra-hours threshold (mirrors EXTRA_HOURS_THRESHOLD in
   // api/src/config/attendance.js; the server enforces it as well).
@@ -184,11 +183,11 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
   }, [teams, project, preview]);
 
   const create = useMutation({
+    meta: { success: 'Submitted for team lead action.' },
     mutationFn: (body) => workEntriesApi.create(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-work-entries'] });
       queryClient.invalidateQueries({ queryKey: ['work-entries'] });
-      setOk('Submitted for team lead action.');
       setErr('');
       setAssignedId('');
       setHours('');
@@ -203,7 +202,6 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
     },
     onError: (e) => {
       setErr(e.message);
-      setOk('');
     },
   });
 
@@ -215,7 +213,6 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
   function handleSubmit(e) {
     e.preventDefault();
     setErr('');
-    setOk('');
     if (!project) {
       setErr('Select a project.');
       return;
@@ -437,7 +434,6 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
             />
           </div>
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-          {ok && <div style={{ color: 'var(--forest-dark)', fontSize: 13, marginBottom: 10 }}>{ok}</div>}
           <button type="submit" className="btn-primary" disabled={create.isPending}>
             {create.isPending ? 'Submitting…' : 'Submit for team lead action'}
           </button>

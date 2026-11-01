@@ -5691,6 +5691,188 @@ button.dt-date {
     background: var(--control-bg);
     color: var(--ink);
 }
+/* ---------- Toasts (lib/toast.js + components/ToastViewport.jsx) ---------- */
+.dt-toast-viewport {
+    position: fixed;
+    left: 50%;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    z-index: 5000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(calc(100% - 32px), 26rem);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+.dt-toast {
+    --toast-fg: var(--blueprint-dark);
+    --toast-bg: var(--blueprint-bg);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 10px 12px 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow:
+        0 14px 34px -10px rgba(16, 24, 40, 0.28),
+        0 2px 6px rgba(16, 24, 40, 0.08);
+    pointer-events: auto;
+    touch-action: pan-y;
+    cursor: grab;
+    animation: dt-toast-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.dt-toast.is-dragging {
+    cursor: grabbing;
+    user-select: none;
+}
+.dt-toast.is-leaving {
+    animation: dt-toast-out 0.18s ease-in forwards;
+}
+.dt-toast--success {
+    --toast-fg: var(--forest-dark);
+    --toast-bg: var(--forest-bg);
+}
+.dt-toast--error {
+    --toast-fg: var(--rust-dark);
+    --toast-bg: var(--rust-bg);
+}
+.dt-toast--warning {
+    --toast-fg: var(--amber-dark);
+    --toast-bg: var(--amber-bg);
+}
+.dt-toast-icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--toast-bg);
+    color: var(--toast-fg);
+}
+.dt-toast-check path {
+    stroke-dasharray: 24;
+    stroke-dashoffset: 24;
+    animation: dt-toast-draw 0.42s cubic-bezier(0.65, 0, 0.35, 1) 0.12s forwards;
+}
+.dt-toast-text {
+    flex: 1;
+    min-width: 0;
+    padding-top: 4px;
+}
+.dt-toast-title {
+    overflow: hidden;
+    color: var(--ink);
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    animation: dt-toast-copy 0.22s ease-out;
+}
+.dt-toast-desc {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    margin-top: 2px;
+    color: var(--ink-muted);
+    font-size: 12.5px;
+    line-height: 1.45;
+    animation: dt-toast-copy 0.22s ease-out;
+}
+.dt-toast-action {
+    flex: none;
+    align-self: center;
+    padding: 5px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.dt-toast-action:hover {
+    background: var(--control-bg);
+}
+.dt-toast-close {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--ink-faint);
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease;
+}
+.dt-toast-close:hover {
+    background: var(--control-bg);
+    color: var(--ink);
+}
+.dt-toast-action:focus-visible,
+.dt-toast-close:focus-visible {
+    outline: 2px solid var(--blueprint);
+    outline-offset: 1px;
+}
+@keyframes dt-toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.96);
+    }
+}
+@keyframes dt-toast-out {
+    to {
+        opacity: 0;
+        transform: translateY(8px) scale(0.97);
+    }
+}
+@keyframes dt-toast-draw {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+@keyframes dt-toast-copy {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+}
+@keyframes dt-toast-fade {
+    from {
+        opacity: 0;
+    }
+}
+@keyframes dt-toast-fade-out {
+    to {
+        opacity: 0;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .dt-toast {
+        cursor: default;
+        animation: dt-toast-fade 0.18s ease-out;
+    }
+    .dt-toast.is-leaving {
+        animation: dt-toast-fade-out 0.18s ease-in forwards;
+    }
+    .dt-toast-check path {
+        animation: none;
+        stroke-dashoffset: 0;
+    }
+    .dt-toast-title,
+    .dt-toast-desc {
+        animation: none;
+    }
+}
 @keyframes dt-pop-in {
     from {
         opacity: 0;
@@ -7679,7 +7861,6 @@ input[type="file"]:disabled::file-selector-button {
 #finOccPanel .hist time{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-3);display:block}
 #finOccPanel .upl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 #finOccPanel .hint{font-size:12px;color:var(--ink-3)}
-#finOccPanel .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:13px;z-index:60;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
 #finOccPanel .banner{margin-top:4px;font-size:12.5px;color:var(--warn);background:var(--warn-soft);border-radius:8px;padding:7px 12px}
 @media (prefers-reduced-motion:no-preference){
   #finOccPanel .drawer{animation:finocc-slide .18s ease-out}

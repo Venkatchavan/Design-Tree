@@ -95,6 +95,7 @@ export function ProjectHold({ project }) {
   const [status, setStatus] = useState(project.status === 'On Hold' ? 'On Hold' : 'Active');
   const [reason, setReason] = useState('');
   const save = useMutation({
+    meta: { success: 'Project status saved.' },
     mutationFn: () => projectsApi.updateHold(project._id, { status, reason: reason.trim() }),
     onSuccess: () => {
       for (const key of ['project', 'projects', 'projects-stats', 'projects-summary', 'projects-filters', 'my-teams', 'spoc-assigned-projects']) qc.invalidateQueries({ queryKey: [key] });
@@ -109,7 +110,7 @@ export function ProjectHold({ project }) {
         <label className="form-label">Project status<select aria-label="Project hold status" className="filter-select" value={status} onChange={e => setStatus(e.target.value)}><option>Active</option><option>On Hold</option></select></label>
         <label className="form-label">Reason<textarea aria-label="Project status reason" className="form-input" required maxLength={2000} value={reason} onChange={e => setReason(e.target.value)} /></label>
       </div>
-      {errBox(save.error)}{save.isSuccess && <p role="status">Project status saved.</p>}
+      {errBox(save.error)}
       <button type="submit" className="btn-primary" disabled={save.isPending || !reason.trim()}>{save.isPending ? 'Saving…' : 'Save project status'}</button>
     </form> : <p>Completed projects cannot be placed on hold here.</p>}
   </Panel>;

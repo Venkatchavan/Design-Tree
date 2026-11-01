@@ -1,5 +1,6 @@
 import EmployeeSelect from '../components/EmployeeSelect.jsx';
 import { useState } from 'react';
+import { toast } from '../lib/toast.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_BASE, request as apiRequest, employeesApi, projectsApi } from '../lib/api.js';
 import { certificatesApi } from '../lib/phase3Api.js';
@@ -115,7 +116,7 @@ export default function CertificatesPage({ bootstrap }) {
     try {
       await certificatesApi.addTemplate(category.trim(), file);
       qc.invalidateQueries({ queryKey: ['certificate-templates'] });
-      setFile(null); setCategory(''); setMessage('Template uploaded.');
+      setFile(null); setCategory(''); setMessage(''); toast.success('Template uploaded.');
     } catch (err) { setMessage(err.message); }
   }
 

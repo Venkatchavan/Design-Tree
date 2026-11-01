@@ -1042,7 +1042,6 @@ function DeliverableListPanel({ teamProjects, members }) {
   const [projectId, setProjectId] = useState('');
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState('');
-  const [ok, setOk] = useState('');
   const activeProject = projectId || String(teamProjects[0]?._id ?? teamProjects[0]?.id ?? '');
   const listQ = useQuery({
     queryKey: ['tl-deliverables', activeProject],
@@ -1067,6 +1066,7 @@ function DeliverableListPanel({ teamProjects, members }) {
     queryClient.invalidateQueries({ queryKey: ['deliverables'] });
   };
   const save = useMutation({
+    meta: { success: 'List saved.' },
     mutationFn: async (list) => {
       const valid = list.filter((r) => r.deliverable.trim());
       if (valid.length !== list.length) throw new Error('Every row needs a deliverable name.');
@@ -1084,8 +1084,8 @@ function DeliverableListPanel({ teamProjects, members }) {
         else await deliverablesApi.create(body);
       }
     },
-    onSuccess: () => { setErr(''); setOk('List saved.'); refresh(); },
-    onError: (e) => { setErr(e.message); setOk(''); },
+    onSuccess: () => { setErr(''); refresh(); },
+    onError: (e) => { setErr(e.message); },
   });
   const remove = useMutation({
     mutationFn: (id) => deliverablesApi.remove(id),
@@ -1151,7 +1151,6 @@ function DeliverableListPanel({ teamProjects, members }) {
         </table>
       </div>
       {err && <div className="login-error" role="alert" style={{ display: 'block', marginTop: 10 }}>{err}</div>}
-      {ok && <p style={{ fontSize: 13, color: 'var(--ink-muted)', marginTop: 10 }}>{ok}</p>}
       <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
         <button type="button" className="approve-btn" onClick={() => setRows((prev) => [...prev, blankDeliverable()])}>+ Add deliverable</button>
         <button type="button" className="btn-primary" disabled={save.isPending || !activeProject} onClick={() => save.mutate(rows)}>

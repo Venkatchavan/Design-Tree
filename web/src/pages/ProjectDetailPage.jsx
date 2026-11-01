@@ -205,7 +205,6 @@ function contactText(c) {
 function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState((initialIds ?? []).map(String));
-  const [saved, setSaved] = useState(false);
 
   const usersQ = useQuery({
     queryKey: ['users-portal', projectId],
@@ -214,10 +213,10 @@ function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
     retry: false,
   });
   const save = useMutation({
+    meta: { success: 'Portal access saved.' },
     mutationFn: (userIds) => projectsApi.setPortalUsers(projectId, userIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-      setSaved(true);
     },
   });
 
@@ -226,7 +225,6 @@ function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
   const external = users.filter((u) => u.role === 'client' || u.role === 'architect');
 
   function toggle(uid) {
-    setSaved(false);
     setSelected((prev) => (prev.includes(uid) ? prev.filter((x) => x !== uid) : [...prev, uid]));
   }
 
@@ -260,7 +258,6 @@ function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
           <button type="button" className="approve-btn" disabled={save.isPending} onClick={() => save.mutate(selected)} style={{ marginTop: 8 }}>
             {save.isPending ? 'Saving…' : 'Save portal access'}
           </button>
-          {saved && <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Portal access saved.</p>}
         </>
       )}
     </div>

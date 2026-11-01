@@ -1,12 +1,12 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { enhanceSelects } from './lib/enhanceSelects.js'
 import { enhanceSearch } from './lib/enhanceSearch.js'
 import { enhanceDates } from './lib/enhanceDates.js'
-
-const queryClient = new QueryClient()
+import ToastViewport from './components/ToastViewport.jsx'
+import { queryClient } from './lib/queryClient.js'
 
 // Styled dropdown lists and expanding search fields (see src/lib/enhance*.js).
 enhanceSelects()
@@ -16,5 +16,6 @@ enhanceDates()
 createRoot(document.getElementById('root')).render(
   <QueryClientProvider client={queryClient}>
     <App />
+    <ToastViewport />
   </QueryClientProvider>
 )

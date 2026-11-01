@@ -1,8 +1,9 @@
 import EmployeeSelect from '../components/EmployeeSelect.jsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, projectsApi } from '../lib/api.js';
 import { financeOccApi } from '../lib/phase3Api.js';
+import { toast } from '../lib/toast.js';
 
 // Finance Operation Control Center (OCC) — exact interface ported from
 // project-reference/Datum_dashboard_with_meetings.html (FIN_OCC_HTML sub-app),
@@ -263,8 +264,6 @@ export default function FinanceOccPage({ bootstrap }) {
   const [tab, setTab] = useState('overview');
   const [acFilter, setAcFilter] = useState('all');
   const [drawer, setDrawer] = useState(null); // { view:'po'|'travel'|'verify'|'reimb', mode:'create'|'edit', id? }
-  const [toast, setToast] = useState('');
-  const toastTimer = useRef(null);
   const [legacy, setLegacy] = useState(readLegacy);
 
   const [fFrom, setFFrom] = useState('');
@@ -300,11 +299,8 @@ export default function FinanceOccPage({ bootstrap }) {
     return rawAll.filter((e) => e.kind === 'claim').map((e) => buildReimb(e, advs));
   }, [rawAll, empById]);
 
-  const notify = (msg) => {
-    setToast(msg);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(''), 3200);
-  };
+  // Success confirmations; errors and warnings use toast.error / toast.warning directly.
+  const notify = (msg) => toast.success(msg);
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['finance-occ-all'] });
     qc.invalidateQueries({ queryKey: ['finance-occ-summary'] });
@@ -313,22 +309,22 @@ export default function FinanceOccPage({ bootstrap }) {
   const createM = useMutation({
     mutationFn: financeOccApi.create,
     onSuccess: () => invalidate(),
-    onError: (e) => notify(e.message),
+    onError: (e) => toast.error(e.message),
   });
   const updateM = useMutation({
     mutationFn: ({ id, body }) => financeOccApi.update(id, body),
     onSuccess: () => invalidate(),
-    onError: (e) => notify(e.message),
+    onError: (e) => toast.error(e.message),
   });
   const decideM = useMutation({
     mutationFn: ({ id, body }) => financeOccApi.decide(id, body),
     onSuccess: () => invalidate(),
-    onError: (e) => notify(e.message),
+    onError: (e) => toast.error(e.message),
   });
   const removeM = useMutation({
     mutationFn: financeOccApi.remove,
     onSuccess: () => { invalidate(); setDrawer(null); notify('Entry deleted.'); },
-    onError: (e) => notify(e.message),
+    onError: (e) => toast.error(e.message),
   });
 
   async function saveCreate(kind, body, files) {
@@ -338,7 +334,7 @@ export default function FinanceOccPage({ bootstrap }) {
       try {
         await financeOccApi.uploadDocs(id, files);
       } catch (e) {
-        notify(e.message);
+        toast.error(e.message);
       }
     }
     invalidate();
@@ -351,7 +347,7 @@ export default function FinanceOccPage({ bootstrap }) {
       try {
         await financeOccApi.uploadDocs(id, files);
       } catch (e) {
-        notify(e.message);
+        toast.error(e.message);
       }
     }
     invalidate();
@@ -384,7 +380,7 @@ export default function FinanceOccPage({ bootstrap }) {
   async function closeTravel(t) {
     const vs = verifState(t);
     if (!vs.complete) {
-      notify('Complete the hardcopy verification before closing.');
+      toast.warning('Complete the hardcopy verification before closing.');
       setDrawer({ view: 'verify', mode: 'edit', id: t.id });
       return;
     }
@@ -943,7 +939,6 @@ export default function FinanceOccPage({ bootstrap }) {
           busy={createM.isPending || updateM.isPending || decideM.isPending || removeM.isPending}
         />
       )}
-      <div className="toast" hidden={!toast}>{toast}</div>
     </div>
   );
 }
