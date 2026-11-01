@@ -98,7 +98,10 @@ function enhance(input) {
     }, 140);
   });
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && input.value === '') input.blur();
+    if (e.key === 'Escape' && input.value === '') {
+      e.stopPropagation(); // blur only; do not also dismiss a surrounding dialog
+      input.blur();
+    }
   });
   if (box) {
     box.addEventListener('mousedown', (e) => {

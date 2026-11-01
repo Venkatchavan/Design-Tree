@@ -271,8 +271,12 @@ function openList(sel) {
     window.addEventListener('click', swallow, { capture: true, once: true });
     setTimeout(() => window.removeEventListener('click', swallow, true), 400);
   }
+  // Close when the page (or a container holding the field) scrolls; unrelated
+  // scrolling is ignored.
   const onScroll = (e) => {
-    if (!pop.contains(e.target)) closeList();
+    const t = e.target;
+    if (pop.contains(t)) return;
+    if (t === document || (t instanceof Element && t.contains(btn))) closeList();
   };
 
   if (input) {

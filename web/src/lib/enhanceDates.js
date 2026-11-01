@@ -347,8 +347,12 @@ function openPicker(input) {
     window.addEventListener('click', swallow, { capture: true, once: true });
     setTimeout(() => window.removeEventListener('click', swallow, true), 400);
   }
+  // Close when the page (or a container holding the field) scrolls, so the
+  // popover never floats away from its field; unrelated scrolling is ignored.
   const onScroll = (e) => {
-    if (!pop.contains(e.target)) closePicker();
+    const t = e.target;
+    if (pop.contains(t)) return;
+    if (t === document || (t instanceof Element && t.contains(btn))) closePicker();
   };
   const onFocusOut = (e) => {
     const to = e.relatedTarget;
