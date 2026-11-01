@@ -1,4 +1,5 @@
 import EmployeeSelect from '../components/EmployeeSelect.jsx';
+import Combobox from '../components/Combobox.jsx';
 import { BASE_PROJECT_TYPES, savedOptions } from '../lib/projectOptions.js';
 import ContactPicker from '../components/ContactPicker.jsx';
 import SalesforceImportPanel from '../components/SalesforceImportPanel.jsx';
@@ -539,18 +540,32 @@ export default function NewProjectPage({ bootstrap }) {
               </div>
             </F>
             <F label="Entity Name *">
-              <input
-                className="form-input"
-                list="np-entities"
-                placeholder="Search Entities..."
+              <Combobox
+                aria-label="Entity name"
+                placeholder="Select or type an entity name"
                 value={form.entityName}
-                onChange={(e) => set('entityName', e.target.value)}
+                onChange={(v) => set('entityName', v)}
+                options={entityOptions}
+                addLabel={(text) => `Add “${text}” as a new entity`}
+                emptyLabel="No matching entities"
                 required
               />
-              <datalist id="np-entities">
-                {entityOptions.map((x) => <option key={x} value={x} />)}
-              </datalist>
-              <button type="button" className="approve-btn" style={{ marginTop: 6 }} onClick={() => set('entityName', form.entityName.trim())}>Add</button>
+              {(() => {
+                const typed = form.entityName.trim();
+                const exists = typed !== '' && entityOptions.some((x) => x.toLowerCase() === typed.toLowerCase());
+                return (
+                  <button
+                    type="button"
+                    className="approve-btn"
+                    style={{ marginTop: 6 }}
+                    disabled={!typed || exists}
+                    title={!typed ? 'Type an entity name first' : exists ? 'This entity is already in the list' : 'Use this as a new entity'}
+                    onClick={() => set('entityName', typed)}
+                  >
+                    Add
+                  </button>
+                );
+              })()}
             </F>
             <F label="State">
               <select className="form-input" value={form.state} onChange={(e) => set('state', e.target.value)}>

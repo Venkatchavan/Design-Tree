@@ -5873,6 +5873,71 @@ button.dt-date {
         animation: none;
     }
 }
+/* Combobox (components/Combobox.jsx): text field + themed suggestion list */
+.dt-combo {
+    position: relative;
+}
+.dt-combo-input {
+    padding-right: 62px;
+}
+.dt-combo-chevron {
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    display: grid;
+    place-items: center;
+    color: var(--ink-faint);
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+.dt-combo-btn {
+    position: absolute;
+    top: 50%;
+    right: 34px;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--control-bg);
+    color: var(--ink-muted);
+    cursor: pointer;
+    transform: translateY(-50%);
+}
+.dt-combo-btn:hover {
+    background: var(--control-bg-hover);
+    color: var(--ink);
+}
+.dt-combo-btn:focus-visible {
+    outline: 2px solid var(--blueprint);
+    outline-offset: 1px;
+}
+.dt-combo-pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 70;
+    width: auto;
+    padding: 5px;
+}
+.dt-combo-pop .dt-pop-list {
+    max-height: 260px;
+}
+.dt-combo-pop mark {
+    padding: 0;
+    background: none;
+    color: var(--blueprint-dark);
+    font-weight: 700;
+}
+.dt-opt.is-add {
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 8px 8px;
+    color: var(--blueprint-dark);
+    font-weight: 600;
+}
 @keyframes dt-pop-in {
     from {
         opacity: 0;
@@ -5903,6 +5968,7 @@ button.dt-date {
 input.dt-search {
     padding: 0 16px 0 42px;
     border: 1px solid transparent;
+    border-radius: 999px; /* beats .form-input's 8px so the field is a true pill / circle */
     background-color: var(--dt-search-bg);
     background-image: var(--dt-search-icon);
     background-repeat: no-repeat;

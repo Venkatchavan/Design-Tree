@@ -11,10 +11,14 @@
  * Works on existing markup (no wrapper nodes, React keeps full control):
  *   - a standalone <input>            -> the input itself morphs
  *   - an <input> inside a `.search`   -> the `.search` container morphs
- * Opt out with `data-no-expand` on the input.
+ *
+ * Only toolbar/filter search bars qualify. Search-style inputs that are part of
+ * a form (inside .form-row, a modal, a <form>...) stay ordinary fields, so a
+ * required field never collapses into a circle. Opt out with `data-no-expand`.
  */
 
 const SEARCH_RE = /search|type a name/i;
+const FORM_CONTEXT = '.form-row, .field, .field-grid, .employee-filter, .modal-box, form';
 const entries = new Map(); // input -> state
 
 function isSearchInput(el) {
@@ -24,6 +28,8 @@ function isSearchInput(el) {
   if (el.hasAttribute('data-no-expand')) return false;
   // The mobile top-bar row already has its own open/close toggle.
   if (el.closest('.topbar-search-mobile')) return false;
+  // Form fields (pickers, lookups) must look and behave like every other field.
+  if (el.closest(FORM_CONTEXT)) return false;
   return (
     type === 'search' ||
     SEARCH_RE.test(el.getAttribute('placeholder') || '') ||
