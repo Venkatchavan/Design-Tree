@@ -44,6 +44,14 @@
     --pink-bg: #fbe1f0;
     --radius: 8px;
     --radius-lg: 14px;
+    /* Soft neutral surfaces shared by search, bell, tabs and fields */
+    --control-bg: #f4f4f2;
+    --control-bg-hover: #eceae6;
+    --field-bg: #f8f9fc;
+    /* Focus treatments */
+    --focus-ring-color: rgba(29, 104, 214, 0.16);
+    --neutral-ring: rgba(27, 36, 48, 0.22);
+    --neutral-halo: rgba(27, 36, 48, 0.08);
     --font-sans:
         "IBM Plex Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
     --font-mono: "IBM Plex Mono", "SF Mono", Consolas, monospace;
@@ -3957,7 +3965,7 @@ table {
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: #f4f4f2;
+    background: var(--control-bg);
     color: var(--ink);
     cursor: pointer;
     transition:
@@ -3966,7 +3974,7 @@ table {
         box-shadow 0.18s ease;
 }
 .notif-bell:hover {
-    background: #eceae6;
+    background: var(--control-bg-hover);
 }
 .notif-bell:active {
     transform: scale(0.94);
@@ -3976,8 +3984,8 @@ table {
     outline: none;
     background: #fff;
     box-shadow:
-        0 0 0 1px rgba(27, 36, 48, 0.22),
-        0 0 0 4px rgba(27, 36, 48, 0.08);
+        0 0 0 1px var(--neutral-ring),
+        0 0 0 4px var(--neutral-halo);
 }
 .notif-bell-icon {
     display: grid;
@@ -4579,7 +4587,7 @@ table.data tr.row-click:hover {
     padding: 4px;
     border: 0;
     border-radius: 12px;
-    background: #f4f4f2;
+    background: var(--control-bg);
     overflow-x: auto;
     scrollbar-width: none;
 }
@@ -5323,7 +5331,7 @@ select.form-input:not([multiple]):not([size]) {
     padding: 7px 34px 7px 12px;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background-color: #f8f9fc;
+    background-color: var(--field-bg);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%235c6470' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 12px center;
@@ -5347,7 +5355,7 @@ select.form-input:not([multiple]):not([size]):focus {
     outline: none;
     border-color: var(--blueprint);
     background-color: #fff;
-    box-shadow: 0 0 0 3px rgba(29, 104, 214, 0.16);
+    box-shadow: 0 0 0 3px var(--focus-ring-color);
 }
 select.filter-select:not([multiple]):not([size]):focus-visible,
 select.form-input:not([multiple]):not([size]):focus-visible {
@@ -5367,7 +5375,8 @@ select.form-input option {
 
 /* Enhanced dropdowns (lib/enhanceSelects.js): the native select stays in the
    DOM as the source of truth; a styled button + list sit in front of it. */
-select.dt-select-native {
+select.dt-select-native,
+input.dt-date-native {
     position: absolute !important;
     width: 1px !important;
     height: 1px !important;
@@ -5389,7 +5398,7 @@ button.dt-select {
     padding: 7px 34px 7px 12px;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background-color: #f8f9fc;
+    background-color: var(--field-bg);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%235c6470' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 12px center;
@@ -5426,7 +5435,7 @@ button.dt-select[aria-expanded="true"] {
     outline: none;
     border-color: var(--blueprint);
     background-color: #fff;
-    box-shadow: 0 0 0 3px rgba(29, 104, 214, 0.16);
+    box-shadow: 0 0 0 3px var(--focus-ring-color);
 }
 button.dt-select:disabled {
     cursor: not-allowed;
@@ -5463,7 +5472,7 @@ button.dt-select:disabled {
     padding: 0 12px;
     border: 1px solid transparent;
     border-radius: 8px;
-    background: #f4f4f2;
+    background: var(--control-bg);
     color: var(--ink);
     font: inherit;
     font-size: 13px;
@@ -5471,7 +5480,7 @@ button.dt-select:disabled {
 }
 .dt-pop-search input:focus {
     background: #fff;
-    border-color: rgba(27, 36, 48, 0.22);
+    border-color: var(--neutral-ring);
 }
 .dt-pop-list {
     overflow-y: auto;
@@ -5524,6 +5533,164 @@ button.dt-select:disabled {
     color: var(--ink-faint);
     font-size: 12.5px;
 }
+/* Date picker (lib/enhanceDates.js): trigger reuses button.dt-select */
+button.dt-date {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%235c6470' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.2' y='3.2' width='11.6' height='10.6' rx='2'/%3E%3Cpath d='M2.2 6.6h11.6M5.4 1.8v2.6M10.6 1.8v2.6'/%3E%3C/svg%3E");
+    background-size: 16px 16px;
+    background-position: right 11px center;
+}
+.dt-cal {
+    display: block;
+    padding: 12px;
+}
+.dt-cal-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+.dt-cal-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: auto;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.dt-cal-title svg {
+    color: var(--ink-faint);
+}
+.dt-cal-today {
+    padding: 5px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.dt-cal-today:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.dt-cal-nav {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--ink-muted);
+    cursor: pointer;
+}
+.dt-cal-title:hover,
+.dt-cal-nav:hover,
+.dt-cal-today:hover:not(:disabled),
+.dt-day:hover:not(:disabled):not(.is-selected),
+.dt-cell:hover:not(:disabled):not(.is-selected) {
+    background: var(--control-bg);
+}
+.dt-cal-title:focus-visible,
+.dt-cal-nav:focus-visible,
+.dt-cal-today:focus-visible,
+.dt-cal-clear:focus-visible,
+.dt-day:focus-visible,
+.dt-cell:focus-visible {
+    outline: 2px solid var(--blueprint);
+    outline-offset: 1px;
+}
+.dt-cal-dow {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    padding: 4px 0;
+    color: var(--ink-faint);
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+}
+.dt-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
+.dt-day {
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+.dt-day.is-outside {
+    color: var(--ink-faint);
+}
+.dt-day.is-today:not(.is-selected),
+.dt-cell.is-today:not(.is-selected) {
+    box-shadow: inset 0 0 0 1px var(--ink-faint);
+}
+.dt-day.is-selected,
+.dt-cell.is-selected {
+    background: var(--blueprint);
+    color: #fff;
+    font-weight: 600;
+}
+.dt-day:disabled,
+.dt-cell:disabled {
+    opacity: 0.32;
+    cursor: not-allowed;
+}
+.dt-cal-months,
+.dt-cal-years {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding-top: 4px;
+}
+.dt-cell {
+    height: 44px;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.dt-cal-foot {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+}
+.dt-cal-clear {
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--ink-muted);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.dt-cal-clear:hover {
+    background: var(--control-bg);
+    color: var(--ink);
+}
 @keyframes dt-pop-in {
     from {
         opacity: 0;
@@ -5538,7 +5705,7 @@ button.dt-select:disabled {
 /* ---------- Expanding search (lib/enhanceSearch.js) ----------
    A soft off-white circle with a magnifier that expands into the field. */
 .dt-search {
-    --dt-search-bg: #f4f4f2;
+    --dt-search-bg: var(--control-bg);
     --dt-search-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%231b2430' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='7' cy='7' r='4.6'/%3E%3Cpath d='m10.5 10.5 3.2 3.2'/%3E%3C/svg%3E");
     box-sizing: border-box;
     height: 38px;
@@ -5576,8 +5743,8 @@ input.dt-search::placeholder {
 input.dt-search:focus {
     outline: none;
     background-color: #fff;
-    border-color: rgba(27, 36, 48, 0.22);
-    box-shadow: 0 0 0 3px rgba(27, 36, 48, 0.08);
+    border-color: var(--neutral-ring);
+    box-shadow: 0 0 0 3px var(--neutral-halo);
 }
 input.dt-search.is-open {
     width: var(--dt-w) !important;
@@ -5598,7 +5765,7 @@ input.dt-search.is-collapsed::placeholder {
     transition-delay: 0s;
 }
 input.dt-search.is-collapsed:hover {
-    background-color: #eceae6;
+    background-color: var(--control-bg-hover);
 }
 input.dt-search.is-collapsed:focus {
     box-shadow: 0 0 0 3px rgba(27, 36, 48, 0.1);
@@ -5616,8 +5783,8 @@ input.dt-search.is-collapsed:focus {
 .search.dt-search-box:focus-within {
     background: #fff;
     box-shadow:
-        0 0 0 1px rgba(27, 36, 48, 0.22),
-        0 0 0 4px rgba(27, 36, 48, 0.08);
+        0 0 0 1px var(--neutral-ring),
+        0 0 0 4px var(--neutral-halo);
 }
 .search.dt-search-box.is-open {
     width: var(--dt-w) !important;
@@ -5630,7 +5797,7 @@ input.dt-search.is-collapsed:focus {
     cursor: pointer;
 }
 .search.dt-search-box.is-collapsed:hover {
-    background: #eceae6;
+    background: var(--control-bg-hover);
 }
 .search.dt-search-box .topbar-search-input,
 .search.dt-search-box input {
@@ -5731,7 +5898,7 @@ input.dt-search.is-collapsed:focus {
     padding: 9px 12px;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background-color: #f8f9fc;
+    background-color: var(--field-bg);
     color: var(--ink);
     transition:
         border-color 0.16s ease,
@@ -5788,7 +5955,7 @@ input[type="file"]::file-selector-button {
         border-color 0.15s ease;
 }
 input[type="file"]:hover:not(:disabled)::file-selector-button {
-    background: #f4f4f2;
+    background: var(--control-bg);
     border-color: var(--ink-faint);
 }
 input[type="file"]:focus-visible {
@@ -5854,7 +6021,7 @@ input[type="file"]:disabled::file-selector-button {
     outline: none;
     background-color: #fff;
     border-color: var(--blueprint);
-    box-shadow: 0 0 0 3px rgba(29, 104, 214, 0.16);
+    box-shadow: 0 0 0 3px var(--focus-ring-color);
 }
 .form-input[aria-invalid="true"]:focus,
 .form-input:user-invalid:focus {
@@ -6845,8 +7012,18 @@ input[type="file"]:disabled::file-selector-button {
     line-height: 1.15;
     letter-spacing: -0.04em;
 }
+/* The error and the subtitle share one fixed-height slot so the form never jumps. */
+.login-screen .login-form-panel > .login-error {
+    box-sizing: border-box;
+    align-items: center;
+    min-height: 40px;
+    margin: 0 0 19px;
+}
 .login-screen .login-sub {
-    margin: 8px 0 29px;
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    margin: 0 0 19px;
     color: var(--ink-muted);
     font-size: 13px;
     line-height: 1.55;
@@ -7036,7 +7213,8 @@ input[type="file"]:disabled::file-selector-button {
     .login-screen .login-title {
         font-size: 29px;
     }
-    .login-screen .login-sub {
+    .login-screen .login-sub,
+    .login-screen .login-form-panel > .login-error {
         margin-bottom: 24px;
     }
     .login-screen .login-side {

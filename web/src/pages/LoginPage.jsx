@@ -85,19 +85,13 @@ export default function LoginPage() {
               DesignTree workspace
             </div>
             <h1 className="login-title" id="login-title">Welcome back</h1>
-            <p className="login-sub">
-              Sign in with your work account to continue.
-            </p>
-            {login.isError && (
-              <div
-                className="login-error"
-                id="login-error"
-                role="alert"
-                style={{ display: 'flex' }}
-              >
+            {login.isError ? (
+              <div className="login-error" id="login-error" role="alert" style={{ display: 'flex' }}>
                 <CircleAlert size={16} strokeWidth={1.9} aria-hidden="true" />
                 <span>{errorMsg}</span>
               </div>
+            ) : (
+              <p className="login-sub">Sign in with your work account to continue.</p>
             )}
             <form onSubmit={handleSubmit}>
               <div className="login-form-row">

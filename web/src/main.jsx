@@ -4,12 +4,14 @@ import './index.css'
 import App from './App.jsx'
 import { enhanceSelects } from './lib/enhanceSelects.js'
 import { enhanceSearch } from './lib/enhanceSearch.js'
+import { enhanceDates } from './lib/enhanceDates.js'
 
 const queryClient = new QueryClient()
 
 // Styled dropdown lists and expanding search fields (see src/lib/enhance*.js).
 enhanceSelects()
 enhanceSearch()
+enhanceDates()
 
 createRoot(document.getElementById('root')).render(
   <QueryClientProvider client={queryClient}>
