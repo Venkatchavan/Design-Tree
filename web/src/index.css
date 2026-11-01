@@ -6335,6 +6335,10 @@ input[type="file"]:disabled::file-selector-button {
     .search {
         display: none;
     }
+    /* Hide the inline search wrapper entirely (input AND its results panel). */
+    .topbar-search-inline {
+        display: none;
+    }
     /* Small devices: inline search becomes an icon toggle; tapping it reveals
     a full-width search row below the topbar. */
     .topbar {
@@ -6344,18 +6348,23 @@ input[type="file"]:disabled::file-selector-button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        background: none;
-        border: 1px solid var(--border);
-        border-radius: 7px;
-        width: 34px;
-        height: 34px;
-        color: var(--ink-muted);
+        background: var(--control-bg);
+        border: 0;
+        border-radius: 50%;
+        width: 38px;
+        height: 38px;
+        color: var(--ink);
         cursor: pointer;
         flex-shrink: 0;
+        transition: background-color 0.18s ease;
     }
-    .topbar-search-toggle:hover {
-        color: var(--blueprint);
-        border-color: var(--blueprint);
+    .topbar-search-toggle:hover,
+    .topbar-search-toggle[aria-expanded="true"] {
+        background: var(--control-bg-hover);
+    }
+    .topbar-search-toggle:focus-visible {
+        outline: 2px solid var(--blueprint);
+        outline-offset: 2px;
     }
     .topbar-search-mobile {
         display: block;

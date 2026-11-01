@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, PanelLeft, Search } from 'lucide-react';
@@ -25,7 +25,6 @@ export default function Topbar({
   // Small devices: the inline search box is hidden (no room in the topbar),
   // so a toggle button reveals it as a full-width row below the topbar.
   const [searchOpen, setSearchOpen] = useState(false);
-  const wrapRef = useRef(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q.trim()), 300);
@@ -41,7 +40,7 @@ export default function Topbar({
 
   useEffect(() => {
     function onDocClick(e) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+      if (!(e.target instanceof Element) || !e.target.closest('.topbar-search-wrap')) {
         setOpen(false);
       }
     }
@@ -62,11 +61,13 @@ export default function Topbar({
   }
 
   // Project search box, rendered inline on desktop and in the expandable
-  // full-width row on small devices. Both instances share query state; CSS
-  // shows exactly one of them per viewport.
-  function searchBox(autoFocus) {
+  // full-width row on small devices. Both instances share query state, so CSS
+  // must hide the WHOLE inline wrapper (input and results panel) on small
+  // screens; hiding only the input left its results panel visible and the two
+  // panels overlapped.
+  function searchBox(autoFocus, variant) {
     return (
-      <div className="topbar-search-wrap" ref={wrapRef}>
+      <div className={`topbar-search-wrap topbar-search-${variant}`}>
         <div className="search">
           <Search size={14} />
           <input
@@ -159,7 +160,7 @@ export default function Topbar({
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {canSearch && searchBox(false)}
+        {canSearch && searchBox(false, 'inline')}
         {canSearch && (
           <button
             type="button"
@@ -189,7 +190,7 @@ export default function Topbar({
         )}
       </div>
       {canSearch && searchOpen && (
-        <div className="topbar-search-mobile">{searchBox(true)}</div>
+        <div className="topbar-search-mobile">{searchBox(true, 'row')}</div>
       )}
     </div>
   );
