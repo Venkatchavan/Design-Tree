@@ -19,6 +19,7 @@ import {
   FileCheck,
   Flame,
   FolderKanban,
+  GripVertical,
   Gauge,
   GitBranch,
   Globe,
@@ -247,12 +248,22 @@ export default function Sidebar({
         </span>
       </div>
       <nav className="nav">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 8px 6px' }}>
-          <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Drag to rearrange</span>
-          <button type="button" className="approve-btn" style={{ padding: '2px 8px', fontSize: 11, color: '#fff', background: '#2563eb', border: 'none' }} onClick={() => { try { localStorage.removeItem(storageKey); } catch {} setOrder(null); }}>
-            Reset
+        {order && order.length > 0 && !collapsed && (
+          <button
+            type="button"
+            className="nav-reset"
+            onClick={() => {
+              try {
+                localStorage.removeItem(storageKey);
+              } catch {
+                /* ignore */
+              }
+              setOrder(null);
+            }}
+          >
+            Reset menu order
           </button>
-        </div>
+        )}
         {items.map((item, i) => {
           const Icon = navIcon(item.view, item.label);
           const active = item.view === activeView;
@@ -265,16 +276,17 @@ export default function Sidebar({
               onDrop={(e) => { e.preventDefault(); if (dragIdx !== null && dragIdx !== i) move(dragIdx, i); setDragIdx(null); }}
               onTouchStart={() => setDragIdx(i)}
               onTouchEnd={() => setDragIdx(null)}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, opacity: dragIdx === i ? 0.6 : 1 }}
+              className={`nav-row${dragIdx === i ? ' is-dragging' : ''}`}
             >
-              <span aria-hidden="true" title="Drag to rearrange" style={{ cursor: 'grab', padding: '0 2px 0 6px', color: 'var(--ink-muted)', touchAction: 'none' }}>⠿</span>
+              <span aria-hidden="true" title="Drag to rearrange" className="nav-grip">
+                <GripVertical size={14} />
+              </span>
               <button
                 type="button"
                 className={`nav-item${active ? ' active' : ''}`}
                 aria-current={active ? 'page' : undefined}
                 title={collapsed ? item.label : undefined}
                 onClick={() => go(item)}
-                style={{ flex: 1 }}
               >
                 <Icon size={18} strokeWidth={1.9} aria-hidden="true" className="nav-icon" />
                 <span className="nav-label">{item.label}</span>
