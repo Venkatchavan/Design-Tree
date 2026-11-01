@@ -207,10 +207,6 @@ export default function LoginPage() {
 
           <div className="login-side-intro">
             <h2>From design desk to site floor.</h2>
-            <p className="login-tagline">
-              Structural, MEP and QA/QC teams coordinate delivery in one
-              workspace.
-            </p>
           </div>
 
           <div className="login-scene">

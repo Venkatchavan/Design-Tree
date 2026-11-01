@@ -7196,12 +7196,6 @@ input[type="file"]:disabled::file-selector-button {
     letter-spacing: -0.04em;
     text-wrap: balance;
 }
-.login-screen .login-tagline {
-    max-width: 460px;
-    color: rgba(225, 235, 255, 0.8);
-    font-size: 14px;
-    line-height: 1.65;
-}
 
 /* ---------- Scene ---------- */
 .login-screen .login-scene {
@@ -7425,31 +7419,6 @@ input[type="file"]:disabled::file-selector-button {
 }
 
 /* labels */
-.login-iso .iso-label circle,
-.login-iso .iso-label path {
-    stroke: rgba(190, 210, 255, 0.45);
-    stroke-width: 0.9;
-}
-.login-iso .iso-label text {
-    fill: rgba(205, 222, 255, 0.74);
-}
-.login-iso .iso-label-no {
-    font-size: 10.5px;
-    font-weight: 500;
-    letter-spacing: 0.16em;
-}
-.login-iso .iso-label-name {
-    font-size: 12.5px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-}
-.login-iso .iso-label--lit circle,
-.login-iso .iso-label--lit path {
-    stroke: var(--c);
-}
-.login-iso .iso-label--lit text {
-    fill: var(--c);
-}
 
 /* ---------- Foot ---------- */
 .login-screen .login-side-foot {
@@ -7704,9 +7673,7 @@ input[type="file"]:disabled::file-selector-button {
     .login-screen .login-side-intro h2 {
         font-size: 34px;
     }
-    .login-screen .login-tagline {
-        font-size: 13px;
-    }
+    
 }
 @media (min-width: 821px) and (max-height: 820px) {
     .login-screen .login-side {
@@ -7719,9 +7686,7 @@ input[type="file"]:disabled::file-selector-button {
         margin-bottom: 8px;
         font-size: clamp(28px, 2.9vw, 38px);
     }
-    .login-screen .login-tagline {
-        font-size: 13px;
-    }
+    
 }
 
 /* ---------- Keyframes ---------- */
@@ -7847,9 +7812,7 @@ input[type="file"]:disabled::file-selector-button {
         animation: none;
         opacity: 0;
     }
-    .login-iso .iso-label--lit {
-        opacity: 0;
-    }
+    
 }
 
 /* Draggable responsive sidebar + entry-top tables */

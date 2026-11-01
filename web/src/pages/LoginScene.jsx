@@ -39,9 +39,9 @@ function boxPath(cx, cy, r, h, z) {
 
 // ── Static geometry ───────────────────────────────────────────────────────
 const LAYERS = [
-  { tone: 'structural', no: '01', name: 'STRUCTURE', z: 0 },
-  { tone: 'mep', no: '02', name: 'MEP', z: GAP },
-  { tone: 'qaqc', no: '03', name: 'QA / QC', z: GAP * 2 },
+  { tone: 'structural', z: 0 },
+  { tone: 'mep', z: GAP },
+  { tone: 'qaqc', z: GAP * 2 },
 ];
 const TOP_Z = GAP * 2;
 
@@ -182,21 +182,6 @@ function LayerDetails({ tone, z, delay }) {
   );
 }
 
-function Label({ layer, lit = false, index }) {
-  const [x0, y0] = iso(W, -W, layer.z);
-  const cls = lit
-    ? `iso-label iso-label--lit login-pulse login-pulse--${index} tone-${layer.tone}`
-    : 'iso-label';
-  return (
-    <g className={cls}>
-      <circle cx={x0} cy={y0} r="2.3" />
-      <path d={`M${x0 + 8} ${y0}L${x0 + 40} ${y0}`} />
-      <text className="iso-label-no" x={x0 + 50} y={y0 - 4}>{layer.no}</text>
-      <text className="iso-label-name" x={x0 + 50} y={y0 + 9}>{layer.name}</text>
-    </g>
-  );
-}
-
 // ── Scene ─────────────────────────────────────────────────────────────────
 export default function LoginScene() {
   return (
@@ -282,16 +267,6 @@ export default function LoginScene() {
             </g>
           );
         })}
-
-        {/* labels */}
-        <g className="iso-detail" style={{ '--d': '1.4s' }}>
-          {LAYERS.map((l, i) => (
-            <Label key={`b${l.tone}`} layer={l} index={i} />
-          ))}
-          {LAYERS.map((l, i) => (
-            <Label key={`l${l.tone}`} layer={l} index={i} lit />
-          ))}
-        </g>
 
         {/* scan plane */}
         <g className="iso-scan">
