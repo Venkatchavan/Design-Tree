@@ -6,7 +6,7 @@ import { attendanceApi } from '../lib/api.js';
 import Modal from '../components/Modal.jsx';
 import BrandLogo from '../components/BrandLogo.jsx';
 import LoginScene from './LoginScene.jsx';
-import LoginDither from './LoginDither.jsx';
+import LoginBackdrop from './LoginBackdrop.jsx';
 
 export default function LoginPage() {
   const queryClient = useQueryClient();
@@ -82,8 +82,12 @@ export default function LoginPage() {
         <section className="login-main" aria-labelledby="login-title">
           <div className="login-form-panel">
             <div className="login-form-kicker">
-              <ScanLine size={15} strokeWidth={1.8} aria-hidden="true" />
-              DesignTree workspace
+              <span className="login-form-kicker-icon" aria-hidden="true">
+                <ScanLine size={13} strokeWidth={2} />
+              </span>
+              <span>
+                <strong>DesignTree</strong> workspace
+              </span>
             </div>
             <h1 className="login-title" id="login-title">Welcome back</h1>
             {login.isError ? (
@@ -202,7 +206,7 @@ export default function LoginPage() {
         </section>
 
         <aside className="login-side" aria-label="About DesignTree">
-          <LoginDither />
+          <LoginBackdrop />
           <div className="login-brand">
             <BrandLogo className="login-logo" />
           </div>

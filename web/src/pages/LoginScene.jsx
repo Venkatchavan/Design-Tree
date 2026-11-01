@@ -1,7 +1,8 @@
 /**
- * LoginScene — stroke-only isometric "exploded building" for the login showcase.
+ * LoginScene — isometric "exploded building" for the login showcase.
  *
- * Dark line work on a light panel. Geometry is generated from a single iso()
+ * Dark line work with glossy spectral fills, standing where two bundles of
+ * spectral ribbons cross on the ground. Geometry is generated from a single iso()
  * projection so every line sits exactly on the 30°/30° grid. Besides the
  * three-layer building (structure / MEP / QA-QC) the scene shows the context a
  * project lives in: neighbouring site blocks, a tower crane lifting a steel
@@ -111,6 +112,70 @@ const PILLARS = [[-W, -W], [W, -W], [W, W], [-W, W]].map(
 const AXIS = `M${pt(iso(0, 0, -14))}L${pt(iso(0, 0, TOP_Z + 24))}`;
 const scanPath = (dz) => pathOf(square(0, 0, W + 14), -10 + dz, true);
 
+// Ribbons: two bundles of ground-plane circles, left and right of the building,
+// whose inner edges cross underneath it (a figure-eight in isometric view).
+// A plan circle of radius r projects to an ellipse with rx = r·√6/2, ry = r/√2.
+const RIBBON_Y = iso(0, 0, FLOOR_Z)[1];
+const RIBBON_DX = 105;
+const RIBBON_R = [122, 113, 104, 95];
+const RIBBON_LOOPS = [-1, 1].flatMap((side) =>
+  RIBBON_R.map((r, i) => ({
+    key: `${side}-${i}`,
+    cx: OX + side * RIBBON_DX,
+    rx: Math.round(r * 1.2247 * 10) / 10,
+    ry: Math.round(r * 0.7071 * 10) / 10,
+    i,
+  })),
+);
+// spectrum the ribbons and confetti share
+const SPECTRUM = [
+  [0, '#8a44d6'],
+  [0.2, '#e5487c'],
+  [0.38, '#f2992f'],
+  [0.5, '#e2c53a'],
+  [0.62, '#2fb57a'],
+  [0.8, '#1f9f8a'],
+  [1, '#3a6ff0'],
+];
+// glossy slab fills, one per discipline
+const SLAB_GRADIENTS = {
+  structural: ['#2f62e8', '#7b4fe0'],
+  mep: ['#f39a35', '#e5487c'],
+  qaqc: ['#2fb57a', '#23a6c9'],
+};
+
+function Ribbons() {
+  return (
+    <g className="iso-ribbons">
+      {[-1, 1].map((side) => (
+        <ellipse
+          key={side}
+          className="iso-ribbon-band"
+          cx={OX + side * RIBBON_DX}
+          cy={RIBBON_Y}
+          rx={Math.round(108.5 * 1.2247)}
+          ry={Math.round(108.5 * 0.7071)}
+        />
+      ))}
+      {RIBBON_LOOPS.map((l) => (
+        <ellipse key={l.key} className="iso-ribbon" cx={l.cx} cy={RIBBON_Y} rx={l.rx} ry={l.ry} />
+      ))}
+      {RIBBON_LOOPS.map((l) => (
+        <ellipse
+          key={`g${l.key}`}
+          className="iso-ribbon-glint"
+          cx={l.cx}
+          cy={RIBBON_Y}
+          rx={l.rx}
+          ry={l.ry}
+          pathLength="100"
+          style={{ '--gd': `${-l.i * 0.35}s` }}
+        />
+      ))}
+    </g>
+  );
+}
+
 // ── Pieces ────────────────────────────────────────────────────────────────
 function Ellipse({ at, rx = 4.6, ry = 2.7, className = 'iso-node', style }) {
   return <ellipse cx={at[0]} cy={at[1]} rx={rx} ry={ry} className={className} style={style} />;
@@ -202,6 +267,17 @@ export default function LoginScene() {
           <filter id="login-blur" x="-20%" y="-40%" width="140%" height="180%">
             <feGaussianBlur stdDeviation="3.2" />
           </filter>
+          <linearGradient id="login-ribbon-grad" gradientUnits="userSpaceOnUse" x1="20" y1="0" x2="600" y2="0">
+            {SPECTRUM.map(([o, c]) => (
+              <stop key={o} offset={o} stopColor={c} />
+            ))}
+          </linearGradient>
+          {Object.entries(SLAB_GRADIENTS).map(([tone, [a, b]]) => (
+            <linearGradient key={tone} id={`login-g-${tone}`} x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor={a} />
+              <stop offset="1" stopColor={b} />
+            </linearGradient>
+          ))}
         </defs>
 
         {/* ground */}
@@ -209,6 +285,9 @@ export default function LoginScene() {
           <path className="iso-floor-grid" d={FLOOR_GRID} />
         </g>
         <path className="iso-floor-edge" d={FLOOR_EDGE} />
+
+        {/* spectral ribbons crossing under the building */}
+        <Ribbons />
 
         {/* site context: neighbouring blocks, trees and the drawing sheets */}
         <SiteGround />
