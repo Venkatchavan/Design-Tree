@@ -1,27 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Check, ScanLine } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { ArrowRight, ScanLine } from 'lucide-react';
+import { useState } from 'react';
 import { loginApi } from '../lib/api.js';
 import { attendanceApi } from '../lib/api.js';
 import Modal from '../components/Modal.jsx';
 import BrandLogo from '../components/BrandLogo.jsx';
 import LoginScene from './LoginScene.jsx';
 
-const SIDE_POINTS = [
-  'Role-based access, from Founding Director to site QA/QC',
-  'One workspace for design, coordination and delivery',
-  'Live status across every project and discipline',
-];
-
-const DISCIPLINES = [
-  { code: 'ST', name: 'Structural', value: 72, status: 'On track', tone: 'structural' },
-  { code: 'ME', name: 'MEP', value: 58, status: 'Coordinating', tone: 'mep' },
-  { code: 'QA', name: 'QA/QC', value: 34, status: 'Inspecting', tone: 'qaqc' },
-];
-
 export default function LoginPage() {
   const queryClient = useQueryClient();
-  const sideRef = useRef(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   // Late sign-in (after 9:45 IST): reason prompt before entering the app.
@@ -69,15 +56,6 @@ export default function LoginPage() {
     // require it (enforced server-side).
     setLateOpen(false);
     enterApp();
-  }
-
-  // Cursor-follow spotlight on the showcase panel (sets CSS vars, no re-render).
-  function handleSideMove(e) {
-    const el = sideRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    el.style.setProperty('--mx', `${e.clientX - rect.left}px`);
-    el.style.setProperty('--my', `${e.clientY - rect.top}px`);
   }
 
   const errorMsg = login.isError ? login.error.message : '';
@@ -167,78 +145,23 @@ export default function LoginPage() {
           </div>
         </section>
 
-        <aside
-          className="login-side"
-          ref={sideRef}
-          onPointerMove={handleSideMove}
-          aria-label="About DesignTree"
-        >
-          <div className="login-cursor-glow" aria-hidden="true" />
-
+        <aside className="login-side" aria-label="About DesignTree">
           <div className="login-brand">
             <BrandLogo className="login-logo" />
           </div>
 
           <div className="login-side-intro">
-            <span className="login-side-kicker">
-              <i aria-hidden="true" />
-              Project delivery, in sync
-            </span>
-            <h2>
-              From design desk
-              <br />
-              <span>to site floor.</span>
-            </h2>
+            <h2>From design desk to site floor.</h2>
             <p className="login-tagline">
-              Structural, MEP and design teams—coordinating delivery and QA/QC
-              in one workspace.
+              Structural, MEP and QA/QC teams coordinate delivery in one
+              workspace.
             </p>
           </div>
 
           <div className="login-scene">
-            <div className="login-scene-head" aria-hidden="true">
-              <span>One project · Every discipline</span>
-              <span>01 — 03</span>
-            </div>
             <LoginScene />
-            <div className="login-readout" role="group" aria-label="Illustrative project snapshot">
-              {DISCIPLINES.map((d) => (
-                <div className={`login-readout-cell tone-${d.tone}`} key={d.code}>
-                  <div className="login-readout-top">
-                    <span className="login-readout-code">{d.code}</span>
-                    <span className="login-readout-status">
-                      <i aria-hidden="true" />
-                      {d.status}
-                    </span>
-                  </div>
-                  <div className="login-readout-value">
-                    {d.value}
-                    <span>%</span>
-                  </div>
-                  <div
-                    className="login-readout-track"
-                    role="img"
-                    aria-label={`${d.name} progress: ${d.value} percent (illustrative)`}
-                  >
-                    <span style={{ '--w': `${d.value}%` }} />
-                  </div>
-                  <div className="login-readout-name">{d.name}</div>
-                </div>
-              ))}
-            </div>
-            <span className="login-note">Illustrative project preview</span>
           </div>
 
-          <div className="login-side-list">
-            {SIDE_POINTS.map((point) => (
-              <div className="login-side-item" key={point}>
-                <span className="login-side-check" aria-hidden="true">
-                  <Check size={11} strokeWidth={2.4} />
-                </span>
-                <span>{point}</span>
-              </div>
-            ))}
-          </div>
           <div className="login-side-foot">
             <span>DesignTree Service Consultants Pvt. Ltd.</span>
           </div>

@@ -199,9 +199,6 @@ function Label({ layer, lit = false, index }) {
 
 // ── Scene ─────────────────────────────────────────────────────────────────
 export default function LoginScene() {
-  const gizmoX = [r1(26 * K), 13];
-  const gizmoY = [r1(-26 * K), 13];
-
   return (
     <div className="login-scene-stage" aria-hidden="true">
       <svg className="login-iso" viewBox="0 0 620 420" focusable="false">
@@ -241,25 +238,13 @@ export default function LoginScene() {
           <filter id="login-blur" x="-20%" y="-40%" width="140%" height="180%">
             <feGaussianBlur stdDeviation="3.2" />
           </filter>
-          <filter id="login-shadow-blur" x="-40%" y="-80%" width="180%" height="260%">
-            <feGaussianBlur stdDeviation="14" />
-          </filter>
         </defs>
-
-        {/* meta */}
-        <text className="iso-meta" x="22" y="34">AXONOMETRIC · 30° / 30°</text>
-        <text className="iso-meta" x="598" y="34" textAnchor="end">LAYERS 03</text>
 
         {/* ground */}
         <g mask="url(#login-floor-mask)">
           <path className="iso-floor-grid" d={FLOOR_GRID} />
         </g>
         <path className="iso-floor-edge" d={FLOOR_EDGE} />
-        <path
-          className="iso-shadow"
-          d={pathOf(square(0, 0, W - 10), FLOOR_Z, true)}
-          filter="url(#login-shadow-blur)"
-        />
 
         {/* vertical skeleton */}
         <g className="iso-detail" style={{ '--d': '1.1s' }}>
@@ -314,15 +299,6 @@ export default function LoginScene() {
           <path className="iso-scan-echo" style={{ opacity: 0.16 }} d={scanPath(-20)} />
           <path className="iso-scan-echo" style={{ opacity: 0.3 }} d={scanPath(-10)} />
           <path className="iso-scan-main" d={scanPath(0)} />
-        </g>
-
-        {/* axis gizmo */}
-        <g className="iso-gizmo" transform="translate(60 352)">
-          <path d={`M0 0L${gizmoX[0]} ${gizmoX[1]}M0 0L${gizmoY[0]} ${gizmoY[1]}M0 0L0 -26`} />
-          <circle cx="0" cy="0" r="1.8" />
-          <text x={gizmoX[0] + 4} y={gizmoX[1] + 7}>X</text>
-          <text x={gizmoY[0] - 10} y={gizmoY[1] + 7}>Y</text>
-          <text x="-3" y="-31">Z</text>
         </g>
       </svg>
     </div>
