@@ -6,6 +6,7 @@ import { attendanceApi } from '../lib/api.js';
 import Modal from '../components/Modal.jsx';
 import BrandLogo from '../components/BrandLogo.jsx';
 import LoginScene from './LoginScene.jsx';
+import LoginDither from './LoginDither.jsx';
 
 export default function LoginPage() {
   const queryClient = useQueryClient();
@@ -201,6 +202,7 @@ export default function LoginPage() {
         </section>
 
         <aside className="login-side" aria-label="About DesignTree">
+          <LoginDither />
           <div className="login-brand">
             <BrandLogo className="login-logo" />
           </div>

@@ -1,41 +1,21 @@
 /**
  * LoginScene — stroke-only isometric "exploded building" for the login showcase.
  *
- * Everything is drawn as outlines (fill: none). Geometry is generated from a
- * single iso() projection so every line sits exactly on the 30°/30° grid.
- * All motion is CSS-driven (see login.css) and respects prefers-reduced-motion.
+ * Dark line work on a light panel. Geometry is generated from a single iso()
+ * projection so every line sits exactly on the 30°/30° grid. Besides the
+ * three-layer building (structure / MEP / QA-QC) the scene shows the context a
+ * project lives in: neighbouring site blocks, a tower crane lifting a steel
+ * beam onto the structure, and a stack of drawing sheets (the design desk).
+ * All motion is CSS-driven (see index.css) and respects prefers-reduced-motion.
  */
 
-// ── Projection ────────────────────────────────────────────────────────────
+import { FLOOR_Z, OX, OY, boxPath, iso, pathOf, pt, square } from './isoGeometry.js';
+import { SiteCrane, SiteGround } from './LoginSceneSite.jsx';
+
+// ── Layout ────────────────────────────────────────────────────────────────
 const W = 100; // slab half-size in plan units
 const GAP = 64; // vertical distance between slabs
 const THICK = 7; // slab thickness
-const OX = 292; // screen x of plan origin
-const OY = 270; // screen y of plan origin (z = 0)
-const K = Math.sqrt(3) / 2;
-
-const r1 = (n) => Math.round(n * 10) / 10;
-const iso = (x, y, z = 0) => [r1(OX + (x - y) * K), r1(OY + (x + y) / 2 - z)];
-const pt = ([x, y]) => `${x} ${y}`;
-const pathOf = (pts, z, close = false) =>
-  'M' + pts.map(([x, y]) => pt(iso(x, y, z))).join('L') + (close ? 'Z' : '');
-const square = (cx, cy, r) => [
-  [cx - r, cy - r],
-  [cx + r, cy - r],
-  [cx + r, cy + r],
-  [cx - r, cy + r],
-];
-
-function boxPath(cx, cy, r, h, z) {
-  const top = pathOf(square(cx, cy, r), z + h, true);
-  const l = iso(cx - r, cy + r, z);
-  const b = iso(cx + r, cy + r, z);
-  const rt = iso(cx + r, cy - r, z);
-  const lh = iso(cx - r, cy + r, z + h);
-  const bh = iso(cx + r, cy + r, z + h);
-  const rh = iso(cx + r, cy - r, z + h);
-  return `${top}M${pt(lh)}L${pt(l)}L${pt(b)}L${pt(rt)}L${pt(rh)}M${pt(bh)}L${pt(b)}`;
-}
 
 // ── Static geometry ───────────────────────────────────────────────────────
 const LAYERS = [
@@ -113,7 +93,6 @@ function quality(z) {
 }
 
 // Ground grid
-const FLOOR_Z = -16;
 const FLOOR_R = 128;
 const FLOOR_STEP = 32;
 const FLOOR_GRID = (() => {
@@ -231,6 +210,9 @@ export default function LoginScene() {
         </g>
         <path className="iso-floor-edge" d={FLOOR_EDGE} />
 
+        {/* site context: neighbouring blocks, trees and the drawing sheets */}
+        <SiteGround />
+
         {/* vertical skeleton */}
         <g className="iso-detail" style={{ '--d': '1.1s' }}>
           {PILLARS.map((d, i) => (
@@ -267,6 +249,9 @@ export default function LoginScene() {
             </g>
           );
         })}
+
+        {/* tower crane lifting a beam onto the structure */}
+        <SiteCrane />
 
         {/* scan plane */}
         <g className="iso-scan">

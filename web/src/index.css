@@ -7062,7 +7062,9 @@ input[type="file"]:disabled::file-selector-button {
     background: #fff;
 }
 .login-wrap {
-    align-self: stretch;
+    /* At least the screen height, but free to grow: when the panels stack on
+       narrow screens the page scrolls instead of clipping the showcase panel. */
+    align-self: flex-start;
     width: 100%;
     min-height: 100vh;
     min-height: 100dvh;
@@ -7110,26 +7112,40 @@ input[type="file"]:disabled::file-selector-button {
     overflow: hidden;
     color: #0b1633;
     padding: clamp(28px, 3.6vw, 56px) clamp(28px, 4vw, 64px);
+    /* soft corner washes; multi-stop eased falloff so they fade with no visible rim
+       (pages/LoginDither.jsx mirrors these numbers for its stipple) */
     background:
         radial-gradient(
-            75% 60% at 0% 0%,
-            rgba(91, 155, 240, 0.3),
-            rgba(91, 155, 240, 0) 72%
+            80% 65% at 0% 0%,
+            rgba(91, 155, 240, 0.2) 0%,
+            rgba(91, 155, 240, 0.148) 22%,
+            rgba(91, 155, 240, 0.084) 44%,
+            rgba(91, 155, 240, 0.028) 64%,
+            rgba(91, 155, 240, 0) 80%
         ),
         radial-gradient(
-            70% 60% at 100% 100%,
-            rgba(183, 148, 246, 0.3),
-            rgba(183, 148, 246, 0) 72%
+            75% 65% at 100% 100%,
+            rgba(183, 148, 246, 0.2) 0%,
+            rgba(183, 148, 246, 0.148) 22%,
+            rgba(183, 148, 246, 0.084) 44%,
+            rgba(183, 148, 246, 0.028) 64%,
+            rgba(183, 148, 246, 0) 80%
         ),
         radial-gradient(
             60% 50% at 100% 0%,
-            rgba(91, 155, 240, 0.12),
-            rgba(91, 155, 240, 0) 72%
+            rgba(91, 155, 240, 0.07) 0%,
+            rgba(91, 155, 240, 0.052) 22%,
+            rgba(91, 155, 240, 0.029) 44%,
+            rgba(91, 155, 240, 0.01) 64%,
+            rgba(91, 155, 240, 0) 80%
         ),
         radial-gradient(
             60% 50% at 0% 100%,
-            rgba(183, 148, 246, 0.12),
-            rgba(183, 148, 246, 0) 72%
+            rgba(183, 148, 246, 0.07) 0%,
+            rgba(183, 148, 246, 0.052) 22%,
+            rgba(183, 148, 246, 0.029) 44%,
+            rgba(183, 148, 246, 0.01) 64%,
+            rgba(183, 148, 246, 0) 80%
         ),
         #fff;
     box-shadow: inset -1px 0 0 rgba(29, 43, 99, 0.08);
@@ -7137,6 +7153,18 @@ input[type="file"]:disabled::file-selector-button {
 .login-screen .login-side > * {
     position: relative;
     z-index: 1;
+}
+/* ordered-dither texture of the washes, behind everything (pages/LoginDither.jsx) */
+.login-screen .login-side > .login-dither {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    image-rendering: pixelated;
+    opacity: 0;
+    animation: login-fade 1.2s ease 0.2s forwards;
 }
 
 .login-screen .login-brand {
@@ -7186,7 +7214,7 @@ input[type="file"]:disabled::file-selector-button {
     max-width: 12em;
     color: #0b1633;
     font-family: "Archivo", var(--font-sans);
-    font-size: clamp(32px, 3.5vw, 50px);
+    font-size: clamp(32px, 3.5vw, 58px);
     font-weight: 700;
     line-height: 1.06;
     letter-spacing: -0.04em;
@@ -7205,10 +7233,22 @@ input[type="file"]:disabled::file-selector-button {
 
 .login-screen .login-scene-stage {
     position: relative;
-    width: clamp(300px, calc((100vh - 420px) * 1.476), 620px);
+    /* height-led (fits between headline and footer), up to 1040px on large screens */
+    width: clamp(300px, calc((100vh - 360px) * 1.476), 1040px);
     max-width: 100%;
     margin: 6px auto 0;
     aspect-ratio: 620/420;
+}
+/* Desktop: the scene area is a size container, so the drawing takes the free
+   space left between headline and footer (never more), and the page cannot
+   start to scroll on wide-but-short windows. */
+@media (min-width: 821px) {
+    .login-screen .login-scene {
+        container-type: size;
+    }
+    .login-screen .login-scene-stage {
+        width: max(240px, min(100cqw, calc((100cqh - 6px) * 1.476), 1040px));
+    }
 }
 .login-screen .login-iso {
     position: absolute;
@@ -7234,7 +7274,7 @@ input[type="file"]:disabled::file-selector-button {
     opacity: 0;
     animation: login-fade 0.9s ease forwards;
     animation-delay: var(--d, 0s);
-    transition: fill-opacity 0.3s ease;
+    transition: fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .login-screen .login-iso .iso-face--top {
     --o: 0.1;
@@ -7249,7 +7289,193 @@ input[type="file"]:disabled::file-selector-button {
     fill-opacity: var(--o);
 }
 .login-screen .login-iso .iso-layer:hover .iso-face {
-    fill-opacity: calc(var(--o) * 2.4);
+    fill-opacity: calc(var(--o) * 1.7);
+}
+
+/* ---------- Site context objects (pages/LoginSceneSite.jsx) ----------
+   Every object is .iso-obj: a moving .iso-obj-body, a ground shadow and a
+   transparent .iso-hit area that never moves, so hovering cannot flicker when the
+   body lifts away from the cursor. */
+.login-iso .iso-site-line {
+    stroke: rgba(27, 42, 92, 0.3);
+    stroke-width: 0.8;
+}
+.login-iso .iso-site-line--edge {
+    stroke: rgba(27, 42, 92, 0.66);
+    stroke-width: 1.1;
+}
+.login-screen .login-iso .iso-site-face {
+    stroke: none;
+    fill: #1b2a5c;
+    transition: fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.login-screen .login-iso .iso-site-face--top {
+    fill-opacity: 0.035;
+}
+.login-screen .login-iso .iso-site-face--left {
+    fill-opacity: 0.06;
+}
+.login-screen .login-iso .iso-site-face--right {
+    fill-opacity: 0.12;
+}
+.login-screen .login-iso .iso-window {
+    fill: #1f3f9e;
+    fill-opacity: 0.16;
+    stroke: rgba(31, 63, 158, 0.55);
+    stroke-width: 0.6;
+    transition: fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.login-screen .login-iso .iso-cast {
+    fill: #1b2a5c;
+    fill-opacity: 0.075;
+    stroke: none;
+}
+.login-screen .login-iso .iso-hit {
+    fill: rgba(0, 0, 0, 0);
+    stroke: none;
+    pointer-events: all;
+}
+.login-screen .login-iso .iso-obj-body {
+    pointer-events: none;
+    transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* neighbouring blocks: lift a little and light their windows */
+.login-iso .iso-obj-block:hover .iso-obj-body {
+    transform: translateY(-4px);
+}
+.login-screen .login-iso .iso-obj-block:hover .iso-window {
+    fill-opacity: 0.3;
+}
+.login-screen .login-iso .iso-obj-block:hover .iso-site-face--top {
+    fill-opacity: 0.07;
+}
+.login-screen .login-iso .iso-obj-block:hover .iso-site-face--left {
+    fill-opacity: 0.1;
+}
+.login-screen .login-iso .iso-obj-block:hover .iso-site-face--right {
+    fill-opacity: 0.17;
+}
+
+/* trees */
+.login-screen .login-iso .iso-tree-crown {
+    fill: #0a704a;
+    fill-opacity: 0.13;
+    stroke: #0a704a;
+    stroke-opacity: 0.8;
+    stroke-width: 1;
+    transition: fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.login-screen .login-iso .iso-tree-crown--top {
+    fill-opacity: 0.2;
+}
+.login-screen .login-iso .iso-tree-shine {
+    stroke: #0a704a;
+    stroke-opacity: 0.55;
+    stroke-width: 0.9;
+}
+.login-iso .iso-tree:hover .iso-obj-body {
+    transform: translateY(-3px) scale(1.03);
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+}
+.login-screen .login-iso .iso-tree:hover .iso-tree-crown {
+    fill-opacity: 0.22;
+}
+
+/* drawing sheets: fan out */
+.login-screen .login-iso .iso-sheet-fill {
+    stroke: none;
+    fill: #fff;
+    fill-opacity: 0.9;
+}
+.login-screen .login-iso .iso-tool-fill {
+    stroke: none;
+    fill: #a8480a;
+    fill-opacity: 0.16;
+}
+.login-screen .login-iso .iso-tool-fill--pencil {
+    fill: #1f3f9e;
+    fill-opacity: 0.3;
+}
+.login-iso .iso-sheet {
+    transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.login-iso .iso-obj-sheets:hover .iso-sheet--1 {
+    transform: translate(5px, -5px);
+}
+.login-iso .iso-obj-sheets:hover .iso-sheet--2 {
+    transform: translate(10px, -10px);
+}
+
+/* tower crane */
+.login-iso .iso-crane {
+    --crane-a: 0.82;
+    --crane-thin-a: 0.46;
+}
+.login-iso .iso-obj-crane:hover .iso-crane {
+    --crane-a: 1;
+    --crane-thin-a: 0.7;
+}
+.login-iso .iso-crane path {
+    stroke: rgba(27, 42, 92, var(--crane-a));
+    stroke-width: 1.1;
+    transition:
+        stroke 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+        fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.login-iso .iso-crane .iso-crane-thin {
+    stroke: rgba(27, 42, 92, var(--crane-thin-a));
+    stroke-width: 0.75;
+}
+.login-screen .login-iso .iso-beam-face {
+    stroke: none;
+    fill: #1f3f9e;
+    fill-opacity: 0.22;
+    transition: fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.login-screen .login-iso .iso-beam-face--right {
+    fill-opacity: 0.38;
+}
+.login-screen .login-iso .iso-beam-face--top {
+    fill-opacity: 0.12;
+}
+.login-iso .iso-crane .iso-beam-line {
+    stroke: #1f3f9e;
+    stroke-width: 1.3;
+}
+.login-iso .iso-hook {
+    transform-box: view-box;
+    animation: login-swing 5.2s ease-in-out infinite;
+}
+.login-screen .login-iso .iso-beacon {
+    fill: #b42318;
+    stroke: none;
+    animation: login-beacon 2.2s ease-in-out infinite;
+}
+.login-screen .login-iso .iso-obj-crane:hover .iso-beam-face {
+    fill-opacity: 0.34;
+}
+.login-screen .login-iso .iso-obj-crane:hover .iso-beam-face--right {
+    fill-opacity: 0.5;
+}
+@keyframes login-swing {
+    0%,
+    100% {
+        transform: rotate(-1.8deg);
+    }
+    50% {
+        transform: rotate(1.8deg);
+    }
+}
+@keyframes login-beacon {
+    0%,
+    100% {
+        opacity: 0.2;
+    }
+    50% {
+        opacity: 1;
+    }
 }
 
 /* ground */
@@ -7387,7 +7613,7 @@ input[type="file"]:disabled::file-selector-button {
 .login-iso .iso-scan-glow {
     stroke: url(#login-scan-grad);
     stroke-width: 5;
-    opacity: 0.14;
+    opacity: 0.07;
     filter: url(#login-blur);
 }
 .login-iso .login-pulse {
@@ -7417,9 +7643,9 @@ input[type="file"]:disabled::file-selector-button {
 .login-screen .login-side-foot {
     margin-top: auto;
     padding-top: 13px;
-    border-top: 1px solid rgba(29, 43, 99, 0.16);
-    color: #3f4766;
-    font-size: 11px;
+    border-top: 1px solid rgba(29, 43, 99, 0.2);
+    color: #2d3554;
+    font-size: 12px;
     letter-spacing: 0.01em;
 }
 
@@ -7557,8 +7783,12 @@ input[type="file"]:disabled::file-selector-button {
     margin-top: 10px;
     padding-top: 14px;
     border-top: 1px solid var(--border);
-    color: var(--ink-faint);
+    color: var(--ink-muted);
     font-size: 12px;
+}
+/* placeholders a little darker than the app default, for readable hints */
+.login-screen .login-form-row .form-input::placeholder {
+    color: #677085;
 }
 
 /* ---------- Sign-in button: vivid blue gradient, thin edge ---------- */
@@ -7590,7 +7820,8 @@ input[type="file"]:disabled::file-selector-button {
     padding: 10px 16px;
     border: 1px solid #1f4fc4;
     border-radius: 10px;
-    background: linear-gradient(180deg, #3f82f8 0%, #2a63ea 100%);
+    /* both stops keep white text above 4.5:1 */
+    background: linear-gradient(180deg, #2f6cec 0%, #2459db 100%);
     color: #fff;
     font-family: var(--font-sans);
     font-size: 14.5px;
@@ -7602,12 +7833,13 @@ input[type="file"]:disabled::file-selector-button {
         0 1px 2px rgba(20, 50, 130, 0.35),
         0 8px 16px -10px rgba(42, 99, 234, 0.7);
     transition:
-        filter 0.16s ease,
+        filter 0.25s cubic-bezier(0.22, 1, 0.36, 1),
         transform 0.12s ease,
-        box-shadow 0.16s ease;
+        box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
+/* hover deepens the blue (never lightens it), so the label stays readable */
 .login-screen .login-btn:hover:not(:disabled) {
-    filter: brightness(1.07) saturate(1.05);
+    filter: brightness(0.94) saturate(1.08);
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.32),
         0 1px 2px rgba(20, 50, 130, 0.35),
@@ -7804,10 +8036,20 @@ input[type="file"]:disabled::file-selector-button {
 
 @media (prefers-reduced-motion: reduce) {
     .login-screen .login-button-spinner,
+    .login-iso .iso-beacon,
+    .login-iso .iso-hook,
     .login-iso .iso-pillar,
     .login-iso .iso-route-flow,
     .login-iso .iso-ping {
         animation: none;
+    }
+    .login-screen .login-iso .iso-obj-body,
+    .login-iso .iso-sheet {
+        transition: none;
+    }
+    .login-iso .iso-obj:hover .iso-obj-body,
+    .login-iso .iso-obj-sheets:hover .iso-sheet {
+        transform: none;
     }
     .login-screen .login-iso .iso-face {
         animation: none;
