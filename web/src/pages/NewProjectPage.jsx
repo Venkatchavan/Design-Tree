@@ -208,8 +208,6 @@ export default function NewProjectPage({ bootstrap }) {
     setFormError('');
   }
 
-  const setRelated = (key, value) =>
-    setForm((f) => ({ ...f, related: { ...f.related, [key]: value } }));
 
   const isAdmin = (bootstrap?.role?.key ?? '') === 'admin_billing';
 
@@ -498,8 +496,6 @@ export default function NewProjectPage({ bootstrap }) {
         <Panel title="Information">
           <div className="field-grid">
             <F label="Project Name"><input className="form-input" placeholder="e.g. Business park - Tower A" value={form.name} onChange={(e) => set('name', e.target.value)} required /></F>
-            <F label="Project Code"><input className="form-input" placeholder="Generated automatically" value={form.code} onChange={(e) => set('code', e.target.value)} /></F>
-            <F label="Used For"><input className="form-input" placeholder="e.g. WO or Proposal" value={form.usedFor} onChange={(e) => set('usedFor', e.target.value)} /></F>
             {['sourcePerson','referral','startDate','expectedCompletion','actualCompletion'].map((key)=><F key={key} label={({sourcePerson:'Source person',referral:'Referral',startDate:'Start date',expectedCompletion:'Expected completion',actualCompletion:'Actual completion'})[key]}><input className="form-input" aria-label={key} type={key==='sourcePerson'||key==='referral'?'text':'date'} value={form[key]} onChange={e=>set(key,e.target.value)}/></F>)}
             <F label="Job Number">
               <div className="field-grid" style={{ gridTemplateColumns: 'minmax(150px, 0.7fr) minmax(180px, 1fr)', gap: 8 }}>
@@ -542,7 +538,7 @@ export default function NewProjectPage({ bootstrap }) {
             <F label="Entity Name *">
               <Combobox
                 aria-label="Entity name"
-                placeholder="Select or type an entity name"
+                placeholder="Search Entities..."
                 value={form.entityName}
                 onChange={(v) => set('entityName', v)}
                 options={entityOptions}
@@ -588,18 +584,6 @@ export default function NewProjectPage({ bootstrap }) {
                 <option value="">--None--</option>
                 {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
-            </F>
-            <F label="Project Director">
-              <input className="form-input" placeholder="e.g. Name from Salesforce" value={form.related.projectDirector} onChange={(e) => setRelated('projectDirector', e.target.value)} />
-            </F>
-            <F label="Project Director Designation">
-              <input className="form-input" value={form.related.projectDirectorDesignation} onChange={(e) => setRelated('projectDirectorDesignation', e.target.value)} />
-            </F>
-            <F label="Project Head">
-              <input className="form-input" value={form.related.projectHead} onChange={(e) => setRelated('projectHead', e.target.value)} />
-            </F>
-            <F label="Project Head Designation">
-              <input className="form-input" value={form.related.projectHeadDesignation} onChange={(e) => setRelated('projectHeadDesignation', e.target.value)} />
             </F>
             <F label="Building / Street Address 1"><input className="form-input" value={form.location.address1} onChange={(e) => setLoc('address1', e.target.value)} /></F>
             <F label="Building / Street Address 2"><input className="form-input" value={form.location.address2} onChange={(e) => setLoc('address2', e.target.value)} /></F>
