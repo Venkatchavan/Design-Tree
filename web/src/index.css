@@ -5579,24 +5579,50 @@ input.dt-search.is-collapsed:focus {
 .form-label {
     font-size: 12.5px;
     font-weight: 500;
-    color: var(--ink-muted);
-    margin-bottom: 5px;
+    color: var(--ink);
+    margin-bottom: 6px;
     display: block;
 }
 .form-input {
     width: 100%;
     font-family: var(--font-sans);
     font-size: 13.5px;
+    line-height: 1.4;
     padding: 9px 12px;
     border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface);
+    border-radius: 8px;
+    background-color: #f8f9fc;
     color: var(--ink);
+    transition:
+        border-color 0.16s ease,
+        background-color 0.16s ease,
+        box-shadow 0.16s ease;
+}
+.form-input::placeholder {
+    color: var(--ink-faint);
+}
+.form-input:hover:not(:disabled):not(:focus) {
+    border-color: var(--border-strong);
+    background-color: #fff;
 }
 .form-input:disabled {
     background: var(--surface-alt);
     color: var(--ink-faint);
     cursor: not-allowed;
+}
+textarea.form-input {
+    min-height: 88px;
+    line-height: 1.5;
+    resize: vertical;
+}
+.form-input[aria-invalid="true"],
+.form-input:user-invalid {
+    border-color: var(--rust-dark);
+    background-color: #fff;
+}
+input[type="checkbox"],
+input[type="radio"] {
+    accent-color: var(--blueprint);
 }
 .modal-box.wide {
     max-width: 720px;
@@ -5646,9 +5672,15 @@ input.dt-search.is-collapsed:focus {
     cursor: default;
 }
 .form-input:focus {
-    outline: 2px solid var(--blueprint);
-    outline-offset: 1px;
+    outline: none;
+    background-color: #fff;
     border-color: var(--blueprint);
+    box-shadow: 0 0 0 3px rgba(29, 104, 214, 0.16);
+}
+.form-input[aria-invalid="true"]:focus,
+.form-input:user-invalid:focus {
+    border-color: var(--rust-dark);
+    box-shadow: 0 0 0 3px rgba(188, 40, 50, 0.16);
 }
 
 .teams-grid {
