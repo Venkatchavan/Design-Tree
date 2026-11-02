@@ -19,6 +19,7 @@ import KpiCard from '../components/KpiCard.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import { principalLeadNames } from '../lib/projectRoster.js';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -330,10 +331,7 @@ export default function DashboardPage({ bootstrap }) {
               {
                 key: 'teamLeads',
                 label: 'Team leads',
-                render: (r) => (r.principalTeamLeads ?? [])
-                  .map((t) => t?.name)
-                  .filter(Boolean)
-                  .join(', ') || '—',
+                render: (r) => principalLeadNames(r.principalTeamLeads).join(', ') || '—',
               },
               {
                 key: 'status',

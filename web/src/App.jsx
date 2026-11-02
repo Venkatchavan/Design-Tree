@@ -188,7 +188,8 @@ function ShellRoutes({ user }) {
       bootstrap.views[key] &&
       allowedViews.includes(when) &&
       !seen.has(key) &&
-      (key !== 'new-project' || PROJECT_CREATORS.has(user?.role)),
+      (key !== 'new-project' || PROJECT_CREATORS.has(user?.role)) &&
+      (!key.startsWith('travel-booking-') || bootstrap.capabilities?.travel === 'manage'),
   )
 
   return (
@@ -198,7 +199,7 @@ function ShellRoutes({ user }) {
         <Route path="/design-management" element={<Navigate to="/my-team" replace />} />
         <Route path="/teams" element={<Navigate to="/my-team" replace />} />
       </>}
-      {['technical_director', 'assoc_technical_director'].includes(user?.role) && (
+      {user?.role === 'assoc_technical_director' && (
         <Route path="/teams" element={<Navigate to="/my-team" replace />} />
       )}
       {allowedViews.map((viewKey) => (

@@ -8,6 +8,7 @@ import Field from './Field.jsx';
 import StatusPill from './StatusPill.jsx';
 import { discApi, serviceDashboardApi } from '../lib/functionsApi.js';
 import { fmtDashDate } from '../lib/dates.js';
+import { principalLeadRows } from '../lib/projectRoster.js';
 
 // Mirrors the server write lists; superusers pass server-side.
 const DASHBOARD_WRITERS = new Set([
@@ -63,7 +64,7 @@ export default function QaqcServicePanel({ projectId, codes, dashboard, principa
     onSuccess: () => qc.invalidateQueries({ queryKey: ['project-discs', projectId] }),
   });
 
-  const ptl = (principalTeamLeads ?? [])
+  const ptl = principalLeadRows(principalTeamLeads)
     .filter((t) => codes.includes(String(t.service ?? '')))
     .flatMap((t) => [t.name, ...(t.names ?? [])])
     .filter(Boolean)

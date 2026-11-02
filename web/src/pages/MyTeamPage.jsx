@@ -35,6 +35,8 @@ import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import Modal from '../components/Modal.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import KpiCard from '../components/KpiCard.jsx';
+import ReportingTeamPanel from '../components/ReportingTeamPanel.jsx';
+import { useReportingTeam } from '../lib/reportingTeam.js';
 
 const TL_CHAIN = new Set(['team_lead', 'assoc_technical_director', 'technical_director']);
 const REV_CREATE_ROLES = new Set([
@@ -354,6 +356,14 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
     [teamProjects],
   );
   const members = selectedTeam?.members ?? [];
+  // 02 Nov 2026: TLs / Sr TLs / ATDs also see the team saved for them from the
+  // company employee list (reporting links), not only project allocations.
+  const reportingTeamQ = useReportingTeam(['team_lead', 'assoc_technical_director'].includes(role) && !projectWorkspace);
+  const reportingPeople = reportingTeamQ.data?.employees ?? [];
+  const teamMemberCount = new Set([
+    ...members.map((m) => idOf(m.employee ?? m)),
+    ...reportingPeople.map((e) => idOf(e)),
+  ].filter(Boolean)).size;
 
   const entriesQ = useQuery({
     queryKey: ['team-work-entries', selectedKey, scopedProjectId],
@@ -655,7 +665,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       )}
       <div className="kpi-grid cols-5">
         <KpiCard label="Active projects" value={activeProjects.length} accent="blueprint" />
-        <KpiCard label="Team members" value={members.length} accent="forest" />
+        <KpiCard label="Team members" value={teamMemberCount} accent="forest" />
         <KpiCard label="Pending review" value={pendingEntries.length} accent="amber" />
         <KpiCard label="Awaiting response" value={openRfis.length} accent="rust" />
         <KpiCard label="Open revisions" value={openRevisionCount} accent="violet" />
@@ -721,6 +731,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
 
           {tab === 'team' && (
             <>
+              {['team_lead', 'assoc_technical_director'].includes(role) && !projectWorkspace && <ReportingTeamPanel query={reportingTeamQ} self={selfEmployee} />}
               {([...new Map(teams.flatMap(t=>(t.projects??[]).map(p=>[idOf(p),p]))).values()]).map(p=>{
                 const unique=projectMembers(teams, p, true);
                 return <Panel key={idOf(p)} title={p.name||p.code||'Project'} sub="Project team"><DataTable columns={[{key:'name',label:'Team member',render:memberName},{key:'service',label:'Service'},{key:'designation',label:'Designation',render:m=>memberEmp(m)?.designation||'—'},{key:'experience',label:'Experience',render:m=>expText(memberEmp(m))}]} rows={unique} emptyText="No confirmed members yet."/></Panel>;

@@ -7,6 +7,18 @@ export default function TravelBookingPage({ bootstrap, readOnly = false, embedde
   const [tab, setTab] = useState('bookings');
   const location = useLocation();
   const role = bootstrap?.role?.key;
+  const access = bootstrap?.capabilities?.travel;
+  // Travellers outside HR / Founding Directors / Finance see only their own
+  // bookings, read-only, without the company request log.
+  const ownOnly = access === 'own';
+  const canManage = access === 'manage';
+  if (ownOnly) {
+    return (
+      <div id={embedded ? undefined : "view-travel-booking"}>
+        <TravelBookingLog readOnly ownOnly />
+      </div>
+    );
+  }
   return (
     <div id={embedded ? undefined : "view-travel-booking"}>
       {location.state?.confirmation && (
@@ -27,7 +39,7 @@ export default function TravelBookingPage({ bootstrap, readOnly = false, embedde
         </button>
       </div>
       {tab === 'bookings' ? (
-        <TravelBookingLog readOnly={readOnly || directorRoles.includes(role)} />
+        <TravelBookingLog readOnly={readOnly || !canManage || directorRoles.includes(role)} />
       ) : (
         <TravelRequestLog canWrite={!readOnly && role === 'finance'} />
       )}

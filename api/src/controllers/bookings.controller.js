@@ -195,6 +195,11 @@ export const bookings = {
     const filter = {};
     for (const k of ['employee', 'project', 'status'])
       if (req.query[k]) filter[k] = req.query[k];
+    if (req.travelScope) {
+      if (filter.employee && !req.travelScope.includes(String(filter.employee)))
+        filter.employee = { $in: [] };
+      else if (!filter.employee) filter.employee = { $in: req.travelScope };
+    }
     const page = Number(req.query.page ?? 1),
       requestedLimit = Number(req.query.limit ?? 200);
     if (
@@ -228,6 +233,11 @@ export const bookings = {
       .populate(populate)
       .lean();
     if (!b) throw fail('Not found.', 404);
+    if (
+      req.travelScope &&
+      !req.travelScope.includes(String(b.employee?._id ?? b.employee))
+    )
+      throw fail('Not found.', 404);
     return res.json({ item: present(b) });
   }),
   update: handler(async (req, res) => {
@@ -375,8 +385,10 @@ export const cancelBooking = handler(async (req, res) => {
     item: await persist(b, { status: 'Cancelled', cancellation }, event),
   });
 });
-export const bookingSummary = handler(async (_req, res) => {
-  const rows = await TravelBooking.find().lean();
+export const bookingSummary = handler(async (req, res) => {
+  const rows = await TravelBooking.find(
+    req.travelScope ? { employee: { $in: req.travelScope } } : {},
+  ).lean();
   const summary = {
     total: rows.length,
     nights: 0,

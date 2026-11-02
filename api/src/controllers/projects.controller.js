@@ -486,12 +486,22 @@ export async function createProject(req, res, next) {
         { upsert: true },
       );
       const { notify } = await import('../models/Notification.js');
+      // 02 Nov 2026: Admin no longer assigns leads/SPOC at creation, so every
+      // new project goes straight to Design Management and the Directors.
       await notify({
-        roles: ['design_mgmt_head', 'technical_director'],
+        roles: ['design_mgmt_head'],
         project: project._id,
         link: { view: 'design-mgmt', id: project._id.toString() },
         title: `New project: ${project.name} (${project.code})`,
         detail: 'Review scope & requirements and identify required disciplines.',
+        type: 'project-created',
+      });
+      await notify({
+        roles: ['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director'],
+        project: project._id,
+        link: { view: 'project-detail', id: project._id.toString() },
+        title: `New project: ${project.name} (${project.code})`,
+        detail: 'New project created by Admin. Allocate team leads and open it for a coordinator.',
         type: 'project-created',
       });
     } catch {

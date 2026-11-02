@@ -69,7 +69,9 @@ test('director QS logs reflect project BOQ and pending area settlements',async()
 });
 
 test('Internal roles can access shared bookings; role navigation reflects requirements', async () => {
-  for (const role of ['md', 'td', 'associate', 'atd', 'dmh', 'tl', 'spoc', 'engineer']) assert.equal((await call(role, '/api/travel-bookings')).status, 200, role);
+  // 02 Nov 2026: bookings are visible to HR, Founding Directors, Finance and the traveller only.
+  for (const role of ['md']) assert.equal((await call(role, '/api/travel-bookings')).status, 200, role);
+  for (const role of ['td', 'associate', 'atd', 'dmh', 'tl', 'spoc']) assert.equal((await call(role, '/api/travel-bookings')).status, 403, role);
   assert.equal((await call('finance', '/api/travel-bookings')).status, 200);
   // TD/Assoc-TD have no design-mgmt or billing-status access.
   {

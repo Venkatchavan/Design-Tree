@@ -4,6 +4,7 @@ import Panel from './Panel.jsx';
 import Field from './Field.jsx';
 import { serviceDashboardApi } from '../lib/functionsApi.js';
 import { dateInput, fmtDashDate } from '../lib/dates.js';
+import { principalLeadRows } from '../lib/projectRoster.js';
 
 // Mirrors the write list on the service dashboards API; superusers pass server-side.
 const WRITER_ROLES = new Set([
@@ -37,7 +38,7 @@ export default function ServiceTeamPanel({ projectId, service, dashboard, princi
   const isBim = service === 'BIM';
   const countFields = COUNT_FIELDS[service];
 
-  const ptl = (principalTeamLeads ?? [])
+  const ptl = principalLeadRows(principalTeamLeads)
     .filter((t) => String(t.service ?? '') === service)
     .flatMap((t) => [t.name, ...(t.names ?? [])])
     .filter(Boolean)

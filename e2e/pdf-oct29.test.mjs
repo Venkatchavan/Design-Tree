@@ -48,12 +48,12 @@ test('saved sibling Structural roster remains available when the TL team has no 
   assert(r.data.items.some(m => m.employee._id === f.cast.engineer.employee));
   assert(!r.data.items.some(m => m.employee._id === f.cast.outsider.employee));
 });
-test('TD and ATD bootstrap exposes one My Team navigation entry without duplicate Teams', async () => {
+test('TD and ATD bootstrap exposes one My Team entry; Teams returns for TD only (02 Nov)', async () => {
   for (const role of ['td', 'atd']) {
     const r = await call(role, '/api/meta/bootstrap');
     assert.equal(r.status, 200);
     assert.equal(r.data.nav.filter(n => n.view === 'my-team').length, 1);
-    assert.equal(r.data.nav.filter(n => n.view === 'teams').length, 0);
+    assert.equal(r.data.nav.filter(n => n.view === 'teams').length, role === 'td' ? 1 : 0);
   }
 });
 test('AD and Admin retain their separate Teams navigation', async () => {

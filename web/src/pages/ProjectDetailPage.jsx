@@ -787,7 +787,7 @@ export default function ProjectDetailPage({ bootstrap }) {
           <>
             <div className="form-row" style={{ maxWidth: 360 }}>
               <label className="form-label" htmlFor="pd-spoc">SPOC (coordinator)</label>
-              <EmployeeSelect employees={(spocOptions.data?.items ?? [])} id="pd-spoc" className="filter-select" value={spocId} onChange={(e) => setSpocId(e.target.value)} disabled={spocOptions.isLoading || spocOptions.isError}>
+              <EmployeeSelect employees={(spocOptions.data?.items ?? [])} fixedService="Coordinators" id="pd-spoc" className="filter-select" value={spocId} onChange={(e) => setSpocId(e.target.value)} disabled={spocOptions.isLoading || spocOptions.isError}>
                 <option value="">Select…</option>
                 {(spocOptions.data?.items ?? []).map((e) => (
                   <option key={e._id} value={e._id}>
@@ -859,12 +859,13 @@ export default function ProjectDetailPage({ bootstrap }) {
             <Tabs tabs={DOCUMENT_TABS} active={documentsTab} onChange={setDocumentsTab} />
             {documentsTab === 'directory' && <>
               <><div>{role==='coordinator'&&<SpocContacts key={id} project={project}/>}</div><DirectoryTab myAllocs={teamQ.data?.allocations ?? []} activeProjects={[project]} activeLoading={teamQ.isLoading} canEdit={role === 'coordinator'} /></>
-              <Panel title="Project team"><DataTable columns={[
+              {/* 02 Nov 2026: SPOCs no longer see the project team roster here. */}
+              {role !== 'coordinator' && <Panel title="Project team"><DataTable columns={[
                 { key: 'service', label: 'Service' }, { key: 'team', label: 'Team' },
                 { key: 'name', label: 'Member', render: r => empName(r.employee) },
                 { key: 'designation', label: 'Designation', render: r => r.employee?.designation ?? '—' },
                 { key: 'experience', label: 'Experience', render: r => r.employee?.experience ?? '—' },
-              ]} rows={teamQ.data?.members ?? []} emptyText="No team members allocated." /></Panel>
+              ]} rows={teamQ.data?.members ?? []} emptyText="No team members allocated." /></Panel>}
             </>}
             {documentsTab === 'dbr' && <DbrDocumentPanel projectId={id} />}
           </>}

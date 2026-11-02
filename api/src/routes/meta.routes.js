@@ -14,7 +14,10 @@ import {
   homeView,
   navFor,
   roleLabel,
+  TRAVEL_MANAGER_ROLES,
+  TRAVEL_WRITER_ROLES,
 } from '../config/roles.js';
+import { isTraveller } from '../utils/travelScope.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { requireRole } from '../middlewares/requireRole.js';
 
@@ -26,13 +29,23 @@ router.get('/bootstrap', requireAuth, async (req, res, next) => {
   try {
   const designAccess = await designTeamAccess(req.user);
   const role = req.user.role;
+  const travelManager = TRAVEL_MANAGER_ROLES.includes(role);
+  const traveller = !travelManager && ['client', 'architect', 'superuser'].indexOf(role) < 0
+    ? await isTraveller(req.user.id)
+    : false;
   res.status(200).json({
     roles: ROLES,
     views: VIEWS,
     role: { key: role, label: roleLabel(role) },
     home: homeView(role),
-    nav: navFor(role),
-    capabilities: { designTeam: designAccess.head, stageTimeline: canAccess(role, 'stage-timeline') },
+    nav: navFor(role, { traveller }),
+    capabilities: {
+      designTeam: designAccess.head,
+      stageTimeline: canAccess(role, 'stage-timeline'),
+      travel: travelManager
+        ? (TRAVEL_WRITER_ROLES.includes(role) ? 'manage' : 'read')
+        : (traveller ? 'own' : null),
+    },
     policy: {
       attendance: {
         lateCutoff: ATTENDANCE_LATE_CUTOFF,

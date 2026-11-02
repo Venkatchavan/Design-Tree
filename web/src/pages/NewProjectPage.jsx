@@ -1,4 +1,3 @@
-import EmployeeSelect from '../components/EmployeeSelect.jsx';
 import Combobox from '../components/Combobox.jsx';
 import { BASE_PROJECT_TYPES, savedOptions } from '../lib/projectOptions.js';
 import ContactPicker from '../components/ContactPicker.jsx';
@@ -6,7 +5,7 @@ import SalesforceImportPanel from '../components/SalesforceImportPanel.jsx';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { employeesApi, projectsApi } from '../lib/api.js';
+import { projectsApi } from '../lib/api.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
 import Panel from '../components/Panel.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -22,13 +21,6 @@ const BASE_STATES = [
 ];
 const BASE_SERVICES = ['STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'SMEP', 'SMEPF', 'MEP', 'BIM', 'GBS', 'Peer Review'];
 const SERVICE_LABELS = { STR: 'Str', PHE: 'Phe', ELE: 'Elec', FIRE: 'Fire', SMEP: 'Smep', SMEPF: 'Smepf', MEP: 'Mep', BIM: 'Bim', GBS: 'Gbs' };
-const PRINCIPAL_TEAM_LEAD_SERVICES = [
-  { key: 'Structural', aliases: ['structural', 'str', 'structure'], placeholder: 'e.g. Meera Krishnan' },
-  { key: 'Mechanical', aliases: ['mechanical', 'hvac'], placeholder: 'e.g. Sneha Kulkarni' },
-  { key: 'Electrical', aliases: ['electrical', 'ele', 'elec'], placeholder: 'e.g. Divya Shenoy' },
-  { key: 'Plumbing', aliases: ['plumbing', 'phe'], placeholder: 'e.g. Lakshmi Iyer' },
-  { key: 'Fire', aliases: ['fire'], placeholder: 'e.g. Anjali Pillai' },
-];
 const CONTACT_KINDS = [
   { key: 'client', label: 'Client Contact', contactType: 'Client' },
   { key: 'architect', label: 'Architect Contact', contactType: 'Architect' },
@@ -52,8 +44,6 @@ const BLANK = {
   fee: '',
   hospitality: '',
   jobNumber: '',
-  principalTeamLeads: {},
-  spoc: '',
   bimWorkOrder: { scope: '', fee: '', description: '' },
   contacts: { client: null, architect: null, pmc: null, peerReview: null, billing: null },
 };
@@ -129,8 +119,6 @@ export default function NewProjectPage({ bootstrap }) {
   const [saveMode, setSaveMode] = useState('save');
   const [importFile, setImportFile] = useState(null);
   const [importResult, setImportResult] = useState(null);
-  const [teamImportError, setTeamImportError] = useState('');
-  const [teamImporting, setTeamImporting] = useState(false);
   const [locOpen, setLocOpen] = useState(false);
 
   const set = (key, value) => {
@@ -141,8 +129,6 @@ export default function NewProjectPage({ bootstrap }) {
     setForm((f) => ({ ...f, contacts: { ...f.contacts, [kind]: value } }));
   const setBim = (key, value) =>
     setForm((f) => ({ ...f, bimWorkOrder: { ...f.bimWorkOrder, [key]: value } }));
-  const setPrincipalTeamLead = (service, employeeId) =>
-    setForm((f) => ({ ...f, principalTeamLeads: { ...f.principalTeamLeads, [service]: employeeId } }));
   function toggleService(s) {
     setForm((f) => ({
       ...f,
@@ -221,15 +207,8 @@ export default function NewProjectPage({ bootstrap }) {
     queryFn: () => projectsApi.nextJobNumber(),
     retry: false,
   });
-  const employeesQ = useQuery({
-    queryKey: ['employees-new-project'],
-    queryFn: () => employeesApi.list({ status: 'Active' }),
-  });
 
   const projectRows = projectsQ.data?.items ?? [];
-  const employees = employeesQ.data?.items ?? employeesQ.data ?? [];
-  const teamLeads = employees.filter((employee) => /team lead|team leader|\btl\b|\bptl\b/i.test(employee.designation ?? ''));
-  const coordinators = employees.filter((employee) => /coordinator|spoc/i.test(employee.designation ?? ''));
 
   const stateOptions = unionOptions(BASE_STATES, [...projectRows.map((p) => p.state), form.state]);
   const projectTypeOptions = savedOptions(BASE_PROJECT_TYPES, [...projectRows.map((p) => p.projectType), form.projectType]);
@@ -246,7 +225,6 @@ export default function NewProjectPage({ bootstrap }) {
         setForm(cloneBlank());
         setJobNumberMode('automatic');
         setSalesforceSource(null);
-        setTeamImportError('');
         setFormError('');
       } else {
         const id = data?.project?._id ?? data?._id;
@@ -307,15 +285,6 @@ export default function NewProjectPage({ bootstrap }) {
       scope: form.scopeText.trim() || fee !== undefined
         ? [{ scope: form.scopeText.trim() || undefined, fee }]
         : [],
-      principalTeamLeads: PRINCIPAL_TEAM_LEAD_SERVICES.flatMap(({ key }) => {
-        const employeeId = form.principalTeamLeads[key];
-        if (!employeeId) return [];
-        const employee = employees.find((item) => String(item._id ?? item.id) === employeeId);
-        if (!employee) return [];
-        const name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId || employee.email;
-        return [{ service: key, employee: employeeId, name, approvalStatus: 'Approved' }];
-      }),
-      activation: form.spoc ? { spoc: form.spoc } : undefined,
       hospitalityByClient: form.hospitality === 'yes' ? true : form.hospitality === 'no' ? false : undefined,
       bimWorkOrder:
         form.bimWorkOrder.scope.trim() || form.bimWorkOrder.fee !== '' || form.bimWorkOrder.description.trim()
@@ -340,60 +309,6 @@ export default function NewProjectPage({ bootstrap }) {
           }
         : {}),
     };
-  }
-
-  async function importTeamFile(file) {
-    if (!file) return;
-    setTeamImportError('');
-    setTeamImporting(true);
-    try {
-      const XLSX = await import('xlsx');
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      if (!firstSheet) throw new Error('The spreadsheet does not contain a worksheet.');
-      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
-      if (rows.length === 0) throw new Error('The worksheet is empty.');
-
-      const headerKey = (value) => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-      const headers = Object.keys(rows[0]);
-      const serviceKey = headers.find((header) => headerKey(header) === 'service');
-      const memberKey = headers.find((header) => ['teammember', 'teamlead', 'principalteamlead', 'name', 'employee'].includes(headerKey(header)));
-      if (!serviceKey || !memberKey) {
-        throw new Error('Add header columns named "Service" and "Team member" to the first row.');
-      }
-
-      const normalize = (value) => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const imported = {};
-      const errors = [];
-      for (const [index, row] of rows.entries()) {
-        const serviceValue = normalize(row[serviceKey]);
-        const service = PRINCIPAL_TEAM_LEAD_SERVICES.find((item) => item.aliases.includes(serviceValue));
-        const memberValue = normalize(row[memberKey]);
-        const matches = teamLeads.filter((employee) => {
-          const name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId || employee.email;
-          return [name, employee.empId, employee.email].some((value) => normalize(value) === memberValue);
-        });
-        if (!service || !memberValue || matches.length !== 1) {
-          const reason = !service
-            ? `unknown service "${row[serviceKey]}"`
-            : !memberValue
-              ? 'team member is blank'
-              : matches.length === 0
-                ? `employee "${row[memberKey]}" was not found`
-                : `employee "${row[memberKey]}" is ambiguous`;
-          errors.push(`Row ${index + 2}: ${reason}.`);
-          continue;
-        }
-        imported[service.key] = String(matches[0]._id ?? matches[0].id);
-      }
-      if (errors.length) throw new Error(errors.join(' '));
-      if (Object.keys(imported).length === 0) throw new Error('No team leads were found to import.');
-      setForm((current) => ({ ...current, principalTeamLeads: { ...current.principalTeamLeads, ...imported } }));
-    } catch (error) {
-      setTeamImportError(error.message || 'Unable to import team from this file.');
-    } finally {
-      setTeamImporting(false);
-    }
   }
 
   function handleSubmit(e, mode) {
@@ -622,83 +537,9 @@ export default function NewProjectPage({ bootstrap }) {
           </div>
         </Panel>
 
-        <Panel
-          title="Principal team leads"
-          sub="Assigning a lead here adds the project to their workload, and makes it searchable by their name"
-        >
-          <div className="field-grid">
-            {PRINCIPAL_TEAM_LEAD_SERVICES.map(({ key, placeholder }) => (
-              <F key={key} label={key}>
-                <EmployeeSelect employees={teamLeads}
-                  className="form-input"
-                  aria-label={`${key} team lead`}
-                  value={form.principalTeamLeads[key] ?? ''}
-                  onChange={(event) => setPrincipalTeamLead(key, event.target.value)}
-                  disabled={employeesQ.isLoading || employeesQ.isError}
-                >
-                  <option value="">{employeesQ.isLoading ? 'Loading team leads…' : 'Select team lead'}</option>
-                  {teamLeads.map((employee) => {
-                    const id = String(employee._id ?? employee.id);
-                    const name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId || employee.email;
-                    return (
-                      <option key={id} value={id}>
-                        {name}{employee.designation ? ` · ${employee.designation}` : ''}
-                      </option>
-                    );
-                  })}
-                </EmployeeSelect>
-                {!employeesQ.isLoading && teamLeads.length === 0 && (
-                  <span className="page-sub">No active team leads available.</span>
-                )}
-                <span className="page-sub">{placeholder}</span>
-              </F>
-            ))}
-            <F label="SPOC">
-              <EmployeeSelect employees={coordinators}
-                className="form-input"
-                aria-label="Project SPOC"
-                value={form.spoc}
-                onChange={(event) => set('spoc', event.target.value)}
-                disabled={employeesQ.isLoading || employeesQ.isError}
-              >
-                <option value="">--Select--</option>
-                {coordinators.map((employee) => {
-                  const id = String(employee._id ?? employee.id);
-                  const name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId || employee.email;
-                  return <option key={id} value={id}>{name}</option>;
-                })}
-              </EmployeeSelect>
-              {!employeesQ.isLoading && coordinators.length === 0 && (
-                <span className="page-sub">No active coordinators available.</span>
-              )}
-            </F>
-          </div>
-          {employeesQ.isError && (
-            <div className="login-error" role="alert" style={{ display: 'block' }}>
-              Could not load employees: {employeesQ.error.message}
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12 }}>
-            <label className="approve-btn" style={{ cursor: teamImporting ? 'not-allowed' : 'pointer' }}>
-              {teamImporting ? 'Reading team…' : 'Import team from Excel'}
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                disabled={teamImporting || employeesQ.isLoading || employeesQ.isError}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = '';
-                  void importTeamFile(file);
-                }}
-                style={{ display: 'none' }}
-              />
-            </label>
-            <span className="page-sub">Use columns: Service and Team member.</span>
-          </div>
-          {teamImportError && (
-            <div className="login-error" role="alert" style={{ display: 'block', marginTop: 10 }}>{teamImportError}</div>
-          )}
-        </Panel>
+        {/* 02 Nov 2026: Admin no longer assigns principal team leads or the SPOC.
+            New projects go straight to the Directors and Design Management,
+            who allocate leads and open the project for a coordinator. */}
 
         <Panel
           title="BIM Work Order (optional)"

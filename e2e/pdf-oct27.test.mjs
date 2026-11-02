@@ -22,9 +22,11 @@ test('My Team includes reporting employees without a project and excludes self a
 });
 test('company Teams directory includes all services projects and employees, filtered by branch without broadening My Team',async()=>{
  await f.models.Employee.insertMany(Array.from({length:205},(_,i)=>({empId:'PDF-COMPANY-'+i,firstName:'Company Person '+i,department:'Electrical',branch:'Branch B'})));
- const r=await call('td','/api/teams/company-directory');assert.equal(r.status,200);assert(r.data.employees.length>205);
+ const r=await call('associate','/api/teams/company-directory');assert.equal(r.status,200);assert(r.data.employees.length>205);
  assert(r.data.projects.some(p=>p._id===f.other));assert(r.data.services.includes('Structural')&&r.data.services.includes('Electrical'));
- const filtered=await call('td','/api/teams/company-directory?branch=Branch%20B');assert.equal(filtered.data.employees.length,205);assert(filtered.data.employees.every(e=>e.branch==='Branch B'));
+ const filtered=await call('associate','/api/teams/company-directory?branch=Branch%20B');assert.equal(filtered.data.employees.length,205);assert(filtered.data.employees.every(e=>e.branch==='Branch B'));
+ // 02 Nov 2026: TD Teams shows only the TD's departments (Electrical people excluded for a Structural TD).
+ const td=await call('td','/api/teams/company-directory');assert.equal(td.status,200);assert(!td.data.employees.some(e=>e.department==='Electrical'));
  assert.equal((await call('engineer','/api/teams/company-directory')).status,403);
  assert(!(await call('td','/api/teams/mine')).data.items.some(t=>t.name==='Unrelated team'));
  assert(!JSON.stringify(r.data).includes('passwordHash'));assert(!JSON.stringify(r.data).includes('@datum-test.example'));
@@ -47,6 +49,6 @@ test('attendance is live for each covered login and exempt roles and nonworking 
 test('AD TD ATD lose only the requested QAQC sidebar entry',async()=>{
  const {NAV_BY_ROLE}=await import('../api/src/config/roles.js');
  // 29 October supersedes the separate Teams navigation for TD/ATD only.
- for(const role of ['associate_director','technical_director','assoc_technical_director']){assert(!NAV_BY_ROLE[role].some(n=>n.view==='qaqc-specs'));assert(NAV_BY_ROLE[role].some(n=>n.view==='my-team'));assert.equal(NAV_BY_ROLE[role].some(n=>n.view==='teams'),role==='associate_director')}
+ for(const role of ['associate_director','technical_director','assoc_technical_director']){assert(!NAV_BY_ROLE[role].some(n=>n.view==='qaqc-specs'));assert(NAV_BY_ROLE[role].some(n=>n.view==='my-team'));assert.equal(NAV_BY_ROLE[role].some(n=>n.view==='teams'),role!=='assoc_technical_director')}
  assert(NAV_BY_ROLE.qaqc_head.some(n=>n.view==='qaqc-specs'));
 });

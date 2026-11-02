@@ -185,10 +185,12 @@ export const NAV_BY_ROLE = {
     { view: 'employee-support' },
     { view: 'my-team' },
   ],
+  // 02 Nov 2026: Teams returns for TD, scoped server-side to their departments.
   technical_director: [
     { view: 'dashboard', label: 'Dashboard' },
     { view: 'dashboard', label: 'Projects' },
     { view: 'certificates', label: 'Completion Certificates' },
+    { view: 'teams' },
     { view: 'transmittal-log' },
     { view: 'my-meetings' },
     { view: 'leave-travel' },
@@ -365,11 +367,20 @@ export function homeView(role) {
   return ROLES.find((r) => r.key === role)?.home ?? 'dashboard';
 }
 
-// Nav with resolved labels/paths for a role.
-export function navFor(role) {
+// Travel Booking (02 Nov 2026): only HR, Founding Directors and Finance see
+// the company travel log. Any other internal user sees the page only when
+// they are the traveller on at least one saved booking, and then only their
+// own bookings. HR and Finance record bookings; Founding Directors read.
+export const TRAVEL_MANAGER_ROLES = ['founding_director', 'hr', 'finance'];
+export const TRAVEL_WRITER_ROLES = ['hr', 'finance'];
+
+// Nav with resolved labels/paths for a role. `traveller` adds the personal
+// Travel Booking entry for a non-manager who has saved bookings.
+export function navFor(role, { traveller = false } = {}) {
   const items = [...(NAV_BY_ROLE[role] ?? [])];
   if (ROLE_KEYS.includes(role) && !['client', 'architect', 'superuser'].includes(role)) items.push({ view: 'announcements' });
-  if (INTERNAL_ROLES.includes(role) && !items.some(i => i.view === 'travel-booking')) items.push({ view: 'travel-booking' });
+  const travelVisible = TRAVEL_MANAGER_ROLES.includes(role) || (traveller && INTERNAL_ROLES.includes(role) && role !== 'superuser');
+  if (travelVisible && !items.some(i => i.view === 'travel-booking')) items.push({ view: 'travel-booking' });
   return items.map((item) => {
     const def = VIEWS[item.view];
     return {
@@ -392,7 +403,8 @@ export const INTERNAL_ROLES = ROLE_KEYS.filter(
 export function canAccess(role, view) {
   if (!VIEWS[view]) return false;
   if (view === 'stage-timeline') return isSuperRole(role) || ['admin_billing','executive_director','finance','associate_director','technical_director','assoc_technical_director','design_mgmt_head','coordinator','team_lead','engineer_drafter','qs','qaqc','bim','gbs','peer_reviewer'].includes(role);
-  if (view.startsWith('travel-booking')) return INTERNAL_ROLES.includes(role);
+  if (view === 'travel-booking') return TRAVEL_MANAGER_ROLES.includes(role);
+  if (view.startsWith('travel-booking-')) return TRAVEL_WRITER_ROLES.includes(role);
   // Retain the existing DMH workflow API while its menu moves under My Team.
   if (role === 'design_mgmt_head' && view === 'design-mgmt') return true;
   if (['peer_reviewer','peer_review_head'].includes(role) && ['work-tracking','project-detail'].includes(view)) return true;

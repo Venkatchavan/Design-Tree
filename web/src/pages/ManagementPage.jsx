@@ -1094,7 +1094,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
           {(travel.isError && travel.error.status !== 403) && (
             <div className="login-error" role="alert" style={{ display: 'block' }}>{travel.error.message} <button onClick={() => travel.refetch()}>Retry travel requests</button></div>
           )}
-          <TravelBookingLog readOnly embedded />
+          {['manage', 'read'].includes(bootstrap?.capabilities?.travel) && <TravelBookingLog readOnly embedded />}
           <Panel title="Employee travel requests" sub="Saved requests are separate from booking records above.">
             {travel.isLoading ? <EmptyState text="Loading…" /> : travel.error && travel.error.status === 403 ? (
               <EmptyState text="Travel log is not shared with your role." />

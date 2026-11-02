@@ -39,7 +39,10 @@ export async function designTeamScope(user) {
   }).select('name email employee role').lean()]);
   const ownership = employeeOwnership(user, employees, users);
   const coordinatorIds = new Set((await eligibleSpocs()).items.map(e => id(e)));
-  const spocs = employees.filter(e => coordinatorIds.has(id(e)) && (access.head ? ownership.reporting.has(id(e)) && id(e) !== ownership.own : id(e) === ownership.own));
+  // 02 Nov 2026: Design Management and Coordination are one function. Every
+  // eligible coordinator (SPOC) login sits under Design Management, so a head
+  // sees all of them and their daily updates — not only saved reporting links.
+  const spocs = employees.filter(e => coordinatorIds.has(id(e)) && (access.head ? id(e) !== ownership.own : id(e) === ownership.own));
   return {
     ...access,
     ...ownership,

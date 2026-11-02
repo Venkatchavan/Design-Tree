@@ -5,7 +5,9 @@ let f; const cookies={};
 before(async()=>{f=await startLocalFixture();for(const role of ['md','ed','wd','td','engineer','dmh']){const r=await fetch(f.base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:f.cast[role].email,password:f.password})});cookies[role]=r.headers.get('set-cookie').split(';')[0];}});
 after(async()=>f?.stop());
 test('company directory includes founding and executive observers without opening unrelated roles or writes',async()=>{
- for(const role of ['md','ed','wd','td']){const r=await fetch(f.base+'/api/teams/company-directory',{headers:{Cookie:cookies[role]}});assert.equal(r.status,200,role);const d=await r.json();assert(d.employees.some(e=>e._id===f.cast.outsider.employee));assert(d.projects.some(p=>p._id===f.other));assert(!JSON.stringify(d).includes('passwordHash'));}
+ for(const role of ['md','ed','wd']){const r=await fetch(f.base+'/api/teams/company-directory',{headers:{Cookie:cookies[role]}});assert.equal(r.status,200,role);const d=await r.json();assert(d.employees.some(e=>e._id===f.cast.outsider.employee));assert(d.projects.some(p=>p._id===f.other));assert(!JSON.stringify(d).includes('passwordHash'));}
+ // 02 Nov 2026: TD Teams is limited to the TD's own departments.
+ {const r=await fetch(f.base+'/api/teams/company-directory',{headers:{Cookie:cookies.td}});assert.equal(r.status,200);const d=await r.json();assert.equal(d.scope,'department');assert(d.employees.every(e=>e.department==='Structural'));assert(!d.projects.some(p=>p._id===f.other));}
  for(const role of ['engineer','dmh'])assert.equal((await fetch(f.base+'/api/teams/company-directory',{headers:{Cookie:cookies[role]}})).status,403,role);
  for(const role of ['md','ed'])assert.equal((await fetch(f.base+'/api/teams',{method:'POST',headers:{Cookie:cookies[role],'Content-Type':'application/json'},body:JSON.stringify({name:'Forbidden'})})).status,403);
 });
@@ -26,8 +28,8 @@ test('leadership project rows start with authorized roster, preserve distinct id
  assert.deepEqual(leadershipProjectRows(projects,entries,{branch:'North',service:'Structural',stage:'CD'}).map(r=>r.pid),['a','c']);
  assert.equal(leadershipProjectRows(projects,entries,{project:'b'})[0].hours,0);
 });
-test('DMH with no saved reporting links returns explicit empty scope, never company SPOCs',async()=>{
- const r=await fetch(f.base+'/api/design-team',{headers:{Cookie:cookies.dmh}});assert.equal(r.status,200);const d=await r.json();assert.equal(d.spocs.length,0);assert.equal(d.summary.spocs,0);assert(!JSON.stringify(d).includes(f.cast.spoc.employee));
+test('DMH without saved reporting links still sees every eligible coordinator (02 Nov: Coordination sits under Design Management)',async()=>{
+ const r=await fetch(f.base+'/api/design-team',{headers:{Cookie:cookies.dmh}});assert.equal(r.status,200);const d=await r.json();assert(d.spocs.some(s=>s.employee._id===f.cast.spoc.employee));assert.equal(d.summary.spocs,d.spocs.length);assert(!d.spocs.some(s=>s.employee._id===f.cast.engineer.employee));
 });
 test('project roster pages cover saved projects beyond 200 without widening engineer scope',async()=>{
  const rows=Array.from({length:205},(_,i)=>({name:`Roster ${i}`,code:`LOCAL-${i}`,branch:'Test HQ',services:['STR']}));await f.models.Project.insertMany(rows);

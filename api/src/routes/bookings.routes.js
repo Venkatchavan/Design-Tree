@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { INTERNAL_ROLES, DIRECTOR_ROLES } from '../config/roles.js';
+import {
+  INTERNAL_ROLES,
+  TRAVEL_MANAGER_ROLES,
+  TRAVEL_WRITER_ROLES,
+} from '../config/roles.js';
+import { travellerScope } from '../utils/travelScope.js';
 import {
   bookingSummary,
   bookings,
@@ -11,16 +16,35 @@ import {
 const router = Router();
 router.use(requireAuth);
 router.use((req, res, next) =>
-  INTERNAL_ROLES.includes(req.user.role)
+  INTERNAL_ROLES.includes(req.user.role) && req.user.role !== 'superuser'
     ? next()
     : res.status(403).json({ message: 'Internal travel bookings only.' }),
 );
+// HR, Founding Directors and Finance read the company log. Every other
+// internal user reads only bookings saved against their own employee record.
+router.use(async (req, res, next) => {
+  try {
+    if (TRAVEL_MANAGER_ROLES.includes(req.user.role)) {
+      req.travelScope = null;
+      return next();
+    }
+    const own = await travellerScope(req.user.id);
+    if (!own.length)
+      return res
+        .status(403)
+        .json({ message: 'Travel bookings are limited to HR, Founding Directors, Finance and the traveller.' });
+    req.travelScope = own;
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+});
 const writer = (req, res, next) =>
-  DIRECTOR_ROLES.includes(req.user.role)
-    ? res.status(403).json({
-        message: 'Directors have read-only access to travel bookings.',
-      })
-    : next();
+  TRAVEL_WRITER_ROLES.includes(req.user.role)
+    ? next()
+    : res.status(403).json({
+        message: 'Only HR and Finance record travel bookings.',
+      });
 router.get('/summary', bookingSummary);
 router.get('/', bookings.list);
 router.get('/:id', bookings.get);

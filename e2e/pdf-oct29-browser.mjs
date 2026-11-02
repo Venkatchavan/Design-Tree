@@ -57,7 +57,7 @@ try {
     const s = await session(role);
     await s.p.goto(base + (role === 'td' ? '/my-team' : '/teams'));
     await expect(s.p.locator('#director-service')).toBeVisible();
-    if (role === 'td') { await s.p.goto(base + '/teams'); await expect(s.p).toHaveURL(base + '/my-team'); }
+    if (role === 'td') { await s.p.goto(base + '/teams'); await expect(s.p).toHaveURL(base + '/teams'); }
     done(role + ' retains the intended directory and navigation scope');
     await s.c.close();
   }

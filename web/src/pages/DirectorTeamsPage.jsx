@@ -8,6 +8,8 @@ import EmptyState from '../components/EmptyState.jsx';
 const id=value=>String(value?._id??value?.id??value??'');
 const name=e=>[e.firstName,e.middleName,e.lastName].filter(Boolean).join(' ')||e.empId||'Not recorded';
 const projectLabel=p=>`${p.jobNumber||'Job number not recorded'} · ${p.name}`;
+// Experience as imported from Saral; a bare number is read as years.
+const experienceText=e=>{const t=String(e?.experience??'').trim();return !t?'Not recorded':/^\d+(\.\d+)?$/.test(t)?`${t} yrs`:t;};
 
 // embedded: shown inside another My Team page; renders only when the caller
 // has people in their saved reporting chain.
@@ -22,7 +24,14 @@ export default function DirectorTeamsPage({company=false,embedded=false}) {
  const memberOptions=employees.filter(e=>(!service||serviceNames([e.department]).includes(service)||assignments.some(a=>a.employee===id(e)&&a.service===service))&&
    ((!project&&!projectSearch)||assignments.some(a=>a.employee===id(e)&&projectIds.has(a.project)&&(!service||a.service===service))));
  const shown=memberOptions.filter(e=>(!member||id(e)===member)&&`${name(e)} ${e.designation??''}`.toLowerCase().includes(memberSearch.toLowerCase()));
- const employeeProjects=e=>projects.filter(p=>assignments.some(a=>a.employee===id(e)&&a.project===id(p)&&(!service||a.service===service)));
+ const hasFilter=Boolean(service||project||member||projectSearch.trim()||memberSearch.trim()||(company&&branch));
+ const projectFilter=Boolean(project||projectSearch.trim());
+ const projectById=new Map(projects.map(p=>[id(p),p]));
+ const logRows=hasFilter?shown.flatMap(e=>{
+   const rows=assignments.filter(a=>a.employee===id(e)&&projectById.has(a.project)&&(!service||a.service===service))
+     .map(a=>({key:`${a.employee}:${a.project}:${a.service}`,employee:e,project:projectById.get(a.project),service:a.service,lead:!!a.lead}));
+   return rows.length||projectFilter?rows:[{key:id(e)+':none',employee:e,project:null,service:'',lead:false}];
+ }).sort((a,b)=>String(a.project?.name??'~').localeCompare(String(b.project?.name??'~'))||Number(b.lead)-Number(a.lead)||name(a.employee).localeCompare(name(b.employee))):[];
  function resetMembers(){setMember('');setMemberSearch('');}
  function chooseService(value){setService(value);setProject('');setProjectSearch('');resetMembers();}
  if (embedded && (q.isLoading || q.isError || !employees.length)) return null;
@@ -35,12 +44,17 @@ export default function DirectorTeamsPage({company=false,embedded=false}) {
     <div className="form-row"><label className="form-label" htmlFor="director-project-search">Search projects</label><input id="director-project-search" className="form-input" value={projectSearch} onChange={e=>{setProjectSearch(e.target.value);resetMembers();}}/><label className="form-label" htmlFor="director-project">Project</label><select id="director-project" className="filter-select" value={project} onChange={e=>{setProject(e.target.value);resetMembers();}}><option value="">All projects</option>{projectOptions.filter(p=>projectLabel(p).toLowerCase().includes(projectSearch.toLowerCase())||id(p)===project).map(p=><option key={id(p)} value={id(p)}>{projectLabel(p)}</option>)}</select></div>
     <div className="form-row"><label className="form-label" htmlFor="director-member-search">Search team members</label><input id="director-member-search" className="form-input" value={memberSearch} onChange={e=>{setMemberSearch(e.target.value);setMember('');}}/><label className="form-label" htmlFor="director-member">Team Members</label><select id="director-member" className="filter-select" value={member} onChange={e=>setMember(e.target.value)}><option value="">All listed members</option>{memberOptions.filter(e=>name(e).toLowerCase().includes(memberSearch.toLowerCase())||id(e)===member).map(e=><option key={id(e)} value={id(e)}>{name(e)}</option>)}</select></div>
    </div><p aria-live="polite">{projects.length} projects · {shown.length} members</p></Panel>
-   <Panel title={company?'Company employees':'People working under you'}><DataTable rows={shown} emptyText={company?'No employees match these filters.':'No people match these filters or saved reporting links. Ask the allocation owner to verify the existing relationships.'} columns={[
-    {key:'name',label:'Team member',render:name},{key:'designation',label:'Designation'},{key:'branch',label:'Branch',render:e=>e.branch||'Not recorded'},{key:'status',label:'Status',render:e=>e.status||'Not recorded'},
-    {key:'service',label:'Department / Service',render:e=>[...new Set([...serviceNames([e.department]),...assignments.filter(a=>a.employee===id(e)).map(a=>a.service)])].join(', ')||'Not recorded'},
-    {key:'job',label:'Job Number',render:e=>employeeProjects(e).map(p=>p.jobNumber||'Not recorded').join(', ')||'Not allocated'},
-    {key:'project',label:'Project Name',render:e=>employeeProjects(e).map(p=>p.name).join(', ')||'Not allocated'},
-   ]}/></Panel>
+   {/* 02 Nov 2026: a log of project team assignments driven by the filters
+       above, not the whole employee list. No job number column. */}
+   <Panel title="Project team log" sub={hasFilter?`${logRows.length} entries`:undefined}>{hasFilter?<DataTable rows={logRows} emptyText={company?'No project team entries match these filters.':'No project team entries match these filters or saved reporting links. Ask the allocation owner to verify the existing relationships.'} columns={[
+    {key:'project',label:'Project Name',render:r=>r.project?.name||'Not allocated'},
+    {key:'service',label:'Department / Service',render:r=>r.service||serviceNames([r.employee.department]).join(', ')||'Not recorded'},
+    {key:'name',label:'Team member',render:r=><>{name(r.employee)}{r.lead&&<span className="load-badge" style={{marginLeft:6}}>TL</span>}</>},
+    {key:'designation',label:'Designation',render:r=>r.employee.designation||'Not recorded'},
+    {key:'experience',label:'Experience',render:r=>experienceText(r.employee)},
+    {key:'branch',label:'Branch',render:r=>r.employee.branch||'Not recorded'},
+    {key:'status',label:'Status',render:r=>r.employee.status||'Not recorded'},
+   ]}/>:<EmptyState text="Select a department / service, project or team member above to see the project team log."/>}</Panel>
    <Panel title="Projects"><DataTable rows={projects} emptyText="No projects match these filters." columns={[{key:'jobNumber',label:'Job Number',render:p=>p.jobNumber||'Not recorded'},{key:'name',label:'Project Name'},{key:'branch',label:'Branch',render:p=>p.branch||'Not recorded'},{key:'services',label:'Services',render:p=>serviceNames(p.services).join(', ')||'Not recorded'}]}/></Panel>
   </>}
  </>;

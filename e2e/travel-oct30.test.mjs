@@ -2,7 +2,11 @@ import { execFileSync } from 'node:child_process';
 import { before, after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startLocalFixture } from './local-fixture.mjs';
-import { ROLE_KEYS, DIRECTOR_ROLES } from '../api/src/config/roles.js';
+import {
+  ROLE_KEYS,
+  TRAVEL_MANAGER_ROLES,
+  TRAVEL_WRITER_ROLES,
+} from '../api/src/config/roles.js';
 let f;
 const cookies = {};
 before(async () => {
@@ -51,24 +55,25 @@ async function create() {
   assert.equal(r.status, 201, JSON.stringify(r.data));
   return r.data.item;
 }
-test('every internal role reads shared log; directors read only; externals excluded', async () => {
+test('only HR, Founding Directors and Finance see the company log; HR and Finance write', async () => {
   const existing = await create();
   for (const role of ROLE_KEYS) {
-    const external = ['client', 'architect'].includes(role),
-      writer = !external && !DIRECTOR_ROLES.includes(role);
+    const manager = TRAVEL_MANAGER_ROLES.includes(role),
+      writer = TRAVEL_WRITER_ROLES.includes(role);
     assert.equal(
       (await call(role)).status,
-      external ? 403 : 200,
+      manager ? 200 : 403,
       role + ' read',
     );
     const bootstrap = await fetch(f.base + '/api/meta/bootstrap', {
       headers: { Cookie: cookies[role] },
     }).then((r) => r.json());
-    assert.equal(
-      bootstrap.nav.some((n) => n.view === 'travel-booking'),
-      !external,
-      role + ' nav',
-    );
+    if (!['client', 'architect'].includes(role))
+      assert.equal(
+        bootstrap.nav.some((n) => n.view === 'travel-booking'),
+        manager,
+        role + ' nav',
+      );
     assert.equal(
       (await call(role, '', 'POST', body())).status,
       writer ? 201 : 403,
@@ -103,10 +108,46 @@ test('every internal role reads shared log; directors read only; externals exclu
     );
     assert.equal(
       (await call(role, '/' + existing._id, 'DELETE')).status,
-      external || DIRECTOR_ROLES.includes(role) ? 403 : 405,
+      writer ? 405 : 403,
       role + ' delete',
     );
   }
+});
+test('a traveller outside HR/FD/Finance sees only their own bookings, read-only', async () => {
+  const mine = await create();
+  const login = await fetch(f.base + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'engineer@datum-test.example', password: f.password }),
+  });
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const get = (path) =>
+    fetch(f.base + path, { headers: { Cookie: cookie } }).then(async (r) => ({
+      status: r.status,
+      data: await r.json(),
+    }));
+  const boot = await get('/api/meta/bootstrap');
+  assert.ok(boot.data.nav.some((n) => n.view === 'travel-booking'));
+  assert.equal(boot.data.capabilities.travel, 'own');
+  const other = await call('finance', '', 'POST', {
+    ...body(),
+    employee: f.cast.qs.employee,
+  });
+  assert.equal(other.status, 201);
+  const list = await get('/api/travel-bookings');
+  assert.equal(list.status, 200);
+  assert.ok(list.data.items.length >= 1);
+  assert.ok(
+    list.data.items.every(
+      (b) => String(b.employee?._id ?? b.employee) === String(f.cast.engineer.employee),
+    ),
+  );
+  assert.ok(list.data.items.some((b) => String(b._id) === String(mine._id)));
+  assert.equal((await get('/api/travel-bookings/' + other.data.item._id)).status, 404);
+  assert.equal(
+    (await get('/api/travel-bookings?employee=' + f.cast.qs.employee)).data.items.length,
+    0,
+  );
 });
 test('required dates, calendar dates, order, hotel range and decimal money validated', async () => {
   for (const fields of [
@@ -144,7 +185,7 @@ test('reschedules accumulate exact separate costs and immutable history, cancell
     transport: { originalAmount: '100.10', newAmount: '120.25', fee: '5.10' },
     stay: { originalAmount: '50.20', newAmount: '40.10', fee: '2.20' },
   };
-  let r = await call('engineer_drafter', id + '/reschedule', 'POST', change);
+  let r = await call('hr', id + '/reschedule', 'POST', change);
   assert.equal(r.status, 200, JSON.stringify(r.data));
   b = r.data.item;
   assert.equal(b.history.length, 1);
@@ -179,7 +220,7 @@ test('reschedules accumulate exact separate costs and immutable history, cancell
     ).status,
     400,
   );
-  r = await call('coordinator', id + '/cancel', 'POST', {
+  r = await call('hr', id + '/cancel', 'POST', {
     expectedVersion: b.__v,
     reason: 'Project postponed',
     transport: { amountPaid: '120.25', fee: '10.05' },
@@ -209,7 +250,7 @@ test('reschedules accumulate exact separate costs and immutable history, cancell
     ).status,
     400,
   );
-  r = await call('admin_billing', id, 'PUT', {
+  r = await call('finance', id, 'PUT', {
     expectedVersion: b.__v,
     reason: 'Administrative correction',
   });
@@ -286,7 +327,7 @@ test('legacy missing dates and amounts stay unknown on reads and ordinary edits;
   assert.equal(r.data.item.checkIn, undefined);
   const writes = await Promise.all(
     ['A', 'B'].map((reason) =>
-      call('engineer_drafter', '/' + b._id, 'PUT', {
+      call('hr', '/' + b._id, 'PUT', {
         expectedVersion: 0,
         reason,
       }),
@@ -364,8 +405,8 @@ test('full booking list pagination and invalid pages keep shared log complete', 
       toCity: 'Pagination ' + i,
     })),
   );
-  const first = await call('engineer_drafter', '?page=1&limit=200'),
-    second = await call('engineer_drafter', '?page=2&limit=200');
+  const first = await call('hr', '?page=1&limit=200'),
+    second = await call('hr', '?page=2&limit=200');
   assert.equal(first.data.items.length, 200);
   assert(first.data.hasMore);
   assert.equal(

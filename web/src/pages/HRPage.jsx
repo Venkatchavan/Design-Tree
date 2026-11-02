@@ -464,7 +464,7 @@ function purposeBucket(purpose) {
   return 'Internal / training';
 }
 
-function DirectorTravelLogTab() {
+function DirectorTravelLogTab({ showBookings = true }) {
   const q = useQuery({ queryKey: ['hr-travel-log'], queryFn: () => travelApi.log({}), refetchInterval: 10000 });
   const today = new Date().toISOString().slice(0, 10);
   const { startYm: qStartYm, endYm: qEndYm } = quarterBounds(today);
@@ -509,7 +509,7 @@ function DirectorTravelLogTab() {
         <KpiCard label="Travel spend (qtr)" value={fmtSpend(spendQtr)} accent="copper" />
         <KpiCard label="Avg. cost / trip" value={fmtSpend(avgCost)} accent="violet" />
       </div>
-      <TravelBookingLog readOnly embedded />
+      {showBookings && <TravelBookingLog readOnly embedded />}
       <Panel title="Saved travel requests and booking summary" sub="Sources remain separate. Detailed booking history and fees appear above.">
         {q.isLoading ? (
           <EmptyState text="Loading…" />
@@ -2319,7 +2319,7 @@ export default function HRPage({ bootstrap }) {
       {!isDirector && tab === 'track' && <TrackTab />}
       {!isDirector && tab === 'recruitment' && <RecruitmentTab bootstrap={bootstrap} />}
       {isDirector && tab === 'loginhours' && <DirectorLoginHoursTab />}
-      {(isDirector || isHr) && tab === 'travellog' && <DirectorTravelLogTab />}
+      {(isDirector || isHr) && tab === 'travellog' && <DirectorTravelLogTab showBookings={['manage', 'read'].includes(bootstrap?.capabilities?.travel)} />}
       {isHr && tab === 'holidays' && <DirectorHolidaysTab />}
       {isHr && tab === 'attendance' && <HrAttendanceLeaveTab />}
       {isHr && tab === 'loginhours' && <DirectorLoginHoursTab />}

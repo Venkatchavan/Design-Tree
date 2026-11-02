@@ -11,16 +11,17 @@ before(async () => {
 });
 after(async()=>f?.stop());
 async function call(role,path='',method='GET',body){const r=await fetch(f.base+'/api/design-team'+path,{method,headers:{Cookie:cookies[role],...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()};}
-test('dashboard reflects saved SPOC entries and excludes other reporting lines and non-SPOCs',async()=>{
+test('dashboard reflects every coordinator saved entries (02 Nov: all SPOCs sit under Design Management) and excludes non-SPOCs',async()=>{
   const r=await call('dmh'); assert.equal(r.status,200);
-  assert.equal(r.data.spocs.length,2);assert.equal(r.data.summary.spocs,2);assert.equal(r.data.summary.todayUpdated,r.data.summary.todayWorking ? 1 : 0);
+  assert.equal(r.data.spocs.length,3);assert.equal(r.data.summary.spocs,3);assert.equal(r.data.summary.todayUpdated,r.data.summary.todayWorking ? 2 : 0);
   const person=r.data.spocs.find(e=>e.employee._id===f.cast.spoc.employee);assert.equal(person.totalHours,8.5);assert.equal(person.load,3);
   assert(r.data.entries.some(e=>e.areas.some(a=>a.update==='Saved SPOC meeting reflection')));
-  assert(!JSON.stringify(r.data).includes('Outside reporting line'));assert(!r.data.spocs.some(e=>e.employee._id===f.cast.engineer.employee));
-  assert(r.data.unassigned.some(p=>p._id===f.vacant));assert(!r.data.projects.some(p=>p._id===f.other));
+  assert(JSON.stringify(r.data).includes('Outside reporting line'));assert(!r.data.spocs.some(e=>e.employee._id===f.cast.engineer.employee));
+  assert(r.data.spocs.some(e=>e.employee._id===f.cast.foreignSpoc.employee));
+  assert(r.data.unassigned.some(p=>p._id===f.vacant));assert(r.data.projects.some(p=>p._id===f.other));
 });
 test('Design Management TD retains TD role with selective capability; ordinary TD and unrelated roles have no module access',async()=>{
-  const r=await call('td');assert.equal(r.status,200);assert.equal(r.data.spocs.length,2);
+  const r=await call('td');assert.equal(r.status,200);assert.equal(r.data.spocs.length,3);
   const bootstrap=await fetch(f.base+'/api/meta/bootstrap',{headers:{Cookie:cookies.td}}).then(r=>r.json());assert.equal(bootstrap.role.key,'technical_director');assert.equal(bootstrap.capabilities.designTeam,true);
   await f.models.Employee.findByIdAndUpdate(f.cast.td.employee,{department:'Structural'});
   assert.equal((await call('td')).status,403);
@@ -30,12 +31,12 @@ test('Design Management TD retains TD role with selective capability; ordinary T
 test('SPOC sees only their own reflection and cannot mutate management data',async()=>{
   const r=await call('spoc');assert.equal(r.status,200);assert.equal(r.data.spocs.length,1);assert.equal(r.data.canEdit,false);
   assert.equal((await call('spoc','/remarks','POST',{spoc:f.cast.spoc.employee,text:'Not permitted'})).status,403);
-  assert.equal((await call('dmh','/spocs/'+f.cast.foreignSpoc.employee)).status,404);
+  assert.equal((await call('dmh','/spocs/'+f.cast.engineer.employee)).status,404);
 });
 test('assigned project detail returns sixteen saved workflow steps and real source records',async()=>{
   const r=await call('dmh','/projects/'+f.project);assert.equal(r.status,200);assert.equal(r.data.workflow.steps.length,16);
   assert.equal(r.data.hours,8.5);assert(r.data.followups.some(x=>x.id===f.followup));
-  assert.equal((await call('dmh','/projects/'+f.other)).status,404);
+  assert.equal((await call('dmh','/projects/'+f.other)).status,200);
 });
 test('management changes remarks, follow-up closure, MOM and workflow with actor/time audit',async()=>{
   assert.equal((await call('dmh','/remarks','POST',{spoc:f.cast.spoc.employee,text:'Actual head review remark'})).status,201);
@@ -49,8 +50,8 @@ test('management changes remarks, follow-up closure, MOM and workflow with actor
 test('allocation validates scope, current SPOC and reason before changing existing records',async()=>{
   assert.equal((await call('dmh','/projects/'+f.project+'/assign','POST',{spoc:f.cast.spoc.employee,expectedSpoc:f.cast.spoc.employee})).status,409);
   assert.equal((await call('dmh','/projects/'+f.project+'/assign','POST',{spoc:f.cast.spoc2.employee,expectedSpoc:f.cast.spoc.employee})).status,400);
-  assert.equal((await call('dmh','/projects/'+f.project+'/assign','POST',{spoc:f.cast.foreignSpoc.employee,expectedSpoc:f.cast.spoc.employee,reason:'Wrong team'})).status,404);
-  assert.equal((await call('dmh','/projects/'+f.other+'/assign','POST',{spoc:f.cast.spoc2.employee,expectedSpoc:f.cast.foreignSpoc.employee,reason:'Wrong project'})).status,404);
+  assert.equal((await call('dmh','/projects/'+f.project+'/assign','POST',{spoc:f.cast.engineer.employee,expectedSpoc:f.cast.spoc.employee,reason:'Not a coordinator'})).status,404);
+  assert.equal((await call('dmh','/projects/'+f.other+'/assign','POST',{spoc:f.cast.spoc2.employee,expectedSpoc:f.cast.spoc.employee,reason:'Stale expected SPOC'})).status,409);
 });
 test('concurrent assignments have one winner, append history once and move current SPOC project access',async()=>{
   const count=await f.models.Project.countDocuments(),employees=await f.models.Employee.countDocuments();
@@ -92,6 +93,8 @@ test('approved leave and travel are labelled separately from missing daily entri
  await f.models.LeaveRequest.collection.deleteOne({_id:leave.insertedId});await TravelRequest.collection.deleteOne({_id:travel.insertedId});
 });
 test('daily work outside current allocation remains read-only without foreign project contacts',async()=>{
+ const historical=await f.models.Project.create({code:'DMH-HIST',jobNumber:'DMH-003',name:'Historical non-SPOC project',services:['STR'],'activation.spoc':f.cast.engineer.employee});
+ f.other=String(historical._id);
  await f.models.SpocEntry.create({employee:f.cast.spoc.employee,project:f.other,date:new Date(f.workDate+'T12:00:00Z'),service:'STR',areas:[{key:'Meetings',update:'Historical project work',hours:1}],createdBy:f.cast.spoc.user});
  const r=await call('dmh','/projects/'+f.other);assert.equal(r.status,200);assert.equal(r.data.canEdit,false);assert.equal(r.data.loggedOutsideAllocation,true);assert.equal(r.data.hours,1);assert.equal(r.data.project.contacts,undefined);assert.deepEqual(r.data.followups,[]);
  assert.equal((await call('dmh','/projects/'+f.other+'/status','PATCH',{status:'Delayed'})).status,404);

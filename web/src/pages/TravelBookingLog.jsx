@@ -114,6 +114,7 @@ export function BookingSummary({ booking: b }) {
 export default function TravelBookingLog({
   readOnly = false,
   embedded = false,
+  ownOnly = false,
 }) {
   const [filter, setFilter] = useState('All'),
     [search, setSearch] = useState('');
@@ -146,8 +147,8 @@ export default function TravelBookingLog({
       {!embedded && (
         <header className="travel-head">
           <div>
-            <h1>Travel & hotel bookings</h1>
-            <p>Every trip across all departments, newest first.</p>
+            <h1>{ownOnly ? 'My travel & hotel bookings' : 'Travel & hotel bookings'}</h1>
+            <p>{ownOnly ? 'Trips booked for you by HR or Finance, newest first.' : 'Every trip across all departments, newest first.'}</p>
           </div>
           {!readOnly && (
             <Link className="btn-primary" to="/travel-booking/new">

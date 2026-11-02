@@ -6,6 +6,7 @@ import Field from './Field.jsx';
 import StatusPill from './StatusPill.jsx';
 import { discApi, serviceDashboardApi } from '../lib/functionsApi.js';
 import { dateInput, fmtDashDate } from '../lib/dates.js';
+import { principalLeadRows } from '../lib/projectRoster.js';
 
 // Mirrors the write list on the service dashboards API; superusers pass server-side.
 const DASHBOARD_WRITERS = new Set([
@@ -32,7 +33,7 @@ export default function DesignTeamPanel({ projectId, service, dashboard, princip
   const [draft, setDraft] = useState(null);
   const [coordForm, setCoordForm] = useState(null);
 
-  const ptl = (principalTeamLeads ?? [])
+  const ptl = principalLeadRows(principalTeamLeads)
     .filter((t) => codes.includes(String(t.service ?? '')))
     .flatMap((t) => [t.name, ...(t.names ?? [])])
     .filter(Boolean)

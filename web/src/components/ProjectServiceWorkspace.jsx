@@ -8,6 +8,7 @@ import StageReviewPanel from './StageReviewPanel.jsx';
 import DesignTeamPanel from './DesignTeamPanel.jsx';
 import QsServicePanel from './QsServicePanel.jsx';
 import QaqcServicePanel from './QaqcServicePanel.jsx';
+import { principalLeadRows } from '../lib/projectRoster.js';
 
 export const SERVICE_TABS = [
   { key: 'structural', label: 'Structural', codes: ['STR', 'Structural', 'Structure'], kind: 'design', dash: 'STR' },
@@ -218,7 +219,7 @@ function ServiceDirectoryPanel({ service, project, teamBundle }) {
     { name: architect.company || architect.name || '—', org: 'Architect', role: architect.designation || 'Design architect', contact: [architect.email, architect.phone].filter(Boolean).join(' · ') || '—' },
     { name: pmc.company || pmc.name || '—', org: 'PMC', role: pmc.designation || 'PMC', contact: [pmc.email, pmc.phone].filter(Boolean).join(' · ') || '—' },
   ].filter((r) => r.name && r.name !== '—');
-  const leads = (project?.principalTeamLeads ?? [])
+  const leads = principalLeadRows(project?.principalTeamLeads)
     .filter((t) => codes.includes(String(t.service ?? '')))
     .flatMap((t) => {
       const names = (t.names ?? []).filter(Boolean);
