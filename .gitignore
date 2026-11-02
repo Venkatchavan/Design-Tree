@@ -42,3 +42,6 @@ pnpm-debug.log*
 coverage/
 .nyc_output/
 *.tsbuildinfo
+
+# Ad-hoc `nginx -T` dumps from servers (stale snapshots; may hold client infra details)
+nginx-active-config.txt
