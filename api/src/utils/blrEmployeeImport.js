@@ -59,16 +59,28 @@ export function pickBranch({ branches, employees, override }) {
 }
 
 // Pure plan over a database snapshot. Nothing is written here.
+export const exactName = (value) => String(value ?? '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+// Normalized names that appear more than once in the list ("Karthik.S" / "Karthik S")
+// are only matched by their exact spelling.
+export function rosterNameCounts(roster) {
+  const counts = new Map();
+  for (const row of roster) { const key = normalizedName(row.name); counts.set(key, (counts.get(key) ?? 0) + 1); }
+  return counts;
+}
+
 export function planImport({ roster, employees, users, branch, roleByEmail = new Map() }) {
-  const byEmpId = new Map(), byEmail = new Map(), byName = new Map();
+  const byEmpId = new Map(), byEmail = new Map(), byName = new Map(), byExactName = new Map();
   const push = (map, key, e) => { if (!key) return; if (!map.has(key)) map.set(key, []); map.get(key).push(e); };
   for (const e of employees) {
     push(byEmpId, String(e.empId ?? '').toUpperCase(), e);
     push(byEmail, normalizedEmail(e.email), e);
     push(byName, normalizedName(fullName(e)), e);
+    push(byExactName, exactName(fullName(e)), e);
   }
   const usersByEmail = new Map(), usersById = new Map(users.map((u) => [id(u), u]));
   for (const u of users) push(usersByEmail, normalizedEmail(u.email), u);
+  const employeesById = new Map(employees.map((e) => [id(e), e]));
+  const nameCounts = rosterNameCounts(roster);
   const claimed = new Map();
   const rows = [];
 
@@ -92,8 +104,20 @@ export function planImport({ roster, employees, users, branch, roleByEmail = new
         match = hits[0]; how = 'email';
       }
     }
+    // An existing login with this email points at the person's employee record.
+    if (!match && email) {
+      const logins = usersByEmail.get(email) ?? [];
+      const linked = logins.length === 1 && logins[0].employee ? employeesById.get(id(logins[0].employee)) : null;
+      if (linked) {
+        const existing = String(linked.empId ?? '');
+        if (existing && !AUTO_EMP_ID.test(existing) && existing.toUpperCase() !== empId) { conflict(`Login ${email} belongs to employee ${existing}, not ${row.empId ?? 'this person'}.`); continue; }
+        match = linked; how = 'login';
+      }
+    }
+    const uniqueName = (nameCounts.get(normalizedName(row.name)) ?? 0) <= 1;
+    const sameName = uniqueName ? (byName.get(normalizedName(row.name)) ?? []) : (byExactName.get(exactName(row.name)) ?? []);
     if (!match) {
-      const hits = (byName.get(normalizedName(row.name)) ?? []).filter((e) => {
+      const hits = sameName.filter((e) => {
         const existing = String(e.empId ?? '');
         const idOk = !existing || AUTO_EMP_ID.test(existing) || existing.toUpperCase() === empId;
         const mailOk = !e.email || normalizedEmail(e.email) === email;
@@ -101,6 +125,14 @@ export function planImport({ roster, employees, users, branch, roleByEmail = new
       });
       if (hits.length > 1) { conflict(`Several existing employees are named "${row.name}"; not merged.`); continue; }
       if (hits.length === 1) { match = hits[0]; how = 'name'; }
+    }
+    // Duplicate guard: never create a second record for a name that already exists.
+    if (!match) {
+      const same = byName.get(normalizedName(row.name)) ?? [];
+      if (same.length) {
+        conflict(`An employee named "${row.name}" already exists (${same.map((e) => [e.empId, e.email].filter(Boolean).join(', ') || id(e)).join('; ')}); not created. Confirm whether it is the same person.`);
+        continue;
+      }
     }
     if (match) {
       if (claimed.has(id(match))) { conflict(`Matches the same existing employee as ${claimed.get(id(match))}; not merged.`); continue; }
@@ -120,7 +152,10 @@ export function planImport({ roster, employees, users, branch, roleByEmail = new
       for (const [from, field] of FILL_FIELDS) {
         const value = wanted[from];
         if (blank(value)) continue;
+        const previous = row.was?.[from];
         if (blank(match[field])) out.set[field] = value;
+        // Updated client hierarchy: replace only a value this import wrote earlier and nobody changed since.
+        else if (previous && String(match[field]).trim() === previous && previous !== value) { out.set[field] = value; (out.replace ??= {})[field] = previous; }
         else if (String(match[field]).trim() !== String(value).trim()) out.kept.push({ field, existing: match[field], list: value });
       }
       if (email) {
@@ -168,10 +203,12 @@ export function planImport({ roster, employees, users, branch, roleByEmail = new
 }
 
 export function planHeads({ heads, employees, users }) {
+  // Names compared without spaces/punctuation so "Pruthviraj" = "Pruthvi Raj".
+  const compact = (value) => normalizedName(value).replace(/ /g, '');
   return heads.map((head) => {
-    const key = normalizedName(head.name);
-    const employeeHits = employees.filter((e) => normalizedName(fullName(e)) === key);
-    const userHits = users.filter((u) => normalizedName(u.name) === key);
+    const keys = new Set([head.name, ...(head.aliases ?? [])].map(compact));
+    const employeeHits = employees.filter((e) => keys.has(compact(fullName(e))));
+    const userHits = users.filter((u) => keys.has(compact(u.name)));
     if (employeeHits.length > 1 || userHits.length > 1) return { ...head, action: 'conflict', reason: 'Several records share this name; not linked.' };
     const employee = employeeHits[0] ?? (userHits[0]?.employee ? employees.find((e) => id(e) === id(userHits[0].employee)) : null);
     if (employee) {
@@ -208,7 +245,8 @@ export async function applyImport({ plan, heads, Employee, User, passwordHash })
         const set = {};
         for (const [field, value] of Object.entries(row.set)) {
           const current = employee[field];
-          if (field === 'empId' ? (blank(current) || AUTO_EMP_ID.test(String(current))) : blank(current)) set[field] = value;
+          const replaceable = row.replace?.[field] !== undefined && String(current ?? '').trim() === row.replace[field];
+          if (field === 'empId' ? (blank(current) || AUTO_EMP_ID.test(String(current))) : (blank(current) || replaceable)) set[field] = value;
         }
         if (Object.keys(set).length) { employee.set(set); await employee.save(); } else status = 'unchanged';
       }

@@ -5,8 +5,9 @@
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import * as XLSX from 'xlsx';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { config } from '../config/config.js';
 import { connectDb } from '../config/db.js';
 import { Branch } from '../models/Branch.js';
@@ -15,14 +16,15 @@ import { User } from '../models/User.js';
 import { USERS } from '../data/blr-users.js';
 import { ROSTER, DEPARTMENT_HEADS } from '../data/blr-roster-20261031.js';
 import { applyImport, mergeEmails, normalizedEmail, pickBranch, planHeads, planImport } from '../utils/blrEmployeeImport.js';
+import { applyRepair, planRepair } from '../utils/blrDuplicateRepair.js';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
 const option = (name) => { const i = args.indexOf(name); return i < 0 ? null : args[i + 1]; };
-const known = new Set(['--apply', '--dry-run', '--file', '--branch', '--verbose']);
+const known = new Set(['--apply', '--dry-run', '--file', '--branch', '--verbose', '--skip-repair', '--since']);
 for (let i = 0; i < args.length; i += 1) {
   if (!known.has(args[i])) throw new Error(`Unknown argument ${args[i]}. Use --dry-run (default), --apply, --file <xlsx>, --branch "<name>", --verbose.`);
-  if (['--file', '--branch'].includes(args[i])) i += 1;
+  if (['--file', '--branch', '--since'].includes(args[i])) i += 1;
 }
 const apply = flag('--apply');
 if (apply && flag('--dry-run')) throw new Error('Choose either --dry-run or --apply.');
@@ -56,6 +58,25 @@ try {
   const roster = mergeEmails(ROSTER, updates);
   const notInRoster = [...updates.keys()].filter((empId) => !roster.some((r) => r.empId === empId));
   await connectDb(config.mongoUri);
+  // Register every model so the duplicate repair can check all Employee references.
+  const modelsDir = resolve(import.meta.dirname, '../models');
+  for (const f of (await readdir(modelsDir)).filter((n) => n.endsWith('.js'))) await import(pathToFileURL(resolve(modelsDir, f)).href);
+
+  // Step 1: merge records an earlier run created for people who already had one.
+  let repair = { skipped: true };
+  if (!flag('--skip-repair')) {
+    const since = new Date(option('--since') ?? Date.now() - 30 * 86400000);
+    if (Number.isNaN(since.getTime())) throw new Error('--since must be a date, e.g. 2026-11-01');
+    const pairs = await planRepair({ roster, Employee, User, mongoose, since });
+    if (apply) {
+      const results = await applyRepair({ pairs, Employee, User });
+      repair = { since: since.toISOString(), counts: count(results, 'status'), details: results.filter((r) => r.status !== 'merged' || flag('--verbose')), merged: results.filter((r) => r.status === 'merged').map((r) => `${r.name} (${r.empId}) -> ${r.into} [${r.matchedBy}${r.loginMoved ? ', login moved' : ''}]`) };
+      if (results.some((r) => r.status === 'failed')) process.exitCode = 1;
+    } else {
+      repair = { since: since.toISOString(), counts: count(pairs, 'action'), toMerge: pairs.filter((p) => p.action === 'merge').map((p) => `${p.name} (${p.empId}) -> ${p.originalLabel} [${p.how}${p.moveLogin ? ', move login' : ''}]`), needsReview: pairs.filter((p) => p.action !== 'merge') };
+    }
+  }
+
   const [employees, users, branches] = await Promise.all([
     Employee.find({}).select('_id empId firstName middleName lastName email designation department branch reportingManager teamViewOf headOfDepartments user status').lean(),
     User.find({}).select('_id name email role isActive employee').lean(),
@@ -69,7 +90,7 @@ try {
     const roleByEmail = new Map(USERS.map((u) => [normalizedEmail(u.email), u.role]));
     const plan = planImport({ roster, employees, users, branch: picked.branch, roleByEmail });
     const heads = planHeads({ heads: DEPARTMENT_HEADS, employees, users });
-    const header = { mode: apply ? 'apply' : 'dry-run', branch: picked.branch, branchSource: picked.source, rosterRows: roster.length, databaseEmployees: employees.length, databaseLogins: users.length, emailsFromFile: updates.size, fileRowsNotInRoster: notInRoster };
+    const header = { mode: apply ? 'apply' : 'dry-run', duplicateRepair: repair, ...(apply || repair.skipped ? {} : { note: 'Import preview below is computed before the repair merges.' }), branch: picked.branch, branchSource: picked.source, rosterRows: roster.length, databaseEmployees: employees.length, databaseLogins: users.length, emailsFromFile: updates.size, fileRowsNotInRoster: notInRoster };
     const conflicts = plan.filter((r) => r.action === 'conflict' || r.login.action === 'conflict').map((r) => ({ name: r.name, empId: r.empId, reason: r.reason ?? r.login.reason }));
     const kept = plan.filter((r) => r.kept?.length).map((r) => ({ name: r.name, empId: r.empId, keptExisting: r.kept }));
     const noLogin = plan.filter((r) => r.action !== 'conflict' && r.login.action === 'none' && r.login.reason).map((r) => ({ name: r.name, empId: r.empId, department: r.department, reason: r.login.reason }));

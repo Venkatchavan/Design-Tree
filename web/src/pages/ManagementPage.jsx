@@ -593,6 +593,19 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
     }
     return [...m.values()].map((g) => ({ dept: g.dept, employees: g.empIds.size, hours: Number(g.hours) })).sort((a, b) => b.hours - a.hours);
   }, [hrHoursRows]);
+  // Per-employee hours so the table shows who logged them (client request, 2 Nov).
+  const hrHoursByEmployee = useMemo(() => {
+    const m = new Map();
+    for (const e of hrHoursRows) {
+      const emp = typeof e.employee === 'object' && e.employee ? e.employee : {};
+      const key = String(emp._id ?? e.employee ?? '');
+      const name = [emp.firstName, emp.lastName].filter(Boolean).join(' ') || emp.empId || 'Not recorded';
+      const g = m.get(key) ?? { key, name, empId: emp.empId || '—', designation: emp.designation || '—', dept: emp.department || '—', hours: 0 };
+      g.hours = addHours(g.hours, e.hours);
+      m.set(key, g);
+    }
+    return [...m.values()].map((g) => ({ ...g, hours: Number(g.hours) })).sort((a, b) => a.dept.localeCompare(b.dept) || b.hours - a.hours || a.name.localeCompare(b.name));
+  }, [hrHoursRows]);
   const hrLeaves = useMemo(() => arr(leave.data?.items ?? leave.data), [leave.data]);
   const hrLeaveApproved = hrLeaves.filter((r) => String(r.status ?? '').toLowerCase() === 'approved').length;
   const hrLeavePending = hrLeaves.filter((r) => String(r.status ?? '').toLowerCase() === 'pending').length;
@@ -1010,6 +1023,18 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
             <div className="kpi-grid cols-2" style={{ marginBottom: 12 }}>
               <KpiCard label="Total hours (filtered)" value={workEntries.isError || workEntries.isLoading ? '—' : hrHoursTotal} accent="blueprint" />
             </div>
+            <DataTable
+              columns={[
+                { key: 'name', label: 'Employee name' },
+                { key: 'empId', label: 'EMP ID' },
+                { key: 'designation', label: 'Designation' },
+                { key: 'dept', label: 'Department / service' },
+                { key: 'hours', label: 'Total hours' },
+              ]}
+              rows={hrHoursByEmployee}
+              emptyText="No hours logged in range."
+            />
+            <div className="section-label" style={{ marginTop: 12 }}>By department / service</div>
             <DataTable
               columns={[
                 { key: 'dept', label: 'Department / service' },
