@@ -1,15 +1,15 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, CircleAlert, Eye, EyeOff, Lock, Mail, ScanLine } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { loginApi } from '../lib/api.js';
 import { attendanceApi } from '../lib/api.js';
 import Modal from '../components/Modal.jsx';
 import BrandLogo from '../components/BrandLogo.jsx';
 import LoginScene from './LoginScene.jsx';
-import LoginBackdrop from './LoginBackdrop.jsx';
 
 export default function LoginPage() {
   const queryClient = useQueryClient();
+  const sideRef = useRef(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -59,6 +59,15 @@ export default function LoginPage() {
     // require it (enforced server-side).
     setLateOpen(false);
     enterApp();
+  }
+
+  // Cursor-follow spotlight on the showcase panel (sets CSS vars, no re-render).
+  function handleSideMove(e) {
+    const el = sideRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    el.style.setProperty('--mx', `${e.clientX - rect.left}px`);
+    el.style.setProperty('--my', `${e.clientY - rect.top}px`);
   }
 
   const errorMsg = login.isError ? login.error.message : '';
@@ -205,8 +214,13 @@ export default function LoginPage() {
           </div>
         </section>
 
-        <aside className="login-side" aria-label="About DesignTree">
-          <LoginBackdrop />
+        <aside
+          className="login-side"
+          ref={sideRef}
+          onPointerMove={handleSideMove}
+          aria-label="About DesignTree"
+        >
+          <div className="login-cursor-glow" aria-hidden="true" />
           <div className="login-brand">
             <BrandLogo className="login-logo" />
           </div>

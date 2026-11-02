@@ -7091,17 +7091,17 @@ input[type="file"]:disabled::file-selector-button {
     margin-top: 1px;
 }
 
-/* Discipline tones, shared by the scene and the readout */
+/* Discipline tones, shared by the scene and the readout (light, for the dark panel) */
 .login-screen .tone-structural {
-    --c: #1f3f9e;
+    --c: #6aa6ff;
     --g: url(#login-g-structural);
 }
 .login-screen .tone-mep {
-    --c: #a8480a;
+    --c: #ffa35c;
     --g: url(#login-g-mep);
 }
 .login-screen .tone-qaqc {
-    --c: #0a704a;
+    --c: #4fe0a0;
     --g: url(#login-g-qaqc);
 }
 
@@ -7114,142 +7114,108 @@ input[type="file"]:disabled::file-selector-button {
     flex-direction: column;
     min-width: 0;
     overflow: hidden;
-    color: #0b1633;
+    color: #fff;
     /* inset rounded card: a small gap from the screen edges, soft corners */
     margin: clamp(10px, 1vw, 16px) 0 clamp(10px, 1vw, 16px) clamp(10px, 1vw, 16px);
-    border: 1px solid rgba(29, 43, 99, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: clamp(18px, 1.6vw, 28px);
     padding: clamp(28px, 3.6vw, 56px) clamp(28px, 4vw, 64px);
-    /* warm off-white; colour, grid and grain come from LoginBackdrop.jsx */
-    background: #f8f7f4;
+    /* deep navy with a blue glow top-left and a violet glow bottom-right */
+    background:
+        radial-gradient(
+            70% 55% at 6% 0%,
+            rgba(63, 98, 214, 0.36),
+            transparent 70%
+        ),
+        radial-gradient(
+            60% 50% at 100% 100%,
+            rgba(124, 77, 235, 0.24),
+            transparent 70%
+        ),
+        #060b1d;
     box-shadow:
-        0 1px 2px rgba(29, 43, 99, 0.04),
-        0 12px 32px -18px rgba(29, 43, 99, 0.16);
+        inset -1px 0 0 rgba(255, 255, 255, 0.06),
+        0 12px 32px -18px rgba(6, 11, 29, 0.5);
+}
+/* engineering grid, faded toward the edges */
+.login-screen .login-side::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background-image:
+        linear-gradient(
+            to right,
+            rgba(160, 190, 255, 0.07) 1px,
+            transparent 1px
+        ),
+        linear-gradient(
+            to bottom,
+            rgba(160, 190, 255, 0.07) 1px,
+            transparent 1px
+        );
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(
+        ellipse 85% 75% at 50% 42%,
+        #000 18%,
+        transparent 78%
+    );
+    mask-image: radial-gradient(
+        ellipse 85% 75% at 50% 42%,
+        #000 18%,
+        transparent 78%
+    );
+}
+/* top-left spotlight beam */
+.login-screen .login-side::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: conic-gradient(
+        from 112deg at 6% -10%,
+        transparent 0deg,
+        rgba(138, 170, 255, 0.24) 12deg,
+        rgba(138, 170, 255, 0.05) 25deg,
+        transparent 35deg
+    );
+    filter: blur(10px);
+    -webkit-mask-image: linear-gradient(180deg, #000 0, transparent 80%);
+    mask-image: linear-gradient(180deg, #000 0, transparent 80%);
+    animation: login-beam-drift 9s ease-in-out infinite alternate;
 }
 .login-screen .login-side > * {
     position: relative;
     z-index: 1;
 }
-/* ---------- Showcase backdrop (pages/LoginBackdrop.jsx) ---------- */
-.login-screen .login-side > .login-backdrop {
+.login-screen .login-side > .login-cursor-glow {
     position: absolute;
     inset: 0;
     z-index: 0;
-    overflow: hidden;
-    border-radius: inherit;
     pointer-events: none;
     opacity: 0;
-    animation: login-fade 1.4s ease 0.1s forwards;
-}
-/* spectral light rising from the bottom; each blob drifts on its own slow loop */
-.login-aurora {
-    position: absolute;
-    inset: 0;
-}
-.login-aurora-blob {
-    position: absolute;
-    aspect-ratio: 1;
-    border-radius: 50%;
+    transition: opacity 0.35s ease;
     background: radial-gradient(
-        closest-side,
-        rgba(var(--ac), var(--aa)) 0%,
-        rgba(var(--ac), calc(var(--aa) * 0.62)) 34%,
-        rgba(var(--ac), calc(var(--aa) * 0.22)) 66%,
-        rgba(var(--ac), 0) 100%
+        380px circle at var(--mx, 50%) var(--my, 35%),
+        rgba(130, 165, 255, 0.14),
+        transparent 62%
     );
-    transform: translate(-50%, -50%);
-    will-change: transform;
-    animation: login-aurora-drift var(--ad) ease-in-out infinite alternate;
 }
-.login-aurora-blob--amber {
-    --ac: 245, 168, 62;
-    --aa: 0.5;
-    --ad: 19s;
-    --ax: 5%;
-    --ay: -3%;
-    --as: 1.06;
-    left: 10%;
-    top: 100%;
-    width: 78%;
+.login-screen .login-side:hover > .login-cursor-glow {
+    opacity: 1;
 }
-.login-aurora-blob--rose {
-    --ac: 233, 72, 124;
-    --aa: 0.42;
-    --ad: 23s;
-    --ax: -4%;
-    --ay: -5%;
-    --as: 1.08;
-    left: 40%;
-    top: 106%;
-    width: 84%;
-}
-.login-aurora-blob--violet {
-    --ac: 132, 82, 232;
-    --aa: 0.4;
-    --ad: 21s;
-    --ax: -6%;
-    --ay: 3%;
-    --as: 0.94;
-    left: 72%;
-    top: 90%;
-    width: 72%;
-}
-.login-aurora-blob--blue {
-    --ac: 58, 140, 248;
-    --aa: 0.42;
-    --ad: 25s;
-    --ax: 3%;
-    --ay: -4%;
-    --as: 1.05;
-    left: 100%;
-    top: 74%;
-    width: 70%;
-}
-/* faint isometric floor, strongest low in the panel */
-.login-floor {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    -webkit-mask-image: radial-gradient(ellipse 90% 62% at 50% 92%, #000 18%, transparent 78%);
-    mask-image: radial-gradient(ellipse 90% 62% at 50% 92%, #000 18%, transparent 78%);
-}
-.login-floor path {
-    fill: none;
-    stroke: rgba(29, 43, 99, 0.1);
-    stroke-width: 1;
-}
-/* fine film grain over everything */
-.login-grain {
-    position: absolute;
-    inset: 0;
-    background-image: var(--login-grain);
-    background-size: 180px 180px;
-    mix-blend-mode: multiply;
-    opacity: 0.24;
-}
-/* confetti */
-.login-fleck {
-    position: absolute;
-    width: 8px;
-    height: 3.5px;
-    border-radius: 50%;
-    background: var(--fc);
-    opacity: 0.72;
-    transform: rotate(var(--fr));
-    animation: login-fleck-float var(--fd) ease-in-out var(--fdelay) infinite alternate;
-}
-@keyframes login-aurora-drift {
-    to {
-        transform: translate(-50%, -50%) translate(var(--ax), var(--ay)) scale(var(--as));
-    }
-}
-@keyframes login-fleck-float {
+@keyframes login-beam-drift {
     from {
-        transform: translateY(-4px) rotate(var(--fr));
+        opacity: 0.65;
+        transform: translate3d(0, 0, 0);
     }
     to {
-        transform: translateY(5px) rotate(calc(var(--fr) + 28deg));
+        opacity: 1;
+        transform: translate3d(2%, 0, 0);
     }
 }
 
@@ -7260,8 +7226,8 @@ input[type="file"]:disabled::file-selector-button {
 }
 .login-screen .login-logo .dt-logo-img {
     box-shadow:
-        0 0 0 1px rgba(29, 43, 99, 0.12),
-        0 6px 16px -8px rgba(29, 43, 99, 0.35);
+        0 0 0 1px rgba(255, 255, 255, 0.12),
+        0 6px 16px -8px rgba(0, 0, 0, 0.5);
 }
 .login-screen .login-brand-mark {
     width: 34px;
@@ -7298,7 +7264,7 @@ input[type="file"]:disabled::file-selector-button {
 .login-screen .login-side-intro h2 {
     margin: 0 0 12px;
     max-width: 12em;
-    color: #0b1633;
+    color: #fff;
     font-family: "Archivo", var(--font-sans);
     font-size: clamp(32px, 3.5vw, 58px);
     font-weight: 700;
@@ -7383,16 +7349,16 @@ input[type="file"]:disabled::file-selector-button {
    transparent .iso-hit area that never moves, so hovering cannot flicker when the
    body lifts away from the cursor. */
 .login-iso .iso-site-line {
-    stroke: rgba(27, 42, 92, 0.3);
+    stroke: rgba(200, 215, 255, 0.3);
     stroke-width: 0.8;
 }
 .login-iso .iso-site-line--edge {
-    stroke: rgba(27, 42, 92, 0.66);
+    stroke: rgba(200, 215, 255, 0.66);
     stroke-width: 1.1;
 }
 .login-screen .login-iso .iso-site-face {
     stroke: none;
-    fill: #1b2a5c;
+    fill: #c8d7ff;
     transition: fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .login-screen .login-iso .iso-site-face--top {
@@ -7405,14 +7371,14 @@ input[type="file"]:disabled::file-selector-button {
     fill-opacity: 0.12;
 }
 .login-screen .login-iso .iso-window {
-    fill: #1f3f9e;
+    fill: #6aa6ff;
     fill-opacity: 0.16;
-    stroke: rgba(31, 63, 158, 0.55);
+    stroke: rgba(106, 166, 255, 0.55);
     stroke-width: 0.6;
     transition: fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .login-screen .login-iso .iso-cast {
-    fill: #1b2a5c;
+    fill: #c8d7ff;
     fill-opacity: 0.075;
     stroke: none;
 }
@@ -7445,9 +7411,9 @@ input[type="file"]:disabled::file-selector-button {
 
 /* trees */
 .login-screen .login-iso .iso-tree-crown {
-    fill: #0a704a;
+    fill: #4fe0a0;
     fill-opacity: 0.13;
-    stroke: #0a704a;
+    stroke: #4fe0a0;
     stroke-opacity: 0.8;
     stroke-width: 1;
     transition: fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
@@ -7456,7 +7422,7 @@ input[type="file"]:disabled::file-selector-button {
     fill-opacity: 0.2;
 }
 .login-screen .login-iso .iso-tree-shine {
-    stroke: #0a704a;
+    stroke: #4fe0a0;
     stroke-opacity: 0.55;
     stroke-width: 0.9;
 }
@@ -7472,16 +7438,16 @@ input[type="file"]:disabled::file-selector-button {
 /* drawing sheets: fan out */
 .login-screen .login-iso .iso-sheet-fill {
     stroke: none;
-    fill: #fff;
-    fill-opacity: 0.9;
+    fill: #dce6ff;
+    fill-opacity: 0.14;
 }
 .login-screen .login-iso .iso-tool-fill {
     stroke: none;
-    fill: #a8480a;
+    fill: #ffa35c;
     fill-opacity: 0.16;
 }
 .login-screen .login-iso .iso-tool-fill--pencil {
-    fill: #1f3f9e;
+    fill: #6aa6ff;
     fill-opacity: 0.3;
 }
 .login-iso .iso-sheet {
@@ -7504,19 +7470,19 @@ input[type="file"]:disabled::file-selector-button {
     --crane-thin-a: 0.7;
 }
 .login-iso .iso-crane path {
-    stroke: rgba(27, 42, 92, var(--crane-a));
+    stroke: rgba(200, 215, 255, var(--crane-a));
     stroke-width: 1.1;
     transition:
         stroke 0.55s cubic-bezier(0.22, 1, 0.36, 1),
         fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .login-iso .iso-crane .iso-crane-thin {
-    stroke: rgba(27, 42, 92, var(--crane-thin-a));
+    stroke: rgba(200, 215, 255, var(--crane-thin-a));
     stroke-width: 0.75;
 }
 .login-screen .login-iso .iso-beam-face {
     stroke: none;
-    fill: #1f3f9e;
+    fill: #6aa6ff;
     fill-opacity: 0.22;
     transition: fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -7527,7 +7493,7 @@ input[type="file"]:disabled::file-selector-button {
     fill-opacity: 0.12;
 }
 .login-iso .iso-crane .iso-beam-line {
-    stroke: #1f3f9e;
+    stroke: #6aa6ff;
     stroke-width: 1.3;
 }
 .login-iso .iso-hook {
@@ -7535,7 +7501,7 @@ input[type="file"]:disabled::file-selector-button {
     animation: login-swing 5.2s ease-in-out infinite;
 }
 .login-screen .login-iso .iso-beacon {
-    fill: #b42318;
+    fill: #ff6b5b;
     stroke: none;
     animation: login-beacon 2.2s ease-in-out infinite;
 }
@@ -7566,11 +7532,11 @@ input[type="file"]:disabled::file-selector-button {
 
 /* ground */
 .login-iso .iso-floor-grid {
-    stroke: rgba(29, 43, 99, 0.16);
+    stroke: rgba(200, 215, 255, 0.16);
     stroke-width: 0.7;
 }
 .login-iso .iso-floor-edge {
-    stroke: rgba(29, 43, 99, 0.24);
+    stroke: rgba(200, 215, 255, 0.24);
     stroke-width: 0.8;
     stroke-dasharray: 3 5;
 }
@@ -7584,7 +7550,7 @@ input[type="file"]:disabled::file-selector-button {
 .login-screen .login-iso .iso-ribbon-band {
     stroke: url(#login-ribbon-grad);
     stroke-width: 34;
-    stroke-opacity: 0.09;
+    stroke-opacity: 0.14;
 }
 .login-screen .login-iso .iso-ribbon {
     stroke: url(#login-ribbon-grad);
@@ -7607,7 +7573,7 @@ input[type="file"]:disabled::file-selector-button {
 
 /* vertical skeleton */
 .login-iso .iso-pillar {
-    stroke: rgba(29, 43, 99, 0.38);
+    stroke: rgba(200, 215, 255, 0.38);
     stroke-width: 0.9;
     stroke-dasharray: 2 5;
     animation: login-rise 1.6s linear infinite;
@@ -7618,7 +7584,7 @@ input[type="file"]:disabled::file-selector-button {
     stroke-dasharray: 1 4;
 }
 .login-iso .iso-axis-node {
-    stroke: #1b2a5c;
+    stroke: #c8d7ff;
     stroke-width: 1;
 }
 
@@ -7670,7 +7636,7 @@ input[type="file"]:disabled::file-selector-button {
     stroke-width: 1.1;
 }
 .login-iso .iso-clash {
-    stroke: #b42318;
+    stroke: #ff6b5b;
     stroke-width: 1.3;
 }
 .login-iso .iso-ping {
@@ -7759,8 +7725,8 @@ input[type="file"]:disabled::file-selector-button {
 .login-screen .login-side-foot {
     margin-top: auto;
     padding-top: 13px;
-    border-top: 1px solid rgba(29, 43, 99, 0.2);
-    color: #2d3554;
+    border-top: 1px solid rgba(219, 231, 255, 0.14);
+    color: rgba(255, 255, 255, 0.44);
     font-size: 12px;
     letter-spacing: 0.01em;
 }
@@ -8233,8 +8199,7 @@ input[type="file"]:disabled::file-selector-button {
     .login-iso .iso-pillar,
     .login-iso .iso-route-flow,
     .login-iso .iso-ping,
-    .login-aurora-blob,
-    .login-fleck {
+    .login-screen .login-side::after {
         animation: none;
     }
     .login-screen .login-iso .iso-ribbon-glint {

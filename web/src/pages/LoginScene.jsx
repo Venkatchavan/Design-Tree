@@ -1,7 +1,7 @@
 /**
  * LoginScene — isometric "exploded building" for the login showcase.
  *
- * Dark line work with glossy spectral fills, standing where two bundles of
+ * Light line work with glossy spectral fills, standing where two bundles of
  * spectral ribbons cross on the ground. Geometry is generated from a single iso()
  * projection so every line sits exactly on the 30°/30° grid. Besides the
  * three-layer building (structure / MEP / QA-QC) the scene shows the context a
@@ -233,9 +233,9 @@ export default function LoginScene() {
       <svg className="login-iso" viewBox="0 0 620 420" focusable="false">
         <defs>
           <linearGradient id="login-scan-grad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#1f3f9e" />
-            <stop offset=".5" stopColor="#3b4fc8" />
-            <stop offset="1" stopColor="#6a3fc9" />
+            <stop offset="0" stopColor="#5B9BF0" />
+            <stop offset=".5" stopColor="#E6DEFF" />
+            <stop offset="1" stopColor="#B794F6" />
           </linearGradient>
           <linearGradient
             id="login-axis-grad"
@@ -245,9 +245,9 @@ export default function LoginScene() {
             x2="0"
             y2={OY - TOP_Z - 28}
           >
-            <stop offset="0" stopColor="#1b2a5c" stopOpacity="0" />
-            <stop offset=".5" stopColor="#1b2a5c" stopOpacity=".6" />
-            <stop offset="1" stopColor="#1b2a5c" stopOpacity="0" />
+            <stop offset="0" stopColor="#5B9BF0" stopOpacity="0" />
+            <stop offset=".5" stopColor="#9DB9FF" stopOpacity=".7" />
+            <stop offset="1" stopColor="#B794F6" stopOpacity="0" />
           </linearGradient>
           <radialGradient
             id="login-floor-fade"
