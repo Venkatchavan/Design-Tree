@@ -29,10 +29,16 @@ function Chip({
 function Approval({
   row
 }) {
-  const n = ['None', 'PTL Requested', 'SPOC Confirmed', 'TD Approved'].indexOf(row.confirmationStatus);
-  return <><span aria-label={`${Math.max(n, 0)} of 3 approvals`}>{['PTL', 'SPOC', 'TD'].map((label, i) => <span key={label} style={{
-        color: n > i ? '#1b6b49' : '#777'
-      }}>{n > i ? '●' : '○'} {label}{i < 2 ? ' → ' : ''}</span>)}</span><br />{row.confirmationStatus === 'PTL Requested' ? 'PTL Completed' : row.confirmationStatus}</>;
+  const n = Math.max(['None', 'PTL Requested', 'SPOC Confirmed', 'TD Approved'].indexOf(row.confirmationStatus), 0);
+  const status = row.confirmationStatus === 'PTL Requested' ? 'PTL Completed' : !row.confirmationStatus || row.confirmationStatus === 'None' ? 'Not started' : row.confirmationStatus;
+  // One compact line of steps (never wraps per step), with the status underneath.
+  return <div className="stage-approval">
+    <span className="stage-approval-steps" role="img" aria-label={`${n} of 3 approvals: ${status}`}>{['PTL', 'SPOC', 'TD'].map((label, i) => <span key={label} className={`stage-approval-step${n > i ? ' is-done' : ''}`}>
+      {i > 0 && <span className="stage-approval-link" aria-hidden="true" />}
+      <span className="stage-approval-dot" aria-hidden="true" />{label}
+    </span>)}</span>
+    <small className="stage-approval-status">{status}</small>
+  </div>;
 }
 export default function StageTimelinePanel({
   projectId
@@ -138,12 +144,11 @@ export default function StageTimelinePanel({
     {list.isLoading && <p role="status">Loading stage timeline…</p>}
     {list.isError && <p role="alert">{list.error.message}</p>}
     {save.isError && !dialog && <p role="alert">{save.error.message}</p>}
-    {summaries.map(s => <div key={s.service} className="stage-summary" style={{
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: 14,
-      marginBottom: 14
-    }} aria-label={`${s.service} stage summary`}><b>{s.service}</b><span>Stages completed: {s.completed} / {s.total}</span><span>On time / early: {s.onTime}</span><span>Delayed: {s.delayed}</span><span>Net variance: {s.netVariance} d</span><span>Original baseline: {s.baselineNetVariance} d</span><span>Current stage: {s.currentStage ?? 'All completed'} · {s.currentStatus}</span></div>)}
+    {/* Per-service summary strip (one per service), styled so it never reads as a table row. */}
+    {summaries.length > 0 && <div className="stage-summaries">{summaries.map(s => <div key={s.service} className="stage-summary" role="group" aria-label={`${s.service} stage summary`}>
+      <span className="stage-summary-service">{s.service}</span>
+      {[['Stages completed', `${s.completed} / ${s.total}`], ['On time / early', s.onTime], ['Delayed', s.delayed], ['Net variance', `${s.netVariance} d`], ['Original baseline', `${s.baselineNetVariance} d`], ['Current stage', `${s.currentStage ?? 'All completed'}${s.currentStatus && s.currentStatus !== '—' ? ` · ${s.currentStatus}` : ''}`]].map(([label, value]) => <span key={label} className="stage-summary-stat"><span>{label}</span><b>{value}</b></span>)}
+    </div>)}</div>}
     {!list.isLoading && !list.isError && rows.length === 0 && <p>No services or stages on this project yet.</p>}
     {rows.length > 0 && <div style={{
       overflowX: 'auto'
