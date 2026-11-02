@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CircleAlert, Eye, EyeOff, Lock, Mail, ScanLine } from 'lucide-react';
+import { ArrowRight, CircleAlert, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { loginApi } from '../lib/api.js';
 import { attendanceApi } from '../lib/api.js';
@@ -90,14 +90,6 @@ export default function LoginPage() {
       <main className="login-wrap">
         <section className="login-main" aria-labelledby="login-title">
           <div className="login-form-panel">
-            <div className="login-form-kicker">
-              <span className="login-form-kicker-icon" aria-hidden="true">
-                <ScanLine size={13} strokeWidth={2} />
-              </span>
-              <span>
-                <strong>DesignTree</strong> workspace
-              </span>
-            </div>
             <h1 className="login-title" id="login-title">Welcome back</h1>
             {login.isError ? (
               <div className="login-error" id="login-error" role="alert" style={{ display: 'flex' }}>
@@ -226,7 +218,7 @@ export default function LoginPage() {
           </div>
 
           <div className="login-side-intro">
-            <h2>From design desk to site floor.</h2>
+            <h2>DT-MIS</h2>
           </div>
 
           <div className="login-scene">

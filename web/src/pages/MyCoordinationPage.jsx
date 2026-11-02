@@ -482,7 +482,9 @@ export function TeamAllocationPanel({ projects, employees }) {
   const optsQ = useQuery({ queryKey: ['allocation-options'], queryFn: employeesApi.allocationOptions });
   const directors = optsQ.data?.directors ?? [];
   const teamLeads = optsQ.data?.teamLeads ?? [];
-  const pool = employees.length ? employees : (optsQ.data?.employees ?? []);
+  // Every active employee (server list), so a TL's whole team is always present.
+  const pool = optsQ.data?.employees?.length ? optsQ.data.employees : employees;
+  const teamIds = useMemo(() => new Set(teamLeads.find((t) => idOfEmp(t) === teamLead)?.team ?? []), [teamLeads, teamLead]);
   const withTeam = projects.filter((p) => teamEntries(p).length > 0);
 
   function resetForm() {
@@ -617,7 +619,11 @@ export function TeamAllocationPanel({ projects, employees }) {
                 Team members · {members.length} selected
                 {members.length > 0 && <button type="button" className="approve-btn" style={{ marginLeft: 8 }} onClick={() => { setMembers([]); setTeamLead(''); }}>Clear</button>}
               </label>
-              <EmployeeFilter employees={pool} selectedIds={members} label="Team members">{(shown) => (
+              <EmployeeFilter employees={pool} selectedIds={members} label="Team members">{(all, { search }) => {
+                // Checkbox view = the chosen TL's team plus anyone already ticked.
+                // Everyone else in the company is reachable only by searching.
+                const shown = search ? all : all.filter((x) => teamIds.has(idOfEmp(x)) || members.includes(idOfEmp(x)));
+                return (
                 <div style={{ display: 'flex', gap: '6px 16px', flexWrap: 'wrap', maxHeight: 260, overflowY: 'auto', padding: 4 }}>
                   {[...shown].sort((a, b) => Number(members.includes(idOfEmp(b))) - Number(members.includes(idOfEmp(a)))).map((x) => (
                     <label key={idOfEmp(x)} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, minWidth: 220 }}>
@@ -625,9 +631,11 @@ export function TeamAllocationPanel({ projects, employees }) {
                       {empName(x) || x.empId}{x.designation ? ` · ${x.designation}` : ''}
                     </label>
                   ))}
-                  {shown.length === 0 && <span style={{ fontSize: 13, color: 'var(--ink-muted)' }}>No people match these filters.</span>}
+                  {shown.length === 0 && <span style={{ fontSize: 13, color: 'var(--ink-muted)' }}>{search ? 'No people match this search.' : 'Select a team lead to list their team, or search to add anyone else.'}</span>}
+                  {!search && shown.length > 0 && <span style={{ flexBasis: '100%', fontSize: 12, color: 'var(--ink-muted)' }}>Need someone outside this team? Search by name or employee ID above.</span>}
                 </div>
-              )}</EmployeeFilter>
+                );
+              }}</EmployeeFilter>
             </div>
           )}
           <div className="form-row">

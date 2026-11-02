@@ -14,7 +14,7 @@ export function EmployeeFilter({employees=[],selectedIds=[],getId=employeeId,lab
    <select className="filter-select" aria-label={`${label} branch`} value={branch} disabled={disabled} onChange={e=>setBranch(e.target.value)} style={{flex:'1 1 110px',minWidth:0}}><option value="">All branches</option>{branches.map(b=><option key={b}>{b}</option>)}</select>
    <select className="filter-select" aria-label={`${label} service`} value={service} disabled={disabled} onChange={e=>setService(e.target.value)} style={{flex:'1 1 130px',minWidth:0}}><option value="">All services / departments</option>{services.map(s=><option key={s}>{s}</option>)}</select>
   </div>
-  {children(shown)}
+  {children(shown,{search:search.trim()})}
   {(search||branch||service)&&<small aria-live="polite">{shown.length} of {employees.length} candidates · selected people stay visible</small>}
  </div>;
 }

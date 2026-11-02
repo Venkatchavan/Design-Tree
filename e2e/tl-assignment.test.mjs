@@ -29,3 +29,14 @@ test('assignee scope excludes unrelated projects, inactive teams and exited empl
  assert.equal((await call('engineer','/api/work/tasks/assignees?project='+f.project)).status,403);
  assert.equal((await call('tl','/api/work/tasks','POST',{project:f.project,members:[String(exited._id)],deliverable:'Invalid recipient'})).status,400);
 });
+test('TL assignees list everyone under the TL in the saved reporting team, without searching',async()=>{
+ const tl=await f.models.Employee.findById(f.cast.tl.employee).lean();
+ const report=await f.models.Employee.create({firstName:'Reporting',lastName:'Designer',empId:'TL-RPT-1',reportingManager:tl.empId});
+ const nested=await f.models.Employee.create({firstName:'Nested',lastName:'Drafter',empId:'TL-RPT-2',reportingManager:'TL-RPT-1'});
+ const r=await call('tl','/api/work/tasks/assignees?project='+f.project);assert.equal(r.status,200);
+ const ids=r.data.items.map(m=>String(m.employee._id));
+ assert(ids.includes(String(report._id))&&ids.includes(String(nested._id)));
+ assert.equal(ids.filter(x=>x===String(report._id)).length,1);
+ assert(!r.data.items.some(m=>String(m.employee._id)===f.cast.tl.employee&&!m.isLead));
+ const task=await call('tl','/api/work/tasks','POST',{project:f.project,members:[String(nested._id)],deliverable:'Reporting team task'});assert.equal(task.status,201);
+});

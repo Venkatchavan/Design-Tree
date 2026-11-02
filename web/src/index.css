@@ -7356,24 +7356,34 @@ input[type="file"]:disabled::file-selector-button {
     stroke: rgba(200, 215, 255, 0.66);
     stroke-width: 1.1;
 }
+.login-iso .iso-block--0 {
+    --bc: #8a6bff;
+}
+.login-iso .iso-block--1 {
+    --bc: #23b5d6;
+}
+.login-screen .login-iso .iso-obj-block .iso-site-line--edge {
+    stroke: var(--bc);
+    stroke-opacity: 0.85;
+}
 .login-screen .login-iso .iso-site-face {
     stroke: none;
-    fill: #c8d7ff;
+    fill: var(--bc, #c8d7ff);
     transition: fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .login-screen .login-iso .iso-site-face--top {
-    fill-opacity: 0.035;
+    fill-opacity: 0.2;
 }
 .login-screen .login-iso .iso-site-face--left {
-    fill-opacity: 0.06;
+    fill-opacity: 0.34;
 }
 .login-screen .login-iso .iso-site-face--right {
-    fill-opacity: 0.12;
+    fill-opacity: 0.5;
 }
 .login-screen .login-iso .iso-window {
-    fill: #6aa6ff;
-    fill-opacity: 0.16;
-    stroke: rgba(106, 166, 255, 0.55);
+    fill: #ffd27a;
+    fill-opacity: 0.35;
+    stroke: rgba(255, 220, 150, 0.6);
     stroke-width: 0.6;
     transition: fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -7397,16 +7407,16 @@ input[type="file"]:disabled::file-selector-button {
     transform: translateY(-4px);
 }
 .login-screen .login-iso .iso-obj-block:hover .iso-window {
-    fill-opacity: 0.3;
+    fill-opacity: 0.6;
 }
 .login-screen .login-iso .iso-obj-block:hover .iso-site-face--top {
-    fill-opacity: 0.07;
+    fill-opacity: 0.28;
 }
 .login-screen .login-iso .iso-obj-block:hover .iso-site-face--left {
-    fill-opacity: 0.1;
+    fill-opacity: 0.44;
 }
 .login-screen .login-iso .iso-obj-block:hover .iso-site-face--right {
-    fill-opacity: 0.17;
+    fill-opacity: 0.62;
 }
 
 /* trees */
@@ -7438,17 +7448,25 @@ input[type="file"]:disabled::file-selector-button {
 /* drawing sheets: fan out */
 .login-screen .login-iso .iso-sheet-fill {
     stroke: none;
-    fill: #dce6ff;
-    fill-opacity: 0.14;
+    fill: #2f62e8;
+    fill-opacity: 0.55;
+}
+.login-screen .login-iso .iso-obj-sheets .iso-site-line--edge {
+    stroke: #9dc0ff;
+    stroke-opacity: 0.9;
+}
+.login-screen .login-iso .iso-obj-sheets .iso-site-line {
+    stroke: #cfe0ff;
+    stroke-opacity: 0.55;
 }
 .login-screen .login-iso .iso-tool-fill {
     stroke: none;
     fill: #ffa35c;
-    fill-opacity: 0.16;
+    fill-opacity: 0.6;
 }
 .login-screen .login-iso .iso-tool-fill--pencil {
-    fill: #6aa6ff;
-    fill-opacity: 0.3;
+    fill: #e5487c;
+    fill-opacity: 0.75;
 }
 .login-iso .iso-sheet {
     transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
@@ -7470,14 +7488,14 @@ input[type="file"]:disabled::file-selector-button {
     --crane-thin-a: 0.7;
 }
 .login-iso .iso-crane path {
-    stroke: rgba(200, 215, 255, var(--crane-a));
+    stroke: rgba(255, 190, 64, var(--crane-a));
     stroke-width: 1.1;
     transition:
         stroke 0.55s cubic-bezier(0.22, 1, 0.36, 1),
         fill-opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .login-iso .iso-crane .iso-crane-thin {
-    stroke: rgba(200, 215, 255, var(--crane-thin-a));
+    stroke: rgba(255, 205, 110, var(--crane-thin-a));
     stroke-width: 0.75;
 }
 .login-screen .login-iso .iso-beam-face {
@@ -7740,9 +7758,9 @@ input[type="file"]:disabled::file-selector-button {
     min-width: 0;
     padding: clamp(30px, 5vw, 88px);
     background:
-        radial-gradient(60% 45% at 100% 100%, rgba(58, 140, 248, 0.09), rgba(58, 140, 248, 0) 70%),
-        radial-gradient(45% 35% at 70% 105%, rgba(233, 72, 124, 0.06), rgba(233, 72, 124, 0) 70%),
-        radial-gradient(45% 40% at 100% 0%, rgba(245, 168, 62, 0.06), rgba(245, 168, 62, 0) 70%);
+        radial-gradient(60% 45% at 100% 100%, rgba(58, 111, 240, 0.12), rgba(58, 111, 240, 0) 70%),
+        radial-gradient(45% 35% at 70% 105%, rgba(124, 77, 235, 0.08), rgba(124, 77, 235, 0) 70%),
+        radial-gradient(45% 40% at 100% 0%, rgba(91, 155, 240, 0.1), rgba(91, 155, 240, 0) 70%);
 }
 /* page grain on the whole wrapper, so it runs on without a seam when stacked */
 .login-screen .login-wrap {
@@ -7769,19 +7787,19 @@ input[type="file"]:disabled::file-selector-button {
     gap: 8px;
     margin-bottom: 20px;
     padding: 4px 13px 4px 4px;
-    border: 1px solid rgba(23, 24, 28, 0.08);
+    border: 1px solid rgba(58, 111, 240, 0.18);
     border-radius: 999px;
     background: #fff;
     box-shadow:
-        0 1px 2px rgba(23, 24, 28, 0.05),
-        0 6px 16px -10px rgba(23, 24, 28, 0.18);
-    color: #4a4f5c;
+        0 1px 2px rgba(29, 43, 99, 0.05),
+        0 6px 16px -10px rgba(29, 43, 99, 0.25);
+    color: #3b4a73;
     font-size: 12px;
     font-weight: 500;
     letter-spacing: 0;
 }
 .login-screen .login-form-kicker strong {
-    color: #17181c;
+    color: #1f3f9e;
     font-weight: 700;
 }
 .login-screen .login-form-kicker-icon {
@@ -7790,12 +7808,12 @@ input[type="file"]:disabled::file-selector-button {
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background: #17181c;
+    background: linear-gradient(145deg, #3a6ff0, #7b4fe0);
     color: #fff;
 }
 .login-screen .login-title {
     margin: 0;
-    color: #17181c;
+    color: #0b1633;
     font-family: "Archivo", var(--font-sans);
     font-size: clamp(27px, 2.4vw, 33px);
     font-weight: 700;
@@ -7830,7 +7848,7 @@ input[type="file"]:disabled::file-selector-button {
 .login-screen .login-form-row .form-input {
     height: 48px;
     border: 1px solid rgba(23, 24, 28, 0.12);
-    border-radius: 999px;
+    border-radius: 10px;
     background: #fff;
     box-shadow: 0 1px 2px rgba(23, 24, 28, 0.04);
     transition:
@@ -7839,13 +7857,13 @@ input[type="file"]:disabled::file-selector-button {
         background-color 0.18s ease;
 }
 .login-screen .login-form-row .form-input:hover {
-    border-color: rgba(23, 24, 28, 0.24);
+    border-color: rgba(58, 111, 240, 0.4);
 }
 .login-screen .login-form-row .form-input:focus {
     outline: none;
-    border-color: #17181c;
+    border-color: #3a6ff0;
     background: #fff;
-    box-shadow: 0 0 0 4px rgba(23, 24, 28, 0.08);
+    box-shadow: 0 0 0 4px rgba(58, 111, 240, 0.14);
 }
 .login-screen .login-field {
     position: relative;
@@ -7866,7 +7884,7 @@ input[type="file"]:disabled::file-selector-button {
     transition: color 0.18s ease;
 }
 .login-screen .login-field:focus-within .login-field-icon {
-    color: #17181c;
+    color: #3a6ff0;
 }
 .login-screen .login-field .form-input[aria-invalid="true"] {
     border-color: var(--rust-dark);
@@ -7894,7 +7912,7 @@ input[type="file"]:disabled::file-selector-button {
     color: var(--ink);
 }
 .login-screen .login-reveal:focus-visible {
-    outline: 2px solid #17181c;
+    outline: 2px solid #3a6ff0;
     outline-offset: 0;
 }
 .login-screen .login-caps {
@@ -7921,15 +7939,14 @@ input[type="file"]:disabled::file-selector-button {
     color: #677085;
 }
 
-/* ---------- Sign-in button: charcoal pill, spectral glow on hover ---------- */
+/* ---------- Sign-in button: solid blue, soft vertical gradient ---------- */
 .login-screen .login-button-frame {
+    position: relative;
     width: 100%;
     margin: 10px 0 6px;
-    /* plain wrapper (no ring); it only carries the hover glow below the button */
-    position: relative;
-    overflow: visible;
     padding: 0;
-    border-radius: 0;
+    overflow: visible;
+    border-radius: 10px;
     background: none;
     box-shadow: none;
 }
@@ -7937,79 +7954,61 @@ input[type="file"]:disabled::file-selector-button {
     outline: none;
 }
 .login-screen .login-button-frame::before {
-    content: "";
-    position: absolute;
-    inset: 10px 18px -4px;
-    z-index: 0;
-    border-radius: 999px;
-    background: linear-gradient(90deg, #f2992f, #e5487c 30%, #8a44d6 55%, #3a6ff0 78%, #2fb57a);
-    filter: blur(14px);
-    opacity: 0;
-    transform: translateY(-4px) scale(0.92);
-    transition:
-        opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-        transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    content: none;
     animation: none;
-    pointer-events: none;
-}
-.login-screen .login-button-frame:has(.login-btn:hover:not(:disabled))::before {
-    opacity: 0.5;
-    transform: none;
 }
 .login-screen .login-btn {
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 10px;
     width: 100%;
-    position: relative;
-    z-index: 1;
     min-height: 48px;
     padding: 10px 18px;
-    border: 1px solid #0d0e11;
-    border-radius: 999px;
-    background: linear-gradient(180deg, #2c2d33 0%, #17181c 100%);
+    border: 1px solid #2a5bd7;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #4d8bff 0%, #3a6ff0 100%);
     color: #fff;
     font-family: var(--font-sans);
-    font-size: 14.5px;
+    font-size: 15px;
     font-weight: 600;
     letter-spacing: 0;
     cursor: pointer;
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.14),
-        0 1px 2px rgba(10, 10, 14, 0.3),
-        0 10px 22px -12px rgba(10, 10, 14, 0.55);
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        0 1px 2px rgba(29, 43, 99, 0.2),
+        0 8px 18px -10px rgba(58, 111, 240, 0.7);
     transition:
-        filter 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+        filter 0.2s ease,
         transform 0.12s ease,
-        box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+        box-shadow 0.2s ease;
 }
 .login-screen .login-btn:hover:not(:disabled) {
-    /* overrides the older blue hover rule earlier in this file */
-    background: linear-gradient(180deg, #2c2d33 0%, #17181c 100%);
+    background: linear-gradient(180deg, #4d8bff 0%, #3a6ff0 100%);
+    filter: brightness(1.06);
     transform: none;
-    filter: brightness(1.12);
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.18),
-        0 1px 2px rgba(10, 10, 14, 0.3),
-        0 12px 24px -12px rgba(10, 10, 14, 0.5);
+        inset 0 1px 0 rgba(255, 255, 255, 0.26),
+        0 1px 2px rgba(29, 43, 99, 0.2),
+        0 10px 22px -10px rgba(58, 111, 240, 0.8);
 }
 .login-screen .login-btn:active:not(:disabled) {
-    filter: brightness(0.96);
+    filter: brightness(0.95);
     transform: translateY(1px);
-    box-shadow:
-        inset 0 2px 4px rgba(0, 0, 0, 0.35),
-        0 1px 1px rgba(10, 10, 14, 0.3);
+    box-shadow: inset 0 2px 4px rgba(10, 30, 90, 0.3);
 }
 .login-screen .login-btn:disabled {
     cursor: progress;
-    filter: brightness(0.94);
+    opacity: 0.85;
 }
 .login-screen .login-btn:focus-visible {
-    outline: 2px solid #17181c;
+    outline: 2px solid #3a6ff0;
     outline-offset: 3px;
 }
 .login-screen .login-button-arrow {
+    color: #fff;
     transition: transform 0.18s ease;
 }
 .login-screen .login-btn:hover:not(:disabled) .login-button-arrow {
@@ -8208,6 +8207,7 @@ input[type="file"]:disabled::file-selector-button {
     }
     .login-screen .login-button-frame::before {
         transition: none;
+        animation: none;
     }
     .login-screen .login-iso .iso-obj-body,
     .login-iso .iso-sheet {

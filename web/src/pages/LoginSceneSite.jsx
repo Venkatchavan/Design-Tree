@@ -254,7 +254,7 @@ export function SiteGround() {
     <>
       {/* neighbouring blocks */}
       {BLOCK_SHAPES.map((b, bi) => (
-        <g key={b.id} className="iso-obj iso-obj-block iso-detail" style={{ '--d': `${0.8 + bi * 0.15}s` }}>
+        <g key={b.id} className={`iso-obj iso-obj-block iso-block--${bi % 2} iso-detail`} style={{ '--d': `${0.8 + bi * 0.15}s` }}>
           <path className="iso-cast" d={b.shadow} />
           <g className="iso-obj-body">
             {b.parts.map((p, i) => (
