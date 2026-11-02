@@ -102,24 +102,15 @@ export const claimStatusSchema = z
   .object({ status: z.enum(CLAIM_STATUSES) })
   .strict();
 
-export const stageStatusSchema = z
-  .object({
-    project: objectId,
-    service: strOpt,
-    stage: strOpt,
-    plannedCompletion: dateOpt,
-    currentStatus: strOpt,
-    delayDays: z.number().optional(),
-    reason: strOpt,
-    billingReadiness: z.enum(BILLING_READINESS).optional(),
-    ptlRemark: strOpt,
-    spocRemark: strOpt,
-    requestCompletion: z.boolean().optional(),
-    confirmCompletion: z.boolean().optional(),
-    approveCompletion: z.boolean().optional(),
-    tdRemark: strOpt,
-  })
-  .strict();
+const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a calendar date.').refine(value => Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value, 'Enter a valid calendar date.');
+export const stageStatusSchema = z.object({
+  project: objectId, service: z.string().trim().min(1), stage: z.enum(['CD','SD','DD','TD','GFC']),
+  expectedVersion: z.number().int().min(0),
+  planDates: z.boolean().optional(), startDate: calendarDate.optional(), plannedCompletion: calendarDate.optional(), actualCompletion: calendarDate.optional(), reason: strOpt,
+  ptlRemark: strOpt, spocRemark: strOpt, tdRemark: strOpt,
+  requestCompletion: z.boolean().optional(), confirmCompletion: z.boolean().optional(), approveCompletion: z.boolean().optional(),
+  billingReadiness: z.enum(BILLING_READINESS).optional(),
+}).strict();
 export const stageStatusUpdateSchema = stageStatusSchema.partial();
 
 export const paymentSchema = z
@@ -151,15 +142,16 @@ export const certRequestSchema = z
   })
   .strict();
 
-export const bookingSchema = z
+// Detailed cross-field checks run after merging edits with the persisted record.
+const bookingFields = z
   .object({
     employee: objectId,
     department: strOpt,
-    project: objectId.optional(),
+    project: objectId.nullable().optional(),
     fromCity: strOpt,
     toCity: strOpt,
-    departureDate: dateOpt,
-    returnDate: dateOpt,
+    departureDate: z.string().optional(),
+    returnDate: z.string().optional(),
     mode: strOpt,
     preferredSeat: strOpt,
     checkIn: strOpt,
@@ -168,13 +160,63 @@ export const bookingSchema = z
     location: strOpt,
     nights: z.number().min(0).optional(),
     reason: strOpt,
-    extraCharges: z.number().min(0).optional(),
-    status: z.enum(BOOKING_STATUSES).optional(),
+    extraCharges: z.union([z.string(), z.number()]).optional(),
+    transportFare: z.union([z.string(), z.number()]).optional(),
+    hotelAmount: z.union([z.string(), z.number()]).optional(),
+    hotelDatesSameAsTravel: z.boolean().optional(),
   })
   .strict();
-export const bookingUpdateSchema = bookingSchema.partial();
+export const bookingSchema = bookingFields;
+export const bookingUpdateSchema = bookingFields
+  .omit({ employee: true, department: true })
+  .partial()
+  .extend({ expectedVersion: z.number().int().min(0) })
+  .strict();
 export const bookingStatusSchema = z
   .object({ status: z.enum(BOOKING_STATUSES) })
+  .strict();
+const operationMoney = z
+  .object({
+    originalAmount: z.union([z.string(), z.number()]).optional(),
+    newAmount: z.union([z.string(), z.number()]).optional(),
+    fee: z.union([z.string(), z.number()]).optional(),
+  })
+  .strict();
+const cancelMoney = z
+  .object({
+    amountPaid: z.union([z.string(), z.number()]).optional(),
+    fee: z.union([z.string(), z.number()]).optional(),
+  })
+  .strict();
+export const bookingRescheduleSchema = z
+  .object({
+    expectedVersion: z.number().int().min(0),
+    changes: bookingFields
+      .omit({
+        employee: true,
+        department: true,
+        project: true,
+        transportFare: true,
+        hotelAmount: true,
+        extraCharges: true,
+        reason: true,
+        nights: true,
+      })
+      .partial(),
+    reason: z.string(),
+    note: strOpt,
+    transport: operationMoney.optional(),
+    stay: operationMoney.optional(),
+  })
+  .strict();
+export const bookingCancelSchema = z
+  .object({
+    expectedVersion: z.number().int().min(0),
+    reason: z.string(),
+    note: strOpt,
+    transport: cancelMoney.optional(),
+    stay: cancelMoney.optional(),
+  })
   .strict();
 
 export const financeOccSchema = z

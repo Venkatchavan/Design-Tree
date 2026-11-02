@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 const paymentSchema = new mongoose.Schema(
@@ -19,4 +20,4 @@ const paymentSchema = new mongoose.Schema(
 );
 
 export const Payment =
-  mongoose.models.Payment ?? mongoose.model('Payment', paymentSchema);
+  mongoose.models.Payment ?? mongoose.model('Payment', auditProjectSchema(paymentSchema));

@@ -135,7 +135,6 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
   const [date, setDate] = useState(todayISO());
   const [extraHoursReason, setExtraHoursReason] = useState('');
   const [err, setErr] = useState('');
-  const [ok, setOk] = useState('');
   const pendingLogout = isPendingLogout();
   // Day's extra-hours threshold (mirrors EXTRA_HOURS_THRESHOLD in
   // api/src/config/attendance.js; the server enforces it as well).
@@ -184,11 +183,11 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
   }, [teams, project, preview]);
 
   const create = useMutation({
+    meta: { success: 'Submitted for team lead action.' },
     mutationFn: (body) => workEntriesApi.create(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-work-entries'] });
       queryClient.invalidateQueries({ queryKey: ['work-entries'] });
-      setOk('Submitted for team lead action.');
       setErr('');
       setAssignedId('');
       setHours('');
@@ -203,7 +202,6 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
     },
     onError: (e) => {
       setErr(e.message);
-      setOk('');
     },
   });
 
@@ -215,7 +213,6 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
   function handleSubmit(e) {
     e.preventDefault();
     setErr('');
-    setOk('');
     if (!project) {
       setErr('Select a project.');
       return;
@@ -437,7 +434,6 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
             />
           </div>
           {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-          {ok && <div style={{ color: 'var(--forest-dark)', fontSize: 13, marginBottom: 10 }}>{ok}</div>}
           <button type="submit" className="btn-primary" disabled={create.isPending}>
             {create.isPending ? 'Submitting…' : 'Submit for team lead action'}
           </button>
@@ -1001,7 +997,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   const [subStatus, setSubStatus] = useState('');
 
   const meQ = useQuery({ queryKey: ['me'], queryFn: meApi });
-  const teamsQ = useQuery({ queryKey: ['my-teams'], queryFn: teamsMineApi.list });
+  const teamsQ = useQuery({ queryKey: ['my-teams'], queryFn: teamsMineApi.list, refetchInterval: 10000 });
   const tasksMineQ = useQuery({ queryKey: ['tasks-mine'], queryFn: tasksApi.mine });
   const revMineQ = useQuery({ queryKey: ['revisions-mine'], queryFn: revisionsApi.mine });
   const drawingsQ = useQuery({ queryKey: ['drawings-recent'], queryFn: () => drawingsApi.list({ mine: true }) });
@@ -1305,6 +1301,12 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
         </div>
       </div>
       <div className="kpi-grid">
+        {[{ key: 'projects', label: 'My Projects', held: false, accent: 'blueprint' }, { key: 'on-hold', label: 'Projects on Hold', held: true, accent: 'amber' }].map(group => {
+          const projects = ptlProjects.filter(p => (p.status === 'On Hold') === group.held);
+          return <KpiCard key={group.key} label={group.label} value={projects.length} accent={group.accent} open={tab === group.key} onClick={() => setTab(current => current === group.key ? 'overview' : group.key)}>
+            {projects.length ? projects.map(p => <div key={idOf(p)} className="kpi-drop-row"><span>{p.name}</span><b>{p.code}</b></div>) : <div className="kpi-drop-row">No projects</div>}
+          </KpiCard>;
+        })}
         <KpiCard label="Total updates" value={entriesMineQ.data?.total ?? myEntries.length} accent="blueprint" />
         <KpiCard label="Approved" value={myEntryStatuses.Approved ?? myEntryStatuses.approved} accent="forest" />
         <KpiCard label="Needs attention" value={myEntryStatuses['Needs Attention'] ?? myEntryStatuses.needsAttention} accent="rust" />
@@ -1314,6 +1316,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
         tabs={[
           { key: 'overview', label: 'Overview' },
           { key: 'projects', label: 'My Projects' },
+          { key: 'on-hold', label: 'Projects on Hold' },
           { key: 'progress', label: 'Work Progress' },
           { key: 'deliverables', label: 'Deliverables & Drawings' },
           { key: 'update', label: 'Update progress' },
@@ -1555,18 +1558,18 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
         </>
       )}
 
-      {tab === 'projects' && (
-        <Panel title="My Projects">
-          {ptlProjects.length === 0 ? (
+      {['projects', 'on-hold'].includes(tab) && (
+        <Panel title={tab === 'on-hold' ? 'Projects on Hold' : 'My Projects'}>
+          {projectSummaryRows.filter(row => (row.project.status === 'On Hold') === (tab === 'on-hold')).length === 0 ? (
             <>
-              <EmptyState text="No PTL projects found for you." />
+              <EmptyState text={tab === 'on-hold' ? 'No assigned projects on hold.' : 'No assigned projects in this section.'} />
               <p style={{ fontSize: 12.5, color: 'var(--ink-muted)', margin: '8px 0' }}>
                 Active projects are not shown as assigned projects unless a team allocation exists.
               </p>
             </>
           ) : (
             <div className="teams-grid">
-              {projectSummaryRows.map((row) => {
+              {projectSummaryRows.filter(row => (row.project.status === 'On Hold') === (tab === 'on-hold')).map((row) => {
                 const { project } = row;
                 return (
                 <article className="team-card" key={row.projectId}>
@@ -1578,6 +1581,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
                     {[project.code, project.branch].filter(Boolean).join(' · ') || '—'}
                   </div>
                   <div className="deliv-label">Client: {row.clientDetails || project.clientName || '—'}</div>
+                  {project.status === 'On Hold' && <p>Hold reason: {project.hold?.reason || 'No reason recorded for this older hold.'}</p>}
                   <div className="field-grid" style={{ marginTop: 12 }}>
                     <Field label="My role" value={row.roleSummary} />
                     <Field label="Department / service" value={row.services} />

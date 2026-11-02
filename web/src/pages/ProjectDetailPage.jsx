@@ -1,4 +1,5 @@
-import MyTeamPage from './MyTeamPage.jsx';
+import EmployeeSelect from '../components/EmployeeSelect.jsx';
+import { SpocContacts, ProjectEdit, ProjectHold, CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import StageApprovalPanel from '../components/StageApprovalPanel.jsx';
 import { DirectoryTab } from './MyCoordinationPage.jsx';
 import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
@@ -6,8 +7,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { projectsApi, employeesApi, usersApi } from '../lib/api.js';
-import { spocApi } from '../lib/spocApi.js';
-import { discApi, drawingAckApi, gbsApi, peerApi, serviceDashboardApi, stageReviewApi, variationApi, visitsApi, weeklyReportApi, workItemApi } from '../lib/functionsApi.js';
+import { discApi, drawingAckApi, gbsApi, peerApi, rfiApi, serviceDashboardApi, stageReviewApi, variationApi, visitsApi, weeklyReportApi, workItemApi } from '../lib/functionsApi.js';
 import { billingApi } from '../lib/phase3Api.js';
 import { deliverablesApi, drawingsApi, revisionsApi } from '../lib/workApi.js';
 import { summarizeRevisions } from '../lib/revisionSummary.js';
@@ -25,13 +25,84 @@ import LocationModal from '../components/LocationModal.jsx';
 
 const COORD_TABS = [
   { key: 'overview', label: 'Overview' },
-  { key: 'directory', label: 'Project directory' },
+  { key: 'documents', label: 'Project Directory' },
   { key: 'meetings', label: 'Meetings' },
   { key: 'deliverables', label: 'Deliverables & drawings' },
   { key: 'revisions', label: 'Revision logs' },
   { key: 'pending', label: 'Pending & follow-up' },
   { key: 'coordination', label: 'Coordination' },
 ];
+
+const DOCUMENT_TABS = [
+  { key: 'directory', label: 'Project Directory' },
+  { key: 'dbr', label: 'DBR (Design Basis Report)' },
+];
+
+function SpocRfiLog({ projectId }) {
+  const rfisQ = useQuery({
+    queryKey: ['project-rfi-log', projectId],
+    queryFn: () => rfiApi.list({ project: projectId }),
+    enabled: !!projectId,
+  });
+  const rows = rfisQ.data?.items ?? [];
+
+  return (
+    <Panel title="RFI Log" sub="View only · RFIs for this assigned project">
+      {rfisQ.isLoading ? <EmptyState text="Loading RFI log…" /> : rfisQ.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{rfisQ.error.message}</div>
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'rfiNo', label: 'RFI No.', render: (r) => r.rfiNo ?? '—' },
+            { key: 'type', label: 'Type' },
+            { key: 'description', label: 'Description' },
+            { key: 'team', label: 'Team' },
+            { key: 'raisedBy', label: 'Raised by', render: (r) => r.raisedBy?.name ?? r.raisedBy?.email ?? '—' },
+            { key: 'assignedTo', label: 'Assigned to' },
+            { key: 'due', label: 'Due', render: (r) => fmtDate(r.due) },
+            { key: 'clientResponse', label: 'Response', render: (r) => r.clientResponse?.text ?? '—' },
+            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
+            { key: 'createdAt', label: 'Created', render: (r) => fmtDate(r.createdAt) },
+          ]}
+          rows={rows}
+          emptyText="No RFIs have been logged for this project."
+        />
+      )}
+    </Panel>
+  );
+}
+
+function DbrDocumentPanel({ projectId }) {
+  const deliverablesQ = useQuery({
+    queryKey: ['project-dbr-deliverables', projectId],
+    queryFn: () => deliverablesApi.list({ project: projectId }),
+    enabled: !!projectId,
+  });
+  const rows = (deliverablesQ.data?.items ?? []).filter((item) =>
+    /\bDBR\b|design basis report/i.test(`${item.deliverable ?? ''} ${item.specify ?? ''}`),
+  );
+
+  return (
+    <Panel title="DBR (Design Basis Report)" sub="DBR deliverable information for this project">
+      {deliverablesQ.isLoading ? <EmptyState text="Loading DBR information…" /> : deliverablesQ.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{deliverablesQ.error.message}</div>
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'deliverable', label: 'Deliverable', render: (item) => item.deliverable ?? item.specify ?? 'DBR' },
+            { key: 'stage', label: 'Stage' },
+            { key: 'assignedTo', label: 'Assigned to', render: (item) => empName(item.assignedTo) },
+            { key: 'plannedDate', label: 'Planned date', render: (item) => fmtDate(item.plannedDate) },
+            { key: 'dueDate', label: 'Due date', render: (item) => fmtDate(item.dueDate) },
+            { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status}>{item.status ?? '—'}</StatusPill> },
+          ]}
+          rows={rows}
+          emptyText="No DBR deliverable has been recorded for this project."
+        />
+      )}
+    </Panel>
+  );
+}
 
 const TOP_TABS = [
   { key: 'coordinator', label: 'Coordinator' },
@@ -134,7 +205,6 @@ function contactText(c) {
 function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState((initialIds ?? []).map(String));
-  const [saved, setSaved] = useState(false);
 
   const usersQ = useQuery({
     queryKey: ['users-portal', projectId],
@@ -143,10 +213,10 @@ function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
     retry: false,
   });
   const save = useMutation({
+    meta: { success: 'Portal access saved.' },
     mutationFn: (userIds) => projectsApi.setPortalUsers(projectId, userIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-      setSaved(true);
     },
   });
 
@@ -155,7 +225,6 @@ function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
   const external = users.filter((u) => u.role === 'client' || u.role === 'architect');
 
   function toggle(uid) {
-    setSaved(false);
     setSelected((prev) => (prev.includes(uid) ? prev.filter((x) => x !== uid) : [...prev, uid]));
   }
 
@@ -189,347 +258,9 @@ function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
           <button type="button" className="approve-btn" disabled={save.isPending} onClick={() => save.mutate(selected)} style={{ marginTop: 8 }}>
             {save.isPending ? 'Saving…' : 'Save portal access'}
           </button>
-          {saved && <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Portal access saved.</p>}
         </>
       )}
     </div>
-  );
-}
-
-const PTL_SERVICES = [
-  'Structural', 'Electrical', 'Mechanical', 'Plumbing', 'Fire',
-  'QS', 'QA/QC', 'BIM', 'GBS', 'Peer review',
-];
-
-function ptlEntries(project) {
-  return (project?.principalTeamLeads ?? []).flatMap((t) => {
-    const names = (t.names ?? []).filter(Boolean);
-    const list = names.length > 0 ? names : [t.name ?? ''];
-    return list.filter(Boolean).map((name) => ({
-      service: t.service ?? '',
-      employee: t.employee ? String(t.employee._id ?? t.employee) : undefined,
-      name,
-      role: t.role ?? '',
-      nominatedBy: t.nominatedBy ?? '',
-      approvalStatus: t.approvalStatus ?? '',
-    }));
-  });
-}
-
-function toPtlPayload(entries) {
-  return entries
-    .map((r) => ({
-      service: (r.service ?? '').trim(),
-      name: (r.name ?? '').trim(),
-      ...(r.employee ? {employee:r.employee} : {}),
-      ...(r.role?.trim() ? { role: r.role.trim() } : {}),
-      ...(r.nominatedBy?.trim() ? { nominatedBy: r.nominatedBy.trim() } : {}),
-      ...(r.approvalStatus ? { approvalStatus: r.approvalStatus } : {}),
-    }))
-    .filter((r) => r.service || r.name);
-}
-
-function empLabel(e) {
-  const n = [e?.firstName, e?.lastName].filter(Boolean).join(' ') || e?.empId || e?.email || '—';
-  return e?.designation ? `${n} · ${e.designation}` : n;
-}
-
-function empValue(e) {
-  return [e?.firstName, e?.lastName].filter(Boolean).join(' ') || e?.empId || e?.email || '';
-}
-
-// Technical Director: enter the principal team lead (PTL) for each service
-// on this project. Saved via PUT /api/projects/:id/team-leads.
-function TechnicalPtlPanel({ projectId, project, employees }) {
-  const queryClient = useQueryClient();
-  const [service, setService] = useState('');
-  const [member, setMember] = useState('');
-  const [err, setErr] = useState('');
-  const [ok, setOk] = useState('');
-  const [importing, setImporting] = useState(false);
-
-  const rows = ptlEntries(project);
-  const seen = new Set();
-  const serviceOptions = [];
-  for (const s of [...(project?.services ?? []), ...rows.map((r) => r.service), ...PTL_SERVICES]) {
-    const t = String(s ?? '').trim();
-    if (!t || seen.has(t.toLowerCase())) continue;
-    seen.add(t.toLowerCase());
-    serviceOptions.push(t);
-  }
-  const empList = employees.data?.items ?? employees.data ?? [];
-
-  const save = useMutation({
-    mutationFn: ({ entries }) => projectsApi.saveTeamLeads(projectId, { principalTeamLeads: toPtlPayload(entries) }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      setService('');
-      setMember('');
-      setErr('');
-      for(const key of ['project-team','my-teams','teams']) queryClient.invalidateQueries({queryKey:[key]});
-      setOk(variables.successMessage ?? 'Principal team lead saved.');
-    },
-    onError: (e) => {
-      setErr(e.message);
-      setOk('');
-    },
-  });
-
-  function submit(e) {
-    e.preventDefault();
-    setErr('');
-    setOk('');
-    if (!service) {
-      setErr('Service is required.');
-      return;
-    }
-    if (!member) {
-      setErr('Team member is required.');
-      return;
-    }
-    const next = [...rows];
-    const selected = empList.find(e=>String(e._id ?? e.id)===member);
-    const name = empValue(selected);
-    const idx = next.findIndex((r) => r.service === service && r.name === name);
-    const row = { service, name, employee:member, approvalStatus: 'Approved' };
-    if (idx >= 0) next[idx] = { ...next[idx], ...row };
-    else next.push(row);
-    save.mutate({ entries: next });
-  }
-
-  function removeRow(target) {
-    setErr('');
-    setOk('');
-    save.mutate({ entries: rows.filter((r) => !(r.service === target.service && r.name === target.name)) });
-  }
-
-  async function importTeamFile(file) {
-    if (!file) return;
-    setErr('');
-    setOk('');
-    setImporting(true);
-    try {
-      const XLSX = await import('xlsx');
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      if (!firstSheet) throw new Error('The spreadsheet does not contain a worksheet.');
-      const importedRows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
-      if (importedRows.length === 0) throw new Error('The worksheet is empty.');
-
-      const headerKey = (value) => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-      const headers = Object.keys(importedRows[0]);
-      const serviceKey = headers.find((h) => headerKey(h) === 'service');
-      const memberKey = headers.find((h) => ['teammember', 'teamlead', 'principalteamlead', 'name', 'employee'].includes(headerKey(h)));
-      if (!serviceKey || !memberKey) {
-        throw new Error('Add header columns named "Service" and "Team member" to the first row.');
-      }
-
-      const normalize = (value) => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const parseErrors = [];
-      const importedLeads = [];
-      for (const [index, row] of importedRows.entries()) {
-        const serviceName = String(row[serviceKey] ?? '').trim();
-        const memberName = String(row[memberKey] ?? '').trim();
-        const matchedService = serviceOptions.find((item) => normalize(item) === normalize(serviceName));
-        const matchedEmployees = empList.filter((employee) => {
-          const name = empValue(employee);
-          return [name, employee.empId, employee.email].some((value) => normalize(value) === normalize(memberName));
-        });
-        if (!matchedService || !memberName || matchedEmployees.length !== 1) {
-          const reason = !matchedService
-            ? `unknown service "${serviceName}"`
-            : !memberName
-              ? 'team member is blank'
-              : matchedEmployees.length === 0
-                ? `employee "${memberName}" was not found`
-                : `employee "${memberName}" is ambiguous`;
-          parseErrors.push(`Row ${index + 2}: ${reason}.`);
-          continue;
-        }
-        const employee = matchedEmployees[0];
-        importedLeads.push({
-          service: matchedService,
-          name: empValue(employee),
-          employee: String(employee._id ?? employee.id),
-          approvalStatus: 'Approved',
-        });
-      }
-      if (parseErrors.length) throw new Error(parseErrors.join(' '));
-      if (importedLeads.length === 0) throw new Error('No team leads were found to import.');
-
-      const next = [...rows];
-      for (const lead of importedLeads) {
-        const existingIndex = next.findIndex((item) => item.service === lead.service && item.name === lead.name);
-        if (existingIndex >= 0) next[existingIndex] = { ...next[existingIndex], ...lead };
-        else next.push(lead);
-      }
-      save.mutate({ entries: next, successMessage: `Imported ${importedLeads.length} principal team lead${importedLeads.length === 1 ? '' : 's'}.` });
-    } catch (error) {
-      setErr(error.message || 'Unable to import team from this file.');
-    } finally {
-      setImporting(false);
-    }
-  }
-
-  return (
-    <Panel title="Principal team leads — per service" sub="Enter the PTL for each service on this project.">
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <label className="approve-btn" style={{ cursor: importing || save.isPending ? 'not-allowed' : 'pointer' }}>
-          {importing ? 'Reading team…' : 'Import team from Excel'}
-          <input
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            disabled={importing || save.isPending}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = '';
-              void importTeamFile(file);
-            }}
-            style={{ display: 'none' }}
-          />
-        </label>
-        <span className="page-sub">Use columns: Service and Team member.</span>
-      </div>
-      <div className="section-label" style={{ marginTop: 12 }}>Enter / replace PTL</div>
-      <form onSubmit={submit}>
-        <div className="field-grid">
-          <div className="form-row">
-            <label className="form-label">Service</label>
-            <select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}>
-              <option value="">Select service</option>
-              {serviceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="form-row">
-            <label className="form-label">Team member</label>
-            <select className="filter-select" style={{ width: '100%' }} value={member} onChange={(e) => setMember(e.target.value)}>
-              <option value="">Select member</option>
-              {empList.map((x) => {
-                const v = String(x._id ?? x.id);
-                return <option key={x._id ?? x.id} value={v}>{empLabel(x)}</option>;
-              })}
-            </select>
-          </div>
-        </div>
-        {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-        {ok && <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>{ok}</p>}
-        <button type="submit" className="btn-primary" disabled={save.isPending} style={{ marginTop: 8 }}>
-          {save.isPending ? 'Saving…' : 'Save PTL'}
-        </button>
-      </form>
-      <DataTable
-        columns={[
-          { key: 'service', label: 'Service' },
-          { key: 'name', label: 'Team member' },
-          { key: 'approvalStatus', label: 'Status', render: (r) => (r.approvalStatus ? <StatusPill status={r.approvalStatus}>{r.approvalStatus}</StatusPill> : '—') },
-          {
-            key: 'actions',
-            label: 'Action',
-            render: (r) => (
-              <button type="button" className="approve-btn" disabled={save.isPending} onClick={() => removeRow(r)}>
-                Remove
-              </button>
-            ),
-          },
-        ]}
-        rows={rows}
-        emptyText="No principal team leads assigned yet."
-      />
-
-    </Panel>
-  );
-}
-
-// Technical Director: propose the SPOC (coordinator) for this project.
-// Lands as Proposed for the Design Management Head / Admin to approve.
-function TechnicalSpocPanel({ projectId, project, employees }) {
-  const queryClient = useQueryClient();
-  const [coordId, setCoordId] = useState('');
-  const [err, setErr] = useState('');
-  const [ok, setOk] = useState('');
-
-  const allocsQ = useQuery({
-    queryKey: ['spoc-allocations', projectId],
-    queryFn: () => spocApi.allocationsList({ project: projectId }),
-    enabled: !!projectId,
-    retry: false,
-  });
-  const allocs = allocsQ.data?.items ?? [];
-  const empList = employees.data?.items ?? employees.data ?? [];
-  const sorted = [...empList].sort((a, b) => {
-    const ac = /coordinator|spoc/i.test(a?.designation ?? '') ? 0 : 1;
-    const bc = /coordinator|spoc/i.test(b?.designation ?? '') ? 0 : 1;
-    return ac - bc;
-  });
-
-  const propose = useMutation({
-    mutationFn: (body) => spocApi.proposeAllocation(body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['spoc-allocations', projectId] });
-      setCoordId('');
-      setErr('');
-      setOk('SPOC proposed — Design Management Head / Admin will approve.');
-    },
-    onError: (e) => {
-      setErr(e.message);
-      setOk('');
-    },
-  });
-
-  function submit(e) {
-    e.preventDefault();
-    setErr('');
-    setOk('');
-    if (!coordId) {
-      setErr('Select a coordinator.');
-      return;
-    }
-    propose.mutate({ project: projectId, coordinator: coordId, services: project?.services ?? [] });
-  }
-
-  const coordName = (c) => {
-    if (!c) return '—';
-    if (typeof c === 'string') return c;
-    return [c.firstName, c.lastName].filter(Boolean).join(' ') || c.empId || '—';
-  };
-
-  return (
-    <Panel title="SPOC for this project" sub="Propose the coordinator (SPOC) — approved by the Design Management Head / Admin.">
-      <div className="section-label" style={{ marginTop: 12 }}>Propose SPOC</div>
-      <form onSubmit={submit}>
-        <div className="form-row" style={{ maxWidth: 360 }}>
-          <label className="form-label" htmlFor="td-spoc-coord">Coordinator</label>
-          <select id="td-spoc-coord" className="filter-select" style={{ width: '100%' }} value={coordId} onChange={(e) => setCoordId(e.target.value)}>
-            <option value="">Select…</option>
-            {sorted.map((x) => (
-              <option key={x._id ?? x.id} value={x._id ?? x.id}>
-                {empLabel(x)}
-              </option>
-            ))}
-          </select>
-        </div>
-        {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-        {ok && <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>{ok}</p>}
-        <button type="submit" className="btn-primary" disabled={propose.isPending} style={{ marginTop: 8 }}>
-          {propose.isPending ? 'Saving…' : 'Propose SPOC'}
-        </button>
-      </form>
-      {allocsQ.isLoading ? (
-        <EmptyState text="Loading…" />
-      ) : (
-        <DataTable
-          columns={[
-            { key: 'coordinator', label: 'Coordinator', render: (r) => coordName(r.coordinator) },
-            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
-            { key: 'services', label: 'Services', render: (r) => (r.services ?? []).join(', ') || '—' },
-          ]}
-          rows={allocs}
-          emptyText="No SPOC proposed yet."
-        />
-      )}
-
-    </Panel>
   );
 }
 
@@ -538,15 +269,30 @@ export default function ProjectDetailPage({ bootstrap }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [modal, setModal] = useState(null);
+  const [detailsOpen,setDetailsOpen]=useState(false);
   const [locOpen, setLocOpen] = useState(false);
   const [spocId, setSpocId] = useState('');
-  const [top, setTop] = useState(bootstrap?.role?.key === 'team_lead' ? 'team-workspace' : 'coordinator');
+  const [top, setTop] = useState('coordinator');
   const [coord, setCoord] = useState('overview');
+  const [documentsTab, setDocumentsTab] = useState('directory');
+  const [stageStatusFilter, setStageStatusFilter] = useState('');
 
-  const q = useQuery({ queryKey: ['project', id], queryFn: () => projectsApi.get(id) });
   const role = bootstrap?.role?.key ?? '';
+  const q = useQuery({
+    queryKey: ['project', id],
+    queryFn: () => projectsApi.get(id),
+    refetchInterval: 10000,
+  });
   const isAdmin = role === 'admin_billing';
   const isTD = role === 'technical_director';
+  const assignedProjectsQ = useQuery({
+    queryKey: ['spoc-assigned-projects'],
+    queryFn: () => projectsApi.list({}),
+    enabled: role === 'coordinator',
+  });
+  const coordTabs = role === 'coordinator'
+    ? [...COORD_TABS, { key: 'rfis', label: 'RFI Log' }]
+    : COORD_TABS;
 
   const employees = useQuery({
     queryKey: ['employees-spoc', id],
@@ -554,7 +300,14 @@ export default function ProjectDetailPage({ bootstrap }) {
     enabled: !!id,
     retry: false,
   });
-  const stagesQ = useQuery({ queryKey: ['project-stages', id], queryFn: () => billingApi.stages({ project: id }), enabled: !!id, retry: false });
+  const spocOptions = useQuery({
+    queryKey: ['eligible-spocs'],
+    queryFn: employeesApi.spocOptions,
+    enabled: (isAdmin || isTD) && q.data?.project?.activation?.status !== 'Activated',
+    retry: false,
+    refetchInterval: 10000,
+  });
+  const stagesQ = useQuery({ queryKey: ['project-stages', id], queryFn: () => billingApi.stages({ project: id }), enabled: !!id, retry: false, refetchInterval: role === 'coordinator' ? 10_000 : false });
   const drawingsQ = useQuery({ queryKey: ['project-drawings', id], queryFn: () => drawingsApi.list({ project: id }), enabled: !!id, retry: false });
   const revisionsQ = useQuery({ queryKey: ['project-revisions', id], queryFn: () => revisionsApi.list({ project: id }), enabled: !!id, retry: false });
   const deliverablesQ = useQuery({ queryKey: ['project-deliverables', id], queryFn: () => deliverablesApi.list({ project: id }), enabled: !!id, retry: false });
@@ -605,9 +358,48 @@ export default function ProjectDetailPage({ bootstrap }) {
   }
 
   const project = q.data?.project ?? {};
+  const salesforceUrl =
+    project.salesforceRecordId && project.salesforceInstanceUrl
+      ? `${project.salesforceInstanceUrl}/lightning/r/${project.salesforceObject || 'Project__c'}/${project.salesforceRecordId}/view`
+      : null;
+  const documentProjectOptions = [...new Map(
+    [...listOf(assignedProjectsQ.data), project]
+      .filter((candidate) => idOf(candidate))
+      .map((candidate) => [idOf(candidate), candidate]),
+  ).values()];
+  const employeeList = listOf(employees.data);
+  const employeeName = (employee) =>
+    [employee?.firstName, employee?.lastName].filter(Boolean).join(' ') || employee?.empId || employee?.email || '';
+  const employeeLabel = (value) => {
+    if (value && typeof value === 'object') {
+      const name = employeeName(value);
+      if (name) return name;
+      const employeeId = idOf(value);
+      const match = employeeList.find((employee) => idOf(employee) === employeeId);
+      return employeeName(match);
+    }
+    const employeeId = idOf(value);
+    if (!employeeId) return '';
+    const match = employeeList.find((employee) => idOf(employee) === employeeId);
+    return employeeName(match);
+  };
+  const allocatedSpocs = (teamQ.data?.allocations ?? [])
+    .filter((allocation) => allocation.status === 'Approved')
+    .map((allocation) => employeeLabel(allocation.coordinator))
+    .filter(Boolean);
+  const activationSpoc = employeeLabel(project.activation?.spoc);
+  const assignedSpocLabel = [...new Set(allocatedSpocs)].join(', ')
+    || activationSpoc
+    || (teamQ.isLoading || (project.activation?.spoc && employees.isLoading) ? 'Loading…' : 'Not allocated');
   const pid = String(id);
   const ofProject = (items) => (items ?? []).filter((r) => idOf(r.project) === pid);
   const stages = ofProject(stagesQ.data?.items);
+  const filteredStages = stages.filter((stage) => {
+    if (!stageStatusFilter) return true;
+    const status = String(stage.currentStatus ?? '').trim().toLowerCase();
+    if (stageStatusFilter === 'on-hold') return ['on hold', 'onhold', 'paused'].includes(status);
+    return status !== '' && !['on hold', 'onhold', 'paused', 'completed', 'cancelled'].includes(status);
+  });
   const drawings = ofProject(drawingsQ.data?.items);
   const revisions = ofProject(revisionsQ.data?.items);
   const deliverables = ofProject(deliverablesQ.data?.items);
@@ -626,7 +418,6 @@ export default function ProjectDetailPage({ bootstrap }) {
   const contacts = asObj(project.contacts);
   const client = asObj(contacts.client);
   const architect = asObj(contacts.architect);
-  const pmc = asObj(contacts.pmc);
   const billing = asObj(contacts.billing);
   const loc = asObj(project.location);
 
@@ -824,12 +615,26 @@ export default function ProjectDetailPage({ bootstrap }) {
       <Panel title="Project summary">
         <div className="field-grid">
           <Field label="Project" value={project.name} />
-          <Field label="Code" value={project.code} mono />
+          <Field label="Job number" value={project.jobNumber} mono />
           <Field label="Client" value={project.clientName || contactText(contacts.client)} />
           <Field label="Status" value={<StatusPill tone={statusTone(project.status)}>{project.status ?? '—'}</StatusPill>} />
 
           <Field label="Current stage" value={project.currentStage} />
           <Field label="Contract completion" value={fmtDate(project.expectedCompletion)} />
+          {isAdmin && (salesforceUrl || project.salesforceRecordId) && (
+            <Field
+              label="Salesforce"
+              value={
+                salesforceUrl ? (
+                  <a href={salesforceUrl} target="_blank" rel="noreferrer">
+                    {project.salesforceProjectCode || 'Open record'} ↗
+                  </a>
+                ) : (
+                  project.salesforceProjectCode || 'Linked'
+                )
+              }
+            />
+          )}
         </div>
       </Panel>
 
@@ -846,6 +651,8 @@ export default function ProjectDetailPage({ bootstrap }) {
           <Field label="Referral" value={project.referral} />
           <Field label="Project type" value={project.projectType} />
           <Field label="Category" value={project.category} />
+          <Field label="Used for" value={project.usedFor} />
+          <Field label="Project director" value={project.related?.projectDirector} />
           <Field label="Project owner" value={project.owner} />
           <Field label="Start date" value={fmtDate(project.startDate)} />
           <Field label="Expected completion" value={fmtDate(project.expectedCompletion)} />
@@ -872,6 +679,7 @@ export default function ProjectDetailPage({ bootstrap }) {
           </div>
         )}
         {isAdmin && <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+          <button type="button" className="approve-btn" onClick={() => setDetailsOpen(true)}>Edit project details</button>
           <button type="button" className="approve-btn" onClick={() => setModal('owner')}>Change owner</button>
           <button type="button" className="approve-btn" onClick={() => setModal('dates')}>Edit dates</button>
           <button type="button" className="approve-btn" onClick={() => setLocOpen(true)}>Change Location</button>
@@ -890,7 +698,7 @@ export default function ProjectDetailPage({ bootstrap }) {
         </div>
       </Panel>
 
-      <Panel title="Client and contacts">
+      <Panel title="Project contacts">
         <div className="field-grid">
           <Field label="Client name" value={client.company || client.name || project.clientName} />
           <Field label="Client SPOC" value={project.clientSpoc} />
@@ -900,12 +708,12 @@ export default function ProjectDetailPage({ bootstrap }) {
           <Field label="Architect" value={architect.company || architect.name} />
           <Field label="Architect email" value={architect.email} />
           <Field label="Architect contact" value={architect.phone} />
-          <Field label="PMC" value={pmc.company || pmc.name} />
-          <Field label="PMC email" value={pmc.email} />
-          <Field label="PMC contact" value={pmc.phone} />
         </div>
       </Panel>
 
+      <Panel title="Client contact details"><div className="field-grid">{[['pmc','PMC'],['peerReview','Peer Review']].map(([key,label])=><div key={key}><b>{label}</b><div>{contacts[key]?.name||(!contacts[key]?.company?'—':'')}</div>{contacts[key]?.company&&<div>{contacts[key].company}</div>}{contacts[key]?.designation&&<div>{contacts[key].designation}</div>}<div>{contacts[key]?.email}</div><div>{contacts[key]?.phone}</div></div>)}</div></Panel>
+      {detailsOpen&&<ProjectEdit project={project} onClose={()=>setDetailsOpen(false)}/>}
+      {role === 'coordinator' && <ProjectHold key={project._id + ':' + project.status} project={project} />}
       <Panel title="Scope and services">
         <DataTable
           columns={[
@@ -979,19 +787,24 @@ export default function ProjectDetailPage({ bootstrap }) {
           <>
             <div className="form-row" style={{ maxWidth: 360 }}>
               <label className="form-label" htmlFor="pd-spoc">SPOC (coordinator)</label>
-              <select id="pd-spoc" className="filter-select" value={spocId} onChange={(e) => setSpocId(e.target.value)}>
+              <EmployeeSelect employees={(spocOptions.data?.items ?? [])} id="pd-spoc" className="filter-select" value={spocId} onChange={(e) => setSpocId(e.target.value)} disabled={spocOptions.isLoading || spocOptions.isError}>
                 <option value="">Select…</option>
-                {((employees.data?.items ?? employees.data ?? [])).map((e) => (
-                  <option key={e._id ?? e.id} value={e._id ?? e.id}>
-                    {[e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || e.email} ({e.empId ?? '—'})
+                {(spocOptions.data?.items ?? []).map((e) => (
+                  <option key={e._id} value={e._id}>
+                    {e.name} ({e.empId ?? '—'})
                   </option>
                 ))}
-              </select>
+              </EmployeeSelect>
+              {spocOptions.isLoading && <p>Loading SPOCs…</p>}
+              {spocOptions.isError && <div role="alert">{spocOptions.error.message} <button type="button" onClick={() => spocOptions.refetch()}>Retry SPOC list</button></div>}
+              {!spocOptions.isLoading && !spocOptions.isError && !spocOptions.data?.items?.length && <p>No eligible SPOCs are available. Ask HR to check the SPOC role, active login and employee link.</p>}
+              <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>Only active SPOC logins linked to eligible employee records appear. Other employee roles are excluded.</p>
+              {!!spocOptions.data?.unavailable?.length && <details><summary>SPOC logins needing HR review ({spocOptions.data.unavailable.length})</summary><ul>{spocOptions.data.unavailable.map((item, index) => <li key={index}>{item.name}: {item.reason}</li>)}</ul></details>}
             </div>
             {activate.isError && (
               <div className="login-error" role="alert" style={{ display: 'block' }}>{activate.error.message}</div>
             )}
-            <button type="button" className="btn-primary" disabled={activate.isPending} onClick={() => activate.mutate(spocId ? { coordinator: spocId } : {})}>
+            <button type="button" className="btn-primary" disabled={activate.isPending || spocOptions.isLoading || spocOptions.isError || !(spocOptions.data?.items ?? []).some(employee => employee._id === spocId)} onClick={() => activate.mutate({ coordinator: spocId })}>
               {activate.isPending ? 'Activating…' : 'Activate project'}
             </button>
             <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
@@ -1008,37 +821,69 @@ export default function ProjectDetailPage({ bootstrap }) {
         <PortalAccessPanel projectId={id} initialIds={project.portalUsers ?? []} isAdmin={isAdmin} />
       </Panel>
 
-      {isTD && (
-        <TechnicalPtlPanel projectId={id} project={project} employees={employees} />
-      )}
-      {isTD && (
-        <TechnicalSpocPanel projectId={id} project={project} employees={employees} />
-      )}
 
-      <StageApprovalPanel projectId={id} role={role} />
-      <Tabs tabs={role === 'team_lead' ? [{ key: 'team-workspace', label: 'Team workspace' }, ...TOP_TABS] : TOP_TABS} active={top} onChange={setTop} />
-      {top === 'team-workspace' && <MyTeamPage key={id} bootstrap={bootstrap} projectId={id} projectWorkspace />}
+
+
+      {!isTD && <StageApprovalPanel projectId={id} role={role} />}
+      <Tabs tabs={TOP_TABS} active={top} onChange={setTop} />
 
       {top === 'coordinator' && (
         <>
-          <Tabs tabs={COORD_TABS} active={coord} onChange={setCoord} />
+          <Tabs tabs={coordTabs} active={coord} onChange={setCoord} />
 
-          {(!isTD && coord !== 'overview') && (
+          {(!['associate_director', 'technical_director', 'assoc_technical_director'].includes(role) && coord !== 'overview') && (
           <Panel title="Assigned SPOC">
-            <p>{(teamQ.data?.allocations ?? []).filter(a => a.status === 'Approved').map(a => empName(a.coordinator)).join(', ') || empName(project.activation?.spoc) || 'Not allocated'}</p>
+            <p>{assignedSpocLabel}</p>
           </Panel>
           )}
-          {coord === 'directory' && <>
-            <DirectoryTab myAllocs={teamQ.data?.allocations ?? []} activeProjects={[project]} activeLoading={teamQ.isLoading} canEdit={role === 'coordinator'} />
-            <Panel title="Project team"><DataTable columns={[
-              { key: 'service', label: 'Service' }, { key: 'team', label: 'Team' },
-              { key: 'name', label: 'Member', render: r => empName(r.employee) },
-              { key: 'designation', label: 'Designation', render: r => r.employee?.designation ?? '—' },
-              { key: 'experience', label: 'Experience', render: r => r.employee?.experience ?? '—' },
-            ]} rows={teamQ.data?.members ?? []} emptyText="No team members allocated." /></Panel>
+          {coord === 'documents' && <>
+            {role === 'coordinator' && (
+              <div className="form-row" style={{ maxWidth: 360, marginBottom: 12 }}>
+                <label className="form-label" htmlFor="spoc-documents-project">Project</label>
+                <select
+                  id="spoc-documents-project"
+                  className="filter-select"
+                  value={id}
+                  onChange={(event) => {
+                    if (event.target.value) navigate(`/projects/${event.target.value}`);
+                  }}
+                >
+                  {documentProjectOptions.map((option) => (
+                    <option key={idOf(option)} value={idOf(option)}>
+                      {option.name ?? option.code ?? 'Unnamed project'}{option.code ? ` (${option.code})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <Tabs tabs={DOCUMENT_TABS} active={documentsTab} onChange={setDocumentsTab} />
+            {documentsTab === 'directory' && <>
+              <><div>{role==='coordinator'&&<SpocContacts key={id} project={project}/>}</div><DirectoryTab myAllocs={teamQ.data?.allocations ?? []} activeProjects={[project]} activeLoading={teamQ.isLoading} canEdit={role === 'coordinator'} /></>
+              <Panel title="Project team"><DataTable columns={[
+                { key: 'service', label: 'Service' }, { key: 'team', label: 'Team' },
+                { key: 'name', label: 'Member', render: r => empName(r.employee) },
+                { key: 'designation', label: 'Designation', render: r => r.employee?.designation ?? '—' },
+                { key: 'experience', label: 'Experience', render: r => r.employee?.experience ?? '—' },
+              ]} rows={teamQ.data?.members ?? []} emptyText="No team members allocated." /></Panel>
+            </>}
+            {documentsTab === 'dbr' && <DbrDocumentPanel projectId={id} />}
           </>}
+          {coord === 'rfis' && role === 'coordinator' && <SpocRfiLog projectId={id} />}
           {coord === 'overview' && (
             <>
+              <div className="form-row" style={{ maxWidth: 260, marginBottom: 12 }}>
+                <label className="form-label" htmlFor="stage-live-status-filter">Live status</label>
+                <select
+                  id="stage-live-status-filter"
+                  className="filter-select"
+                  value={stageStatusFilter}
+                  onChange={(event) => setStageStatusFilter(event.target.value)}
+                >
+                  <option value="">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="on-hold">On hold</option>
+                </select>
+              </div>
               <Panel title="Stage & Service-wise Status" sub="Live project status, progress & completion, and delay / submission status — by service and stage, covering every service tracked on the Board & Leadership dashboard">
                 <DataTable
                   columns={[
@@ -1048,7 +893,7 @@ export default function ProjectDetailPage({ bootstrap }) {
                     { key: 'progress', label: 'Progress / completion', render: (s) => overviewProgress(s) },
                     { key: 'delay', label: 'Delay / submission status', render: (s) => overviewDelay(s) },
                   ]}
-                  rows={stages}
+                  rows={filteredStages}
                   emptyText="No stage status recorded for this project yet."
                 />
               </Panel>
@@ -1098,6 +943,7 @@ export default function ProjectDetailPage({ bootstrap }) {
             </>
           )}
 
+          {coord === 'coordination' && <CoordinationPanel projectId={id} canEdit={['coordinator','design_mgmt_head','technical_director'].includes(role)}/>}
           {coord === 'coordination' && (
             isTD ? (
             <Panel title="Coordination log">

@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 // 16-step coordination workflow per project (§4.11). Each step belongs to
@@ -85,4 +86,4 @@ export const STEP_OWNERS = [
 
 export const DesignWorkflow =
   mongoose.models.DesignWorkflow ??
-  mongoose.model('DesignWorkflow', designWorkflowSchema);
+  mongoose.model('DesignWorkflow', auditProjectSchema(designWorkflowSchema));

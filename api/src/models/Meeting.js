@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const MEETING_CATEGORIES = ['Scheduled', 'Sudden'];
@@ -145,6 +146,8 @@ const meetingSchema = new mongoose.Schema(
       nextMeeting: { type: Date },
     },
     momDoc: { type: String, trim: true },
+    momCirculatedAt: { type: Date },
+    momCirculatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     momDocPath: { type: String, trim: true },
     cancelReason: { type: String, trim: true },
     actions: [actionSchema],
@@ -161,4 +164,4 @@ const meetingSchema = new mongoose.Schema(
 );
 
 export const Meeting =
-  mongoose.models.Meeting ?? mongoose.model('Meeting', meetingSchema);
+  mongoose.models.Meeting ?? mongoose.model('Meeting', auditProjectSchema(meetingSchema));

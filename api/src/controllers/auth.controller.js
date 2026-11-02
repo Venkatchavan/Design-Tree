@@ -16,12 +16,14 @@ import { recordLogin } from './attendance.controller.js';
 const INVALID_MSG =
   "That email and password don't match our records. Try again.";
 
-function cookieOptions() {
-  const isProd = config.nodeEnv === 'production';
+function cookieOptions(req) {
+  const forwardedProto = (req.headers['x-forwarded-proto'] ?? '')
+    .split(',')[0]
+    .trim();
   return {
     httpOnly: true,
     sameSite: 'lax',
-    secure: isProd,
+    secure: config.cookieSecure || req.secure || forwardedProto === 'https',
     maxAge: 24 * 60 * 60 * 1000,
     path: '/',
   };
@@ -63,7 +65,7 @@ export async function login(req, res, next) {
       { expiresIn: config.jwtExpiresIn },
     );
 
-    res.cookie(config.cookieName, token, cookieOptions());
+    res.cookie(config.cookieName, token, cookieOptions(req));
     const attendance = await recordLogin(user._id, user.role, new Date());
     return res.status(200).json({ user: toPublicUser(user), attendance });
   } catch (err) {
@@ -146,7 +148,7 @@ export async function logout(req, res, next) {
         }
       }
     }
-    res.clearCookie(config.cookieName, cookieOptions());
+    res.clearCookie(config.cookieName, cookieOptions(req));
     return res.status(200).json({ message: 'Signed out.' });
   } catch (err) {
     return next(err);

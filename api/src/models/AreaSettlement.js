@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 const areaSettlementSchema = new mongoose.Schema(
@@ -27,4 +28,4 @@ const areaSettlementSchema = new mongoose.Schema(
 
 export const AreaSettlement =
   mongoose.models.AreaSettlement ??
-  mongoose.model('AreaSettlement', areaSettlementSchema);
+  mongoose.model('AreaSettlement', auditProjectSchema(areaSettlementSchema));

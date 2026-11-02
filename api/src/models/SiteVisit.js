@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 import { Counter } from './Counter.js';
 import { Discrepancy } from './Discrepancy.js';
@@ -59,4 +60,4 @@ siteVisitSchema.post('save', raiseDrawingAlert);
 siteVisitSchema.post('findOneAndUpdate', raiseDrawingAlert);
 
 export const SiteVisit =
-  mongoose.models.SiteVisit ?? mongoose.model('SiteVisit', siteVisitSchema);
+  mongoose.models.SiteVisit ?? mongoose.model('SiteVisit', auditProjectSchema(siteVisitSchema));

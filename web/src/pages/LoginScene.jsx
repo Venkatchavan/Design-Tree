@@ -1,47 +1,28 @@
 /**
- * LoginScene — stroke-only isometric "exploded building" for the login showcase.
+ * LoginScene — isometric "exploded building" for the login showcase.
  *
- * Everything is drawn as outlines (fill: none). Geometry is generated from a
- * single iso() projection so every line sits exactly on the 30°/30° grid.
- * All motion is CSS-driven (see login.css) and respects prefers-reduced-motion.
+ * Light line work with glossy spectral fills, standing where two bundles of
+ * spectral ribbons cross on the ground. Geometry is generated from a single iso()
+ * projection so every line sits exactly on the 30°/30° grid. Besides the
+ * three-layer building (structure / MEP / QA-QC) the scene shows the context a
+ * project lives in: neighbouring site blocks, a tower crane lifting a steel
+ * beam onto the structure, and a stack of drawing sheets (the design desk).
+ * All motion is CSS-driven (see index.css) and respects prefers-reduced-motion.
  */
 
-// ── Projection ────────────────────────────────────────────────────────────
+import { FLOOR_Z, OX, OY, boxPath, iso, pathOf, pt, square } from './isoGeometry.js';
+import { SiteCrane, SiteGround } from './LoginSceneSite.jsx';
+
+// ── Layout ────────────────────────────────────────────────────────────────
 const W = 100; // slab half-size in plan units
 const GAP = 64; // vertical distance between slabs
 const THICK = 7; // slab thickness
-const OX = 292; // screen x of plan origin
-const OY = 270; // screen y of plan origin (z = 0)
-const K = Math.sqrt(3) / 2;
-
-const r1 = (n) => Math.round(n * 10) / 10;
-const iso = (x, y, z = 0) => [r1(OX + (x - y) * K), r1(OY + (x + y) / 2 - z)];
-const pt = ([x, y]) => `${x} ${y}`;
-const pathOf = (pts, z, close = false) =>
-  'M' + pts.map(([x, y]) => pt(iso(x, y, z))).join('L') + (close ? 'Z' : '');
-const square = (cx, cy, r) => [
-  [cx - r, cy - r],
-  [cx + r, cy - r],
-  [cx + r, cy + r],
-  [cx - r, cy + r],
-];
-
-function boxPath(cx, cy, r, h, z) {
-  const top = pathOf(square(cx, cy, r), z + h, true);
-  const l = iso(cx - r, cy + r, z);
-  const b = iso(cx + r, cy + r, z);
-  const rt = iso(cx + r, cy - r, z);
-  const lh = iso(cx - r, cy + r, z + h);
-  const bh = iso(cx + r, cy + r, z + h);
-  const rh = iso(cx + r, cy - r, z + h);
-  return `${top}M${pt(lh)}L${pt(l)}L${pt(b)}L${pt(rt)}L${pt(rh)}M${pt(bh)}L${pt(b)}`;
-}
 
 // ── Static geometry ───────────────────────────────────────────────────────
 const LAYERS = [
-  { tone: 'structural', no: '01', name: 'STRUCTURE', z: 0 },
-  { tone: 'mep', no: '02', name: 'MEP', z: GAP },
-  { tone: 'qaqc', no: '03', name: 'QA / QC', z: GAP * 2 },
+  { tone: 'structural', z: 0 },
+  { tone: 'mep', z: GAP },
+  { tone: 'qaqc', z: GAP * 2 },
 ];
 const TOP_Z = GAP * 2;
 
@@ -54,6 +35,9 @@ function slabPaths(z) {
   const rightD = iso(W, -W, z - THICK);
   return {
     top: pathOf(square(0, 0, W), z, true),
+    // Filled faces give each slab a lit top and two shaded sides.
+    leftFace: `M${pt(left)}L${pt(bottom)}L${pt(bottomD)}L${pt(leftD)}Z`,
+    rightFace: `M${pt(bottom)}L${pt(right)}L${pt(rightD)}L${pt(bottomD)}Z`,
     edge: `M${pt(left)}L${pt(leftD)}L${pt(bottomD)}L${pt(rightD)}L${pt(right)}M${pt(bottom)}L${pt(bottomD)}`,
     inset: pathOf(square(0, 0, W - 11), z, true),
   };
@@ -110,7 +94,6 @@ function quality(z) {
 }
 
 // Ground grid
-const FLOOR_Z = -16;
 const FLOOR_R = 128;
 const FLOOR_STEP = 32;
 const FLOOR_GRID = (() => {
@@ -128,6 +111,70 @@ const PILLARS = [[-W, -W], [W, -W], [W, W], [-W, W]].map(
 );
 const AXIS = `M${pt(iso(0, 0, -14))}L${pt(iso(0, 0, TOP_Z + 24))}`;
 const scanPath = (dz) => pathOf(square(0, 0, W + 14), -10 + dz, true);
+
+// Ribbons: two bundles of ground-plane circles, left and right of the building,
+// whose inner edges cross underneath it (a figure-eight in isometric view).
+// A plan circle of radius r projects to an ellipse with rx = r·√6/2, ry = r/√2.
+const RIBBON_Y = iso(0, 0, FLOOR_Z)[1];
+const RIBBON_DX = 105;
+const RIBBON_R = [122, 113, 104, 95];
+const RIBBON_LOOPS = [-1, 1].flatMap((side) =>
+  RIBBON_R.map((r, i) => ({
+    key: `${side}-${i}`,
+    cx: OX + side * RIBBON_DX,
+    rx: Math.round(r * 1.2247 * 10) / 10,
+    ry: Math.round(r * 0.7071 * 10) / 10,
+    i,
+  })),
+);
+// spectrum the ribbons and confetti share
+const SPECTRUM = [
+  [0, '#8a44d6'],
+  [0.2, '#e5487c'],
+  [0.38, '#f2992f'],
+  [0.5, '#e2c53a'],
+  [0.62, '#2fb57a'],
+  [0.8, '#1f9f8a'],
+  [1, '#3a6ff0'],
+];
+// glossy slab fills, one per discipline
+const SLAB_GRADIENTS = {
+  structural: ['#2f62e8', '#7b4fe0'],
+  mep: ['#f39a35', '#e5487c'],
+  qaqc: ['#2fb57a', '#23a6c9'],
+};
+
+function Ribbons() {
+  return (
+    <g className="iso-ribbons">
+      {[-1, 1].map((side) => (
+        <ellipse
+          key={side}
+          className="iso-ribbon-band"
+          cx={OX + side * RIBBON_DX}
+          cy={RIBBON_Y}
+          rx={Math.round(108.5 * 1.2247)}
+          ry={Math.round(108.5 * 0.7071)}
+        />
+      ))}
+      {RIBBON_LOOPS.map((l) => (
+        <ellipse key={l.key} className="iso-ribbon" cx={l.cx} cy={RIBBON_Y} rx={l.rx} ry={l.ry} />
+      ))}
+      {RIBBON_LOOPS.map((l) => (
+        <ellipse
+          key={`g${l.key}`}
+          className="iso-ribbon-glint"
+          cx={l.cx}
+          cy={RIBBON_Y}
+          rx={l.rx}
+          ry={l.ry}
+          pathLength="100"
+          style={{ '--gd': `${-l.i * 0.35}s` }}
+        />
+      ))}
+    </g>
+  );
+}
 
 // ── Pieces ────────────────────────────────────────────────────────────────
 function Ellipse({ at, rx = 4.6, ry = 2.7, className = 'iso-node', style }) {
@@ -179,26 +226,8 @@ function LayerDetails({ tone, z, delay }) {
   );
 }
 
-function Label({ layer, lit = false, index }) {
-  const [x0, y0] = iso(W, -W, layer.z);
-  const cls = lit
-    ? `iso-label iso-label--lit login-pulse login-pulse--${index} tone-${layer.tone}`
-    : 'iso-label';
-  return (
-    <g className={cls}>
-      <circle cx={x0} cy={y0} r="2.3" />
-      <path d={`M${x0 + 8} ${y0}L${x0 + 40} ${y0}`} />
-      <text className="iso-label-no" x={x0 + 50} y={y0 - 4}>{layer.no}</text>
-      <text className="iso-label-name" x={x0 + 50} y={y0 + 9}>{layer.name}</text>
-    </g>
-  );
-}
-
 // ── Scene ─────────────────────────────────────────────────────────────────
 export default function LoginScene() {
-  const gizmoX = [r1(26 * K), 13];
-  const gizmoY = [r1(-26 * K), 13];
-
   return (
     <div className="login-scene-stage" aria-hidden="true">
       <svg className="login-iso" viewBox="0 0 620 420" focusable="false">
@@ -238,17 +267,30 @@ export default function LoginScene() {
           <filter id="login-blur" x="-20%" y="-40%" width="140%" height="180%">
             <feGaussianBlur stdDeviation="3.2" />
           </filter>
+          <linearGradient id="login-ribbon-grad" gradientUnits="userSpaceOnUse" x1="20" y1="0" x2="600" y2="0">
+            {SPECTRUM.map(([o, c]) => (
+              <stop key={o} offset={o} stopColor={c} />
+            ))}
+          </linearGradient>
+          {Object.entries(SLAB_GRADIENTS).map(([tone, [a, b]]) => (
+            <linearGradient key={tone} id={`login-g-${tone}`} x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor={a} />
+              <stop offset="1" stopColor={b} />
+            </linearGradient>
+          ))}
         </defs>
-
-        {/* meta */}
-        <text className="iso-meta" x="22" y="34">AXONOMETRIC · 30° / 30°</text>
-        <text className="iso-meta" x="598" y="34" textAnchor="end">LAYERS 03</text>
 
         {/* ground */}
         <g mask="url(#login-floor-mask)">
           <path className="iso-floor-grid" d={FLOOR_GRID} />
         </g>
         <path className="iso-floor-edge" d={FLOOR_EDGE} />
+
+        {/* spectral ribbons crossing under the building */}
+        <Ribbons />
+
+        {/* site context: neighbouring blocks, trees and the drawing sheets */}
+        <SiteGround />
 
         {/* vertical skeleton */}
         <g className="iso-detail" style={{ '--d': '1.1s' }}>
@@ -264,6 +306,9 @@ export default function LoginScene() {
           const delay = 0.15 + i * 0.28;
           return (
             <g key={layer.tone} className={`iso-layer tone-${layer.tone}`}>
+              <path className="iso-face iso-face--left" d={p.leftFace} style={{ '--d': `${delay + 0.5}s` }} />
+              <path className="iso-face iso-face--right" d={p.rightFace} style={{ '--d': `${delay + 0.5}s` }} />
+              <path className="iso-face iso-face--top" d={p.top} style={{ '--d': `${delay + 0.5}s` }} />
               <path className="iso-draw iso-slab" pathLength="1" d={p.top} style={{ '--d': `${delay}s` }} />
               <path className="iso-draw iso-edge" pathLength="1" d={p.edge} style={{ '--d': `${delay + 0.2}s` }} />
               <path className="iso-inset" d={p.inset} />
@@ -284,15 +329,8 @@ export default function LoginScene() {
           );
         })}
 
-        {/* labels */}
-        <g className="iso-detail" style={{ '--d': '1.4s' }}>
-          {LAYERS.map((l, i) => (
-            <Label key={`b${l.tone}`} layer={l} index={i} />
-          ))}
-          {LAYERS.map((l, i) => (
-            <Label key={`l${l.tone}`} layer={l} index={i} lit />
-          ))}
-        </g>
+        {/* tower crane lifting a beam onto the structure */}
+        <SiteCrane />
 
         {/* scan plane */}
         <g className="iso-scan">
@@ -300,15 +338,6 @@ export default function LoginScene() {
           <path className="iso-scan-echo" style={{ opacity: 0.16 }} d={scanPath(-20)} />
           <path className="iso-scan-echo" style={{ opacity: 0.3 }} d={scanPath(-10)} />
           <path className="iso-scan-main" d={scanPath(0)} />
-        </g>
-
-        {/* axis gizmo */}
-        <g className="iso-gizmo" transform="translate(60 352)">
-          <path d={`M0 0L${gizmoX[0]} ${gizmoX[1]}M0 0L${gizmoY[0]} ${gizmoY[1]}M0 0L0 -26`} />
-          <circle cx="0" cy="0" r="1.8" />
-          <text x={gizmoX[0] + 4} y={gizmoX[1] + 7}>X</text>
-          <text x={gizmoY[0] - 10} y={gizmoY[1] + 7}>Y</text>
-          <text x="-3" y="-31">Z</text>
         </g>
       </svg>
     </div>

@@ -45,6 +45,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api/, /^\/socket\.io/],
@@ -78,9 +79,9 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': 'http://127.0.0.1:5000',
+      '/api': 'http://localhost:5000',
       // Same-origin socket.io in dev (production gateway proxies this path).
-      '/socket.io': { target: 'http://127.0.0.1:5000', ws: true },
+      '/socket.io': { target: 'http://localhost:5000', ws: true },
     },
   },
 })

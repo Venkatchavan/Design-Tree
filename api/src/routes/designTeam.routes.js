@@ -1,0 +1,15 @@
+import { Router } from 'express';
+import { requireAuth } from '../middlewares/auth.js';
+import { scopeGuard, dashboard, spocDetail, projectDetail, addRemark, assignProject, changeStatus, closeFollowup, circulateMom, changeWorkflow } from '../controllers/designTeam.controller.js';
+const router = Router();
+router.use(requireAuth, scopeGuard);
+router.get('/', dashboard);
+router.get('/spocs/:id', spocDetail);
+router.get('/projects/:id', projectDetail);
+router.post('/remarks', addRemark);
+router.post('/projects/:id/assign', assignProject);
+router.patch('/projects/:id/status', changeStatus);
+router.patch('/followups/:source/:id', closeFollowup);
+router.patch('/meetings/:id/mom', circulateMom);
+router.patch('/projects/:id/workflow', changeWorkflow);
+export default router;

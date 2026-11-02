@@ -1,0 +1,38 @@
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import assert from 'node:assert/strict';
+import {chromium,expect} from '@playwright/test';
+const f=JSON.parse(await readFile('/tmp/designtree-stakeholder-fixture.json','utf8'));
+assert(f.isolated&&f.base.startsWith('http://127.0.0.1:'));
+const base='http://127.0.0.1:5173',out=resolve(import.meta.dirname,'../../account-login-review-2026-10-27/evidence');
+await mkdir(out,{recursive:true});
+const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE});
+const checks=[],errors=[];
+try{
+  const context=await browser.newContext({serviceWorkers:'block',viewport:{width:1440,height:1000}}),page=await context.newPage();
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(base);
+  await context.route('**/api/auth/login',route=>route.abort('failed'));
+  await page.locator('#loginEmail').fill('example@local.example');await page.locator('#loginPassword').fill('unused-password');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await expect(page.locator('#login-error')).toContainText('Cannot connect to DesignTree');
+  await expect(page.getByRole('button',{name:'Sign in',exact:true})).toBeEnabled();
+  await page.screenshot({path:resolve(out,'connection-error.png')});checks.push({name:'Network failure shows a useful connection message and allows retry',passed:true});
+  await context.unroute('**/api/auth/login');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.locator('#login-error')).toContainText("don't match");
+  checks.push({name:'Invalid credentials retain the server authentication response',passed:true});
+  await page.locator('#loginEmail').fill(f.cast.engineer.email);await page.locator('#loginPassword').fill(f.password);await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  const later=page.getByRole('button',{name:/Skip|Later/});await expect(page.locator('.nav').or(later)).toBeVisible();if(await later.isVisible())await later.click();
+  await expect(page.locator('.nav')).toBeVisible();checks.push({name:'Valid credentials still enter the authenticated application',passed:true});
+  const review=await browser.newContext({serviceWorkers:'block',viewport:{width:1440,height:1000}});
+  assert((await review.request.post(base+'/api/auth/login',{data:{email:f.cast.superuser.email,password:f.password}})).ok());
+  const directory=await review.newPage();directory.on('pageerror',e=>errors.push(e.message));
+  await directory.goto(base+'/hr');await directory.getByRole('tab',{name:'Employee management',exact:true}).click();
+  await expect(directory.getByRole('cell',{name:'Roster UI 0',exact:true})).toBeVisible();
+  await expect(directory.getByRole('cell',{name:'Roster UI 224',exact:true})).toBeVisible();
+  assert.equal(await directory.locator('table.data tbody tr').count(),242);
+  await directory.screenshot({path:resolve(out,'directory.png')});checks.push({name:'Super User employee directory includes all 242 isolated records beyond the old 200 cap',passed:true});
+  await review.close();await context.close();assert.deepEqual(errors,[]);
+  await writeFile(resolve(out,'browser-tests.json'),JSON.stringify({passed:true,checks,page_errors:errors,scope:'Isolated production bundle and disposable MongoDB; no company acceptance'},null,2)+'\n');
+  console.log('All four account browser checks passed.');
+}finally{await browser.close()}

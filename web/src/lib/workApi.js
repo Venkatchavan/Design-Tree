@@ -5,6 +5,7 @@ export const teamsMineApi = {
 };
 
 export const tasksApi = {
+  assignees: (project) => request(`/api/work/tasks/assignees${toQuery({ project })}`),
   mine: () => request('/api/work/tasks/mine'),
   list: (params = {}) => request(`/api/work/tasks${toQuery(params)}`),
   create: (body) =>

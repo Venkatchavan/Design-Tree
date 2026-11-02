@@ -88,6 +88,11 @@ employeeSchema.pre('validate', async function autoEmpId() {
 });
 
 employeeSchema.add({
+  // Team visibility from the client's reporting workbooks. teamViewOf names
+  // (empId, email or name) a head whose whole reporting team this employee
+  // also sees; headOfDepartments grants a whole-department My Team view.
+  teamViewOf: { type: String, trim: true },
+  headOfDepartments: { type: [String], default: undefined },
   hourlyRate: { type: Number, min: 0, default: 0 },
   documents: [
     {

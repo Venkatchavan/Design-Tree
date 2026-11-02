@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const STAGE_REVIEW_OUTCOMES = ['Pending', 'Approved', 'Approved with comments', 'Rejected'];
@@ -26,4 +27,4 @@ const stageReviewSchema = new mongoose.Schema(
 );
 
 export const StageReview =
-  mongoose.models.StageReview ?? mongoose.model('StageReview', stageReviewSchema);
+  mongoose.models.StageReview ?? mongoose.model('StageReview', auditProjectSchema(stageReviewSchema));

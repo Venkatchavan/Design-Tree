@@ -1,8 +1,12 @@
+import EmployeeSelect from '../components/EmployeeSelect.jsx';
+import Combobox from '../components/Combobox.jsx';
+import { BASE_PROJECT_TYPES, savedOptions } from '../lib/projectOptions.js';
+import ContactPicker from '../components/ContactPicker.jsx';
+import SalesforceImportPanel from '../components/SalesforceImportPanel.jsx';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { employeesApi, projectsApi } from '../lib/api.js';
-import { marketingApi } from '../lib/phase4aApi.js';
 import { branchOptionItems, useBranchOptions } from '../lib/branches.js';
 import Panel from '../components/Panel.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -16,10 +20,6 @@ const BASE_STATES = [
   'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Odisha', 'Punjab', 'Rajasthan',
   'Tamil Nadu', 'Telangana', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
 ];
-const BASE_PROJECT_TYPES = [
-  'Residential', 'Commercial', 'Industrial', 'Institutional', 'Healthcare',
-  'Hospitality', 'Retail', 'Mixed-use', 'Infrastructure', 'Interior',
-];
 const BASE_SERVICES = ['STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'SMEP', 'SMEPF', 'MEP', 'BIM', 'GBS', 'Peer Review'];
 const SERVICE_LABELS = { STR: 'Str', PHE: 'Phe', ELE: 'Elec', FIRE: 'Fire', SMEP: 'Smep', SMEPF: 'Smepf', MEP: 'Mep', BIM: 'Bim', GBS: 'Gbs' };
 const PRINCIPAL_TEAM_LEAD_SERVICES = [
@@ -32,13 +32,16 @@ const PRINCIPAL_TEAM_LEAD_SERVICES = [
 const CONTACT_KINDS = [
   { key: 'client', label: 'Client Contact', contactType: 'Client' },
   { key: 'architect', label: 'Architect Contact', contactType: 'Architect' },
-  { key: 'pmc', label: 'PMC Contact', contactType: 'PMC' },
-  { key: 'peerReview', label: 'Peer Review Contact', contactType: 'Peer Review' },
   { key: 'billing', label: 'Contact Person for Billing', contactType: 'Client' },
 ];
 
 const BLANK = {
   name: '',
+  code: '',
+  usedFor: '',
+  clientName: '',
+  related: { projectDirector: '', projectDirectorDesignation: '', projectHead: '', projectHeadDesignation: '' },
+  sourcePerson: '', referral: '', startDate: '', expectedCompletion: '', actualCompletion: '',
   state: '',
   projectType: '',
   branch: '',
@@ -57,6 +60,16 @@ const BLANK = {
 
 function cloneBlank() {
   return JSON.parse(JSON.stringify(BLANK));
+}
+
+// Only send the related-user fields that have a value.
+function relatedPayload(related) {
+  const out = {};
+  for (const key of ['projectDirector', 'projectDirectorDesignation', 'projectHead', 'projectHeadDesignation']) {
+    const value = String(related?.[key] ?? '').trim();
+    if (value) out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function numOrUndef(v) {
@@ -106,113 +119,11 @@ function F({ label, children }) {
   );
 }
 
-function ContactPicker({ label, contactType, value, onPick, onClear }) {
-  const [q, setQ] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ name: '', organization: '', phone: '', email: '' });
-  const [err, setErr] = useState('');
-  const searchQ = useQuery({
-    queryKey: ['contact-search', q],
-    queryFn: () => marketingApi.contacts.list({ search: q }),
-    enabled: q.trim().length >= 2,
-  });
-  const create = useMutation({
-    mutationFn: (body) => marketingApi.contacts.create(body),
-    onSuccess: (data) => {
-      onPick(data?.item ?? data);
-      setAdding(false);
-      setDraft({ name: '', organization: '', phone: '', email: '' });
-      setErr('');
-      setQ('');
-    },
-    onError: (e) => setErr(e.message),
-  });
-
-  if (value) {
-    return (
-      <div className="form-row">
-        <label className="form-label">{label}</label>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span><b>{value.name}</b>{value.organization ? ` · ${value.organization}` : ''}{value.phone ? ` · ${value.phone}` : ''}</span>
-          <button type="button" className="approve-btn" onClick={onClear}>Change</button>
-        </div>
-      </div>
-    );
-  }
-  if (adding) {
-    return (
-      <div className="form-row">
-        <label className="form-label">{label} — new</label>
-        <div className="field-grid">
-          <F label="Name *"><input required className="form-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></F>
-          <F label="Organization *"><input required className="form-input" value={draft.organization} onChange={(e) => setDraft({ ...draft, organization: e.target.value })} /></F>
-          <F label="Phone *"><input required className="form-input" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} /></F>
-          <F label="Email"><input type="email" className="form-input" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></F>
-        </div>
-        {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={create.isPending || !draft.name.trim() || !draft.organization.trim() || !draft.phone.trim()}
-            onClick={() => create.mutate({
-              type: contactType,
-              name: draft.name.trim(),
-              organization: draft.organization.trim(),
-              phone: draft.phone.trim(),
-              email: draft.email.trim() || undefined,
-            })}
-          >
-            {create.isPending ? 'Saving…' : 'Save contact'}
-          </button>
-          <button type="button" className="approve-btn" onClick={() => setAdding(false)}>Cancel</button>
-        </div>
-      </div>
-    );
-  }
-  const hits = searchQ.data?.items ?? arr(searchQ.data);
-  function arr(v) {
-    return Array.isArray(v) ? v : (v?.items ?? []);
-  }
-  return (
-    <div className="form-row">
-      <label className="form-label">{label}</label>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <input
-          className="form-input"
-          style={{ maxWidth: 260 }}
-          placeholder="Search Contacts..."
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <button type="button" className="approve-btn" onClick={() => { setAdding(true); setDraft((d) => ({ ...d, name: q })); }}>Add</button>
-      </div>
-      {q.trim().length >= 2 && (
-        <div className="location-results">
-          {searchQ.isLoading ? <div className="location-result-row">Searching…</div>
-            : hits.length === 0 ? <div className="location-result-row">No matches — use Add to create it.</div>
-              : hits.slice(0, 8).map((c) => (
-                <div
-                  key={c._id ?? c.id}
-                  className="location-result-row"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => { onPick({ company: c.organization, name: c.name, phone: c.phone, email: c.email }); setQ(''); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { onPick({ company: c.organization, name: c.name, phone: c.phone, email: c.email }); setQ(''); } }}
-                >
-                  <b>{c.name}</b>{c.organization ? ` · ${c.organization}` : ''}{c.phone ? ` · ${c.phone}` : ''}
-                </div>
-              ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function NewProjectPage() {
+export default function NewProjectPage({ bootstrap }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [form, setForm] = useState(cloneBlank);
+  const [salesforceSource, setSalesforceSource] = useState(null);
   const [jobNumberMode, setJobNumberMode] = useState('automatic');
   const [formError, setFormError] = useState('');
   const [saveMode, setSaveMode] = useState('save');
@@ -241,10 +152,69 @@ export default function NewProjectPage() {
     }));
   }
 
-  const branchOptionsQ = useBranchOptions();
-  const branchOptions = branchOptionItems(branchOptionsQ.data);
+  // Salesforce prefill replaces the fields Salesforce owns; Datum workflow
+  // fields (scope, fee, team, SPOC, BIM, billing contacts) are left alone.
+  function applySalesforce(item) {
+    const p = item.prefill ?? {};
+    setForm((f) => ({
+      ...f,
+      name: p.name ?? '',
+      code: p.code ?? '',
+      usedFor: p.usedFor ?? '',
+      clientName: p.clientName ?? '',
+      jobNumber: p.jobNumber ?? '',
+      entityName: p.entityName ?? '',
+      state: p.state ?? '',
+      projectType: p.projectType ?? '',
+      branch: p.branch ?? '',
+      services: p.services ?? [],
+      location: { ...BLANK.location, ...(p.location ?? {}) },
+      contacts: { ...f.contacts, client: p.contacts?.client ?? null },
+      related: {
+        ...f.related,
+        projectDirector: p.related?.projectDirector ?? '',
+        projectDirectorDesignation: p.related?.projectDirectorDesignation ?? '',
+        projectHead: p.related?.projectHead ?? '',
+        projectHeadDesignation: p.related?.projectHeadDesignation ?? '',
+      },
+    }));
+    // The job number belongs to Salesforce for imported projects: copied as-is,
+    // left blank when Salesforce has none, never auto-generated.
+    setJobNumberMode('salesforce');
+    setSalesforceSource(item);
+    setFormError('');
+  }
 
-  const projectsQ = useQuery({ queryKey: ['projects-new-form'], queryFn: () => projectsApi.list({}) });
+  function clearSalesforce() {
+    const blank = cloneBlank();
+    setForm((f) => ({
+      ...f,
+      name: blank.name,
+      code: blank.code,
+      usedFor: blank.usedFor,
+      clientName: blank.clientName,
+      jobNumber: blank.jobNumber,
+      entityName: blank.entityName,
+      state: blank.state,
+      projectType: blank.projectType,
+      branch: blank.branch,
+      services: blank.services,
+      location: blank.location,
+      contacts: { ...f.contacts, client: null },
+      related: { ...f.related, ...blank.related },
+    }));
+    setJobNumberMode('automatic');
+    setSalesforceSource(null);
+    setFormError('');
+  }
+
+
+  const isAdmin = (bootstrap?.role?.key ?? '') === 'admin_billing';
+
+  const branchOptionsQ = useBranchOptions();
+  const branchOptions = savedOptions(branchOptionItems(branchOptionsQ.data), [form.branch]);
+
+  const projectsQ = useQuery({ queryKey: ['projects-new-form'], queryFn: () => projectsApi.directory({}) });
 
   const nextJobQ = useQuery({
     queryKey: ['next-job-number'],
@@ -261,8 +231,8 @@ export default function NewProjectPage() {
   const teamLeads = employees.filter((employee) => /team lead|team leader|\btl\b|\bptl\b/i.test(employee.designation ?? ''));
   const coordinators = employees.filter((employee) => /coordinator|spoc/i.test(employee.designation ?? ''));
 
-  const stateOptions = unionOptions(BASE_STATES, projectRows.map((p) => p.state));
-  const projectTypeOptions = unionOptions(BASE_PROJECT_TYPES, projectRows.map((p) => p.projectType));
+  const stateOptions = unionOptions(BASE_STATES, [...projectRows.map((p) => p.state), form.state]);
+  const projectTypeOptions = savedOptions(BASE_PROJECT_TYPES, [...projectRows.map((p) => p.projectType), form.projectType]);
   const serviceOptions = BASE_SERVICES;
   const entityOptions = unionOptions([], projectRows.map((p) => p.entityName));
 
@@ -271,9 +241,11 @@ export default function NewProjectPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['projects-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['salesforce-projects'] });
       if (saveMode === 'new') {
         setForm(cloneBlank());
         setJobNumberMode('automatic');
+        setSalesforceSource(null);
         setTeamImportError('');
         setFormError('');
       } else {
@@ -310,12 +282,18 @@ export default function NewProjectPage() {
     const fee = numOrUndef(form.fee);
     return {
       name: form.name.trim(),
+      code: form.code.trim() || undefined,
+      usedFor: form.usedFor.trim() || undefined,
+      clientName: form.clientName.trim() || undefined,
+      related: relatedPayload(form.related),
+      sourcePerson: form.sourcePerson.trim(), referral: form.referral.trim(),
+      startDate: form.startDate || undefined, expectedCompletion: form.expectedCompletion || undefined, actualCompletion: form.actualCompletion || undefined,
       state: form.state || undefined,
       projectType: form.projectType || undefined,
       branch: form.branch || undefined,
       services: form.services ?? [],
       entityName: form.entityName.trim() || undefined,
-      jobNumber: jobNumberMode === 'manual' ? form.jobNumber.trim() || undefined : undefined,
+      jobNumber: jobNumberMode === 'automatic' ? undefined : form.jobNumber.trim() || undefined,
       location: form.location.label.trim()
         ? {
             label: form.location.label.trim(),
@@ -350,10 +328,17 @@ export default function NewProjectPage() {
       contacts: {
         client: projectContact(form.contacts.client),
         architect: projectContact(form.contacts.architect),
-        pmc: projectContact(form.contacts.pmc),
-        peerReview: projectContact(form.contacts.peerReview),
         billing: projectContact(form.contacts.billing),
       },
+      ...(salesforceSource?.source?.id
+        ? {
+            salesforceRecordId: salesforceSource.source.id,
+            salesforceObject: salesforceSource.source.object,
+            salesforceProjectCode: salesforceSource.source.projectCode || undefined,
+            salesforceLastModifiedAt: salesforceSource.source.lastModifiedAt || undefined,
+            salesforceInstanceUrl: salesforceSource.source.instanceUrl || undefined,
+          }
+        : {}),
     };
   }
 
@@ -448,6 +433,36 @@ export default function NewProjectPage() {
         <div className="login-error" role="alert" style={{ display: 'block' }}>{formError}</div>
       )}
 
+      {isAdmin && (
+        <SalesforceImportPanel
+          selected={salesforceSource}
+          onSelect={applySalesforce}
+          onClear={clearSalesforce}
+        />
+      )}
+
+      {salesforceSource?.warnings?.length > 0 && (
+        <div
+          role="status"
+          style={{
+            background: 'var(--amber-bg)',
+            color: 'var(--amber-dark)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            padding: '11px 14px',
+            marginBottom: 22,
+            fontSize: 13,
+          }}
+        >
+          <b>Review the Salesforce prefill before saving</b>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+            {salesforceSource.warnings.map((warning, index) => (
+              <li key={`${warning.field}-${index}`}>{warning.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <form
         onSubmit={(e) => handleSubmit(e, 'save')}
       >
@@ -481,42 +496,72 @@ export default function NewProjectPage() {
         <Panel title="Information">
           <div className="field-grid">
             <F label="Project Name"><input className="form-input" placeholder="e.g. Business park - Tower A" value={form.name} onChange={(e) => set('name', e.target.value)} required /></F>
+            {['sourcePerson','referral','startDate','expectedCompletion','actualCompletion'].map((key)=><F key={key} label={({sourcePerson:'Source person',referral:'Referral',startDate:'Start date',expectedCompletion:'Expected completion',actualCompletion:'Actual completion'})[key]}><input className="form-input" aria-label={key} type={key==='sourcePerson'||key==='referral'?'text':'date'} value={form[key]} onChange={e=>set(key,e.target.value)}/></F>)}
             <F label="Job Number">
               <div className="field-grid" style={{ gridTemplateColumns: 'minmax(150px, 0.7fr) minmax(180px, 1fr)', gap: 8 }}>
-                <select
-                  className="form-input"
-                  aria-label="Job number mode"
-                  value={jobNumberMode}
-                  onChange={(e) => {
-                    setJobNumberMode(e.target.value);
-                    if (e.target.value === 'automatic') set('jobNumber', '');
-                  }}
-                >
-                  <option value="automatic">Automatic</option>
-                  <option value="manual">Manual</option>
-                </select>
-                {jobNumberMode === 'manual' ? (
-                  <input className="form-input" placeholder="Enter job number" value={form.jobNumber} onChange={(e) => set('jobNumber', e.target.value)} required />
+                {jobNumberMode === 'salesforce' ? (
+                  <>
+                    <span style={{ alignSelf: 'center', fontSize: 13 }}>From Salesforce</span>
+                    <input
+                      className="form-input"
+                      aria-label="Salesforce job number"
+                      value={form.jobNumber}
+                      placeholder="No job number in Salesforce"
+                      readOnly
+                    />
+                  </>
                 ) : (
-                  <span style={{ color: 'var(--ink-muted)', alignSelf: 'center' }}>
-                    {nextJobQ.data?.jobNumber ? `Next: ${nextJobQ.data.jobNumber}` : 'Generated automatically'}
-                  </span>
+                  <>
+                    <select
+                      className="form-input"
+                      aria-label="Job number mode"
+                      value={jobNumberMode}
+                      onChange={(e) => {
+                        setJobNumberMode(e.target.value);
+                        if (e.target.value === 'automatic') set('jobNumber', '');
+                      }}
+                    >
+                      <option value="automatic">Automatic</option>
+                      <option value="manual">Manual</option>
+                    </select>
+                    {jobNumberMode === 'manual' ? (
+                      <input className="form-input" placeholder="Enter job number" value={form.jobNumber} onChange={(e) => set('jobNumber', e.target.value)} required />
+                    ) : (
+                      <span style={{ color: 'var(--ink-muted)', alignSelf: 'center' }}>
+                        {nextJobQ.data?.jobNumber ? `Next: ${nextJobQ.data.jobNumber}` : 'Generated automatically'}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             </F>
             <F label="Entity Name *">
-              <input
-                className="form-input"
-                list="np-entities"
+              <Combobox
+                aria-label="Entity name"
                 placeholder="Search Entities..."
                 value={form.entityName}
-                onChange={(e) => set('entityName', e.target.value)}
+                onChange={(v) => set('entityName', v)}
+                options={entityOptions}
+                addLabel={(text) => `Add “${text}” as a new entity`}
+                emptyLabel="No matching entities"
                 required
               />
-              <datalist id="np-entities">
-                {entityOptions.map((x) => <option key={x} value={x} />)}
-              </datalist>
-              <button type="button" className="approve-btn" style={{ marginTop: 6 }} onClick={() => set('entityName', form.entityName.trim())}>Add</button>
+              {(() => {
+                const typed = form.entityName.trim();
+                const exists = typed !== '' && entityOptions.some((x) => x.toLowerCase() === typed.toLowerCase());
+                return (
+                  <button
+                    type="button"
+                    className="approve-btn"
+                    style={{ marginTop: 6 }}
+                    disabled={!typed || exists}
+                    title={!typed ? 'Type an entity name first' : exists ? 'This entity is already in the list' : 'Use this as a new entity'}
+                    onClick={() => set('entityName', typed)}
+                  >
+                    Add
+                  </button>
+                );
+              })()}
             </F>
             <F label="State">
               <select className="form-input" value={form.state} onChange={(e) => set('state', e.target.value)}>
@@ -584,7 +629,7 @@ export default function NewProjectPage() {
           <div className="field-grid">
             {PRINCIPAL_TEAM_LEAD_SERVICES.map(({ key, placeholder }) => (
               <F key={key} label={key}>
-                <select
+                <EmployeeSelect employees={teamLeads}
                   className="form-input"
                   aria-label={`${key} team lead`}
                   value={form.principalTeamLeads[key] ?? ''}
@@ -601,7 +646,7 @@ export default function NewProjectPage() {
                       </option>
                     );
                   })}
-                </select>
+                </EmployeeSelect>
                 {!employeesQ.isLoading && teamLeads.length === 0 && (
                   <span className="page-sub">No active team leads available.</span>
                 )}
@@ -609,7 +654,7 @@ export default function NewProjectPage() {
               </F>
             ))}
             <F label="SPOC">
-              <select
+              <EmployeeSelect employees={coordinators}
                 className="form-input"
                 aria-label="Project SPOC"
                 value={form.spoc}
@@ -622,7 +667,7 @@ export default function NewProjectPage() {
                   const name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId || employee.email;
                   return <option key={id} value={id}>{name}</option>;
                 })}
-              </select>
+              </EmployeeSelect>
               {!employeesQ.isLoading && coordinators.length === 0 && (
                 <span className="page-sub">No active coordinators available.</span>
               )}
@@ -675,7 +720,7 @@ export default function NewProjectPage() {
           </F>
         </Panel>
 
-        <Panel title="Contact Details" sub="Client, architect, PMC and peer review points of contact for this project, and who to reach for billing">
+        <Panel title="Contact Details" sub="Client, architect and billing contacts. PMC and Peer Review are maintained by the assigned SPOC.">
           {CONTACT_KINDS.map((c) => (
             <ContactPicker
               key={c.key}

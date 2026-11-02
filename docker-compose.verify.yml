@@ -1,0 +1,55 @@
+# Disposable verification stack. Never points at production volumes or .env.
+# See docs/CONTAINER_SECURITY_UPDATE.md for preparation and test commands.
+services:
+  mongo:
+    image: mongo:7.0.45@sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7
+    platform: linux/amd64
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: verify
+      MONGO_INITDB_ROOT_PASSWORD: ${VERIFY_DB_PASSWORD:?Use a disposable test password}
+    volumes:
+      - verify-db:/data/db
+    healthcheck:
+      test: [CMD-SHELL, "mongosh --quiet -u verify -p \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval 'db.runCommand({ping:1})'"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  api:
+    image: designtree-api:security-review
+    platform: linux/amd64
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGO_URI: mongodb://verify:${VERIFY_DB_PASSWORD}@mongo:27017/designtree_verify?authSource=admin
+      JWT_SECRET: ${VERIFY_JWT_SECRET:?Use a disposable test secret}
+      CLIENT_ORIGIN: https://127.0.0.1:${VERIFY_HTTPS_PORT:-19443}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - verify-uploads:/data/uploads
+      - ./e2e:/checks:ro
+    ports:
+      - "127.0.0.1:${VERIFY_API_PORT:-19500}:5000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, "node -e \"fetch('http://127.0.0.1:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  gateway:
+    image: designtree-gateway:security-review
+    platform: linux/amd64
+    ports:
+      - "127.0.0.1:${VERIFY_HTTPS_PORT:-19443}:443"
+    volumes:
+      - ${VERIFY_CERTS_DIR:?Use disposable local certificates}:/etc/nginx/certs:ro
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  verify-db:
+  verify-uploads:

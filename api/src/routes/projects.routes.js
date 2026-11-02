@@ -1,3 +1,8 @@
+import { DIRECTOR_ROLES } from '../config/roles.js';
+import { Project } from '../models/Project.js';
+import { ProjectAudit } from '../models/ProjectAudit.js';
+import { projectScopeIds } from '../utils/projectScope.js';
+import { PeerReview } from '../models/PeerReview.js';
 import { Router } from 'express';
 import { INTERNAL_ROLES } from '../config/roles.js';
 import { requireAuth } from '../middlewares/auth.js';
@@ -19,11 +24,14 @@ import {
   nextProjectCode,
   projectFilters,
   projectStats,
+  projectSummary,
   recordFinalApproval,
   saveSpocContacts,
   saveTeamConfirmation,
   saveTeamLeads,
   updateProject,
+  updateProjectHold,
+  reconcileProjectTeam,
 } from '../controllers/projects.controller.js';
 import {
   importProjects,
@@ -43,9 +51,31 @@ const PROJECT_READERS = INTERNAL_ROLES.filter((r) => r !== 'superuser');
 router.get('/', requireRole(...PROJECT_READERS), listProjects);
 router.get('/stats', requireView('dashboard'), projectStats);
 router.get('/filters', requireRole(...PROJECT_READERS), projectFilters);
+router.get('/status-summary', requireRole(...PROJECT_READERS), projectSummary);
 router.get('/next-code', denyRoles(...NO_PROJECT_WRITES), requireRole('admin_billing'), nextProjectCode);
 router.get('/next-job-number', denyRoles(...NO_PROJECT_WRITES), requireRole('admin_billing'), nextJobNumber);
+router.get('/peer-dashboard', requireRole('peer_reviewer','peer_review_head'), async(req,res,next)=>{
+  try {
+    const ids=await projectScopeIds(req.user);
+    const reviews=await PeerReview.find(ids?{project:{$in:ids}}:{}).lean();
+    const reviewIds=reviews.map(r=>r.project).filter(Boolean);
+    const filter=ids?{_id:{$in:ids}}:{$or:[{services:{$in:['Peer Review','Peer review']}},{'scope.service':{$in:['Peer Review','Peer review']}},{_id:{$in:reviewIds}}]};
+    const projects=await Project.find(filter).sort({updatedAt:-1}).lean();
+    const items=projects.map(p=>({...p,pendingReviews:reviews.filter(r=>String(r.project)===String(p._id)&&!r.finalApproved).length}));
+    res.json({items,active:items.filter(p=>p.status==='Active').length});
+  }catch(e){next(e);}
+});
+router.get('/:id/history', requireRole('admin_billing',...DIRECTOR_ROLES), async(req,res,next)=>{
+  try{
+    if(!(await Project.exists({_id:req.params.id})))return res.status(404).json({message:'Project not found.'});
+    const page=Math.max(0,Math.min(10000,Number(req.query.page)||0));
+    const items=await ProjectAudit.find({project:req.params.id}).sort({at:-1,_id:-1}).skip(page*50).limit(51).lean();
+    res.json({items:items.slice(0,50),hasMore:items.length>50});
+  }catch(e){next(e);}
+});
 router.get('/:id/team', requireAuth, getProjectTeam);
+router.put('/:id/hold', requireRole('coordinator'), updateProjectHold);
+router.post('/:id/reconcile-team', requireRole('coordinator', 'technical_director', 'design_mgmt_head'), reconcileProjectTeam);
 router.get('/:id/gfc-readiness', requireInternal(), gfcReadiness);
 // SPOC-owned contacts + team leads (admin is read-only on these).
 // Principal team leads may also be entered by the Technical Director

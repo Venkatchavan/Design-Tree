@@ -1,0 +1,48 @@
+[
+  {
+    "attributes": { "type": "Project__c", "referenceId": "dt_wo_project" },
+    "Name": "10 Acre Plotted Development & Buildings",
+    "Project_Code__c": "PRJ-00428",
+    "Job_Numbers__c": "TS-2526-604",
+    "Used_For__c": "WO",
+    "Entity_Name__c": "Demo Entity Pvt Ltd",
+    "Customer_Group__c": "Demo Customer Group",
+    "State__c": "Telangana",
+    "Project_Type__c": "Plotted development",
+    "Branch_Name__c": "DT-Telangana",
+    "Location__c": "Shamirpet, Hyderabad",
+    "Service_Names__c": "STR, PHE, ELE",
+    "Contact_Person_Name__c": "Demo Contact",
+    "Project_Director__c": "Demo Director",
+    "Has_Work_Order__c": true
+  },
+  {
+    "attributes": { "type": "Project__c", "referenceId": "dt_proposal_project" },
+    "Name": "Corporate Office Fitout - Proposal Stage",
+    "Project_Code__c": "PRJ-00427",
+    "Used_For__c": "Proposal",
+    "Entity_Name__c": "Demo Entity Pvt Ltd",
+    "Customer_Group__c": "Demo Customer Group",
+    "State__c": "Karnataka",
+    "Project_Type__c": "Commercial",
+    "Branch_Name__c": "DT-Bengaluru",
+    "Location__c": "Whitefield, Bengaluru",
+    "Service_Names__c": "MEP, BIM",
+    "Contact_Person_Name__c": "Demo Contact",
+    "Project_Director__c": "Demo Director",
+    "Has_Work_Order__c": false
+  },
+  {
+    "attributes": { "type": "Project__c", "referenceId": "dt_edge_project" },
+    "Name": "Edge Case - Unknown Branch and Service",
+    "Project_Code__c": "PRJ-00429",
+    "Job_Numbers__c": "TS-2526-605",
+    "Used_For__c": "WO",
+    "State__c": "Maharashtra",
+    "Project_Type__c": "Industrial",
+    "Branch_Name__c": "DT-Unknown",
+    "Location__c": "Chakan, Pune",
+    "Service_Names__c": "Architecture",
+    "Has_Work_Order__c": true
+  }
+]

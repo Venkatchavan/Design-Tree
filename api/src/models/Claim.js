@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const CLAIM_STATUSES = [
@@ -36,4 +37,4 @@ const claimSchema = new mongoose.Schema(
 );
 
 export const Claim =
-  mongoose.models.Claim ?? mongoose.model('Claim', claimSchema);
+  mongoose.models.Claim ?? mongoose.model('Claim', auditProjectSchema(claimSchema));

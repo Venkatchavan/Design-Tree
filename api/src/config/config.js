@@ -21,6 +21,10 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET ?? '',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '1d',
   cookieName: process.env.COOKIE_NAME ?? 'token',
+  // Force Secure cookies regardless of scheme. Normally left false: the
+  // API marks cookies Secure automatically when the request arrives over
+  // HTTPS (see auth.controller.js), and non-Secure for plain-HTTP LAN use.
+  cookieSecure: process.env.COOKIE_SECURE === 'true',
   nodeEnv: process.env.NODE_ENV ?? 'development',
   clientOrigin: rawOrigins[0] ?? 'http://localhost:5173',
   // Dual-origin: comma-separated CLIENT_ORIGIN allowlist so the LAN IP and

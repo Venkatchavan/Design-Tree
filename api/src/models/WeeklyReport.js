@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const WEEKLY_REPORT_STATUSES = ['Submitted', 'Approved'];
@@ -34,4 +35,4 @@ weeklyReportSchema.index({ project: 1, weekStart: 1 }, { unique: true });
 
 export const WeeklyReport =
   mongoose.models.WeeklyReport ??
-  mongoose.model('WeeklyReport', weeklyReportSchema);
+  mongoose.model('WeeklyReport', auditProjectSchema(weeklyReportSchema));

@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 const teamSchema = new mongoose.Schema(
@@ -28,4 +29,4 @@ const teamSchema = new mongoose.Schema(
 teamSchema.index({allocationProject:1,allocationService:1},{unique:true,partialFilterExpression:{allocationProject:{$type:'objectId'}}});
 
 export const Team =
-  mongoose.models.Team ?? mongoose.model('Team', teamSchema);
+  mongoose.models.Team ?? mongoose.model('Team', auditProjectSchema(teamSchema));

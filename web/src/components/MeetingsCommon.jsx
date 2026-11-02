@@ -1,3 +1,4 @@
+import EmployeeSelect, { EmployeeFilter } from './EmployeeSelect.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_BASE, meApi, projectsApi } from '../lib/api.js';
@@ -268,9 +269,9 @@ export function ScheduleMeetingModal({ sudden, onClose, onCreated, projectId }) 
           )}
           <div className="form-row">
             <label className="form-label">Meeting conducted by</label>
-            <select className="filter-select" style={{ width: '100%' }} value={conductedBy} onChange={(e) => setConductedBy(e.target.value)}>
+            <EmployeeSelect employees={conductedOptions.map(label => ({...(members.find(m => empName(m.employee) === label)?.employee ?? {}),label}))} getValue={e => e.label} className="filter-select" style={{ width: '100%' }} value={conductedBy} onChange={(e) => setConductedBy(e.target.value)}>
               {conductedOptions.map((o) => (<option key={o} value={o}>{o}</option>))}
-            </select>
+            </EmployeeSelect>
           </div>
           <div className="form-row"><label className="form-label">External participants</label><input className="form-input" value={externalParticipants} onChange={(e) => setExternalParticipants(e.target.value)} placeholder="Client PM, architect, PMC…" /></div>
         </div>
@@ -298,8 +299,8 @@ export function ScheduleMeetingModal({ sudden, onClose, onCreated, projectId }) 
           : members.length === 0 ? <EmptyState text="No team members linked to this project." />
           : (
             <>
-              <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }}>
-                {members.map((m) => {
+              <EmployeeFilter employees={members} selectedIds={participants} label="Meeting participants">{shown => <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 8 }}>
+                {shown.map((m) => {
                   const id = String(m?.employee?._id ?? m?.employee?.id ?? '');
                   const e = m?.employee ?? {};
                   return (
@@ -309,7 +310,7 @@ export function ScheduleMeetingModal({ sudden, onClose, onCreated, projectId }) 
                     </label>
                   );
                 })}
-              </div>
+              </div>}</EmployeeFilter>
               <div style={{ fontSize: 11.5, color: 'var(--ink-muted)', marginTop: 4 }}>Pulled from the selected project&apos;s team. Selected members receive the invitation in their Meeting Dashboard.</div>
             </>
           )}
@@ -343,6 +344,8 @@ export function MeetingDetailModal({ meetingId, onClose, manage = false }) {
   const [attendance, setAttendance] = useState(null);
 
   const meeting = detailQ.data?.item ?? detailQ.data?.meeting ?? detailQ.data ?? null;
+  const projectTeamQ = useQuery({queryKey:['project-team',idOf(meeting?.project)],queryFn:()=>meetingsApi.projectTeam(idOf(meeting?.project)),enabled:!!meeting?.project && manage});
+  const members = projectTeamQ.data?.members ?? [];
   const invites = meeting?.invites ?? [];
   const actions = meeting?.actions ?? [];
   const isHeld = String(meeting?.status ?? '').toLowerCase() === 'held';
@@ -486,8 +489,9 @@ export function MeetingDetailModal({ meetingId, onClose, manage = false }) {
             {manage && isHeld && (
               <>
                 <div className="field-grid" style={{ marginTop: 10 }}>
+                  {projectTeamQ.isError && <p role="alert">{projectTeamQ.error.message} <button type="button" onClick={() => projectTeamQ.refetch()}>Retry action owners</button></p>}
                   <div className="form-row"><label className="form-label">Action text *</label><input className="form-input" value={actionText} onChange={(e) => setActionText(e.target.value)} /></div>
-                  <div className="form-row"><label className="form-label">Owner</label><select className="filter-select" style={{ width: '100%' }} value={actionOwner} onChange={(e) => setActionOwner(e.target.value)}><option value="">Select team member</option>{members.map((m) => { const id = String(m?.employee?._id ?? m?.employee?.id ?? ''); const n = [m?.employee?.firstName, m?.employee?.lastName].filter(Boolean).join(' ') || id; return id ? <option key={id} value={id}>{n}</option> : null; })}</select></div>
+                  <div className="form-row"><label className="form-label">Owner</label><EmployeeSelect employees={members} disabled={projectTeamQ.isLoading || projectTeamQ.isError} className="filter-select" style={{ width: '100%' }} value={actionOwner} onChange={(e) => setActionOwner(e.target.value)}><option value="">Select team member</option>{members.map((m) => { const id = String(m?.employee?._id ?? m?.employee?.id ?? ''); const n = [m?.employee?.firstName, m?.employee?.lastName].filter(Boolean).join(' ') || id; return id ? <option key={id} value={id}>{n}</option> : null; })}</EmployeeSelect></div>
                   <div className="form-row"><label className="form-label">Due</label><input className="form-input" type="date" value={actionDue} onChange={(e) => setActionDue(e.target.value)} /></div>
 
                 </div>

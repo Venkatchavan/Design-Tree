@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const WORK_ENTRY_TYPES = ['Regular', 'Revision', 'Rework'];
@@ -72,4 +73,4 @@ workEntrySchema.pre('validate', function autoRef() {
 });
 
 export const WorkEntry =
-  mongoose.models.WorkEntry ?? mongoose.model('WorkEntry', workEntrySchema);
+  mongoose.models.WorkEntry ?? mongoose.model('WorkEntry', auditProjectSchema(workEntrySchema));

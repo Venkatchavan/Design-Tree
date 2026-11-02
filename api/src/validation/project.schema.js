@@ -22,6 +22,7 @@ const contact = z
     email: z.string().trim().toLowerCase().email().optional().or(z.literal('')),
   })
   .strict()
+  .nullable()
   .optional();
 
 export const projectSchema = z.object({
@@ -61,7 +62,7 @@ export const projectSchema = z.object({
   bimWorkOrder: z
     .object({
       no: z.string().trim().optional(),
-      date: z.coerce.date().optional(),
+      date: z.coerce.date().nullable().optional(),
       scope: z.string().trim().optional(),
       fee: z.number().min(0).optional(),
       description: z.string().trim().optional(),
@@ -105,9 +106,9 @@ export const projectSchema = z.object({
     .strict()
     .optional(),
   owner: z.string().trim().optional(),
-  startDate: z.coerce.date().optional(),
-  expectedCompletion: z.coerce.date().optional(),
-  actualCompletion: z.coerce.date().optional(),
+  startDate: z.coerce.date().nullable().optional(),
+  expectedCompletion: z.coerce.date().nullable().optional(),
+  actualCompletion: z.coerce.date().nullable().optional(),
   description: z.string().trim().optional(),
   requirements: z.string().trim().optional(),
   complexity: z.enum(PROJECT_COMPLEXITIES).optional(),
@@ -116,7 +117,7 @@ export const projectSchema = z.object({
   referral: z.string().trim().optional(),
   sourcePerson: z.string().trim().optional(),
   clientSpoc: z.string().trim().optional(),
-  workOrderDate: z.coerce.date().optional(),
+  workOrderDate: z.coerce.date().nullable().optional(),
   workOrderDocument: z.string().trim().optional(),
   activation: z
     .object({
@@ -125,7 +126,7 @@ export const projectSchema = z.object({
         .string()
         .regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
         .optional(),
-      activatedAt: z.coerce.date().optional(),
+      activatedAt: z.coerce.date().nullable().optional(),
       spoc: z
         .string()
         .regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
@@ -161,9 +162,32 @@ export const projectSchema = z.object({
   status: z.enum(PROJECT_STATUSES).optional(),
   completion: z.number().min(0).max(100).optional(),
   currentStage: z.enum(STAGES).optional(),
+  // Salesforce import metadata. Set by the import flow, never edited by
+  // hand: updateProject strips these keys so a normal edit cannot relink or
+  // unlink a project. `salesforceRecordId` is the duplicate-prevention key.
+  salesforceRecordId: z.string().trim().optional(),
+  salesforceObject: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z][A-Za-z0-9_]*$/, 'Invalid Salesforce object')
+    .optional(),
+  salesforceProjectCode: z.string().trim().optional(),
+  salesforceLastModifiedAt: z.coerce.date().nullable().optional(),
+  salesforceSyncedAt: z.coerce.date().nullable().optional(),
+  salesforceInstanceUrl: z
+    .string()
+    .trim()
+    .url()
+    .refine((value) => /^https?:\/\//i.test(value), 'Invalid Salesforce URL')
+    .optional(),
 });
 
 export const projectUpdateSchema = projectSchema.partial();
+
+export const projectHoldSchema = z.object({
+  status: z.enum(['Active', 'On Hold']),
+  reason: z.string().trim().min(1, 'A reason is required.').max(2000),
+}).strict();
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
 

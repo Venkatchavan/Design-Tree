@@ -51,6 +51,7 @@ export const billingApi = {
   updateClaim: (id, body) => request(`/api/billing/claims/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   claimStatus: (id, status) => request(`/api/billing/claims/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   stages: (params = {}) => request(`/api/billing/stages${toQuery(params)}`),
+  timeline: (project) => request(`/api/billing/stage-timeline?project=${encodeURIComponent(project)}`),
   saveStage: (body) => request('/api/billing/stages', { method: 'POST', body: JSON.stringify(body) }),
   updateStage: (id, body) => request(`/api/billing/stages/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   quotedFees: () => request('/api/billing/quoted-fees'),
@@ -87,8 +88,9 @@ export const bookingsApi = {
   list: (params = {}) => request(`/api/travel-bookings${toQuery(params)}`),
   create: (body) => request('/api/travel-bookings', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) => request(`/api/travel-bookings/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  setStatus: (id, status) => request(`/api/travel-bookings/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
-  remove: (id) => request(`/api/travel-bookings/${id}`, { method: 'DELETE' }),
+  get: (id) => request(`/api/travel-bookings/${id}`),
+  reschedule: (id, body) => request(`/api/travel-bookings/${id}/reschedule`, { method: 'POST', body: JSON.stringify(body) }),
+  cancel: (id, body) => request(`/api/travel-bookings/${id}/cancel`, { method: 'POST', body: JSON.stringify(body) }),
 };
 
 export const financeOccApi = {

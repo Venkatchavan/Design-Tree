@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { timelineLabel } from '../lib/stageTimeline.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../lib/api.js';
 import { billingApi } from '../lib/phase3Api.js';
@@ -18,10 +20,8 @@ const TABS = [
 const STATUSES = ['Pending', 'Ready for billing', 'Billed', 'Flagged'];
 const SERVICES_10 = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS'];
 const STAGES_5 = ['CD', 'SD', 'DD', 'TD', 'GFC'];
-const STAGE_STATUS = ['Not Started', 'In Progress', 'PTL Requested', 'Pending SPOC confirm', 'Completed'];
-const WRITERS = new Set([ 'working_director', 'admin_billing', 'executive_director']);
-const STAGE_WRITERS = new Set(['admin_billing', 'executive_director', 'coordinator', 'design_mgmt_head', 'team_lead']);
-const DIRECTOR_READONLY = new Set(['founding_director', 'working_director', 'executive_director']);
+const WRITERS = new Set(['admin_billing']);
+const DIRECTOR_READONLY = new Set(['founding_director', 'working_director', 'executive_director','associate_director','technical_director','assoc_technical_director']);
 const money = (v) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 const moneyCr = (v) => {
   const n = Number(v ?? 0);
@@ -40,13 +40,11 @@ export default function BillingPage({ bootstrap }) {
   const [stageReadiness, setStageReadiness] = useState('');
   const [claim, setClaim] = useState({ project: '', stage: '', amount: '', submissionDate: new Date().toISOString().slice(0, 10) });
   const [quote, setQuote] = useState({ project: '', quotedFee: '', hospitality: false });
-  const [stage, setStage] = useState({ project: '', service: '', stage: '', plannedCompletion: '', currentStatus: '', delayDays: '', reason: '', billingReadiness: 'Pending' });
   const role = bootstrap?.role?.key ?? '';
   const canWrite = WRITERS.has(role);
   const isDirector = DIRECTOR_READONLY.has(role);
   const isAdmin = role === 'admin_billing';
   const canPostClaimOrStage = canWrite && !isDirector;
-  const canPostStage = STAGE_WRITERS.has(role) && !isDirector;
   const qc = useQueryClient();
   const projects = useQuery({ queryKey: ['projects-billing'], queryFn: () => projectsApi.list({}) });
   const overview = useQuery({ queryKey: ['billing-overview'], queryFn: billingApi.overview });
@@ -55,8 +53,6 @@ export default function BillingPage({ bootstrap }) {
   const quotes = useQuery({ queryKey: ['quoted-fees'], queryFn: billingApi.quotedFees });
   const addClaim = useMutation({ mutationFn: billingApi.createClaim, onSuccess: () => { qc.invalidateQueries({ queryKey: ['billing-claims'] }); qc.invalidateQueries({ queryKey: ['billing-overview'] }); setClaim((f) => ({ ...f, stage: '', amount: '' })); } });
   const claimStatusMut = useMutation({ mutationFn: ({ id, status }) => billingApi.claimStatus(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ['billing-claims'] }); qc.invalidateQueries({ queryKey: ['billing-overview'] }); qc.invalidateQueries({ queryKey: ['billing-stages'] }); } });
-  const saveStage = useMutation({ mutationFn: billingApi.saveStage, onSuccess: () => { qc.invalidateQueries({ queryKey: ['billing-stages'] }); setStage((f) => ({ ...f, service: '', stage: '', plannedCompletion: '', currentStatus: '', delayDays: '', reason: '' })); } });
-  const stageBilledMut = useMutation({ mutationFn: (id) => billingApi.updateStage(id, { billingReadiness: 'Billed' }), onSuccess: () => { qc.invalidateQueries({ queryKey: ['billing-stages'] }); qc.invalidateQueries({ queryKey: ['billing-overview'] }); } });
   const quoteMut = useMutation({ mutationFn: ({ id, body }) => billingApi.setQuote(id, body), onSuccess: () => qc.invalidateQueries({ queryKey: ['quoted-fees'] }) });
   const claimRows = claims.data?.items ?? [];
   const recentClaims = useMemo(() => [...(claims.data?.items ?? [])].sort((a, b) =>
@@ -74,7 +70,7 @@ export default function BillingPage({ bootstrap }) {
     if (Number.isNaN(d.getTime())) return '—';
     return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
   };
-  const delayLabel = (r) => ((r.delayDays ?? 0) > 0 ? `${r.delayDays} day(s) late` : 'On time');
+  const delayLabel = timelineLabel;
   const readinessLabel = (r) => (r.billingReadiness === 'Pending' ? 'Not yet' : (r.billingReadiness ?? '—'));
   const projectName = (id) => (projects.data?.items ?? []).find((p) => p._id === id)?.name ?? '—';
   const totalContract = overview.data?.contractValue ?? 0;
@@ -85,21 +81,17 @@ export default function BillingPage({ bootstrap }) {
     { key: 'amount', label: 'Amount', render: (r) => money(r.amount) },
     { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status}</StatusPill> },
     { key: 'actions', label: 'Action', render: (r) => canPostClaimOrStage && r.status !== 'Billed' ? <button type="button" className="approve-btn" onClick={() => claimStatusMut.mutate({ id: r._id, status: 'Billed' })}>Mark billed</button> : '—' },
-  ], [canPostClaimOrStage, setClaimStatus]);
+  ], [canPostClaimOrStage, claimStatusMut]);
 
   function submitClaim(e) {
     e.preventDefault();
     addClaim.mutate({ ...claim, amount: Number(claim.amount) });
   }
-  function submitStage(e) {
-    e.preventDefault();
-    saveStage.mutate({ ...stage, delayDays: Number(stage.delayDays) || 0, plannedCompletion: stage.plannedCompletion || undefined });
-  }
   function updateQuote(e) {
     e.preventDefault();
     quoteMut.mutate({ id: quote.project, body: { quotedFee: Number(quote.quotedFee), quotedHospitality: quote.hospitality } });
   }
-  const error = addClaim.error?.message ?? saveStage.error?.message ?? quoteMut.error?.message ?? claimStatusMut.error?.message ?? stageBilledMut.error?.message;
+  const error = addClaim.error?.message ?? quoteMut.error?.message ?? claimStatusMut.error?.message;
 
   return (
     <div id="view-billing">
@@ -174,7 +166,7 @@ export default function BillingPage({ bootstrap }) {
             { key: 'currentStatus', label: 'Current status' },
             { key: 'delayDays', label: 'Delay', render: (r) => delayLabel(r) },
             { key: 'billingReadiness', label: 'Billing readiness', render: (r) => <StatusPill status={r.billingReadiness}>{readinessLabel(r)}</StatusPill> },
-            { key: 'actions', label: '', render: (r) => r.billingReadiness === 'Ready for billing' ? <button type="button" className="approve-btn" disabled={stageBilledMut.isPending} onClick={() => stageBilledMut.mutate(r._id)}>Mark billed</button> : '—' },
+            { key: 'actions', label: 'Stage timeline', render: (r) => <Link to={`/projects/${r.project?._id ?? r.project}/stage-timeline`}>View timeline</Link> },
           ]} rows={stageFiltered} emptyText="No stage readiness records yet." />
           )}
         </Panel>
@@ -210,7 +202,7 @@ export default function BillingPage({ bootstrap }) {
           { key: 'scope', label: 'Scope of work', render: (r) => r.scope?.map((s) => `${s.service}: ${s.scope || '—'}`).join(' · ') || '—' },
           { key: 'quotedFee', label: 'Quoted fee', render: (r) => money(r.quotedFee ?? r.scopedTotal) },
           { key: 'hospitality', label: 'Hospitality', render: (r) => r.hospitality ? 'Client-arranged' : '—' },
-          { key: 'edit', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality })}>Edit</button> },
+          { key: 'edit', label: '', render: (r) => canWrite ? <button type="button" className="approve-btn" onClick={() => setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality })}>Edit</button> : null },
         ]} rows={quoteRows} emptyText="Create a project first to see quoted fees." /></Panel>
       </> : <>
         <Panel title="Project quoted fee" sub="The contracted fee per project — read automatically by Finance's Project Cost & Performance tracker, so it only needs to be set here"><DataTable columns={[
@@ -218,7 +210,7 @@ export default function BillingPage({ bootstrap }) {
           { key: 'scope', label: 'Scope of work', render: (r) => r.scope?.map((s) => `${s.service}: ${s.scope || '—'}`).join(' · ') || '—' },
           { key: 'quotedFee', label: 'Quoted fee', render: (r) => money(r.quotedFee ?? r.scopedTotal) },
           { key: 'hospitality', label: 'Hospitality (client-arr.)', render: (r) => r.hospitality ? 'Client-arranged' : '—' },
-          { key: 'edit', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality })}>Edit</button> },
+          { key: 'edit', label: '', render: (r) => canWrite ? <button type="button" className="approve-btn" onClick={() => setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality })}>Edit</button> : null },
         ]} rows={quoteRows} emptyText="Create a project first to see quoted fees." /></Panel>
         <Panel title="Set / update quoted fee"><form onSubmit={updateQuote} className="field-grid">
           <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={quote.project} onChange={(e) => setQuote({ ...quote, project: e.target.value })}><option value="">--Select project--</option>{quoteRows.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}</select></div>

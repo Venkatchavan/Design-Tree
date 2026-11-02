@@ -1,0 +1,225 @@
+.travel-bookings {
+  max-width: 100%;
+  color: var(--ink);
+}
+.travel-head,
+.travel-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 18px 0;
+}
+.travel-head h1 {
+  font-size: 24px;
+  margin: 0;
+}
+.travel-head p {
+  margin: 8px 0;
+  color: var(--ink-muted);
+}
+.travel-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.travel-tabs button {
+  border: 1px solid #cbd5e1;
+  background: var(--surface, #fff);
+  border-radius: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  color: inherit;
+}
+.travel-tabs button[aria-pressed="true"] {
+  background: #e6effa;
+  color: #174e7b;
+  border-color: #174e7b;
+}
+.travel-toolbar input {
+  width: min(100%, 330px);
+}
+.travel-row {
+  border: 1px solid #d8e0e7;
+  border-radius: 10px;
+  margin: 14px 0;
+  background: var(--surface, #fff);
+  overflow: hidden;
+}
+.travel-blocks {
+  display: grid;
+  grid-template-columns: 1.2fr 1.5fr 1.3fr 1.2fr 0.8fr 0.8fr;
+  gap: 16px;
+  padding: 18px;
+}
+.travel-blocks > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.travel-blocks small {
+  display: block;
+  color: var(--ink-muted);
+  margin-bottom: 10px;
+}
+.travel-blocks strong {
+  font-size: 13px;
+}
+.travel-blocks p {
+  font-size: 12px;
+  margin: 8px 0;
+}
+.travel-employee {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.travel-avatar {
+  background: #e6effa;
+  border-radius: 50%;
+  padding: 8px;
+  font-size: 11px;
+}
+.travel-status {
+  display: inline-block;
+  font-size: 12px;
+  background: #e6effa;
+  border-radius: 20px;
+  padding: 5px 10px;
+}
+.travel-cancelled {
+  background: #fbe3e3;
+  color: #8b2424;
+}
+.travel-travelled {
+  background: #e1f1e8;
+  color: #28683b;
+}
+.travel-rescheduled,
+.travel-warning {
+  background: #fff0d0;
+  color: #745000;
+}
+.travel-warning {
+  padding: 4px;
+  font-size: 11px;
+}
+.travel-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 12px;
+}
+.travel-history {
+  padding: 14px 18px;
+  background: #f7f9fb;
+  border-top: 1px solid #d8e0e7;
+  font-size: 12px;
+}
+.travel-fees {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+.travel-increase {
+  color: #b22b2b;
+}
+.travel-decrease {
+  color: #25703e;
+}
+.travel-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  gap: 20px;
+  margin-top: 20px;
+}
+.travel-form-section,
+.travel-side > section {
+  padding: 20px;
+  border: 1px solid #d8e0e7;
+  border-radius: 10px;
+  margin-bottom: 18px;
+  background: var(--surface, #fff);
+}
+.travel-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.travel-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.travel-field input,
+.travel-field select,
+.travel-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.travel-form-section h2,
+.travel-side h2 {
+  font-size: 16px;
+  margin: 0 0 18px;
+}
+.travel-form-section h3 {
+  font-size: 14px;
+}
+.travel-form-error {
+  padding: 12px;
+  background: #fbe3e3;
+  color: #8b2424;
+  margin: 12px 0;
+}
+.travel-save {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 20px 0;
+}
+.travel-diff {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.travel-diff li {
+  margin: 12px 0;
+}
+.travel-diff del {
+  display: block;
+  color: #8b2424;
+}
+.travel-diff strong {
+  display: block;
+  color: #28683b;
+}
+@media (max-width: 1200px) {
+  .travel-blocks {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .travel-editor {
+    grid-template-columns: 1fr;
+  }
+  .travel-blocks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .travel-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .travel-head .btn-primary {
+    width: 100%;
+    text-align: center;
+  }
+}
+@media (max-width: 420px) {
+  .travel-blocks {
+    grid-template-columns: 1fr;
+  }
+  .travel-toolbar input {
+    width: 100%;
+  }
+}

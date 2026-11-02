@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const REVISION_STATUSES = ['Open', 'Resubmitted', 'Cleared'];
@@ -31,4 +32,4 @@ const revisionSchema = new mongoose.Schema(
 );
 
 export const Revision =
-  mongoose.models.Revision ?? mongoose.model('Revision', revisionSchema);
+  mongoose.models.Revision ?? mongoose.model('Revision', auditProjectSchema(revisionSchema));

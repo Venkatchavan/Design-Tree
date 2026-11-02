@@ -275,6 +275,7 @@ export default function ProjectServiceWorkspace({
   workItems = [],
   meetings = [],
 }) {
+  const leadershipReadOnly = ['founding_director','working_director','executive_director'].includes(role);
   const codes = service.codes;
   const svcStages = stages.filter((s) => codes.includes(String(s.service ?? '')));
   const svcDrawings = drawings.filter((d) => codes.includes(String(d.service ?? '')));
@@ -321,6 +322,7 @@ export default function ProjectServiceWorkspace({
           acks={drawingAcks}
           discrepancies={discrepancies}
           role={role}
+          readOnly={leadershipReadOnly}
         />
         <ServiceMeetingsPanel service={service} meetings={meetings} />
         <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} />
@@ -350,6 +352,7 @@ export default function ProjectServiceWorkspace({
           dashboard={serviceDashboards.find((d) => d.service === 'BIM')}
           principalTeamLeads={project.principalTeamLeads}
           role={role}
+          readOnly={leadershipReadOnly}
         />
         <ServiceMeetingsPanel service={service} meetings={meetings} />
         <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} />
@@ -383,7 +386,7 @@ export default function ProjectServiceWorkspace({
     const peerOpen = peerRows.filter((p) => p.status !== 'Approved for Issue');
     return (
       <>
-        <StageReviewPanel projectId={project._id} reviews={stageReviews} role={role} />
+        <StageReviewPanel projectId={project._id} reviews={stageReviews} role={role} readOnly={leadershipReadOnly} />
         <KpiRow
           items={[
             { label: 'Peer reviews', value: peerRows.length, accent: 'blueprint' },
@@ -426,6 +429,7 @@ export default function ProjectServiceWorkspace({
           principalTeamLeads={project.principalTeamLeads}
           workItems={workItems}
           role={role}
+          readOnly={leadershipReadOnly}
         />
         <ServiceMeetingsPanel service={service} meetings={meetings} />
         <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} />
@@ -445,7 +449,7 @@ export default function ProjectServiceWorkspace({
           discrepancies={discrepancies}
           weeklyRows={weeklyRows}
           role={role}
-          readOnly={role === 'technical_director'}
+          readOnly={role === 'technical_director' || leadershipReadOnly}
         />
         {role !== 'technical_director' && (
           <ServiceMeetingsPanel service={service} meetings={meetings} />
@@ -481,6 +485,7 @@ export default function ProjectServiceWorkspace({
           principalTeamLeads={project.principalTeamLeads}
           role={role}
           gbsSteps={gbsItem?.steps ?? []}
+          readOnly={leadershipReadOnly}
         />
         <ServiceMeetingsPanel service={service} meetings={meetings} />
         <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} />

@@ -1,3 +1,6 @@
+import { directoryPage } from '../utils/directoryPage.js';
+import { directorTeams } from '../utils/directorTeams.js';
+import { eligibleSpocs } from '../utils/spocOptions.js';
 import { Team } from '../models/Team.js';
 import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
@@ -13,6 +16,7 @@ import {
   finalApprovalSchema,
   projectSchema,
   projectUpdateSchema,
+  projectHoldSchema,
   spocContactsSchema,
   teamConfirmationSchema,
   teamLeadsSchema,
@@ -30,22 +34,43 @@ const CREATOR_ROLES = ['admin_billing'];
 
 export { CREATOR_ROLES };
 
+// Import metadata is server-managed: createProject accepts it from the
+// import flow, updateProject strips it so edits cannot relink a project.
+const SALESFORCE_FIELDS = [
+  'salesforceRecordId',
+  'salesforceObject',
+  'salesforceProjectCode',
+  'salesforceLastModifiedAt',
+  'salesforceSyncedAt',
+  'salesforceInstanceUrl',
+];
+
+const SALESFORCE_ID = /^(?:[A-Za-z0-9]{15}|[A-Za-z0-9]{18})$/;
+
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function syncProjectLeadTeams(project) {
   const groups = new Map();
+  const unresolvedServices = new Set((project.principalTeamLeads ?? [])
+    .filter(row => !row.employee && row.approvalStatus !== 'Proposed' && (row.name || row.names?.length))
+    .map(row => expandServices([row.service]).join(' + ') || row.service));
   for (const row of project.principalTeamLeads ?? []) {
     if (!row.employee || row.approvalStatus === 'Proposed') continue;
     const service = expandServices([row.service]).join(' + ') || row.service;
+    if (!service || unresolvedServices.has(service)) continue;
     if (!groups.has(service)) groups.set(service, []);
     groups.get(service).push(row);
   }
   for (const [service, rows] of groups) {
     const ids = [...new Set(rows.map((row) => String(row.employee)))];
     const leads = await User.find({ employee: { $in: ids }, role: 'team_lead' }).select('employee').lean();
-    const lead = leads[0]?.employee;
+    const leadIds = new Set(leads.map((u) => String(u.employee)));
+    // Deterministic lead: the row the SPOC marked as team lead, else the first
+    // team_lead login in saved row order (not database order).
+    const ordered = [...rows.filter((row) => /^team lead$/i.test(String(row.role ?? '').trim())), ...rows];
+    const lead = ordered.map((row) => String(row.employee)).find((id) => leadIds.has(id));
     await Team.findOneAndUpdate(
       { allocationProject: project._id, allocationService: service },
       {
@@ -65,9 +90,45 @@ async function syncProjectLeadTeams(project) {
     );
   }
   await Team.updateMany(
-    { allocationProject: project._id, allocationService: { $nin: [...groups.keys()] } },
+    { allocationProject: project._id, allocationService: { $nin: [...groups.keys(), ...unresolvedServices] } },
     { $set: { active: false, projects: [] } },
   );
+}
+
+// Older nominations stored names only. Resolve an exact, unique employee name;
+// ambiguous names remain visible for the SPOC to correct instead of guessing.
+async function resolveAllocationNames(rows) {
+  const normalized = value => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+  const employees = await Employee.find({ status: { $ne: 'Exited' } }).select('firstName middleName lastName empId').lean();
+  const warnings = [];
+  const expanded = rows.flatMap(original => {
+    const row = original.toObject ? original.toObject() : { ...original };
+    return row.names?.length ? row.names.map(name => ({ ...row, name, names: [], employee: row.names.length === 1 ? row.employee : undefined })) : [row];
+  });
+  const resolved = expanded.map(original => {
+    const row = original.toObject ? original.toObject() : { ...original };
+    if (row.employee || row.approvalStatus === 'Proposed' || !row.name) return row;
+    const name = normalized(row.name);
+    const matches = employees.filter(e => [e.empId, [e.firstName, e.lastName].filter(Boolean).join(' '),
+      [e.firstName, e.middleName, e.lastName].filter(Boolean).join(' ')].some(value => normalized(value) === name));
+    if (matches.length === 1) row.employee = matches[0]._id;
+    else warnings.push(`${row.name}: ${matches.length ? 'multiple employees match; choose an employee' : 'no employee match; choose an employee'}.`);
+    return row;
+  });
+  return { rows: resolved, warnings };
+}
+
+export async function reconcileProjectTeam(req, res, next) {
+  try {
+    if (!await projectVisible(req.user, req.params.id)) return res.status(404).json({ message: 'Project not found.' });
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ message: 'Project not found.' });
+    const resolved = await resolveAllocationNames(project.principalTeamLeads ?? []);
+    project.principalTeamLeads = resolved.rows;
+    await project.save();
+    await syncProjectLeadTeams(project);
+    return res.json({ project, allocationWarnings: resolved.warnings });
+  } catch (err) { return next(err); }
 }
 
 // Admin-only sequential identifiers for the New Project form, initialized
@@ -127,6 +188,7 @@ async function generateJobNumber() {
 export async function listProjects(req, res, next) {
   try {
     const { branch, service, stage, status, search } = req.query;
+    const {page,limit,skip} = directoryPage(req.query);
     const filter = {};
     const scopeIds = await projectScopeIds(req.user);
     if (scopeIds) filter._id = { $in: scopeIds };
@@ -147,13 +209,28 @@ export async function listProjects(req, res, next) {
       }
     }
     const [items, total] = await Promise.all([
-      Project.find(filter).sort({ updatedAt: -1 }).limit(200),
+      Project.find(filter).sort({ updatedAt: -1, _id: -1 }).skip(skip).limit(limit),
       Project.countDocuments(filter),
     ]);
-    return res.status(200).json({ items, total });
+    return res.status(200).json({ items, total, page, limit, hasMore: skip + items.length < total });
   } catch (err) {
     return next(err);
   }
+}
+
+export async function projectSummary(req, res, next) {
+  try {
+    const ids = await projectScopeIds(req.user);
+    const filter = ids ? { _id: { $in: ids } } : {};
+    if (req.query.branch) filter.branch = req.query.branch;
+    if (req.query.service) filter.$or = [{ services: req.query.service }, { 'scope.service': req.query.service }];
+    if (req.query.search) {
+      const rx = new RegExp(escapeRegExp(req.query.search), 'i');
+      filter.$and = [{ $or: [{ name: rx }, { code: rx }, { clientName: rx }] }];
+    }
+    const items = await Project.find(filter).select('name code status currentStage').sort({ name: 1 }).lean();
+    return res.json({ items, total: items.length });
+  } catch (err) { return next(err); }
 }
 
 export async function projectStats(req, res, next) {
@@ -257,6 +334,14 @@ export async function getProjectTeam(req, res, next) {
     const project = await Project.findById(req.params.id).lean();
     if (!project) return res.status(404).json({ message: 'Project not found.' });
     if (!(await projectVisible(req.user, project._id))) return res.status(404).json({ message: 'Project not found.' });
+    const scoped = await directorTeams(req.user);
+    if (scoped) {
+      const teams = scoped.filter(t=>t.projects.some(p=>String(p._id)===String(project._id)));
+      if (!teams.length) return res.status(404).json({message:'Project team not found.'});
+      return res.json({ project:{_id:project._id,name:project.name,jobNumber:project.jobNumber},
+        committedServices:[...new Set(teams.map(t=>t.service))], responsible:[], allocations:[],
+        members:teams.flatMap(t=>[...(t.lead?[{employee:t.lead,service:t.service,team:t.name}]:[]),...t.members.map(m=>({employee:m.employee,service:t.service,team:t.name}))]) });
+    }
     const bundle = await projectTeamBundle(project);
     return res.status(200).json({
       project: {
@@ -301,6 +386,40 @@ export async function createProject(req, res, next) {
         .status(400)
         .json({ message: 'Invalid project data.', issues: validationIssues(parsed.error) });
     }
+    const salesforceRecordId = parsed.data.salesforceRecordId?.trim() ?? '';
+    if (salesforceRecordId && !SALESFORCE_ID.test(salesforceRecordId)) {
+      return res.status(400).json({ message: 'Invalid Salesforce record id.' });
+    }
+    if (salesforceRecordId) {
+      const existing = await Project.findOne(
+        { salesforceRecordId },
+        { _id: 1, name: 1, code: 1 },
+      ).lean();
+      if (existing) {
+        return res.status(409).json({
+          message: `This Salesforce project is already imported as ${existing.code} — ${existing.name}.`,
+          projectId: existing._id,
+          project: existing,
+        });
+      }
+    }
+    // Never trust client-sent import metadata beyond the id itself; the
+    // remaining values describe the Salesforce record and are stamped here.
+    const salesforceMeta = salesforceRecordId
+      ? {
+          salesforceObject: parsed.data.salesforceObject?.trim() || 'Project__c',
+          salesforceProjectCode: parsed.data.salesforceProjectCode?.trim() || '',
+          salesforceLastModifiedAt: parsed.data.salesforceLastModifiedAt ?? undefined,
+          salesforceInstanceUrl: (parsed.data.salesforceInstanceUrl?.trim() || '').replace(/\/+$/, ''),
+        }
+      : null;
+    for (const key of SALESFORCE_FIELDS) delete parsed.data[key];
+    if (salesforceMeta) {
+      Object.assign(parsed.data, salesforceMeta, {
+        salesforceRecordId,
+        salesforceSyncedAt: new Date(),
+      });
+    }
     if (parsed.data.branch) {
       try {
         parsed.data.branch = await requireActiveBranch(parsed.data.branch);
@@ -314,15 +433,20 @@ export async function createProject(req, res, next) {
       if (!employee) return res.status(400).json({ message: 'Choose a valid team lead.' });
       row.name = [employee.firstName, employee.lastName].filter(Boolean).join(' ') || employee.empId;
     }
+    if(parsed.data.contacts?.pmc || parsed.data.contacts?.peerReview) return res.status(400).json({message:'PMC and Peer Review contacts are maintained by the assigned SPOC.'});
     const selectedSpoc = parsed.data.activation?.spoc;
     if (selectedSpoc && !(await Employee.exists({ _id: selectedSpoc }))) {
       return res.status(400).json({ message: 'Choose a valid SPOC.' });
     }
     const code = (parsed.data.code?.trim() || await generateProjectCode()).toUpperCase();
-    const jobNumber = parsed.data.jobNumber?.trim() || await generateJobNumber();
+    // Salesforce owns the job number of imported projects: keep what it sent
+    // (possibly blank) instead of generating a WO number.
+    const jobNumber = parsed.data.jobNumber?.trim()
+      || (salesforceRecordId ? '' : await generateJobNumber());
     const activationStatus = parsed.data.activation?.status ?? 'Pending';
     const project = await Project.create({
       ...parsed.data,
+      origin: 'admin_billing', createdBy: req.user.id,
       code,
       jobNumber,
       services: parsed.data.services ?? [],
@@ -376,6 +500,18 @@ export async function createProject(req, res, next) {
     return res.status(201).json({ project });
   } catch (err) {
     if (err?.code === 11000) {
+      if (err?.keyPattern?.salesforceRecordId || err?.keyValue?.salesforceRecordId) {
+        const duplicateId = err.keyValue?.salesforceRecordId;
+        const existing = duplicateId
+          ? await Project.findOne({ salesforceRecordId: duplicateId }, { _id: 1, name: 1, code: 1 }).lean()
+          : null;
+        return res.status(409).json({
+          message: existing
+            ? `This Salesforce project is already imported as ${existing.code} — ${existing.name}.`
+            : 'This Salesforce project is already imported.',
+          ...(existing ? { projectId: existing._id, project: existing } : {}),
+        });
+      }
       return res
         .status(409)
         .json({ message: 'A project with this code already exists.' });
@@ -392,6 +528,7 @@ export async function updateProject(req, res, next) {
         .status(400)
         .json({ message: 'Invalid project data.', issues: validationIssues(parsed.error) });
     }
+    for (const key of SALESFORCE_FIELDS) delete parsed.data[key];
     if (parsed.data.branch !== undefined) {
       try {
         parsed.data.branch = await requireActiveBranch(parsed.data.branch);
@@ -400,7 +537,13 @@ export async function updateProject(req, res, next) {
       }
     }
     if (parsed.data.code) parsed.data.code = parsed.data.code.toUpperCase();
-    const project = await Project.findByIdAndUpdate(req.params.id, parsed.data, {
+    const update={...parsed.data};
+    if(update.contacts){
+      if(Object.hasOwn(update.contacts,'pmc')||Object.hasOwn(update.contacts,'peerReview'))return res.status(403).json({message:'Use the SPOC contact workflow.'});
+      for(const [key,value]of Object.entries(update.contacts))update['contacts.'+key]=value;
+      delete update.contacts;
+    }
+    const project = await Project.findByIdAndUpdate(req.params.id, {$set:update}, {
       new: true,
       returnDocument: 'after',
       runValidators: true,
@@ -415,6 +558,41 @@ export async function updateProject(req, res, next) {
     }
     return next(err);
   }
+}
+
+export async function updateProjectHold(req, res, next) {
+  try {
+    const parsed = projectHoldSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: 'Choose a status and enter a reason.' });
+    const me = await User.findById(req.user.id).select('employee').lean();
+    const { SpocAllocation } = await import('../models/SpocAllocation.js');
+    const assigned = me?.employee && await SpocAllocation.exists({
+      project: req.params.id, coordinator: me.employee, status: 'Approved',
+    });
+    if (!assigned) return res.status(404).json({ message: 'Project not found.' });
+    const previous = await Project.findById(req.params.id).lean();
+    if (!previous) return res.status(404).json({ message: 'Project not found.' });
+    if (!['Active', 'On Hold'].includes(previous.status)) {
+      return res.status(409).json({ message: 'Only active or held projects can use this action. Completed projects stay completed.' });
+    }
+    const at = new Date(), { status, reason } = parsed.data;
+    const project = await Project.findOneAndUpdate(
+      { _id: previous._id, status: previous.status, updatedAt: previous.updatedAt },
+      { $set: { status, 'hold.reason': reason, 'hold.updatedBy': req.user.id, 'hold.updatedAt': at },
+        $push: { 'hold.history': { from: previous.status, to: status, reason, by: req.user.id, at } } },
+      { returnDocument: 'after', runValidators: true },
+    );
+    if (!project) return res.status(409).json({ message: 'Project changed. Refresh before saving its status.' });
+    try {
+      const { notify, userIdsForEmployees } = await import('../models/Notification.js');
+      const teams = await Team.find({ projects: project._id, active: { $ne: false } }).select('lead members').lean();
+      const users = await userIdsForEmployees(teams.flatMap(t => [t.lead, ...(t.members ?? []).map(m => m.employee)]));
+      await notify({ project: project._id, users, roles: ['design_mgmt_head'],
+        title: `${project.name}: ${status}`, detail: reason, type: 'project-status',
+        link: { view: 'project-detail', id: String(project._id) } });
+    } catch { /* Saved status remains available through normal query refresh. */ }
+    return res.json({ project });
+  } catch (err) { return next(err); }
 }
 
 // PUT /api/projects/:id/spoc-contacts — SPOC-owned PMC / Peer Review
@@ -513,6 +691,8 @@ export async function saveTeamLeads(req, res, next) {
         row.name = [employee.firstName,employee.lastName].filter(Boolean).join(' ') || employee.empId;
       }
     }
+    const allocation = set.principalTeamLeads ? await resolveAllocationNames(set.principalTeamLeads) : null;
+    if (allocation) set.principalTeamLeads = allocation.rows;
     const project = await Project.findByIdAndUpdate(req.params.id, { $set: set }, {
       new: true,
       returnDocument: 'after',
@@ -537,7 +717,7 @@ export async function saveTeamLeads(req, res, next) {
     } catch {
       /* best-effort */
     }
-    return res.status(200).json({ project });
+    return res.status(200).json({ project, allocationWarnings: allocation?.warnings ?? [] });
   } catch (err) {
     return next(err);
   }
@@ -556,6 +736,10 @@ export async function activateProject(req, res, next) {
 
     let allocation = null;
     const coordinatorId = parsed.data.coordinator ?? project.activation?.spoc?.toString();
+    const options = await eligibleSpocs();
+    if (!coordinatorId || !options.items.some(employee => employee._id === String(coordinatorId))) {
+      return res.status(400).json({ message: 'Select an active SPOC whose login is linked to an eligible employee. Ask HR to review a missing name or employee link.' });
+    }
     if (coordinatorId) {
       const coordinator = await Employee.findById(coordinatorId);
       if (!coordinator) {

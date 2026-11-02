@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 // Green Building Certification workflow, one doc per project.
@@ -32,4 +33,4 @@ const gbsCertSchema = new mongoose.Schema(
 );
 
 export const GbsCert =
-  mongoose.models.GbsCert ?? mongoose.model('GbsCert', gbsCertSchema);
+  mongoose.models.GbsCert ?? mongoose.model('GbsCert', auditProjectSchema(gbsCertSchema));

@@ -2,7 +2,8 @@
 # Build context: ./api (see docker-compose.yml).
 # Uploads are NEVER baked into the image: the app writes to $UPLOAD_DIR
 # (/data/uploads), which compose mounts from the host HDD bind.
-FROM node:22-alpine
+# Patched Node 22 LTS; pin the multi-platform index for reproducible builds.
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS dependencies
 
 WORKDIR /app
 
@@ -10,6 +11,16 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
+# Runtime needs Node and the installed application, not npm's own dependency
+# tree or package-management tools. Keep those in the build stage only.
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /opt/yarn-* /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    /usr/local/bin/yarn /usr/local/bin/yarnpkg
+
+WORKDIR /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
 COPY server.js ./
 COPY src ./src
 

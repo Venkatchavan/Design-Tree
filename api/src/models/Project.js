@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 import { PROJECT_SERVICES } from '../config/services.js';
 
@@ -40,6 +41,8 @@ const contactSchema = new mongoose.Schema(
 
 const projectSchema = new mongoose.Schema(
   {
+    origin: { type: String, enum: ['admin_billing','marketing'], default: 'admin_billing', immutable: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', immutable: true },
     name: { type: String, required: true, trim: true, index: true },
     code: {
       type: String,
@@ -121,6 +124,7 @@ const projectSchema = new mongoose.Schema(
     description: { type: String, trim: true },
     requirements: { type: String, trim: true },
     complexity: { type: String, enum: PROJECT_COMPLEXITIES, trim: true },
+    coordinationStatus: { type: String, enum: ['Active','On Hold','Delayed','Awaiting info','Ready for billing','Completed'], trim: true },
     priority: { type: String, enum: PROJECT_PRIORITIES, trim: true },
     category: { type: String, enum: PROJECT_CATEGORIES, trim: true },
     referral: { type: String, trim: true },
@@ -183,11 +187,40 @@ const projectSchema = new mongoose.Schema(
       default: 'Active',
       index: true,
     },
+    hold: {
+      reason: { type: String, trim: true },
+      updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      updatedAt: Date,
+      history: [{
+        from: String,
+        to: String,
+        reason: String,
+        by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        at: Date,
+        _id: false,
+      }],
+    },
     completion: { type: Number, min: 0, max: 100, default: 0 },
     currentStage: { type: String, enum: STAGES, default: 'CD', index: true },
     quotedFee: { type: Number, min: 0 },
     quotedHospitality: { type: Boolean, default: false },
     portalUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    // Salesforce link (read-only import). The record id is the idempotency
+    // key for "Import from Salesforce": sparse+unique lets normal projects
+    // omit it while preventing the same Salesforce record being imported
+    // twice.
+    salesforceRecordId: {
+      type: String,
+      trim: true,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    salesforceObject: { type: String, trim: true },
+    salesforceProjectCode: { type: String, trim: true },
+    salesforceLastModifiedAt: { type: Date },
+    salesforceSyncedAt: { type: Date },
+    salesforceInstanceUrl: { type: String, trim: true },
   },
   { timestamps: true },
 );
@@ -202,4 +235,4 @@ projectSchema.pre('validate', function setClientName() {
 });
 
 export const Project =
-  mongoose.models.Project ?? mongoose.model('Project', projectSchema);
+  mongoose.models.Project ?? mongoose.model('Project', auditProjectSchema(projectSchema));

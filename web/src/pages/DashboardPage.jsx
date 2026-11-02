@@ -27,9 +27,9 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 const CREATOR_ROLES = new Set(['admin_billing']);
 
 const STATUS_KPIS = [
-  { key: 'active', label: 'Active', accent: 'forest' },
-  { key: 'onHold', label: 'On hold', accent: 'amber' },
-  { key: 'completed', label: 'Completed', accent: 'violet' },
+  { key: 'Active', label: 'Active', accent: 'forest' },
+  { key: 'On Hold', label: 'On hold', accent: 'amber' },
+  { key: 'Completed', label: 'Completed', accent: 'violet' },
 ];
 const EMPTY_STAGE_COUNTS = [];
 const EMPTY_BRANCH_STAGE_COUNTS = {};
@@ -41,20 +41,31 @@ export default function DashboardPage({ bootstrap }) {
   const [branch, setBranch] = useState('');
   const [service, setService] = useState('');
   const [status, setStatus] = useState('');
+  const [coordOpenKpi, setCoordOpenKpi] = useState('');
 
   const isCoordinator = roleKey === 'coordinator';
-  const allocQ = useQuery({ queryKey: ['spoc-allocations'], queryFn: () => spocApi.allocationsMine(), enabled: isCoordinator });
+  const allocQ = useQuery({
+    queryKey: ['spoc-allocations'],
+    queryFn: () => spocApi.allocationsMine(),
+    enabled: isCoordinator,
+  });
   const allowedIds = useMemo(() => {
-    if (!isCoordinator) return null;
+    if (!isCoordinator || allocQ.isLoading) return null;
     const items = allocQ.data?.items ?? [];
     return new Set(items.map((a) => String(a.project?._id ?? a.project ?? '')));
-  }, [isCoordinator, allocQ.data]);
+  }, [isCoordinator, allocQ.isLoading, allocQ.data]);
 
-  const statsQuery = useQuery({ queryKey: ['projects-stats'], queryFn: projectsApi.stats });
+  const statsQuery = useQuery({ queryKey: ['projects-stats'], queryFn: projectsApi.stats, refetchInterval: 10000 });
+  const summaryQuery = useQuery({
+    queryKey: ['projects-summary', { search, branch, service }],
+    queryFn: () => projectsApi.summary({ search, branch, service }),
+    refetchInterval: 10000,
+  });
   const filtersQuery = useQuery({ queryKey: ['projects-filters'], queryFn: projectsApi.filters });
   const listQuery = useQuery({
     queryKey: ['projects', { search, branch, service, status }],
     queryFn: () => projectsApi.list({ search, branch, service, status }),
+    refetchInterval: 10000,
   });
 
   const stats = statsQuery.data;
@@ -75,8 +86,9 @@ export default function DashboardPage({ bootstrap }) {
   );
 
   const items = (listQuery.data?.items ?? []).filter((p) => {
-    if (allowedIds) return allowedIds.has(String(p._id ?? p.id ?? ''));
-    return true;
+    if (!isCoordinator) return true;
+    if (allocQ.isLoading) return false;
+    return allowedIds ? allowedIds.has(String(p._id ?? p.id ?? '')) : true;
   });
   const total = listQuery.data?.total ?? items.length;
 
@@ -84,15 +96,16 @@ export default function DashboardPage({ bootstrap }) {
   const canCreate = CREATOR_ROLES.has(roleKey);
 
   if (isCoordinator) {
-    const coordItems = items ?? [];
+    const coordItems = items;
+    const summaryItems = summaryQuery.data?.items ?? coordItems;
     const coordTotal = coordItems.length;
-    const coordActive = coordItems.filter((p) => String(p.status ?? '').toLowerCase() !== 'completed').length;
-    const coordOnTrack = coordItems.filter((p) => {
-      const s = String(p.status ?? '').toLowerCase();
-      return s === 'in progress' || s === 'on track';
-    }).length;
     const coordCompleted = coordItems.filter((p) => String(p.status ?? '').toLowerCase() === 'completed').length;
     const coordOnHold = coordItems.filter((p) => String(p.status ?? '').toLowerCase() === 'on hold').length;
+    const projectGroups = [
+      { key: 'all', label: 'My projects', accent: 'forest', projects: summaryItems },
+      { key: 'completed', label: 'Completed', accent: 'violet', projects: summaryItems.filter((p) => String(p.status ?? '').toLowerCase() === 'completed') },
+      { key: 'onHold', label: 'On hold', accent: 'amber', projects: summaryItems.filter((p) => String(p.status ?? '').toLowerCase() === 'on hold') },
+    ];
     const branchName = coordItems.length > 0 ? (coordItems[0].branch ?? 'Bengaluru') : 'Bengaluru';
     const branchAvg = coordItems.length > 0 ? Math.round(coordItems.reduce((s, p) => s + Number(p.completion ?? 0), 0) / coordItems.length) : 57;
     return (
@@ -102,11 +115,39 @@ export default function DashboardPage({ bootstrap }) {
           <div className="page-sub">Your allotted projects</div>
         </div>
         <div className="page-sub" style={{ fontSize: 13, marginBottom: 6 }}><b>Projects</b> · {coordTotal} projects allotted to you</div>
-        <div className="kpi-grid cols-4">
-          <KpiCard label="My projects" value={coordTotal} accent="forest" />
-          <KpiCard label="On track" value={coordOnTrack} accent="teal" />
-          <KpiCard label="Completed" value={coordCompleted} accent="violet" />
-          <KpiCard label="On hold" value={coordOnHold} accent="amber" />
+        <div className="kpi-grid cols-3">
+          {projectGroups.map((group) => (
+            <KpiCard
+              key={group.key}
+              label={group.label}
+              value={group.projects.length}
+              accent={group.accent}
+              open={coordOpenKpi === group.key}
+              onClick={() => setCoordOpenKpi((current) => current === group.key ? '' : group.key)}
+            >
+              {group.projects.length ? group.projects.map((project) => (
+                <div
+                  key={project._id ?? project.id}
+                  className="kpi-drop-row"
+                  role="button"
+                  tabIndex={0}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    navigate(`/projects/${project._id ?? project.id}`);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.stopPropagation();
+                      navigate(`/projects/${project._id ?? project.id}`);
+                    }
+                  }}
+                >
+                  <span>{project.name ?? 'Unnamed project'}</span>
+                  <b>{project.code ?? ''}</b>
+                </div>
+              )) : <div className="kpi-drop-row">No projects</div>}
+            </KpiCard>
+          ))}
         </div>
         <Panel title="Completion progress by branch" sub={coordTotal > 0 ? `Your allotted projects only — ${branchName || 'Bengaluru'}` : 'Your allotted projects'}>
           {coordTotal > 0 ? (
@@ -116,7 +157,7 @@ export default function DashboardPage({ bootstrap }) {
             </>
           ) : <EmptyState text="No allotted projects to show progress." />}
         </Panel>
-        <Panel title="Projects" sub={`Sample projects · ${coordTotal} of ${coordTotal} shown — projects allotted to you`}>
+        <Panel title="Projects" sub={`${coordTotal} allotted project(s)`}>
           <DataTable
             columns={[
               { key: 'name', label: 'Project', render: (p) => <><b>{p.name ?? '—'}</b><br/><span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{p.code ?? ''}</span></> },
@@ -124,10 +165,11 @@ export default function DashboardPage({ bootstrap }) {
               { key: 'client', label: 'Client', render: (p) => p.client ?? p.branch ?? '—' },
               { key: 'status', label: 'Status', render: (p) => <StatusPill status={p.status}>{String(p.status ?? '—')}</StatusPill> },
               { key: 'completion', label: 'Completion', render: (p) => p.completion != null ? `${p.completion}%` : '—' },
-              { key: 'stage', label: 'Current stage', render: (p) => p.stage ?? '—' },
+              { key: 'stage', label: 'Current stage', render: (p) => p.currentStage ?? '—' },
             ]}
-            rows={coordItems.slice(0, 2)}
+            rows={coordItems}
             emptyText="No allotted projects yet."
+            onRowClick={(r) => navigate(`/projects/${r._id}`)}
           />
         </Panel>
       </>
@@ -156,15 +198,20 @@ export default function DashboardPage({ bootstrap }) {
           <KpiCard
             key={k.key}
             label={k.label}
-            value={counts[k.key] ?? 0}
+            value={(summaryQuery.data?.items ?? []).filter(p => p.status === k.key).length}
             accent={k.accent}
             open={status === k.key}
             onClick={() => setStatus((s) => (s === k.key ? '' : k.key))}
           >
-            <div className="kpi-drop-row">
-              <span>Filter projects table</span>
-              <b>{status === k.key ? 'On — click to clear' : 'Click card to filter'}</b>
-            </div>
+            {summaryQuery.isLoading ? <div className="kpi-drop-row">Loading projects…</div>
+              : summaryQuery.isError ? <div className="kpi-drop-row" role="alert">{summaryQuery.error.message}</div>
+              : (summaryQuery.data?.items ?? []).filter(p => p.status === k.key).length === 0
+                ? <div className="kpi-drop-row">No projects</div>
+                : summaryQuery.data.items.filter(p => p.status === k.key).map(p =>
+                  <button key={p._id} type="button" className="kpi-drop-row approve-btn" style={{ width: '100%', textAlign: 'left' }}
+                    onClick={event => { event.stopPropagation(); navigate(`/projects/${p._id}`); }}>
+                    <span>{p.name}</span><b>{p.code}</b>
+                  </button>)}
           </KpiCard>
         ))}
       </div>

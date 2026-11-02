@@ -8,6 +8,7 @@ import {
 } from '../middlewares/requireRole.js';
 import {
   taskMemberAccess,
+  taskAssignees,
   createDeliverable,
   deleteDeliverable,
   createRecruitment,
@@ -42,6 +43,7 @@ const TL_CHAIN = [
 
 // Tasks
 router.get('/tasks/mine', requireInternal(), myTasks);
+router.get('/tasks/assignees', requireRole(...TL_CHAIN), taskAssignees);
 router.get('/tasks', requireInternal(), tasks.list);
 router.get('/tasks/:id', requireInternal(), tasks.get);
 router.post('/tasks', requireRole(...TL_CHAIN), taskMemberAccess, tasks.create);

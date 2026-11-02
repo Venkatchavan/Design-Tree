@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 // Client/Architect acknowledgement of a stage submission (§4.16, portal).
@@ -24,4 +25,4 @@ const stageAckSchema = new mongoose.Schema(
 stageAckSchema.index({ stageStatus: 1, by: 1 }, { unique: true });
 
 export const StageAck =
-  mongoose.models.StageAck ?? mongoose.model('StageAck', stageAckSchema);
+  mongoose.models.StageAck ?? mongoose.model('StageAck', auditProjectSchema(stageAckSchema));

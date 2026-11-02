@@ -1,4 +1,9 @@
+import { withRequestContext } from './utils/requestContext.js';
+import designTeamRoutes from './routes/designTeam.routes.js';
+import coordinationRoutes from './routes/coordination.routes.js';
 import cookieParser from 'cookie-parser';
+import announcementRoutes from './routes/announcements.routes.js';
+import { startAnnouncementWorker } from './services/announcements.js';
 import cors from 'cors';
 import express from 'express';
 import { isAllowedOrigin } from './config/config.js';
@@ -25,6 +30,7 @@ import portalRoutes from './routes/portal.routes.js';
 import reportsRoutes from './routes/reports.routes.js';
 import supportRoutes from './routes/support.routes.js';
 import registerRoutes from './routes/register.routes.js';
+import salesforceRoutes from './routes/salesforce.routes.js';
 import metaRoutes from './routes/meta.routes.js';
 import projectsRoutes from './routes/projects.routes.js';
 import functionsRoutes from './routes/functions.routes.js';
@@ -38,6 +44,7 @@ import workEntriesRoutes from './routes/workEntries.routes.js';
 
 export function createApp() {
   const app = express();
+  startAnnouncementWorker();
 
   app.use(
     cors({
@@ -45,6 +52,7 @@ export function createApp() {
       credentials: true,
     }),
   );
+  app.use(withRequestContext);
   app.use(express.json());
   app.use(cookieParser());
 
@@ -56,6 +64,8 @@ export function createApp() {
   app.use('/api/meta', metaRoutes);
   app.use('/api/branches', branchesRoutes);
   app.use('/api/projects', projectsRoutes);
+  app.use('/api/integrations/salesforce', salesforceRoutes);
+  app.use('/api/coordination-items', coordinationRoutes);
   app.use('/api/employees', employeesRoutes);
   app.use('/api/employee-meetings', employeeMeetingsRoutes);
   app.use('/api/users', usersRoutes);
@@ -76,12 +86,14 @@ export function createApp() {
   app.use('/api/drawing-acks', drawingAcksRoutes);
   app.use('/api/work-items', workItemsRoutes);
   app.use('/api/design', designmgmtRoutes);
+  app.use('/api/design-team', designTeamRoutes);
   app.use('/api/marketing', marketingRoutes);
   app.use('/api/leave-travel', leaveRoutes);
   app.use('/api/support', supportRoutes);
   app.use('/api/meetings', meetingsRoutes);
   app.use('/api/portal', portalRoutes);
   app.use('/api/notifications', notificationsRoutes);
+  app.use('/api/announcements', announcementRoutes);
   app.use('/api/reports', reportsRoutes);
   // Document files are served ONLY through auth-checked download routes
   // (certificates, templates, visits, bills, employees, marketing).

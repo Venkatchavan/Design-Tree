@@ -1,3 +1,5 @@
+import { addHours } from '../utils/workHours.js';
+import { workDateFilter, dayStart, workDate } from '../utils/workDates.js';
 import { canReadProject, narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { Employee } from '../models/Employee.js';
 import { SpocEntry } from '../models/SpocEntry.js';
@@ -7,8 +9,7 @@ import { spocEntrySchema } from '../validation/phase2.schema.js';
 import { MAN_HOUR_EXEMPT_ROLES } from '../config/roles.js';
 
 function todayRange() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
+  const start = dayStart(workDate());
   return { start, now: new Date() };
 }
 
@@ -50,7 +51,7 @@ export async function listSpocEntries(req, res, next) {
   try {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
-    narrowByProject(filter, 'project', await projectScopeIds(req.user));
+    if (req.query.mine !== 'true') narrowByProject(filter, 'project', await projectScopeIds(req.user));
     if (req.query.employee) filter.employee = req.query.employee;
     if (req.query.mine === 'true') {
       const me = await User.findById(req.user.id);
@@ -58,27 +59,17 @@ export async function listSpocEntries(req, res, next) {
         return res.status(200).json({ items: [], total: 0 });
       filter.employee = me.employee;
     }
-    if (req.query.from || req.query.to || req.query.date) {
-      filter.date = {};
-      if (req.query.date) {
-        const d = new Date(req.query.date);
-        const start = new Date(d);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(d);
-        end.setHours(23, 59, 59, 999);
-        filter.date.$gte = start;
-        filter.date.$lte = end;
-      } else {
-        if (req.query.from) filter.date.$gte = new Date(req.query.from);
-        if (req.query.to) filter.date.$lte = new Date(req.query.to);
-      }
-    }
+    try { const dateFilter=workDateFilter(req.query); if(dateFilter) filter.date=dateFilter; }
+    catch(err) { return res.status(400).json({message:err.message}); }
+    const limit=Math.min(200,Math.max(1,Number(req.query.limit)||100));
+    const offset=Math.max(0,Number(req.query.offset)||0);
+    const total=await SpocEntry.countDocuments(filter);
     const items = await SpocEntry.find(filter)
       .populate('employee', 'firstName lastName empId')
       .populate('project', 'name code branch')
-      .sort({ date: -1 })
-      .limit(200);
-    return res.status(200).json({ items, total: items.length });
+      .sort({ date: -1, _id: -1 })
+      .skip(offset).limit(limit);
+    return res.status(200).json({ items, total, offset, limit });
   } catch (err) {
     return next(err);
   }
@@ -112,14 +103,10 @@ export async function manHourStatus(req, res, next) {
         date: { $gte: start, $lte: now },
       }),
     ]);
-    const hours =
-      entries.reduce(
-        (s, e) =>
-          s +
-          (e.hours ?? 0) +
-          (e.otherHours ?? []).reduce((a, o) => a + (o.hours ?? 0), 0),
-        0,
-      ) + spoc.reduce((s, e) => s + (e.totalHours ?? 0), 0);
+    const hours = addHours(
+      entries.reduce((sum,e) => addHours(sum,e.hours,...(e.otherHours??[]).map(row=>row.hours)),0),
+      spoc.reduce((sum,e) => addHours(sum,e.totalHours),0),
+    );
     return res
       .status(200)
       .json({ required: true, logged: hours > 0, hours });
@@ -160,6 +147,23 @@ export async function listAllocations(req, res, next) {
   }
 }
 
+export async function listAllAllocations(req, res, next) {
+  try {
+    const { SpocAllocation } = await import('../models/SpocAllocation.js');
+    const filter = {};
+    if (req.query.project) filter.project = req.query.project;
+    if (req.query.status) filter.status = req.query.status;
+    const items = await SpocAllocation.find(filter)
+      .populate('project', 'name code branch currentStage status')
+      .populate('coordinator', 'firstName lastName empId designation')
+      .sort({ createdAt: -1 })
+      .limit(200);
+    return res.status(200).json({ items, total: items.length });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 // Proposed → Approved gate for the Admin-assigns-SPOC flow. The SPOC
 // self-record path (recordAllocation) stays force-Approved so the
 // initiation walkthrough expectation is unchanged.
@@ -176,6 +180,25 @@ export async function setAllocationStatus(req, res, next) {
       { new: true, returnDocument: 'after', runValidators: true },
     );
     if (!doc) return res.status(404).json({ message: 'Allocation not found.' });
+    if (status === 'Approved') {
+      try {
+        const { userIdsForEmployees, notify } = await import('../models/Notification.js');
+        const users = await userIdsForEmployees([doc.coordinator]);
+        if (users.length) {
+          await notify({
+            users,
+            project: doc.project,
+            link: { view: 'project-detail', id: String(doc.project) },
+            title: 'Project assignment approved',
+            detail: 'This project is now available in your SPOC dashboard.',
+            type: 'spoc-allocation-approved',
+          });
+        }
+      } catch (err) {
+        // Keep assignment approval successful if its notification cannot be delivered.
+        console.error('Failed to notify SPOC about project assignment:', err);
+      }
+    }
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);

@@ -17,8 +17,6 @@ const DASHBOARD_WRITERS = new Set([
   'qs_head',
   'team_lead',
   'technical_director',
-  'assoc_technical_director',
-  'associate_director',
   'executive_director',
 ]);
 const ITEM_WRITERS = new Set([
@@ -29,8 +27,6 @@ const ITEM_WRITERS = new Set([
   'team_lead',
   'design_mgmt_head',
   'technical_director',
-  'assoc_technical_director',
-  'associate_director',
   'executive_director',
 ]);
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
@@ -29,6 +29,24 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
   const [earlyReason, setEarlyReason] = useState('');
   const [attendErr, setAttendErr] = useState('');
   const [attendInfo, setAttendInfo] = useState(null);
+  const [refreshErr, setRefreshErr] = useState('');
+  useEffect(() => {
+    if (!attendOpen || isAttendanceExemptRole(roleKey)) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const status = await attendanceApi.status();
+        if (!active) return;
+        setAttendInfo(status);setNeedLate(!!status.late);setNeedEarly(!!status.underHours);setRefreshErr('');
+      } catch {
+        if (active) setRefreshErr('Could not refresh elapsed time. Sign-out is still checked by the server.');
+      }
+    };
+    refresh();const timer = setInterval(refresh, 10000);
+    return () => { active = false;clearInterval(timer); };
+  }, [attendOpen, roleKey]);
+  const elapsed = Number(attendInfo?.elapsedSeconds ?? Number(attendInfo?.durationHours) * 3600);
+  const worked = Number.isFinite(elapsed) ? `${Math.floor(elapsed / 3600)}h ${Math.floor((elapsed % 3600) / 60)}m` : 'under 8 hours';
 
   async function doLogout(reasons) {
     const res = await performLogout(queryClient, reasons);
@@ -75,7 +93,7 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
     }
     setNeedLate(late);
     setNeedEarly(early);
-    setAttendInfo({ durationHours: s.durationHours });
+    setAttendInfo(s);
     setAttendErr('');
     setAttendOpen(true);
   }
@@ -165,11 +183,13 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
         <Modal title="A reason is needed to sign out" onClose={() => setAttendOpen(false)}>
           <p style={{ fontSize: 13.5, color: 'var(--ink-muted)', marginBottom: 8 }}>
             {needLate && needEarly
-              ? `You signed in after 9:45 and have worked ${attendInfo?.durationHours ?? 'under 8'} hours — both need a reason.`
+              ? `You signed in after 9:45 and have worked ${worked} — both need a reason.`
               : needLate
                 ? 'You signed in after 9:45 — a reason is required.'
-                : `You have worked ${attendInfo?.durationHours ?? 'under 8'} hours — signing out before 8 hours needs a reason.`}
+                : needEarly ? `You have worked ${worked} — signing out before 8 hours needs a reason.`
+                  : `You have worked ${worked}. You can now sign out.`}
           </p>
+          {refreshErr && <p role="status">{refreshErr}</p>}
           {needLate && (
             <div className="form-row">
               <label className="form-label">Reason for late sign-in *</label>
@@ -199,7 +219,7 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
           )}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
             <button type="button" className="btn-primary" onClick={saveAttendAndLogout}>
-              Save reason & sign out
+              {needLate || needEarly ? 'Save reason & sign out' : 'Sign out'}
             </button>
           </div>
         </Modal>

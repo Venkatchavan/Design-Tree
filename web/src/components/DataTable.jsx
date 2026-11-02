@@ -19,7 +19,7 @@ export default function DataTable({ columns, rows, onRowClick, emptyText }) {
         <tbody>
           {rows.map((row, i) => (
             <tr
-              key={row._id ?? row.id ?? i}
+              key={row.key ?? row._id ?? row.id ?? i}
               className={onRowClick ? 'row-click' : undefined}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
             >

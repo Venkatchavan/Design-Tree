@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const DELIVERABLE_STATUSES = [
@@ -51,7 +52,7 @@ const deliverableLogSchema = new mongoose.Schema(
 
 export const Deliverable =
   mongoose.models.Deliverable ??
-  mongoose.model('Deliverable', deliverableSchema);
+  mongoose.model('Deliverable', auditProjectSchema(deliverableSchema));
 export const DeliverableLog =
   mongoose.models.DeliverableLog ??
-  mongoose.model('DeliverableLog', deliverableLogSchema);
+  mongoose.model('DeliverableLog', auditProjectSchema(deliverableLogSchema));

@@ -104,9 +104,6 @@ export default function AdminTransmittalPage() {
     { key: 'edit', label: '', render: (r) => <button type="button" className="approve-btn" onClick={() => { setDrawingId(drawingOf(r)?._id ?? ''); setIssuedTo(r.issuedTo ?? 'Client'); setMethod(r.method ?? 'Portal'); setRemarks(r.remarks ?? ''); setModalOpen(true); }}>Edit</button> },
   ], [changeStatus]);
 
-  function openCreate() {
-    setDrawingId(''); setIssuedTo('Client'); setMethod('Portal'); setRemarks(''); setModalOpen(true);
-  }
   function submitCreate(e) {
     e.preventDefault();
     create.mutate({ drawing: drawingId, issuedTo, method, remarks: remarks || undefined });
@@ -160,7 +157,7 @@ export default function AdminTransmittalPage() {
             <input className="form-input" style={{ maxWidth: 250 }} placeholder="Search TR, drawing, title or ID" value={search} onChange={(e) => setSearch(e.target.value)} />
             <select className="filter-select" value={project} onChange={(e) => setProject(e.target.value)}><option value="">All projects</option>{(projects.data?.items ?? []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select>
             <select className="filter-select" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select>
-            <button className="btn-primary" type="button" onClick={openCreate}>Add transmittal</button>
+
             <button className="approve-btn" type="button" onClick={() => transmittalsApi.pdf({ project, status, search }).catch(e => setImportError(e.message))}>Download PDF</button>
             <button className="approve-btn" type="button" onClick={() => transmittalsApi.export().catch((e) => setImportError(e.message))}>Export to Excel</button>
             <button className="approve-btn" type="button" onClick={() => transmittalsApi.resync({ project }).then((r) => setImportError(`Checked ${r.checked} entries; ${r.issues.length} source drawing issues.`)).catch((e) => setImportError(e.message))}>Re-sync with TL list</button>

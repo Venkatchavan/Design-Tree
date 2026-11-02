@@ -2,6 +2,7 @@ import { canReadProject } from '../utils/projectScope.js';
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import {
+  denyRoles,
   requireInternal,
   requireRole,
 } from '../middlewares/requireRole.js';
@@ -28,6 +29,8 @@ import {
 
 const router = Router();
 router.use(requireAuth);
+// Leadership may read the marked service and review logs, but cannot enter them.
+router.use(['/peer-reviews','/discrepancies'],(req,res,next)=>['GET','HEAD'].includes(req.method)?next():denyRoles('founding_director','working_director','executive_director')(req,res,next));
 router.use(async (req,res,next) => {
   try {
     if (req.body?.project && !await canReadProject(req.user,req.body.project)) return res.status(403).json({message:'Project is not assigned to you.'});
@@ -67,8 +70,8 @@ router.put(
 router.get('/conveyance', requireInternal(), conveyances.list);
 router.post('/conveyance', requireInternal(), conveyances.create);
 router.get('/rfis', requireInternal(), rfis.list);
-router.post('/rfis', requireInternal(), createRfi);
-router.put('/rfis/:id', requireInternal(), rfis.update);
+router.post('/rfis', requireInternal(), denyRoles('coordinator'), createRfi);
+router.put('/rfis/:id', requireInternal(), denyRoles('coordinator'), rfis.update);
 
 // QA/QC weekly reports (team submits, Specs Head approves)
 router.get('/weekly-reports', requireInternal(), weeklyReports.list);

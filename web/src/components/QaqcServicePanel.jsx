@@ -17,8 +17,6 @@ const DASHBOARD_WRITERS = new Set([
   'qaqc_head',
   'team_lead',
   'technical_director',
-  'assoc_technical_director',
-  'associate_director',
   'executive_director',
 ]);
 const ALERT_WRITERS = new Set(['founding_director', 'working_director', 'executive_director', 'qaqc', 'team_lead']);
@@ -48,7 +46,7 @@ function weekLabel(r) {
 export default function QaqcServicePanel({ projectId, codes, dashboard, principalTeamLeads, visits, discrepancies, weeklyRows, role, readOnly = false }) {
   const d = dashboard ?? {};
   const canEdit = DASHBOARD_WRITERS.has(role) && !readOnly;
-  const canAlerts = ALERT_WRITERS.has(role);
+  const canAlerts = ALERT_WRITERS.has(role) && !readOnly;
   const qc = useQueryClient();
   const [tab, setTab] = useState('overview');
   const [draft, setDraft] = useState(null);

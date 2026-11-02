@@ -1,4 +1,7 @@
-import { useMemo, useState } from 'react';
+import EmployeeSelect from '../components/EmployeeSelect.jsx';
+import { serviceNames } from '../lib/services.js';
+import TravelBookingLog from './TravelBookingLog.jsx';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarElement,
@@ -133,7 +136,7 @@ function OverviewTab() {
     queryKey: ['hr-attendance', today],
     queryFn: () => attendanceApi.list({ date: today }),
   });
-  const travels = useQuery({ queryKey: ['hr-travels'], queryFn: () => travelApi.list({}) });
+  const travels = useQuery({ queryKey: ['hr-travel-log'], queryFn: () => travelApi.log({}), refetchInterval: 10000 });
   const weekEnd = new Date(new Date(`${today}T00:00:00Z`).getTime() + 7 * 86400000).toISOString().slice(0, 10);
   const items = dir.data?.items ?? [];
   const total = dir.data?.total ?? items.length;
@@ -317,7 +320,7 @@ function SignInOutPanel() {
 }
 
 function TravelPanel() {
-  const q = useQuery({ queryKey: ['hr-travels'], queryFn: () => travelApi.list({}) });
+  const q = useQuery({ queryKey: ['hr-travel-log'], queryFn: () => travelApi.log({}), refetchInterval: 10000 });
   const today = new Date().toISOString().slice(0, 10);
   const upcoming = (q.data?.items ?? []).filter(
     (r) => r.status === 'Approved' && String(r.returnDate ?? r.departureDate ?? '') >= today,
@@ -347,7 +350,7 @@ const DIRECTOR_ROLES = new Set(['founding_director', 'working_director', 'execut
 function DirectorOverviewTab() {
   const dir = useQuery({ queryKey: ['employees-dir'], queryFn: () => employeesApi.list({}) });
   const leaves = useQuery({ queryKey: ['hr-leaves'], queryFn: () => leaveApi.list({}) });
-  const travels = useQuery({ queryKey: ['hr-travels'], queryFn: () => travelApi.list({}) });
+  const travels = useQuery({ queryKey: ['hr-travel-log'], queryFn: () => travelApi.log({}), refetchInterval: 10000 });
   const today = new Date().toISOString().slice(0, 10);
   const weekEnd = new Date(new Date(`${today}T00:00:00Z`).getTime() + 7 * 86400000).toISOString().slice(0, 10);
   const items = dir.data?.items ?? [];
@@ -416,64 +419,8 @@ function DirectorOverviewTab() {
   );
 }
 
-function DirectorLoginHoursTab() {
-  const q = useQuery({ queryKey: ['hr-work-entries'], queryFn: () => workEntriesApi.list({}) });
-  const groups = useMemo(() => {
-    const m = new Map();
-    for (const e of q.data?.items ?? []) {
-      const pid = String(e.project?._id ?? e.project ?? '');
-      const key = `${pid}|${e.stage ?? '—'}`;
-      let g = m.get(key);
-      if (!g) {
-        g = { key, project: e.project?.name ?? e.project ?? '—', stage: e.stage ?? '—', empIds: new Set(), total: 0 };
-        m.set(key, g);
-      }
-      g.empIds.add(String(e.employee?._id ?? e.employee ?? ''));
-      g.total += Number(e.hours ?? 0);
-    }
-    return [...m.values()].map((g) => ({
-      key: g.key,
-      project: g.project,
-      stage: g.stage,
-      employees: g.empIds.size,
-      total: g.total,
-      avg: g.empIds.size > 0 ? g.total / g.empIds.size : 0,
-    }));
-  }, [q.data]);
-  const grandTotal = groups.reduce((s, g) => s + g.total, 0);
-  const projectCount = new Set(groups.map((g) => g.project)).size;
-  const avgPerStage = groups.length > 0 ? grandTotal / groups.length : 0;
-  const f1 = (n) => Number(n ?? 0).toFixed(1);
-  return (
-    <>
-      <div className="kpi-grid cols-4">
-        <KpiCard label="Total hours logged today" value={f1(grandTotal)} accent="blueprint" />
-        <KpiCard label="Projects with activity" value={projectCount} accent="forest" />
-        <KpiCard label="Stages in progress" value={groups.length} accent="teal" />
-        <KpiCard label="Avg. hours / stage" value={f1(avgPerStage)} accent="violet" />
-      </div>
-      <Panel title="Login hours by project and stage" sub="Total hours logged across all employees, grouped by project and design stage — feeds Finance's cost & performance tracking.">
-        {q.isLoading ? (
-          <EmptyState text="Loading…" />
-        ) : q.isError ? (
-          <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
-        ) : (
-          <DataTable
-            columns={[
-              { key: 'project', label: 'Project' },
-              { key: 'stage', label: 'Stage' },
-              { key: 'employees', label: 'Employees logged in' },
-              { key: 'total', label: 'Total hours', render: (r) => f1(r.total) },
-              { key: 'avg', label: 'Avg. hours / employee', render: (r) => f1(r.avg) },
-            ]}
-            rows={groups}
-            emptyText="No work entries logged yet."
-          />
-        )}
-      </Panel>
-    </>
-  );
-}
+const LoginHoursReport = lazy(() => import('../components/work/LoginHoursReport.jsx'));
+function DirectorLoginHoursTab() { return <Suspense fallback={<p>Loading work report...</p>}><LoginHoursReport /></Suspense>; }
 
 function quarterBounds(todayStr) {
   const [y, m] = todayStr.split('-').map(Number);
@@ -518,7 +465,7 @@ function purposeBucket(purpose) {
 }
 
 function DirectorTravelLogTab() {
-  const q = useQuery({ queryKey: ['hr-travels'], queryFn: () => travelApi.list({}) });
+  const q = useQuery({ queryKey: ['hr-travel-log'], queryFn: () => travelApi.log({}), refetchInterval: 10000 });
   const today = new Date().toISOString().slice(0, 10);
   const { startYm: qStartYm, endYm: qEndYm } = quarterBounds(today);
   const items = q.data?.items ?? [];
@@ -557,19 +504,21 @@ function DirectorTravelLogTab() {
   return (
     <>
       <div className="kpi-grid cols-4">
-        <KpiCard label="Trips this quarter" value={quarterTrips.length} accent="blueprint" />
+        <KpiCard label="Records this quarter" value={quarterTrips.length} accent="blueprint" />
         <KpiCard label="Upcoming" value={upcoming.length} accent="teal" />
         <KpiCard label="Travel spend (qtr)" value={fmtSpend(spendQtr)} accent="copper" />
         <KpiCard label="Avg. cost / trip" value={fmtSpend(avgCost)} accent="violet" />
       </div>
-      <Panel title="Travel log">
+      <TravelBookingLog readOnly embedded />
+      <Panel title="Saved travel requests and booking summary" sub="Sources remain separate. Detailed booking history and fees appear above.">
         {q.isLoading ? (
           <EmptyState text="Loading…" />
         ) : q.isError ? (
-          <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message}</div>
+          <div className="login-error" role="alert" style={{ display: 'block' }}>{q.error.message} <button type="button" onClick={() => q.refetch()}>Retry travel log</button></div>
         ) : (
           <DataTable
             columns={[
+              { key: 'source', label: 'Source' },
               { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
               { key: 'purpose', label: 'Purpose', render: (r) => r.purpose ?? '—' },
               { key: 'location', label: 'Location', render: (r) => [r.project?.name ?? r.project, r.toCity].filter(Boolean).join(', ') || '—' },
@@ -578,7 +527,7 @@ function DirectorTravelLogTab() {
               { key: 'status', label: 'Status', render: (r) => <StatusPill status={tripStatus(r, today)}>{tripStatus(r, today)}</StatusPill> },
             ]}
             rows={items}
-            emptyText="No travel requests yet."
+            emptyText="No saved travel requests or bookings."
           />
         )}
       </Panel>
@@ -986,7 +935,7 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
               <label className="form-label" htmlFor="hr-loginRole">Role {isCreate ? '*' : ''}</label>
               <select id="hr-loginRole" className="filter-select" style={{ width: '100%' }} value={f.loginRole ?? ''} onChange={(e) => set('loginRole', e.target.value)} required={isCreate}>
                 <option value="">Select role</option>
-                {(bootstrap?.roles ?? []).map((r) => (
+                {(bootstrap?.roles ?? []).filter(r => bootstrap?.role?.key !== 'hr' || !['client','architect'].includes(r.key)).map((r) => (
                   <option key={r.key ?? r.value ?? r} value={r.key ?? r.value ?? r}>
                     {r.label ?? r.key ?? r}
                   </option>
@@ -1440,7 +1389,7 @@ function TrackTab() {
     <>
       <div className="form-row" style={{ maxWidth: 360 }}>
         <label className="form-label">Employee</label>
-        <select
+        <EmployeeSelect employees={employees}
           className="filter-select"
           style={{ width: '100%' }}
           value={selectedId}
@@ -1455,7 +1404,7 @@ function TrackTab() {
               </option>
             );
           })}
-        </select>
+        </EmployeeSelect>
       </div>
       {!selectedId ? (
         <EmptyState text="Pick an employee to see their track record." />
@@ -1688,7 +1637,7 @@ function HrMeetingLogTab() {
           >
             <div className="form-row">
               <label className="form-label" htmlFor="hr-meeting-employee">Employee</label>
-              <select
+              <EmployeeSelect employees={(employeesQ.data?.items ?? [])}
                 id="hr-meeting-employee"
                 className="filter-select"
                 value={form.employee}
@@ -1701,7 +1650,7 @@ function HrMeetingLogTab() {
                     {empFullName(employee)}
                   </option>
                 ))}
-              </select>
+              </EmployeeSelect>
             </div>
             <div className="form-row">
               <label className="form-label" htmlFor="hr-meeting-date">Meeting date</label>
@@ -1770,7 +1719,7 @@ function HrMeetingLogTab() {
       <Panel title="Meeting log">
         <div className="form-row" style={{ maxWidth: 320 }}>
           <label className="form-label" htmlFor="hr-meeting-filter">Employee</label>
-          <select
+          <EmployeeSelect employees={(employeesQ.data?.items ?? [])}
             id="hr-meeting-filter"
             className="filter-select"
             value={employeeFilter}
@@ -1782,7 +1731,7 @@ function HrMeetingLogTab() {
                 {empFullName(employee)}
               </option>
             ))}
-          </select>
+          </EmployeeSelect>
         </div>
         {q.isLoading ? (
           <EmptyState text="Loading…" />
@@ -1961,11 +1910,9 @@ function HrSupportTab() {
 }
 
 const CAPACITY_SERVICES = ['Structural', 'Electrical', 'Mechanical', 'Plumbing', 'Fire', 'QS'];
-const deptKey = (d) => {
-  const k = String(d ?? '').trim().toLowerCase();
-  if (k === 'phe' || k === 'plumbing') return 'plumbing';
-  return String(d ?? '').trim() || '—';
-};
+// Department labels (Structure, PHE, HVAC, F&LS) resolve to the same service
+// keys as the capacity list (Structural, Plumbing, Mechanical, Fire).
+const deptKey = (d) => (serviceNames([d])[0] ?? '').toLowerCase() || '—';
 const capacityTone = (c) => (c === 'Overloaded' ? 'rust' : c === 'Busy' ? 'amber' : 'forest');
 
 function HrReportsTab() {
@@ -2306,7 +2253,7 @@ export default function HRPage({ bootstrap }) {
   const isDirector = DIRECTOR_ROLES.has(roleKey);
   const isHr = roleKey === 'hr';
   // External portal logins are provisioned by login-admin roles only.
-  const canExternal = !isDirector && (isHr || isSuperuser || roleKey === 'admin_billing');
+  const canExternal = !isDirector && (isSuperuser || roleKey === 'admin_billing');
   const tabs = isSuperuser
     ? [
         { key: 'manage', label: 'Employee management' },
@@ -2317,13 +2264,11 @@ export default function HRPage({ bootstrap }) {
         { key: 'overview', label: 'Overview' },
         { key: 'loginhours', label: 'Login Hours' },
         { key: 'travellog', label: 'Travel log' },
-        { key: 'holidays', label: 'Holiday calendar' },
       ]
     : isHr
     ? [
         { key: 'overview', label: 'Overview' },
         { key: 'manage', label: 'Employee management' },
-        { key: 'external', label: 'External access' },
         { key: 'track', label: 'Track record' },
         { key: 'attendance', label: 'Attendance and leave' },
         { key: 'loginhours', label: 'Login Hours' },
@@ -2375,7 +2320,7 @@ export default function HRPage({ bootstrap }) {
       {!isDirector && tab === 'recruitment' && <RecruitmentTab bootstrap={bootstrap} />}
       {isDirector && tab === 'loginhours' && <DirectorLoginHoursTab />}
       {(isDirector || isHr) && tab === 'travellog' && <DirectorTravelLogTab />}
-      {(isDirector || isHr) && tab === 'holidays' && <DirectorHolidaysTab />}
+      {isHr && tab === 'holidays' && <DirectorHolidaysTab />}
       {isHr && tab === 'attendance' && <HrAttendanceLeaveTab />}
       {isHr && tab === 'loginhours' && <DirectorLoginHoursTab />}
       {isHr && tab === 'meetings' && <HrMeetingLogTab />}

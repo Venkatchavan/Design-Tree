@@ -1,3 +1,5 @@
+import { isTeamDirector } from '../utils/directorTeams.js';
+import { taskRoster } from '../utils/taskRoster.js';
 import { canReadProject } from '../utils/projectScope.js';
 import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { z } from 'zod';
@@ -31,29 +33,41 @@ import {
 const POP_EMP = 'firstName lastName empId designation';
 const POP_PROJ = 'name code branch';
 
+export async function taskAssignees(req, res, next) {
+  try {
+    const project = req.query.project;
+    if (typeof project !== 'string' || !/^[0-9a-fA-F]{24}$/.test(project)) return res.status(400).json({ message: 'Select a valid project.' });
+    if (!await canReadProject(req.user, project)) return res.status(403).json({ message: 'Project is not assigned to you.' });
+    return res.json(await taskRoster(req.user, project));
+  } catch (error) { return next(error); }
+}
+
 export async function taskMemberAccess(req,res,next) {
   try {
-    if (!Array.isArray(req.body?.members)) return next();
     const existing = req.params.id ? await Task.findById(req.params.id) : null;
+    if (existing && isTeamDirector(req.user) && String(existing.createdBy)!==String(req.user.id)) return res.status(404).json({message:'Task not found.'});
     const project = req.body.project || existing?.project;
     if (!project || !await canReadProject(req.user,project)) return res.status(403).json({message:'Project is not assigned to you.'});
-    const {Team} = await import('../models/Team.js');
-    const teams = await Team.find({projects:project}).select('lead members').lean();
-    const allowed = new Set(teams.flatMap(t=>[String(t.lead),...t.members.map(m=>String(m.employee))]));
-    if(req.body.members.some(id=>!allowed.has(String(id))))return res.status(400).json({message:'Assign work to members of this project only.'});
+    const roster = await taskRoster(req.user, project);
+    const allowed = new Set(roster.items.map(m => String(m.employee._id)));
+    const members = req.body.members ?? existing?.members ?? [];
+    if(!allowed.size && isTeamDirector(req.user)) return res.status(403).json({message:'No team is assigned to you for this project.'});
+    if(Array.isArray(members) && members.some(id=>!allowed.has(String(id))))return res.status(400).json({message:'Assign work to members of your authorized project team only.'});
     return next();
   }catch(err){return next(err);}
 }
 
-export const tasks = makeCrud(Task, {
+const taskCrud = makeCrud(Task, {
   scopedByProject: true,
   create: taskSchema,
   update: taskUpdateSchema,
+  decorate:(body,req)=>({...body,...(req.method==='POST'?{createdBy:req.user.id}:{})}),
   filters: (req) => {
     const f = {};
     if (req.query.project) f.project = req.query.project;
     if (req.query.status) f.status = req.query.status;
     if (req.query.member) f.members = req.query.member;
+    if (isTeamDirector(req.user)) f.createdBy=req.user.id;
     return f;
   },
   populate: [
@@ -61,6 +75,13 @@ export const tasks = makeCrud(Task, {
     { path: 'project', select: POP_PROJ },
   ],
 });
+
+export const tasks = {...taskCrud, async get(req,res,next) {
+  try {
+    if(isTeamDirector(req.user) && !await Task.exists({_id:req.params.id,createdBy:req.user.id})) return res.status(404).json({message:'Task not found.'});
+    return taskCrud.get(req,res,next);
+  }catch(err){return next(err);}
+}};
 
 export async function myTasks(req, res, next) {
   try {

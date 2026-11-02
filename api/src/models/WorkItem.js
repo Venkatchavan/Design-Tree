@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const WORK_ITEM_TYPES = ['BOQ', 'BBS'];
@@ -31,4 +32,4 @@ const workItemSchema = new mongoose.Schema(
 );
 
 export const WorkItem =
-  mongoose.models.WorkItem ?? mongoose.model('WorkItem', workItemSchema);
+  mongoose.models.WorkItem ?? mongoose.model('WorkItem', auditProjectSchema(workItemSchema));

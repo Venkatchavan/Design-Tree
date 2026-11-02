@@ -115,6 +115,12 @@ export async function createRecord(req, res, next) {
     return res.status(400).json({ message: 'Invalid data.' });
   }
   try {
+    if (req.user.role === 'team_lead') {
+      const assignedProjects = await scopedProjectIds(req.user.id);
+      if (!assignedProjects.includes(String(parsed.data.project))) {
+        return res.status(403).json({ message: 'You can only log transmittals for your assigned team projects.' });
+      }
+    }
     // Create directly: re-parsing would reject the injected createdBy key.
     const doc = await TransmittalRecord.create({
       ...parsed.data,

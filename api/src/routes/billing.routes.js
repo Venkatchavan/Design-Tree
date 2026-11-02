@@ -1,3 +1,4 @@
+import { stageTimeline } from '../controllers/stageTimeline.controller.js';
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import {
@@ -58,6 +59,7 @@ router.patch(
 
 // Stage tracker + billing readiness (also powers Billing Status live).
 // Associate/Technical/Associate-TD Directors + DMH/SPOC/PTL read the tracker.
+router.get('/stage-timeline', requireView('stage-timeline'), stageTimeline);
 router.get('/stages', requireRole(...BILLING_READERS, 'associate_director', 'technical_director', 'assoc_technical_director', 'design_mgmt_head', 'coordinator', 'team_lead', 'engineer_drafter', 'qs', 'qaqc', 'bim', 'gbs', 'peer_reviewer'), stages.list);
 router.post('/stages', requireRole(...STAGE_WRITERS), upsertStage);
 router.put('/stages/:id', requireRole(...STAGE_WRITERS), updateStage);

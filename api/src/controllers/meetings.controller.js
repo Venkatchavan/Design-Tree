@@ -80,7 +80,7 @@ import {
 } from '../validation/phase4.schema.js';
 
 const POP_PROJ = 'name code branch';
-const POP_EMP = 'firstName lastName empId designation';
+const POP_EMP = 'firstName lastName empId designation branch department';
 
 async function myEmployeeId(userId) {
   const me = await User.findById(userId);

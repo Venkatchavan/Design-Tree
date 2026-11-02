@@ -29,7 +29,7 @@ router.get('/collateral', requireInternal(), collateral.list);
 router.post('/collateral', requireInternal(), createCollateral);
 router.put('/collateral/:id', requireRole('marketing'), collateral.update);
 router.get('/contacts/summary', requireRole(...MARKETING_READERS), contactSummary);
-router.get('/contacts', requireRole(...MARKETING_READERS, 'admin_billing'), contacts.list);
-router.post('/contacts', requireRole('marketing', 'executive_director', 'admin_billing'), createContact);
+router.get('/contacts', requireRole(...MARKETING_READERS, 'admin_billing', 'coordinator'), contacts.list);
+router.post('/contacts', requireRole('marketing', 'executive_director', 'admin_billing', 'coordinator'), createContact);
 
 export default router;

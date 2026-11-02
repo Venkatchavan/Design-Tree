@@ -14,9 +14,8 @@ const VARIATION_WRITERS = [
   'design_mgmt_head',
   'admin_billing',
   'executive_director',
-  'associate_director',
   'technical_director',
-  'assoc_technical_director',
+  'associate_director',
 ];
 
 router.get('/', requireInternal(), variations.list);

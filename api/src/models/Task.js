@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const TASK_STATUSES = [
@@ -32,4 +33,4 @@ const taskSchema = new mongoose.Schema(
 );
 
 export const Task =
-  mongoose.models.Task ?? mongoose.model('Task', taskSchema);
+  mongoose.models.Task ?? mongoose.model('Task', auditProjectSchema(taskSchema));

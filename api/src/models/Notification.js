@@ -31,12 +31,14 @@ const notificationSchema = new mongoose.Schema(
     },
     link: { type: linkSchema },
     type: { type: String, trim: true },
+    announcement: { type: mongoose.Schema.Types.ObjectId, ref: 'Announcement' },
     readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   },
   { timestamps: true },
 );
 
 notificationSchema.index({ createdAt: -1 });
+notificationSchema.index({ announcement: 1 }, { unique: true, partialFilterExpression: { announcement: { $type: 'objectId' } } });
 
 export const Notification =
   mongoose.models.Notification ??

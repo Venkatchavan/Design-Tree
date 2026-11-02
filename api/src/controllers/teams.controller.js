@@ -1,3 +1,12 @@
+import { directorTeams } from '../utils/directorTeams.js';
+import { directorDirectory } from '../utils/directorDirectory.js';
+
+export async function reportingDirectory(req,res,next) {
+  try{return res.json(await directorDirectory(req.user,false,req.query.branch??''));}catch(error){return next(error);}
+}
+export async function companyDirectory(req,res,next) {
+  try{return res.json(await directorDirectory(req.user,true,req.query.branch??''));}catch(error){return next(error);}
+}
 import { applyMeetingAudience } from '../middlewares/meetingAccess.js';
 import { projectScopeIds } from '../utils/projectScope.js';
 import { Meeting } from '../models/Meeting.js';
@@ -38,21 +47,14 @@ export async function myTeams(req, res, next) {
     const role = me?.role ?? req.user.role;
     const memberSelect =
       'firstName lastName empId designation department branch status experience';
-    // Associate / Associate Technical Directors oversee every team without
-    // necessarily being listed on them — return all teams (same shape as the
-    // scoped path) so My Team reflects instead of rendering "No team assigned".
-    if (role === 'associate_director' || role === 'assoc_technical_director') {
-      const teams = await Team.find({})
-        .populate('projects', 'name code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services')
-        .populate('lead', memberSelect)
-        .populate('members.employee', memberSelect);
-      return res.status(200).json({ items: teams, total: teams.length });
-    }
+    const scoped = await directorTeams({ ...req.user, role });
+    if (scoped) return res.json({ items: scoped, total: scoped.length });
     if (!me?.employee) return res.status(200).json({ items: [], total: 0 });
     const teams = await Team.find({
+      active:{$ne:false},
       $or: [{ lead: me.employee }, { 'members.employee': me.employee }],
-    })
-      .populate('projects', 'name code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services')
+    }).sort({allocationProject:-1,updatedAt:-1})
+      .populate('projects', 'name jobNumber code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services hold')
       .populate('lead', memberSelect)
       .populate('members.employee', memberSelect);
     return res.status(200).json({ items: teams, total: teams.length });
@@ -63,6 +65,11 @@ export async function myTeams(req, res, next) {
 
 export async function listTeams(req, res, next) {
   try {
+    const scoped = await directorTeams(req.user);
+    if (scoped) {
+      const items = scoped.filter(t => !req.query.service || t.service === req.query.service).map(t => ({ ...t, id: String(t._id), memberCount: new Set([t.lead?._id, ...t.members.map(m=>m.employee._id)].filter(Boolean).map(String)).size }));
+      return res.json({ items, total: items.length });
+    }
     const { service } = req.query;
     const filter = {};
     if (service) filter.service = service;
@@ -93,10 +100,12 @@ export async function listTeams(req, res, next) {
 
 export async function getTeam(req, res, next) {
   try {
-    const team = await Team.findById(req.params.id)
+    const scoped = await directorTeams(req.user);
+    const rows = scoped?.filter(t=>String(t._id)===req.params.id && (!req.query.project||t.projects.some(p=>String(p._id)===req.query.project)) && (!req.query.service||t.service===req.query.service));
+    const team = scoped ? (rows.length ? rows[0] : null) : await Team.findById(req.params.id)
       .populate('lead', 'firstName lastName empId designation')
       .populate('members.employee', 'firstName lastName empId designation branch department status experience')
-      .populate('projects', 'name code status currentStage');
+      .populate('projects', 'name jobNumber code status currentStage');
     if (!team) return res.status(404).json({ message: 'Team not found.' });
     const allowed = await projectScopeIds(req.user);
     const projectIds = team.projects.map(p => p._id);

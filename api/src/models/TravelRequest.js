@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 import {
   FLOW_STATUSES,
@@ -97,4 +98,4 @@ travelRequestSchema.pre('validate', function autoBalance() {
 
 export const TravelRequest =
   mongoose.models.TravelRequest ??
-  mongoose.model('TravelRequest', travelRequestSchema);
+  mongoose.model('TravelRequest', auditProjectSchema(travelRequestSchema));

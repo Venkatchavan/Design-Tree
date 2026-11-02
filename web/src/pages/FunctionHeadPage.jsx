@@ -1,3 +1,4 @@
+import { CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, projectsApi, request, toQuery, workEntriesApi } from '../lib/api.js';
@@ -300,7 +301,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
 
   if (isDirector && active === 'qaqc-specs') {
     return (
-      <div id={`view-${active}`}>
+      <div id={`view-${active}`}><CoordinationPanel service={({'qaqc-specs':'QA/QC','bim-head':'BIM','gbs-head':'GBS','peer-review-head':'Peer Review','qs-head':'QS'})[active]}/>
         <DirectorQaqcView
           visits={arr(visits.data)}
           discs={arr(discs.data)}
@@ -314,7 +315,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
 
   if (isDirector && active === 'bim-head') {
     return (
-      <div id={`view-${active}`}>
+      <div id={`view-${active}`}><CoordinationPanel service={({'qaqc-specs':'QA/QC','bim-head':'BIM','gbs-head':'GBS','peer-review-head':'Peer Review','qs-head':'QS'})[active]}/>
         <DirectorBimView
           orders={bimRows}
           teamLogCount={bimLog.data?.length ?? 0}
@@ -328,7 +329,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
 
   if (isDirector && active === 'gbs-head') {
     return (
-      <div id={`view-${active}`}>
+      <div id={`view-${active}`}><CoordinationPanel service={({'qaqc-specs':'QA/QC','bim-head':'BIM','gbs-head':'GBS','peer-review-head':'Peer Review','qs-head':'QS'})[active]}/>
         <DirectorGbsView
           items={gbs.data ?? []}
           teamLogCount={gbsLog.data?.length ?? 0}
@@ -341,7 +342,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
 
   if (isDirector && active === 'peer-review-head') {
     return (
-      <div id={`view-${active}`}>
+      <div id={`view-${active}`}><CoordinationPanel service={({'qaqc-specs':'QA/QC','bim-head':'BIM','gbs-head':'GBS','peer-review-head':'Peer Review','qs-head':'QS'})[active]}/>
         <DirectorPeerView
           reviews={peerRows}
           openComments={openPeerComments}
@@ -352,7 +353,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
 
   if (isDirector && active === 'qs-head') {
     return (
-      <div id={`view-${active}`}>
+      <div id={`view-${active}`}><CoordinationPanel service={({'qaqc-specs':'QA/QC','bim-head':'BIM','gbs-head':'GBS','peer-review-head':'Peer Review','qs-head':'QS'})[active]}/>
         <DirectorQsView
           teamLogCount={qsLog.data?.length ?? 0}
           areas={areaRows}
@@ -365,7 +366,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
   }
 
   return (
-    <div id={`view-${active}`}>
+    <div id={`view-${active}`}><CoordinationPanel service={({'qaqc-specs':'QA/QC','bim-head':'BIM','gbs-head':'GBS','peer-review-head':'Peer Review','qs-head':'QS'})[active]}/>
       <div className="page-head">
         <div className="page-title">Function Head Dashboard</div>
         <div className="page-sub">

@@ -1,6 +1,8 @@
+import { EmployeeFilter } from '../components/EmployeeSelect.jsx';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { transmittalRegisterApi, downloadCsv } from '../lib/phase3Api.js';
+import { toast } from '../lib/toast.js';
 import { areaApi } from '../lib/functionsApi.js';
 import { employeesApi, projectsApi } from '../lib/api.js';
 import { teamsMineApi } from '../lib/workApi.js';
@@ -125,7 +127,7 @@ export default function TransmittalLogPage({ bootstrap }) {
               <button type="button" className="approve-btn" onClick={() => downloadCsv(rows, columns.map((c) => ({ key: c.key, label: c.label, value: c.render ? (r) => {
                 if (c.key === 'project') return r.project?.name ?? r.projectName;
                 return r[c.key];
-              } : undefined })), 'transmittal-register.csv')}>Export CSV</button><button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => window.alert(e.message))}>Download PDF</button>
+              } : undefined })), 'transmittal-register.csv')}>Export CSV</button><button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => toast.error(e.message))}>Download PDF</button>
             </div>
             {register.isLoading ? <EmptyState text="Loading register…" /> : (
               <DataTable columns={columns} rows={rows} emptyText="No transmittal records yet." />
@@ -185,7 +187,7 @@ function LogTransmittalForm({ onDone }) {
       <div className="form-row"><label className="form-label">Date *</label><input className="form-input" type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
       <div className="form-row"><label className="form-label">TR no. *</label><input className="form-input" required value={form.trNo} onChange={(e) => setForm({ ...form, trNo: e.target.value })} /></div>
       <div className="form-row"><label className="form-label">Department *</label><select className="filter-select" style={{ width: '100%' }} required value={form.dept} onChange={(e) => setForm({ ...form, dept: e.target.value })}><option value="">Select department</option>{services.map((s) => <option key={s}>{s}</option>)}</select></div>
-      <div className="form-row"><label className="form-label">Team member</label><input className="form-input" list="tr-team-emps" value={form.team} onChange={(e) => setForm({ ...form, team: e.target.value })} placeholder="Select or type" /><datalist id="tr-team-emps">{(employees.data?.items ?? []).map((e) => { const n = `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim() || e.empId; return <option key={e._id ?? e.id} value={n} />; })}</datalist></div>
+      <div className="form-row"><label className="form-label">Team member</label><EmployeeFilter employees={employees.data?.items ?? []} selectedIds={[form.team]} getId={e => `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim() || e.empId} label="Transmittal member">{shown => <><input className="form-input" list="tr-team-emps" value={form.team} onChange={(e) => setForm({ ...form, team: e.target.value })} placeholder="Select or type" /><datalist id="tr-team-emps">{shown.map((e) => { const n = `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim() || e.empId; return <option key={e._id ?? e.id} value={n} />; })}</datalist></>}</EmployeeFilter></div>
       <div className="form-row"><label className="form-label">Type of print *</label><select className="filter-select" style={{ width: '100%' }} required value={form.print} onChange={(e) => setForm({ ...form, print: e.target.value })}><option value="">Select print</option>{DIR_PRINT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
       <div className="form-row"><label className="form-label">Document type *</label><select className="filter-select" style={{ width: '100%' }} required value={form.docType} onChange={(e) => setForm({ ...form, docType: e.target.value })}><option value="">Select type</option>{DIR_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
       <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={form.service} onChange={(e) => setForm({ ...form, service: e.target.value })}><option value="">Select service</option>{services.map((s) => <option key={s}>{s}</option>)}</select></div>
@@ -288,12 +290,12 @@ function AssignedRegisterView({ roleKey }) {
           <select className="filter-select" value={docType} onChange={(e) => setDocType(e.target.value)}><option value="">All document types</option>{DIR_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           <select className="filter-select" value={printType} onChange={(e) => setPrintType(e.target.value)}><option value="">All print types</option>{DIR_PRINT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           <select className="filter-select" value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{DIR_SERVICES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-          <button type="button" className="btn-primary" onClick={() => setLogOpen(true)}>Log transmittal</button>
+          {roleKey === 'team_lead' && <button type="button" className="btn-primary" onClick={() => setLogOpen(true)}>Log transmittal</button>}
           <button type="button" className="approve-btn" onClick={() => downloadCsv(rows, columns.map((c) => ({ key: c.key, label: c.label, value: c.render ? (r) => {
             if (c.key === 'date') return fmtRegisterDate(r.date);
             if (c.key === 'project') return r.project?.name ?? r.projectName;
             return r[c.key];
-          } : undefined })), 'transmittal-register.csv')}>Export CSV</button><button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => window.alert(e.message))}>Download PDF</button>
+          } : undefined })), 'transmittal-register.csv')}>Export CSV</button><button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => toast.error(e.message))}>Download PDF</button>
         </div>
         {loading ? <EmptyState text="Loading register…" /> : register.isError ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{register.error.message}</div>
@@ -301,7 +303,7 @@ function AssignedRegisterView({ roleKey }) {
           <DataTable columns={columns} rows={rows} emptyText="No transmittals match these filters." />
         )}
       </Panel>
-      {logOpen && (
+      {roleKey === 'team_lead' && logOpen && (
         <Modal title="Log transmittal" onClose={() => setLogOpen(false)} wide>
           <LogTransmittalForm onDone={() => setLogOpen(false)} />
         </Modal>
@@ -391,7 +393,7 @@ function DirectorRegisterView({ scoped = false }) {
             if (c.key === 'date') return fmtRegisterDate(r.date);
             if (c.key === 'project') return r.project?.name ?? r.projectName;
             return r[c.key];
-          } : undefined })), 'transmittal-register.csv')}>Export CSV</button><button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => window.alert(e.message))}>Download PDF</button>
+          } : undefined })), 'transmittal-register.csv')}>Export CSV</button><button type="button" className="approve-btn" onClick={() => transmittalRegisterApi.pdf({ projects: [...new Set(rows.map(r => String(r.project?._id ?? r.project ?? '')))].join(',') || 'none', search, docType, print: printType, service }).catch(e => toast.error(e.message))}>Download PDF</button>
         </div>
         {register.isLoading ? <EmptyState text="Loading register…" /> : register.isError ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{register.error.message}</div>

@@ -5,6 +5,7 @@ import { Recruitment } from '../models/Recruitment.js';
 import { StageStatus } from '../models/StageStatus.js';
 import { WorkEntry } from '../models/WorkEntry.js';
 import { Employee } from '../models/Employee.js';
+import { sameService } from '../utils/stageTimeline.js';
 import { makeCrud } from '../utils/crud.js';
 import {
   claimSchema,
@@ -67,8 +68,8 @@ export async function setClaimStatus(req, res, next) {
     // A billed claim flips the matching stage tracker to Billed.
     if (parsed.data.status === 'Billed' && doc.stage) {
       await StageStatus.updateMany(
-        { project: doc.project._id ?? doc.project, stage: doc.stage, confirmationStatus: 'TD Approved', ...(doc.service ? { service: doc.service } : {}) },
-        { billingReadiness: 'Billed', updatedBy: req.user.id },
+        { project: doc.project._id ?? doc.project, stage: doc.stage, confirmationStatus: 'TD Approved', ...(doc.service ? { service: { $in: (await StageStatus.find({project: doc.project._id ?? doc.project, stage: doc.stage}).lean()).filter(row => sameService(row.service, doc.service)).map(row => row.service) } } : {}) },
+        { $set: { billingReadiness: 'Billed', updatedBy: req.user.id }, $inc: { __v: 1 } },
       );
     }
     return res.status(200).json({ item: doc });
@@ -90,91 +91,13 @@ export const stages = makeCrud(StageStatus, {
   populate: [{ path: 'project', select: POP_PROJ }],
 });
 
-export async function upsertStage(req, res, next) {
-  const parsed = stageStatusSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: 'Invalid stage data.' });
-  try {
-    const { requestCompletion, confirmCompletion, approveCompletion, ptlRemark, spocRemark, tdRemark, ...rest } = parsed.data;
-    const { canReadProject } = await import('../utils/projectScope.js');
-    if (!await canReadProject(req.user, rest.project)) return res.status(403).json({ message: 'Project is not assigned to you.' });
-    if (!await Project.exists({ _id: rest.project })) return res.status(404).json({ message: 'Project not found.' });
-    const identity = { project: rest.project, service: rest.service ?? null, stage: rest.stage ?? null };
-    const old = await StageStatus.findOne(identity);
-    const count = [requestCompletion, confirmCompletion, approveCompletion].filter(Boolean).length;
-    if (count > 1) return res.status(400).json({ message: 'Choose one approval action.' });
-    let patch = { ...rest, updatedBy: req.user.id };
-    let from = old?.confirmationStatus ?? 'None';
-    let action = 'Stage updated';
-    if (old?.billingReadiness === 'Billed') return res.status(409).json({ message: 'An already billed stage cannot be changed.' });
-    if (requestCompletion) {
-      if (req.user.role !== 'team_lead') return res.status(403).json({ message: 'Only the assigned PTL can request completion.' });
-      if (!['None', 'PTL Requested'].includes(from)) return res.status(409).json({ message: 'Completion has already progressed to approval.' });
-      patch = { ...patch, confirmationStatus: 'PTL Requested', ptlRequestedBy: req.user.id, ptlRequestedAt: new Date(), ptlRemark, currentStatus: 'Pending SPOC approval', billingReadiness: 'Pending' };
-      action = 'PTL requested completion';
-    } else if (confirmCompletion) {
-      if (req.user.role !== 'coordinator') return res.status(403).json({ message: 'Only the assigned SPOC can confirm completion.' });
-      if (from !== 'PTL Requested') return res.status(409).json({ message: 'A PTL request is required first.' });
-      patch = { ...patch, confirmationStatus: 'SPOC Confirmed', spocConfirmedBy: req.user.id, spocConfirmedAt: new Date(), spocRemark, currentStatus: 'Pending TD approval', billingReadiness: 'Pending' };
-      action = 'SPOC confirmed completion';
-    } else if (approveCompletion) {
-      if (!['technical_director', 'assoc_technical_director'].includes(req.user.role)) return res.status(403).json({ message: 'Only the Technical Director or Associate Technical Director approves completion.' });
-      if (from === 'TD Approved') return res.status(409).json({ message: 'Stage is already approved.' });
-      // TD / ATD can complete directly from the individual project view,
-      // even when the PTL → SPOC steps were skipped.
-      patch = { ...patch, confirmationStatus: 'TD Approved', tdApprovedBy: req.user.id, tdApprovedAt: new Date(), tdRemark, currentStatus: 'Completed', billingReadiness: 'Ready for billing' };
-      action = req.user.role === 'assoc_technical_director' ? 'ATD approved completion' : 'TD approved completion';
-    } else {
-      if (rest.billingReadiness === 'Billed' || ((rest.billingReadiness === 'Ready for billing' || rest.currentStatus === 'Completed') && from !== 'TD Approved')) {
-        return res.status(409).json({ message: 'PTL, SPOC and TD approvals are required before billing.' });
-      }
-      if (from !== 'None') return res.status(409).json({ message: 'Use the next approval action for this stage.' });
-    }
-    const doc = old
-      ? await StageStatus.findOneAndUpdate({ _id: old._id, confirmationStatus: from, billingReadiness: { $ne: 'Billed' } }, { $set: patch, $push: { history: { by: req.user.id, action } } }, { returnDocument: 'after', runValidators: true })
-      : await StageStatus.create({ ...patch, history: [{ by: req.user.id, action }] });
-    if (!doc) return res.status(409).json({ message: 'Stage changed; refresh before approving.' });
-    try {
-      const { notify, userIdsForEmployees } = await import('../models/Notification.js');
-      const { SpocAllocation } = await import('../models/SpocAllocation.js');
-      const { Team } = await import('../models/Team.js');
-      const projectDoc = await Project.findById(rest.project).select('principalTeamLeads').lean();
-      const allocations = await SpocAllocation.find({ project: rest.project, status: 'Approved' });
-      const teams = await Team.find({ projects: rest.project }).select('lead members').lean();
-      const employeeIds = [
-        ...allocations.map((a) => a.coordinator),
-        ...(projectDoc?.principalTeamLeads ?? []).map((t) => t.employee).filter(Boolean),
-        ...teams.map((t) => t.lead).filter(Boolean),
-        ...teams.flatMap((t) => (t.members ?? []).map((m) => m.employee)).filter(Boolean),
-      ];
-      const users = await userIdsForEmployees(employeeIds);
-      for (const u of [doc.ptlRequestedBy, doc.spocConfirmedBy]) {
-        if (u && String(u) !== String(req.user.id) && !users.includes(String(u))) users.push(String(u));
-      }
-      const relatedRoles = requestCompletion
-        ? ['coordinator', 'technical_director', 'assoc_technical_director', 'design_mgmt_head']
-        : confirmCompletion
-          ? ['technical_director', 'assoc_technical_director', 'team_lead', 'design_mgmt_head']
-          : ['team_lead', 'coordinator', 'technical_director', 'assoc_technical_director', 'design_mgmt_head', 'founding_director', 'working_director', 'executive_director', 'associate_director', 'admin_billing'];
-      await notify({ users, roles: relatedRoles, project: rest.project, link: { view: 'project-detail', id: String(rest.project) }, title: action, detail: `${rest.service ?? ''} ${rest.stage ?? ''} — ${doc.currentStatus}`, type: 'stage-approval' });
-    } catch { /* persisted approval remains available when live notifications fail */ }
-    return res.status(200).json({ item: doc });
-  } catch (err) { return next(err); }
-}
-
-export async function updateStage(req, res, next) {
-  try {
-    const doc = await StageStatus.findById(req.params.id);
-    if (!doc) return res.status(404).json({ message: 'Stage not found.' });
-    if (req.body?.project && String(req.body.project) !== String(doc.project)) return res.status(400).json({ message: 'Stage cannot move projects.' });
-    req.body = { ...req.body, project: String(doc.project), service: doc.service, stage: doc.stage };
-    return upsertStage(req, res, next);
-  } catch (err) { return next(err); }
-}
+export { upsertStage, updateStage } from './stageTimeline.controller.js';
 
 async function billingApproved(project, stage, service) {
   if (!stage) return false;
-  const rows = await StageStatus.find({ project, stage, ...(service ? { service } : {}) }).lean();
-  return rows.length > 0 && rows.every(s => s.confirmationStatus === 'TD Approved');
+  const all = await StageStatus.find({ project, stage }).lean();
+  const rows = service ? all.filter(row => sameService(row.service, service)) : all;
+  return rows.length > 0 && rows.every(s => s.confirmationStatus === 'TD Approved' && (!s.timelineManaged || s.approvalSequenceVerified));
 }
 
 export async function updateClaim(req, res, next) {

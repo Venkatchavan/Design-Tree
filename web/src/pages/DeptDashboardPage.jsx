@@ -1,3 +1,4 @@
+import { CoordinationPanel } from '../components/ProjectUpdates.jsx';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { reportsApi } from '../lib/phase4aApi.js';
@@ -62,6 +63,7 @@ export default function DeptDashboardPage({ bootstrap, user, viewKey }) {
 
   return (
     <div id={`view-dept-${service.toLowerCase()}`}>
+      <CoordinationPanel service={service}/>
       <div className="page-head">
         <div className="page-title">{service} Department Dashboard</div>
         <div className="page-sub">

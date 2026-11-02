@@ -114,29 +114,17 @@ export async function importProjects(req, res, next) {
       }
       docs.push({
         ...parsed.data,
+        origin: 'admin_billing', createdBy: req.user.id,
         code: String(parsed.data.code).toUpperCase(),
         _importRow: i + 2,
       });
     }
     let created = 0;
-    if (docs.length > 0) {
-      try {
-        const inserted = await Project.insertMany(
-          docs.map(({ _importRow, ...d }) => d),
-          { ordered: false },
-        );
-        created = inserted.length;
-      } catch (err) {
-        created = err?.result?.nInserted ?? 0;
-        for (const e of err?.writeErrors ?? []) {
-          errors.push({
-            row: docs[e.index]?._importRow ?? '?',
-            reason: e.errmsg?.includes('duplicate')
-              ? 'Duplicate project code.'
-              : 'Could not import row.',
-          });
-        }
-      }
+    // Save rows independently so successful partial imports retain their
+    // actor/history even when a later row has a duplicate identifier.
+    for (const { _importRow, ...doc } of docs) {
+      try { await Project.create(doc); created++; }
+      catch (err) { errors.push({row:_importRow,reason:err?.code===11000?'Duplicate project code.':'Could not import row.'}); }
     }
     return res.status(200).json({ created, errors });
   } catch (err) {

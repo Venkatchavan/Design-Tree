@@ -1,3 +1,4 @@
+import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const CERT_STATUSES = ['Issued', 'Requested', 'Uploaded', 'Pending'];
@@ -62,10 +63,10 @@ const certRequestSchema = new mongoose.Schema(
 
 export const Certificate =
   mongoose.models.Certificate ??
-  mongoose.model('Certificate', certificateSchema);
+  mongoose.model('Certificate', auditProjectSchema(certificateSchema));
 export const CertTemplate =
   mongoose.models.CertTemplate ??
-  mongoose.model('CertTemplate', templateSchema);
+  mongoose.model('CertTemplate', auditProjectSchema(templateSchema));
 export const CertRequest =
   mongoose.models.CertRequest ??
-  mongoose.model('CertRequest', certRequestSchema);
+  mongoose.model('CertRequest', auditProjectSchema(certRequestSchema));

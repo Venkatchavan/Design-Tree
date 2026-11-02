@@ -1,7 +1,18 @@
 export const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
+async function fetchApi(path, options) {
+  try {
+    return await fetch(`${API_BASE}${path}`, options);
+  } catch (cause) {
+    if (!(cause instanceof TypeError)) throw cause;
+    const error = new Error('Cannot connect to DesignTree. Check your connection and try again. If this continues, contact your administrator.', { cause });
+    error.code = 'NETWORK_ERROR';
+    throw error;
+  }
+}
+
 export async function request(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchApi(path, {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     ...options,
@@ -48,10 +59,23 @@ export function toQuery(params = {}) {
   return s ? `?${s}` : '';
 }
 
+export async function directoryList(path, params) {
+  if (params.page != null || params.limit != null) return request(`${path}${toQuery(params)}`);
+  let data = await request(`${path}${toQuery({ ...params, page: 1, limit: 200 })}`);
+  const records = new Map(data.items.map(item => [String(item.id ?? item._id), item]));
+  for (let page = 2; data.hasMore; page++) {
+    data = await request(`${path}${toQuery({ ...params, page, limit: 200 })}`);
+    const before = records.size;
+    for (const item of data.items) records.set(String(item.id ?? item._id), item);
+    if (data.hasMore && records.size === before) throw new Error('The directory changed while loading. Please refresh and try again.');
+  }
+  return { ...data, items: [...records.values()], page: 1, hasMore: false };
+}
+
 export async function requestMultipart(path, file, field = 'file') {
   const form = new FormData();
   form.append(field, file);
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchApi(path, {
     credentials: 'include',
     method: 'POST',
     body: form,
@@ -77,6 +101,10 @@ export const attendanceApi = {
 };
 
 export const projectsApi = {
+  directory: (params = {}) => directoryList('/api/projects', params),
+  reconcileTeam: (id) => request(`/api/projects/${id}/reconcile-team`, { method: 'POST' }),
+  summary: (params = {}) => request(`/api/projects/status-summary${toQuery(params)}`),
+  updateHold: (id, body) => request(`/api/projects/${id}/hold`, { method: 'PUT', body: JSON.stringify(body) }),
   list: (params = {}) => request(`/api/projects${toQuery(params)}`),
   stats: () => request('/api/projects/stats'),
   filters: () => request('/api/projects/filters'),
@@ -129,8 +157,26 @@ export const metaApi = {
   geocode: (q) => request(`/api/meta/geocode${toQuery({ q })}`),
 };
 
+// Read-only Salesforce lookup for Admin/Billing. The server holds the
+// credentials; the browser only sends the search term.
+export const salesforceApi = {
+  status: () => request('/api/integrations/salesforce/status'),
+  search: ({ q, includeProposals = false, limit } = {}) =>
+    request(
+      `/api/integrations/salesforce/projects${toQuery({
+        q,
+        includeProposals: includeProposals ? '1' : '',
+        limit,
+      })}`,
+    ),
+  get: (id) =>
+    request(`/api/integrations/salesforce/projects/${encodeURIComponent(id)}`),
+};
+
 export const employeesApi = {
-  list: (params = {}) => request(`/api/employees${toQuery(params)}`),
+  spocOptions: () => request('/api/employees/spoc-options'),
+  allocationOptions: () => request('/api/employees/allocation-options'),
+  list: (params = {}) => directoryList('/api/employees', params),
   filters: () => request('/api/employees/filters'),
   get: (id) => request(`/api/employees/${id}`),
   create: (body) =>
@@ -143,7 +189,7 @@ export const employeesApi = {
 };
 
 export const usersApi = {
-  list: (params = {}) => request(`/api/users${toQuery(params)}`),
+  list: (params = {}) => directoryList('/api/users', params),
   create: (body) =>
     request('/api/users', { method: 'POST', body: JSON.stringify(body) }),
   // External portal identity (client / architect) — never linked to employees.
@@ -169,6 +215,7 @@ export const branchesApi = {
 };
 
 export const teamsApi = {
+  directory: (company = false, branch = '') => request(`/api/teams/${company ? 'company' : 'reporting'}-directory${toQuery({ branch })}`),
   list: () => request('/api/teams'),
   get: (id) => request(`/api/teams/${id}`),
   create: (body) =>

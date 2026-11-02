@@ -1,29 +1,20 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Check, ScanLine } from 'lucide-react';
+import { ArrowRight, CircleAlert, Lock, Mail } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { loginApi } from '../lib/api.js';
 import { attendanceApi } from '../lib/api.js';
 import Modal from '../components/Modal.jsx';
 import BrandLogo from '../components/BrandLogo.jsx';
 import LoginScene from './LoginScene.jsx';
-
-const SIDE_POINTS = [
-  'Role-based access, from Founding Director to site QA/QC',
-  'One workspace for design, coordination and delivery',
-  'Live status across every project and discipline',
-];
-
-const DISCIPLINES = [
-  { code: 'ST', name: 'Structural', value: 72, status: 'On track', tone: 'structural' },
-  { code: 'ME', name: 'MEP', value: 58, status: 'Coordinating', tone: 'mep' },
-  { code: 'QA', name: 'QA/QC', value: 34, status: 'Inspecting', tone: 'qaqc' },
-];
+import LoginEye from './LoginEye.jsx';
 
 export default function LoginPage() {
   const queryClient = useQueryClient();
   const sideRef = useRef(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsOn, setCapsOn] = useState(false);
   // Late sign-in (after 9:45 IST): reason prompt before entering the app.
   const [lateOpen, setLateOpen] = useState(false);
   const [lateReason, setLateReason] = useState('');
@@ -82,6 +73,13 @@ export default function LoginPage() {
 
   const errorMsg = login.isError ? login.error.message : '';
 
+  // Browsers expose Caps Lock state on key events (not on focus), so we read it here.
+  function trackCaps(e) {
+    if (typeof e.getModifierState === 'function') {
+      setCapsOn(e.getModifierState('CapsLock'));
+    }
+  }
+
   function handleSubmit(e) {
     e.preventDefault();
     if (login.isPending) return;
@@ -93,54 +91,82 @@ export default function LoginPage() {
       <main className="login-wrap">
         <section className="login-main" aria-labelledby="login-title">
           <div className="login-form-panel">
-            <div className="login-form-kicker">
-              <ScanLine size={15} strokeWidth={1.8} aria-hidden="true" />
-              DesignTree workspace
-            </div>
             <h1 className="login-title" id="login-title">Welcome back</h1>
-            <p className="login-sub">
-              Sign in with your work account to continue.
-            </p>
-            {login.isError && (
-              <div
-                className="login-error"
-                id="login-error"
-                role="alert"
-                style={{ display: 'block' }}
-              >
-                {errorMsg}
+            {login.isError ? (
+              <div className="login-error" id="login-error" role="alert" style={{ display: 'flex' }}>
+                <CircleAlert size={16} strokeWidth={1.9} aria-hidden="true" />
+                <span>{errorMsg}</span>
               </div>
+            ) : (
+              <p className="login-sub">Sign in with your work account to continue.</p>
             )}
             <form onSubmit={handleSubmit}>
               <div className="login-form-row">
-                <label className="form-label" htmlFor="loginEmail">
-                  Work email
-                </label>
-                <input
-                  className="form-input"
-                  type="email"
-                  id="loginEmail"
-                  placeholder="you@designtreeconsultants.com"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+                <div className="login-field">
+                  <Mail className="login-field-icon" size={16} strokeWidth={1.8} aria-hidden="true" />
+                  <input
+                    className="form-input"
+                    type="email"
+                    id="loginEmail"
+                    placeholder=" "
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    autoFocus
+                    required
+                    value={email}
+                    aria-invalid={login.isError || undefined}
+                    aria-describedby={login.isError ? 'login-error' : undefined}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (login.isError) login.reset();
+                    }}
+                  />
+                  {/* floating label: sits inside the field, moves onto the border on focus / when filled */}
+                  <label className="login-float-label" htmlFor="loginEmail">Work email</label>
+                </div>
               </div>
               <div className="login-form-row">
-                <label className="form-label" htmlFor="loginPassword">
-                  Password
-                </label>
-                <input
-                  className="form-input"
-                  type="password"
-                  id="loginPassword"
-                  placeholder="Password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+                <div className="login-field">
+                  <Lock className="login-field-icon" size={16} strokeWidth={1.8} aria-hidden="true" />
+                  <input
+                    className="form-input has-toggle"
+                    type={showPassword ? 'text' : 'password'}
+                    id="loginPassword"
+                    placeholder=" "
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    aria-invalid={login.isError || undefined}
+                    aria-describedby={
+                      [login.isError && 'login-error', capsOn && 'login-caps']
+                        .filter(Boolean)
+                        .join(' ') || undefined
+                    }
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (login.isError) login.reset();
+                    }}
+                    onKeyDown={trackCaps}
+                    onKeyUp={trackCaps}
+                    onBlur={() => setCapsOn(false)}
+                  />
+                  <label className="login-float-label" htmlFor="loginPassword">Password</label>
+                  <button
+                    type="button"
+                    className="login-reveal"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                  >
+                    <LoginEye open={showPassword} />
+                  </button>
+                </div>
+                {capsOn && (
+                  <p className="login-caps" id="login-caps" role="status">
+                    Caps Lock is on.
+                  </p>
+                )}
               </div>
               <div className="login-button-frame">
                 <button
@@ -164,6 +190,13 @@ export default function LoginPage() {
                 </button>
               </div>
             </form>
+            <p className="login-help">
+              Forgot your password? Ask HR or your administrator to reset it.
+            </p>
+            <p className="login-help login-help--note">
+              Sign-ins are recorded for attendance. A sign-in after 9:45 needs
+              a reason.
+            </p>
           </div>
         </section>
 
@@ -174,71 +207,18 @@ export default function LoginPage() {
           aria-label="About DesignTree"
         >
           <div className="login-cursor-glow" aria-hidden="true" />
-
           <div className="login-brand">
             <BrandLogo className="login-logo" />
           </div>
 
           <div className="login-side-intro">
-            <span className="login-side-kicker">
-              <i aria-hidden="true" />
-              Project delivery, in sync
-            </span>
-            <h2>
-              From design desk
-              <br />
-              <span>to site floor.</span>
-            </h2>
-            <p className="login-tagline">
-              Structural, MEP and design teams—coordinating delivery and QA/QC
-              in one workspace.
-            </p>
+            <h2>DT-MIS</h2>
           </div>
 
           <div className="login-scene">
-            <div className="login-scene-head" aria-hidden="true">
-              <span>One project · Every discipline</span>
-              <span>01 — 03</span>
-            </div>
             <LoginScene />
-            <div className="login-readout" role="group" aria-label="Illustrative project snapshot">
-              {DISCIPLINES.map((d) => (
-                <div className={`login-readout-cell tone-${d.tone}`} key={d.code}>
-                  <div className="login-readout-top">
-                    <span className="login-readout-code">{d.code}</span>
-                    <span className="login-readout-status">
-                      <i aria-hidden="true" />
-                      {d.status}
-                    </span>
-                  </div>
-                  <div className="login-readout-value">
-                    {d.value}
-                    <span>%</span>
-                  </div>
-                  <div
-                    className="login-readout-track"
-                    role="img"
-                    aria-label={`${d.name} progress: ${d.value} percent (illustrative)`}
-                  >
-                    <span style={{ '--w': `${d.value}%` }} />
-                  </div>
-                  <div className="login-readout-name">{d.name}</div>
-                </div>
-              ))}
-            </div>
-            <span className="login-note">Illustrative project preview</span>
           </div>
 
-          <div className="login-side-list">
-            {SIDE_POINTS.map((point) => (
-              <div className="login-side-item" key={point}>
-                <span className="login-side-check" aria-hidden="true">
-                  <Check size={11} strokeWidth={2.4} />
-                </span>
-                <span>{point}</span>
-              </div>
-            ))}
-          </div>
           <div className="login-side-foot">
             <span>DesignTree Service Consultants Pvt. Ltd.</span>
           </div>
