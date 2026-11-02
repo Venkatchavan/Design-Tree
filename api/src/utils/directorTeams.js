@@ -22,6 +22,13 @@ export function employeeOwnership(user, employees, users) {
   const resolve = key => {const matches=aliases.get(normalized(key));return matches?.size===1?[...matches][0]:null;};
   const me=users.find(u=>id(u)===id(user.id));const own=id(me?.employee);
   const reporting = new Set(active.has(own) ? [own] : []);
+  // Saved team-visibility grants: a TL may also see a head's whole team, and a
+  // department head sees every active employee in the listed departments.
+  const self=employees.find(e=>id(e)===own);
+  const viewOf=self?.teamViewOf?resolve(self.teamViewOf):null;
+  if (viewOf && active.has(viewOf)) reporting.add(viewOf);
+  const headOf=new Set((self?.headOfDepartments??[]).map(normalized).filter(Boolean));
+  if (headOf.size) for (const e of employees) if (headOf.has(normalized(e.department)) && e.status!=='Exited') reporting.add(id(e));
   let changed=true;
   while(changed){changed=false;for(const e of employees){
     if (reporting.has(id(e))) continue;
@@ -35,7 +42,7 @@ export function employeeOwnership(user, employees, users) {
 export async function directorTeams(user) {
   if (!isTeamDirector(user)) return null;
   const [employees, users, teams, dashboards] = await Promise.all([
-    Employee.find({ status: { $ne: 'Exited' } }).select('firstName middleName lastName empId email director reportingManager designation department').lean(),
+    Employee.find({ status: { $ne: 'Exited' } }).select('firstName middleName lastName empId email director reportingManager teamViewOf headOfDepartments designation department status').lean(),
     User.find({}).select('name email employee').lean(),
     Team.find({ active: { $ne: false } }).sort({ name: 1 })
       .populate('projects', 'name jobNumber code branch currentStage status services hold')

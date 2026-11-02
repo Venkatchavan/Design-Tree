@@ -9,7 +9,9 @@ const id=value=>String(value?._id??value?.id??value??'');
 const name=e=>[e.firstName,e.middleName,e.lastName].filter(Boolean).join(' ')||e.empId||'Not recorded';
 const projectLabel=p=>`${p.jobNumber||'Job number not recorded'} · ${p.name}`;
 
-export default function DirectorTeamsPage({company=false}) {
+// embedded: shown inside another My Team page; renders only when the caller
+// has people in their saved reporting chain.
+export default function DirectorTeamsPage({company=false,embedded=false}) {
  const [service,setService]=useState(''),[project,setProject]=useState(''),[member,setMember]=useState(''),[branch,setBranch]=useState('');
  const [projectSearch,setProjectSearch]=useState(''),[memberSearch,setMemberSearch]=useState('');
  const q=useQuery({queryKey:['director-directory',company,branch],queryFn:()=>teamsApi.directory(company,branch),refetchInterval:10000});
@@ -23,8 +25,9 @@ export default function DirectorTeamsPage({company=false}) {
  const employeeProjects=e=>projects.filter(p=>assignments.some(a=>a.employee===id(e)&&a.project===id(p)&&(!service||a.service===service)));
  function resetMembers(){setMember('');setMemberSearch('');}
  function chooseService(value){setService(value);setProject('');setProjectSearch('');resetMembers();}
+ if (embedded && (q.isLoading || q.isError || !employees.length)) return null;
  return <>
-  <div className="page-head"><div className="page-title">{company?'Teams':'My Team'}</div><div className="page-sub">{company?'Company services, projects and employees by branch':'People in your saved director, reporting and team assignments'}</div></div>
+  {!embedded&&<div className="page-head"><div className="page-title">{company?'Teams':'My Team'}</div><div className="page-sub">{company?'Company services, projects and employees by branch':'People in your saved director, reporting and team assignments'}</div></div>}
   {q.isError?<div role="alert">{q.error.message} <button type="button" onClick={()=>q.refetch()}>Retry directory</button></div>:q.isLoading?<EmptyState text="Loading directory…"/>:<>
    <Panel title={company?'Find company teams':'Find your team'}><div className="field-grid">
     {company&&<div className="form-row"><label className="form-label" htmlFor="director-branch">Branch</label><select id="director-branch" className="filter-select" value={branch} onChange={e=>{setBranch(e.target.value);setService('');setProject('');setProjectSearch('');resetMembers();}}><option value="">All branches</option>{(data.branches??[]).map(b=><option key={b}>{b}</option>)}</select></div>}

@@ -290,7 +290,9 @@ export default function MyTeamPage(props) {
   if (props.bootstrap?.capabilities?.designTeam) return <DesignTeamPage />;
   const role=props.bootstrap?.role?.key;
   if (['associate_director','technical_director'].includes(role)) return <DirectorTeamsPage/>;
-  return <WorkingTeamPage {...props}/>;
+  // TLs, ATDs, the ED and department heads also get their saved reporting team
+  // (only rendered when that chain has people).
+  return <><WorkingTeamPage {...props}/>{!props.projectId && !props.projectWorkspace && <DirectorTeamsPage embedded/>}</>;
 }
 
 function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace = false }) {

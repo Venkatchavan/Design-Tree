@@ -175,6 +175,7 @@ export const salesforceApi = {
 
 export const employeesApi = {
   spocOptions: () => request('/api/employees/spoc-options'),
+  allocationOptions: () => request('/api/employees/allocation-options'),
   list: (params = {}) => directoryList('/api/employees', params),
   filters: () => request('/api/employees/filters'),
   get: (id) => request(`/api/employees/${id}`),

@@ -4,6 +4,12 @@ import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
 import { directoryPage } from '../utils/directoryPage.js';
 import { eligibleSpocs } from '../utils/spocOptions.js';
+import { allocationOptions } from '../utils/allocationOptions.js';
+
+export async function listAllocationOptions(_req, res, next) {
+  try { return res.status(200).json(await allocationOptions()); }
+  catch (error) { return next(error); }
+}
 
 export async function listSpocOptions(_req, res, next) {
   try { return res.status(200).json(await eligibleSpocs()); }

@@ -66,7 +66,11 @@ async function syncProjectLeadTeams(project) {
   for (const [service, rows] of groups) {
     const ids = [...new Set(rows.map((row) => String(row.employee)))];
     const leads = await User.find({ employee: { $in: ids }, role: 'team_lead' }).select('employee').lean();
-    const lead = leads[0]?.employee;
+    const leadIds = new Set(leads.map((u) => String(u.employee)));
+    // Deterministic lead: the row the SPOC marked as team lead, else the first
+    // team_lead login in saved row order (not database order).
+    const ordered = [...rows.filter((row) => /^team lead$/i.test(String(row.role ?? '').trim())), ...rows];
+    const lead = ordered.map((row) => String(row.employee)).find((id) => leadIds.has(id));
     await Team.findOneAndUpdate(
       { allocationProject: project._id, allocationService: service },
       {

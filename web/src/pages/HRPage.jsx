@@ -1,4 +1,5 @@
 import EmployeeSelect from '../components/EmployeeSelect.jsx';
+import { serviceNames } from '../lib/services.js';
 import TravelBookingLog from './TravelBookingLog.jsx';
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1909,11 +1910,9 @@ function HrSupportTab() {
 }
 
 const CAPACITY_SERVICES = ['Structural', 'Electrical', 'Mechanical', 'Plumbing', 'Fire', 'QS'];
-const deptKey = (d) => {
-  const k = String(d ?? '').trim().toLowerCase();
-  if (k === 'phe' || k === 'plumbing') return 'plumbing';
-  return String(d ?? '').trim() || '—';
-};
+// Department labels (Structure, PHE, HVAC, F&LS) resolve to the same service
+// keys as the capacity list (Structural, Plumbing, Mechanical, Fire).
+const deptKey = (d) => (serviceNames([d])[0] ?? '').toLowerCase() || '—';
 const capacityTone = (c) => (c === 'Overloaded' ? 'rust' : c === 'Busy' ? 'amber' : 'forest');
 
 function HrReportsTab() {

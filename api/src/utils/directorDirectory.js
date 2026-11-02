@@ -9,7 +9,7 @@ const publicEmployee = e => Object.fromEntries(['_id','firstName','middleName','
 
 export async function directorDirectory(user, company, branch = '') {
   const employees = await Employee.find(company ? {} : {status:{$ne:'Exited'}})
-    .select('firstName middleName lastName empId designation department branch status director reportingManager email').sort({firstName:1,_id:1}).lean();
+    .select('firstName middleName lastName empId designation department branch status director reportingManager teamViewOf headOfDepartments email').sort({firstName:1,_id:1}).lean();
   let people=employees, teams, projects;
   if (company) {
     [teams,projects]=await Promise.all([
