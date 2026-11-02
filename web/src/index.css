@@ -7915,6 +7915,102 @@ input[type="file"]:disabled::file-selector-button {
     outline: 2px solid #3a6ff0;
     outline-offset: 0;
 }
+/* ---------- Playful eye (pages/LoginEye.jsx) ---------- */
+.login-screen .login-reveal:active .login-eye {
+    transform: scale(0.86);
+}
+.login-eye {
+    overflow: visible;
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.login-screen .login-reveal:hover .login-eye {
+    transform: scale(1.12) rotate(-4deg);
+}
+.login-eye :is(path, circle) {
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.login-eye .login-eye-shape,
+.login-eye .login-eye-lash {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+}
+.login-eye .login-eye-iris {
+    fill: #3a6ff0;
+    stroke: none;
+}
+.login-eye .login-eye-pupil {
+    fill: #0b1633;
+}
+.login-eye .login-eye-glint {
+    fill: #fff;
+}
+.login-eye .login-eye-open,
+.login-eye .login-eye-closed {
+    transform-box: view-box;
+    transform-origin: 12px 12px;
+    transition:
+        opacity 0.22s ease,
+        transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.login-eye.is-closed .login-eye-open {
+    opacity: 0;
+    transform: scaleY(0.1);
+}
+.login-eye.is-open .login-eye-closed {
+    opacity: 0;
+    transform: translateY(-2px) scaleY(0.4);
+}
+/* open: blink now and then, and look toward the pointer */
+.login-eye.is-open .login-eye-open {
+    animation: login-eye-blink 4.2s ease-in-out 0.6s infinite;
+}
+.login-eye .login-eye-look {
+    transform: translate(var(--lx, 0px), var(--ly, 0px));
+    transition: transform 0.14s ease-out;
+}
+/* closed: a slow sleepy sway of the lashes */
+.login-eye.is-closed .login-eye-lash {
+    transform-box: view-box;
+    transform-origin: 12px 14px;
+    animation: login-eye-doze 3.4s ease-in-out infinite;
+}
+.login-screen .login-reveal:hover .login-eye.is-closed .login-eye-lash {
+    animation-duration: 0.9s;
+}
+.login-screen .login-reveal[aria-pressed="true"] {
+    color: #3a6ff0;
+}
+@keyframes login-eye-blink {
+    0%, 92%, 100% {
+        transform: scaleY(1);
+    }
+    95% {
+        transform: scaleY(0.1);
+    }
+}
+@keyframes login-eye-doze {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(0.6px);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .login-eye,
+    .login-eye .login-eye-open,
+    .login-eye .login-eye-closed,
+    .login-eye .login-eye-look {
+        transition: none;
+    }
+    .login-eye.is-open .login-eye-open,
+    .login-eye.is-closed .login-eye-lash {
+        animation: none;
+    }
+}
+
 .login-screen .login-caps {
     margin: 7px 0 0;
     color: var(--rust-dark);
@@ -7934,6 +8030,58 @@ input[type="file"]:disabled::file-selector-button {
     color: var(--ink-muted);
     font-size: 12px;
 }
+/* Floating labels (Google style): the label rests inside the field like a
+   placeholder and moves up onto the border on focus or once there is a value. */
+.login-screen .login-form-row {
+    margin-bottom: 20px;
+}
+.login-screen .login-float-label {
+    position: absolute;
+    left: 43px;
+    top: 50%;
+    z-index: 1;
+    max-width: calc(100% - 90px);
+    padding: 0 5px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    border-radius: 4px;
+    background: transparent;
+    color: #677085;
+    font-size: 14.5px;
+    font-weight: 400;
+    line-height: 1;
+    pointer-events: none;
+    transform: translateY(-50%);
+    transform-origin: left center;
+    transition:
+        top 0.18s cubic-bezier(0.2, 0, 0, 1),
+        left 0.18s cubic-bezier(0.2, 0, 0, 1),
+        font-size 0.18s cubic-bezier(0.2, 0, 0, 1),
+        color 0.18s ease,
+        background-color 0.18s ease;
+}
+.login-screen .login-field .form-input:focus ~ .login-float-label,
+.login-screen .login-field .form-input:not(:placeholder-shown) ~ .login-float-label,
+.login-screen .login-field .form-input:autofill ~ .login-float-label,
+.login-screen .login-field .form-input:-webkit-autofill ~ .login-float-label {
+    top: 0;
+    left: 11px;
+    /* only the lower half is filled: it hides the border line, the page shows above */
+    background: linear-gradient(to bottom, transparent 42%, #fff 42%);
+    font-size: 12px;
+    font-weight: 500;
+}
+.login-screen .login-field .form-input:focus ~ .login-float-label {
+    color: #3a6ff0;
+}
+.login-screen .login-field .form-input[aria-invalid="true"] ~ .login-float-label {
+    color: var(--rust-dark);
+}
+.login-screen .login-field .form-input::placeholder {
+    color: transparent;
+}
+
 /* placeholders a little darker than the app default, for readable hints */
 .login-screen .login-form-row .form-input::placeholder {
     color: #677085;

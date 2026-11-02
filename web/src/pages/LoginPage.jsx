@@ -1,11 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CircleAlert, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { ArrowRight, CircleAlert, Lock, Mail } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { loginApi } from '../lib/api.js';
 import { attendanceApi } from '../lib/api.js';
 import Modal from '../components/Modal.jsx';
 import BrandLogo from '../components/BrandLogo.jsx';
 import LoginScene from './LoginScene.jsx';
+import LoginEye from './LoginEye.jsx';
 
 export default function LoginPage() {
   const queryClient = useQueryClient();
@@ -101,16 +102,13 @@ export default function LoginPage() {
             )}
             <form onSubmit={handleSubmit}>
               <div className="login-form-row">
-                <label className="form-label" htmlFor="loginEmail">
-                  Work email
-                </label>
                 <div className="login-field">
                   <Mail className="login-field-icon" size={16} strokeWidth={1.8} aria-hidden="true" />
                   <input
                     className="form-input"
                     type="email"
                     id="loginEmail"
-                    placeholder="you@designtreeconsultants.com"
+                    placeholder=" "
                     autoComplete="username"
                     autoCapitalize="none"
                     spellCheck={false}
@@ -124,19 +122,18 @@ export default function LoginPage() {
                       if (login.isError) login.reset();
                     }}
                   />
+                  {/* floating label: sits inside the field, moves onto the border on focus / when filled */}
+                  <label className="login-float-label" htmlFor="loginEmail">Work email</label>
                 </div>
               </div>
               <div className="login-form-row">
-                <label className="form-label" htmlFor="loginPassword">
-                  Password
-                </label>
                 <div className="login-field">
                   <Lock className="login-field-icon" size={16} strokeWidth={1.8} aria-hidden="true" />
                   <input
                     className="form-input has-toggle"
                     type={showPassword ? 'text' : 'password'}
                     id="loginPassword"
-                    placeholder="Enter your password"
+                    placeholder=" "
                     autoComplete="current-password"
                     required
                     value={password}
@@ -154,6 +151,7 @@ export default function LoginPage() {
                     onKeyUp={trackCaps}
                     onBlur={() => setCapsOn(false)}
                   />
+                  <label className="login-float-label" htmlFor="loginPassword">Password</label>
                   <button
                     type="button"
                     className="login-reveal"
@@ -161,11 +159,7 @@ export default function LoginPage() {
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                     aria-pressed={showPassword}
                   >
-                    {showPassword ? (
-                      <EyeOff size={17} strokeWidth={1.8} aria-hidden="true" />
-                    ) : (
-                      <Eye size={17} strokeWidth={1.8} aria-hidden="true" />
-                    )}
+                    <LoginEye open={showPassword} />
                   </button>
                 </div>
                 {capsOn && (
