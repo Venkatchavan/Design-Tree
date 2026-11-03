@@ -12,6 +12,7 @@ import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import KpiCard from '../components/KpiCard.jsx';
+import { departmentLabel } from '../lib/services.js';
 
 function toneFor(status) {
   const s = String(status ?? '').toLowerCase().replace(/[\s_]+/g, '');
@@ -36,8 +37,8 @@ function empKey(e) {
 }
 function deptOf(e) {
   const emp = e?.employee;
-  if (emp && typeof emp === 'object') return emp.department ?? emp.service ?? '—';
-  return e?.department ?? '—';
+  if (emp && typeof emp === 'object') return departmentLabel(emp.department ?? emp.service) ?? '—';
+  return departmentLabel(e?.department) ?? '—';
 }
 function projLabel(p) {
   if (!p) return '—';

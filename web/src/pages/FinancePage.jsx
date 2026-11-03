@@ -7,6 +7,7 @@ import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
+import { departmentLabel } from '../lib/services.js';
 
 const SUBTABS = [
   { key: 'travel', label: 'Travel expenses' },
@@ -151,7 +152,7 @@ export default function FinancePage({ bootstrap }) {
             <DataTable
               columns={[
                 { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
-                { key: 'department', label: 'Department', render: (r) => r.employee?.department ?? '—' },
+                { key: 'department', label: 'Department', render: (r) => departmentLabel(r.employee?.department) ?? '—' },
                 { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
                 { key: 'dates', label: 'Dates', render: (r) => {
                   const dep = fmtDateShort(r.departureDate);

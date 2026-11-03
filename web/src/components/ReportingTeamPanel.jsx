@@ -1,6 +1,7 @@
 import Panel from './Panel.jsx';
 import DataTable from './DataTable.jsx';
 import EmptyState from './EmptyState.jsx';
+import { departmentLabel } from '../lib/services.js';
 
 const idOf = (v) => String(v?._id ?? v?.id ?? v ?? '');
 const norm = (v) => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -32,7 +33,7 @@ export default function ReportingTeamPanel({ query, self = null }) {
   const columns = [
     { key: 'name', label: 'Team member', render: fullName },
     { key: 'designation', label: 'Designation', render: (e) => e.designation || 'Not recorded' },
-    { key: 'department', label: 'Department', render: (e) => e.department || 'Not recorded' },
+    { key: 'department', label: 'Department', render: (e) => departmentLabel(e.department) || 'Not recorded' },
     { key: 'experience', label: 'Experience', render: experienceText },
     { key: 'branch', label: 'Branch', render: (e) => e.branch || 'Not recorded' },
   ];

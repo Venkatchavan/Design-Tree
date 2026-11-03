@@ -40,7 +40,7 @@ router.get('/bootstrap', requireAuth, async (req, res, next) => {
     home: homeView(role),
     nav: navFor(role, { traveller }),
     capabilities: {
-      designTeam: designAccess.head,
+      designTeam: designAccess.designTeam,
       stageTimeline: canAccess(role, 'stage-timeline'),
       travel: travelManager
         ? (TRAVEL_WRITER_ROLES.includes(role) ? 'manage' : 'read')

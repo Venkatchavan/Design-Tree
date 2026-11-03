@@ -64,6 +64,12 @@ test('a merely proposed SPOC and completed projects cannot use the hold action',
  await f.models.Project.findByIdAndUpdate(f.project,{$set:{status:'Active'}});
 });
 
+test('the current project SPOC can hold a project without an approved allocation row',async()=>{
+ const p=await f.models.Project.create({name:'Activation SPOC',code:'ST-ACT-SPOC',status:'Active',activation:{spoc:f.cast.spoc.employee}});
+ const r=await call('spoc',`/api/projects/${p._id}/hold`,'PUT',{status:'On Hold',reason:'Client suggested to hold'});
+ assert.equal(r.status,200);assert.equal(r.data.project.status,'On Hold');
+});
+
 test('audit records continue to record edits and hold reasons after UI history removal',async()=>{
  const history=await call('admin',`/api/projects/${f.project}/history`);
  assert.equal(history.status,200);

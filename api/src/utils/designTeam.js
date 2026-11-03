@@ -18,10 +18,15 @@ export async function designTeamAccess(user) {
   const me = await User.findById(user.id).select('role employee name isActive').populate('employee', 'department designation status').lean();
   const role = me?.role;
   const label = `${me?.employee?.department ?? ''} ${me?.employee?.designation ?? ''}`;
-  const head = ['design_mgmt_head', 'founding_director', 'working_director'].includes(role) || role === 'technical_director' && /design\s*(management|mgmt)/i.test(label);
+  // The Design Management team itself: its head, or a TD saved under Design Management.
+  const designTeam = role === 'design_mgmt_head' || role === 'technical_director' && /design\s*(management|mgmt)/i.test(label);
+  const head = designTeam || ['founding_director', 'working_director'].includes(role);
   return {
     me,
     head: !!(me?.isActive && head),
+    // 03 Nov 2026: My Team opens the SPOC dashboard only for the Design
+    // Management team. Directors keep their own reporting-team My Team.
+    designTeam: !!(me?.isActive && designTeam),
     canRead: !!(me?.isActive && (head || role === 'coordinator'))
   };
 }

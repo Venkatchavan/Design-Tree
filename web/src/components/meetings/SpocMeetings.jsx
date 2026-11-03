@@ -1,5 +1,5 @@
 import EmployeeSelect from '../EmployeeSelect.jsx';
-import { serviceNames, committedServiceNames } from '../../lib/services.js';
+import { serviceNames, committedServiceNames, departmentLabel } from '../../lib/services.js';
 import { useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -855,7 +855,7 @@ function AvailabilitySection({ meeting }) {
                 : v.response === 'Not Available' ? <StatusPill tone="rust">Not available</StatusPill>
                 : <StatusPill tone="neutral">Awaiting response</StatusPill>}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{e.designation ?? ''}{e.department ? ` · ${e.department}` : ''}</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{e.designation ?? ''}{e.department ? ` · ${departmentLabel(e.department)}` : ''}</div>
             {v.response === 'Not Available' && v.reason && <div style={{ fontSize: 12.5 }}>Reason: {v.reason}{v.note ? ` — ${v.note}` : ''}</div>}
           </div>
         );

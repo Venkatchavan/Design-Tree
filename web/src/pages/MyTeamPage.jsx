@@ -37,6 +37,7 @@ import EmptyState from '../components/EmptyState.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import ReportingTeamPanel from '../components/ReportingTeamPanel.jsx';
 import { useReportingTeam } from '../lib/reportingTeam.js';
+import { departmentLabel } from '../lib/services.js';
 
 const TL_CHAIN = new Set(['team_lead', 'assoc_technical_director', 'technical_director']);
 const REV_CREATE_ROLES = new Set([
@@ -1036,6 +1037,8 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
   );
 }
 
+// Project stages as per the process manual (same list engineers log against).
+const TASK_STAGES = ['Preliminary concept', 'Concept', 'Schematic', 'Design development', 'Tender', 'GFC'];
 const TL_DELIVERABLE_STATUSES = ['Planned', 'In Progress', 'Submitted', 'Approved', 'Overdue'];
 const TL_STAGES = ['CD', 'SD', 'DD', 'TD', 'GFC'];
 const TL_SERVICES = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS', 'Peer Review'];
@@ -1601,7 +1604,10 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
             </div>
             <div className="form-row">
               <label className="form-label">Stage</label>
-              <input className="form-input" value={stage} onChange={(e) => setStage(e.target.value)} placeholder="Preliminary concept" />
+              <select className="form-input" aria-label="Stage" value={stage} onChange={(e) => setStage(e.target.value)}>
+                <option value="">Select stage</option>
+                {TASK_STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
+              </select>
             </div>
             <div className="form-row">
               <label className="form-label">Due date</label>
@@ -1957,7 +1963,7 @@ function RecruitmentPanel({ rows, canSetStatus, projectId }) {
             <label className="form-label">Department / Team *</label>
             <select className="filter-select" style={{ width: '100%' }} value={department} onChange={(e) => setDepartment(e.target.value)}>
               <option value="">Select department</option>
-              {['Structural', 'Electrical', 'Mechanical', 'Plumbing', 'Fire', 'QS', 'QA/QC', 'BIM', 'GBS', 'Peer Review', 'Coordination', 'Design Management', 'Admin', 'HR', 'Finance', 'Marketing'].map((d) => (
+              {['Structural', 'Electrical', 'Mechanical', 'Plumbing', 'Fire', 'QS', 'QA/QC', 'BIM', 'GBS', 'Peer Review', 'Design Management Coordination', 'Admin', 'HR', 'Finance', 'Marketing'].map((d) => (
                 <option key={d} value={d}>{d}</option>
               ))}
             </select>
@@ -2029,7 +2035,7 @@ function RecruitmentPanel({ rows, canSetStatus, projectId }) {
           columns={[
             { key: 'id', label: 'ID', render: (r) => String(r._id ?? r.id ?? '').slice(-6) || '—' },
             { key: 'position', label: 'Position', render: (r) => r.position ?? '—' },
-            { key: 'department', label: 'Dept.', render: (r) => r.department ?? '—' },
+            { key: 'department', label: 'Dept.', render: (r) => departmentLabel(r.department) ?? '—' },
             { key: 'headcount', label: 'Headcount', render: (r) => r.headcount ?? '—' },
             { key: 'submitted', label: 'Submitted', render: (r) => fmtDate(r.createdAt) },
             {

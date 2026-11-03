@@ -1,5 +1,5 @@
 import EmployeeSelect from '../components/EmployeeSelect.jsx';
-import { serviceNames } from '../lib/services.js';
+import { serviceNames, departmentLabel } from '../lib/services.js';
 import TravelBookingLog from './TravelBookingLog.jsx';
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -241,7 +241,7 @@ function AttendancePanel() {
           columns={[
             { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
             { key: 'branch', label: 'Branch', render: (r) => r.employee?.branch ?? '—' },
-            { key: 'service', label: 'Service', render: (r) => r.employee?.department ?? '—' },
+            { key: 'service', label: 'Service', render: (r) => departmentLabel(r.employee?.department) ?? '—' },
             { key: 'status', label: "Today's status", render: () => <StatusPill status="On leave">On leave</StatusPill> },
           ]}
           rows={onLeave}
@@ -390,7 +390,7 @@ function DirectorOverviewTab() {
             columns={[
               { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
               { key: 'branch', label: 'Branch', render: (r) => r.employee?.branch ?? '—' },
-              { key: 'service', label: 'Service', render: (r) => r.employee?.department ?? '—' },
+              { key: 'service', label: 'Service', render: (r) => departmentLabel(r.employee?.department) ?? '—' },
               { key: 'status', label: "Today's status", render: () => <StatusPill status="On leave">On leave</StatusPill> },
             ]}
             rows={onLeave}
@@ -1112,7 +1112,7 @@ function ManageTab({ bootstrap }) {
                     <Field label="Name" value={empFullName(emp)} />
                     <Field label="Emp ID" value={emp.empId} mono />
                     <Field label="Designation" value={emp.designation} />
-                    <Field label="Department" value={emp.department} />
+                    <Field label="Department" value={departmentLabel(emp.department)} />
                     <Field label="Branch" value={emp.branch} />
                     <Field label="Date of joining" value={emp.dateOfJoining} />
                     <Field label="Email" value={emp.email} />
@@ -1420,7 +1420,7 @@ function TrackTab() {
               <Field label="Designation" value={emp?.designation} />
               <Field
                 label="Branch / service"
-                value={[emp?.branch, emp?.department].filter(Boolean).join(' / ') || null}
+                value={[emp?.branch, departmentLabel(emp?.department)].filter(Boolean).join(' / ') || null}
               />
               <Field label="Reporting manager" value={emp?.reportingManager} />
             </div>
@@ -1803,7 +1803,7 @@ function HrSupportTab() {
           <DataTable
             columns={[
               { key: 'employee', label: 'Employee', render: (r) => empNameOf(r.employee) },
-              { key: 'role', label: 'Role', render: (r) => r.employee?.designation ?? r.employee?.department ?? '—' },
+              { key: 'role', label: 'Role', render: (r) => r.employee?.designation ?? departmentLabel(r.employee?.department) ?? '—' },
               { key: 'month', label: 'Month', render: (r) => r.month ?? '—' },
               { key: 'requested', label: 'Requested on', render: (r) => fmtShort(r.createdAt) },
               { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
@@ -1950,7 +1950,7 @@ function HrReportsTab() {
   const byService = useMemo(() => {
     const m = new Map();
     for (const e of items) {
-      const k = e.department || '—';
+      const k = departmentLabel(e.department) || '—';
       m.set(k, (m.get(k) ?? 0) + 1);
     }
     return [...m.entries()].sort((a, b) => b[1] - a[1]);

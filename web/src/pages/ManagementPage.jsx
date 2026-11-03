@@ -1,7 +1,7 @@
 import { leadershipProjectRows } from '../lib/leadershipProjects.js';
 import TravelBookingLog from './TravelBookingLog.jsx';
 import { workAllocations } from '../lib/workAllocations.js';
-import { serviceNames } from '../lib/services.js';
+import { serviceNames, departmentLabel } from '../lib/services.js';
 import { addHours, hoursText, workReportApi } from '../lib/workReport.js';
 import WorkReportStatus from '../components/work/WorkReportStatus.jsx';
 import { useMemo, useState } from 'react';
@@ -585,7 +585,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
   const hrHoursByDept = useMemo(() => {
     const m = new Map();
     for (const e of hrHoursRows) {
-      const dept = e.employee?.department ?? '—';
+      const dept = departmentLabel(e.employee?.department) || '—';
       const g = m.get(dept) ?? { dept, empIds: new Set(), hours: 0 };
       g.empIds.add(String(e.employee?._id ?? e.employee ?? ''));
       g.hours = addHours(g.hours,e.hours);
@@ -600,7 +600,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
       const emp = typeof e.employee === 'object' && e.employee ? e.employee : {};
       const key = String(emp._id ?? e.employee ?? '');
       const name = [emp.firstName, emp.lastName].filter(Boolean).join(' ') || emp.empId || 'Not recorded';
-      const g = m.get(key) ?? { key, name, empId: emp.empId || '—', designation: emp.designation || '—', dept: emp.department || '—', hours: 0 };
+      const g = m.get(key) ?? { key, name, empId: emp.empId || '—', designation: emp.designation || '—', dept: departmentLabel(emp.department) || '—', hours: 0 };
       g.hours = addHours(g.hours, e.hours);
       m.set(key, g);
     }

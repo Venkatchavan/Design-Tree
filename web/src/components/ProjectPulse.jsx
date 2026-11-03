@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { employeesApi, projectsApi, workEntriesApi } from '../lib/api.js';
 import { billingApi } from '../lib/phase3Api.js';
 import { revisionsApi } from '../lib/workApi.js';
+import { departmentLabel } from '../lib/services.js';
 
 const PULSE_TABS = [
   { key: 'overview', label: 'Overview' },
@@ -380,7 +381,7 @@ export default function ProjectPulse({ filter = '' }) {
     const m = new Map();
     for (const e of entries) {
       const emp = empById.get(idOf(e.employee));
-      const dept = emp?.department ?? 'Unassigned';
+      const dept = departmentLabel(emp?.department) ?? 'Unassigned';
       const h = Number(e.hours ?? 0);
       const c = costOf(e);
       const g = m.get(dept) ?? { dept, hrs: 0, cost: 0, rework: 0, revH: 0 };
@@ -398,7 +399,7 @@ export default function ProjectPulse({ filter = '' }) {
     for (const e of entries) {
       const st = e.stage ?? '—';
       const emp = empById.get(idOf(e.employee));
-      const dept = emp?.department ?? 'Unassigned';
+      const dept = departmentLabel(emp?.department) ?? 'Unassigned';
       const g = stageDept.get(st) ?? new Map();
       g.set(dept, (g.get(dept) ?? 0) + Number(e.hours ?? 0));
       stageDept.set(st, g);
@@ -715,7 +716,7 @@ export default function ProjectPulse({ filter = '' }) {
                       {deptAgg.map((d) => {
                         const key = `dept-${d.dept}`;
                         const open = expanded === key;
-                        const people = empAgg.filter((p) => (p.emp?.department ?? 'Unassigned') === d.dept);
+                        const people = empAgg.filter((p) => (departmentLabel(p.emp?.department) ?? 'Unassigned') === d.dept);
                         return (
                           <Fragment key={key}>
                             <tr className="clickable" aria-expanded={open} onClick={() => toggle(key)}>
@@ -1050,7 +1051,7 @@ export default function ProjectPulse({ filter = '' }) {
                         <tr key={idOf(p.emp?._id ?? p.emp)}>
                           <td><b>{empDisplay(p.emp)}</b></td>
                           <td>{p.emp?.designation ?? '—'}</td>
-                          <td>{p.emp?.department ?? 'Unassigned'}</td>
+                          <td>{departmentLabel(p.emp?.department) ?? 'Unassigned'}</td>
                           <td className="num tabular">{Math.round(p.reg * 10) / 10}</td>
                           <td className="num tabular">{Math.round(p.rev * 10) / 10}</td>
                           <td className="num tabular">{Math.round(p.rew * 10) / 10}</td>

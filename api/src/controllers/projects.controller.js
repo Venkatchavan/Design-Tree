@@ -574,11 +574,17 @@ export async function updateProjectHold(req, res, next) {
   try {
     const parsed = projectHoldSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: 'Choose a status and enter a reason.' });
+    // 03 Nov 2026: the current project SPOC (activation.spoc) may hold the
+    // project even without an approved SpocAllocation row; otherwise an
+    // active approved allocation is required. A merely proposed SPOC may not.
+    if (!/^[a-f0-9]{24}$/i.test(req.params.id)) return res.status(404).json({ message: 'Project not found.' });
     const me = await User.findById(req.user.id).select('employee').lean();
+    const target = me?.employee && await Project.findById(req.params.id).select('activation.spoc').lean();
+    const currentSpoc = target?.activation?.spoc ? String(target.activation.spoc) : '';
     const { SpocAllocation } = await import('../models/SpocAllocation.js');
-    const assigned = me?.employee && await SpocAllocation.exists({
-      project: req.params.id, coordinator: me.employee, status: 'Approved',
-    });
+    const assigned = target && (currentSpoc
+      ? currentSpoc === String(me.employee)
+      : await SpocAllocation.exists({ project: req.params.id, coordinator: me.employee, status: 'Approved', active: { $ne: false } }));
     if (!assigned) return res.status(404).json({ message: 'Project not found.' });
     const previous = await Project.findById(req.params.id).lean();
     if (!previous) return res.status(404).json({ message: 'Project not found.' });

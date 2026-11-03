@@ -8,6 +8,7 @@ import KpiCard from '../components/KpiCard.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import { departmentLabel } from '../lib/services.js';
 const arr = v => Array.isArray(v) ? v : (v?.items ?? []);
 const money = v => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 const REQ_TYPE_LABEL = { LA: 'Local Allowance', Cab: 'Cab booking', Other: 'Other' };
@@ -118,7 +119,7 @@ export default function TravelRequestLog({ canWrite }) {
 
   const columns = [
     { key: 'employee', label: 'Employee', render: (r) => allowanceEmployee(r) },
-    { key: 'department', label: 'Department', render: (r) => r.employee?.department ?? r.employee?.designation ?? '—' },
+    { key: 'department', label: 'Department', render: (r) => departmentLabel(r.employee?.department) ?? r.employee?.designation ?? '—' },
     { key: 'project', label: 'Project', render: (r) => r.project?.name ?? '—' },
     { key: 'type', label: 'Type', render: (r) => REQ_TYPE_LABEL[r.reqType] ?? r.reqType ?? '—' },
     { key: 'date', label: 'Date', render: (r) => fmtShort(r.date) },
@@ -134,7 +135,7 @@ export default function TravelRequestLog({ canWrite }) {
 
   const csvColumns = [
     { label: 'Employee', value: (r) => allowanceEmployee(r) },
-    { label: 'Department', value: (r) => r.employee?.department ?? r.employee?.designation ?? '' },
+    { label: 'Department', value: (r) => departmentLabel(r.employee?.department) ?? r.employee?.designation ?? '' },
     { label: 'Project', value: (r) => r.project?.name ?? '' },
     { label: 'Type', value: (r) => REQ_TYPE_LABEL[r.reqType] ?? r.reqType ?? '' },
     { label: 'Date', value: (r) => fmtShort(r.date) },
