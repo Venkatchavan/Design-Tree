@@ -34,6 +34,7 @@ import salesforceRoutes from './routes/salesforce.routes.js';
 import metaRoutes from './routes/meta.routes.js';
 import projectsRoutes from './routes/projects.routes.js';
 import functionsRoutes from './routes/functions.routes.js';
+import dtPeerReviewRoutes from './routes/dtPeerReview.routes.js';
 import financeOccRoutes from './routes/financeOcc.routes.js';
 import transmittalsRoutes from './routes/transmittals.routes.js';
 import spocRoutes from './routes/spoc.routes.js';
@@ -72,6 +73,7 @@ export function createApp() {
   app.use('/api/teams', teamsRoutes);
   app.use('/api/work', workflowRoutes);
   app.use('/api/functions', functionsRoutes);
+  app.use('/api/dt-peer-review', dtPeerReviewRoutes);
   app.use('/api/spoc', spocRoutes);
   app.use('/api/work-entries', workEntriesRoutes);
   app.use('/api/transmittals', transmittalsRoutes);

@@ -1,0 +1,40 @@
+/* Wide tables scroll inside .dtpr-scroll; nothing may widen the page itself. */
+.dtpr { position: relative; min-width: 0; max-width: 100%; overflow-x: clip; }
+.dtpr-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.dtpr-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.dtpr-pick .filter-select { min-width: 260px; max-width: 100%; }
+.dtpr-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 12px; width: 100%; }
+.dtpr-form .form-input, .dtpr-form .filter-select { width: auto; min-width: 140px; flex: 0 1 auto; }
+.dtpr-form .dtpr-grow { flex: 1 1 260px; }
+.dtpr-info { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px 18px; margin: 0 0 12px; }
+.dtpr-info dt { font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-muted); }
+.dtpr-info dd { margin: 2px 0 0; font-weight: 600; }
+.dtpr-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 12px 14px; border-radius: var(--radius); margin-bottom: 12px; border: 1px solid var(--border); }
+.dtpr-status ul { margin: 0; padding-left: 18px; }
+.dtpr-status.blocked { background: var(--rust-bg); border-color: var(--rust); color: var(--rust-dark); }
+.dtpr-status.ready { background: var(--amber-bg); border-color: var(--amber); color: var(--amber-dark); }
+.dtpr-status.released { background: var(--forest-bg); border-color: var(--forest); color: var(--forest-dark); }
+.dtpr-note { font-size: 12.5px; color: var(--ink-muted); margin: 10px 0 0; }
+.dtpr-stamp { font-size: 11.5px; color: var(--ink-muted); margin-top: 3px; }
+.dtpr-comments td { vertical-align: top; white-space: pre-line; }
+.dtpr-comments td.dtpr-dt { background: var(--blueprint-bg); min-width: 240px; }
+.dtpr-comments td.dtpr-dt.closed { font-weight: 600; }
+.dtpr-comments td.dtpr-resp { background: var(--forest-bg); min-width: 220px; }
+.dtpr-comments td.dtpr-wait { background: var(--amber-bg); font-style: italic; }
+.dtpr-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
+.dtpr-key.dt { background: var(--blueprint-bg); border: 1px solid var(--blueprint); }
+.dtpr-key.resp { background: var(--forest-bg); border: 1px solid var(--forest); }
+.dtpr-key.wait { background: var(--amber-bg); border: 1px solid var(--amber); }
+/* The data tables scroll inside their panel, never the page. */
+.dtpr-scroll { position: relative; overflow-x: auto; max-width: 100%; }
+.dtpr .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); cursor: pointer; }
+.dtpr .btn:hover:not(:disabled) { background: var(--control-bg-hover); }
+.dtpr .btn:disabled { opacity: .6; cursor: not-allowed; }
+.dtpr .btn.sm { padding: 4px 10px; font-size: 12.5px; }
+.dtpr .btn.ghost { background: transparent; border-color: transparent; }
+.dtpr .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.dtpr td .btn { margin-top: 4px; }
+@media print {
+  .sidebar, .topbar, .dtpr-form, .dtpr-pick, .dtpr button { display: none !important; }
+  .dtpr .panel { break-inside: avoid; box-shadow: none; }
+}

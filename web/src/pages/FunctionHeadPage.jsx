@@ -9,6 +9,7 @@ import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import DtPeerReview from '../components/DtPeerReview.jsx';
 
 const arr = (v) => (Array.isArray(v) ? v : (v?.items ?? []));
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : '—');
@@ -342,11 +343,12 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
 
   if (isDirector && active === 'peer-review-head') {
     return (
-      <div id={`view-${active}`}><CoordinationPanel service={({'qaqc-specs':'QA/QC','bim-head':'BIM','gbs-head':'GBS','peer-review-head':'Peer Review','qs-head':'QS'})[active]}/>
-        <DirectorPeerView
-          reviews={peerRows}
-          openComments={openPeerComments}
-        />
+      <div id={`view-${active}`}>
+        <PeerReviewTabs overview={<><CoordinationPanel service="Peer Review"/>
+          <DirectorPeerView
+            reviews={peerRows}
+            openComments={openPeerComments}
+          /></>} />
       </div>
     );
   }
@@ -783,6 +785,19 @@ function DirectorGbsView({ items, teamLogCount, loading, loadError }) {
           <EmptyState text="Showing summary KPIs for GBS above. The certification workflow and team work log are available in the GBS Head's own workspace." />
         )}
       </Panel>
+    </>
+  );
+}
+
+// 03 Nov 2026: DT Peer Review (Structural peer review dashboard) opens first
+// under the Peer Review nav item; the existing overview stays a tab away.
+const PEER_TABS = [{ key: 'dt', label: 'DT Peer Review' }, { key: 'overview', label: 'Peer review overview' }];
+function PeerReviewTabs({ overview }) {
+  const [tab, setTab] = useState('dt');
+  return (
+    <>
+      <Tabs tabs={PEER_TABS} active={tab} onChange={setTab} label="Peer Review" />
+      {tab === 'dt' ? <DtPeerReview /> : overview}
     </>
   );
 }

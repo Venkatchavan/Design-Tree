@@ -1,4 +1,5 @@
 import PeerDashboardPage from './pages/PeerDashboardPage.jsx';
+import DtPeerReviewPage from './pages/DtPeerReviewPage.jsx';
 import { lazy, Suspense } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
@@ -49,6 +50,7 @@ import AnnouncementsPage from './pages/AnnouncementsPage.jsx'
 
 const VIEW_COMPONENTS = {
   'peer-dashboard': PeerDashboardPage,
+  'dt-peer-review': DtPeerReviewPage,
   announcements: AnnouncementsPage,
   'announcement-detail': AnnouncementsPage,
   dashboard: DashboardPage,

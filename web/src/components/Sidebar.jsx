@@ -108,6 +108,7 @@ function navIcon(view, label) {
     case 'gbs-head':
       return Leaf;
     case 'peer-review-head':
+    case 'dt-peer-review':
       return Eye;
     case 'qs-head':
       return Calculator;

@@ -64,6 +64,7 @@ export function isSuperRole(role) {
 // `guard` further restricts beyond nav membership where needed.
 export const VIEWS = {
   'peer-dashboard': {path:'/peer-review/dashboard',label:'Peer Review dashboard',phase:4},
+  'dt-peer-review': { path: '/peer-review/dt', label: 'DT Peer Review', sub: 'Structural peer review status, stages, approvals and comments', phase: 4 },
   'announcements': { path: '/announcements', label: 'Announcements', sub: 'Company notices for all branches', phase: 4 },
   'announcement-detail': { path: '/announcements/:id', label: 'Announcement', sub: 'Company notice', via: 'announcements', phase: 4 },
   'dashboard': { path: '/dashboard', label: 'Dashboard', sub: 'Company project dashboard', phase: 1 },
@@ -295,6 +296,7 @@ export const NAV_BY_ROLE = {
   ],
   peer_reviewer: [
     {view:'peer-dashboard',label:'Dashboard'},
+    {view:'dt-peer-review'},
     {view:'leave-travel'}, {view:'employee-support'}, {view:'my-meetings'},
   ],
   marketing: [
@@ -346,6 +348,7 @@ export const NAV_BY_ROLE = {
   ],
   peer_review_head: [
     {view:'peer-dashboard',label:'Dashboard'},
+    {view:'dt-peer-review'},
     {view:'leave-travel'}, {view:'employee-support'}, {view:'my-meetings'},
   ],
   qs_head: [
