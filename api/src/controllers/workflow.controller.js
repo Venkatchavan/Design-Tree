@@ -76,7 +76,41 @@ const taskCrud = makeCrud(Task, {
   ],
 });
 
-export const tasks = {...taskCrud, async get(req,res,next) {
+// Bell notice for newly assigned members (all members on create; only added
+// members on update). Best effort: never fails the save.
+async function notifyAssigned(task, previous = []) {
+  const before = new Set(previous.map(String));
+  const added = (task.members ?? []).filter((m) => !before.has(String(m?._id ?? m)));
+  const users = await userIdsForEmployees(added);
+  if (!users.length) return;
+  const what = [task.stage, task.deliverable].filter(Boolean).join(' · ') || 'New task';
+  await notify({
+    users,
+    project: task.project,
+    link: { view: 'my-work' },
+    type: 'task-assigned',
+    title: `Work assigned: ${what}`,
+    detail: task.dueDate ? `Due ${new Date(task.dueDate).toISOString().slice(0, 10)}` : 'No due date set',
+  });
+}
+
+function withAssignNotice(handler, { update = false } = {}) {
+  return async (req, res, next) => {
+    let previous = [];
+    try {
+      if (update) previous = (await Task.findById(req.params.id).select('members').lean())?.members ?? [];
+    } catch { /* handler reports the real error */ }
+    const json = res.json.bind(res);
+    res.json = (body) => {
+      const out = json(body);
+      if (body?.item && res.statusCode < 300) notifyAssigned(body.item, previous).catch(() => {});
+      return out;
+    };
+    return handler(req, res, next);
+  };
+}
+
+export const tasks = {...taskCrud, create: withAssignNotice(taskCrud.create), update: withAssignNotice(taskCrud.update, { update: true }), async get(req,res,next) {
   try {
     if(isTeamDirector(req.user) && !await Task.exists({_id:req.params.id,createdBy:req.user.id})) return res.status(404).json({message:'Task not found.'});
     return taskCrud.get(req,res,next);
@@ -377,13 +411,16 @@ export async function setTaskStatus(req, res, next) {
   }
   try {
     const task = await Task.findById(req.params.id);
-    if (!task || !await canReadProject(req.user, task.project)) return res.status(404).json({ message: 'Not found.' });
+    if (!task) return res.status(404).json({ message: 'Not found.' });
     const { User } = await import('../models/User.js');
     const { isSuperRole } = await import('../config/roles.js');
     const me = await User.findById(req.user.id);
     const mine =
       me?.employee != null &&
       task.members.some((m) => m.toString() === me.employee.toString());
+    // An assignee can always acknowledge, start and submit their own task, even
+    // when the project is not on one of their Team allocations.
+    if (!mine && !await canReadProject(req.user, task.project)) return res.status(404).json({ message: 'Not found.' });
     const leadChain = ['team_lead', 'assoc_technical_director', 'technical_director'];
     const canAll =
       isSuperRole(req.user.role) || leadChain.includes(req.user.role);

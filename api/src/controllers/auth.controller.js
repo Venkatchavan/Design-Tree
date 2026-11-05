@@ -6,12 +6,13 @@ import { User } from '../models/User.js';
 import { loginSchema } from '../validation/auth.schema.js';
 import {
   ATTENDANCE_STANDARD_HOURS,
+  EXTRA_HOURS_THRESHOLD,
   isAttendanceExemptRole,
   isLateLogin,
   istDayKey,
 } from '../config/attendance.js';
 import { AttendanceDay } from '../models/AttendanceDay.js';
-import { recordLogin } from './attendance.controller.js';
+import { recordExtraHours, recordLogin } from './attendance.controller.js';
 
 const INVALID_MSG =
   "That email and password don't match our records. Try again.";
@@ -77,6 +78,7 @@ const logoutSchema = z
   .object({
     lateReason: z.string().trim().optional(),
     earlyLogoutReason: z.string().trim().optional(),
+    extraHoursReason: z.string().trim().optional(),
   })
   .catchall(z.unknown());
 
@@ -139,6 +141,19 @@ export async function logout(req, res, next) {
             doc.earlyLogoutReason = reason;
             doc.decidedBy = user._id;
             doc.decidedAt = now;
+          }
+          // Beyond 8 hours: ask why, then queue it for the reporting TL / PTL.
+          if (durationHrs > EXTRA_HOURS_THRESHOLD && !doc.extraHoursReason?.trim()) {
+            const reason = body.extraHoursReason?.trim?.() ?? '';
+            if (!reason) {
+              await doc.save().catch(() => {});
+              return res.status(400).json({
+                message: `A reason is required for working beyond ${EXTRA_HOURS_THRESHOLD} hours.`,
+                code: 'EXTRA_HOURS_REASON_REQUIRED',
+                durationHours: Math.round(durationHrs * 10) / 10,
+              });
+            }
+            recordExtraHours(doc, reason, user._id, now);
           }
           doc.logoutAt = now;
           await doc.save().catch(() => {});

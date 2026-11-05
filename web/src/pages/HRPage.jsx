@@ -925,7 +925,7 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
       </div>
       <div className="form-row"><label className="form-label">Remarks</label><textarea className="form-input" value={f.remarks ?? ''} onChange={(e) => set('remarks', e.target.value)} /></div>
 
-      {canLogin && (
+      {canLogin && isCreate && (
         <>
           <div className="section-label">Login (restricted)</div>
           <div className="field-grid">
@@ -951,6 +951,38 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
         {save.isPending ? 'Saving…' : 'Save employee'}
       </button>
     </form>
+  );
+}
+
+// Changes the linked login's role (e.g. Peer Reviewer -> Engineer / Drafter).
+// The employee edit form only provisions logins on create, so role changes
+// are saved here straight to the user record.
+function LoginRoleEditor({ bootstrap, login, loginId, onSaved }) {
+  const [role, setRole] = useState(login.role ?? '');
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const save = useMutation({
+    mutationFn: () => usersApi.update(loginId, { role }),
+    onSuccess: () => { setErr(''); setMsg('Role updated. It applies the next time they sign in.'); onSaved?.(); },
+    onError: (e) => { setMsg(''); setErr(e.message); },
+  });
+  const hr = bootstrap?.role?.key === 'hr';
+  const options = (bootstrap?.roles ?? []).filter((r) => !hr || !['client', 'architect'].includes(r.key));
+  return (
+    <div className="form-row">
+      <label className="form-label" htmlFor="hr-linked-role">Role</label>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <select id="hr-linked-role" className="filter-select" value={role} onChange={(e) => { setRole(e.target.value); setMsg(''); setErr(''); }}>
+          {!options.some((r) => r.key === role) && <option value={role}>{role}</option>}
+          {options.map((r) => <option key={r.key} value={r.key}>{r.label ?? r.key}</option>)}
+        </select>
+        <button type="button" className="approve-btn" disabled={save.isPending || role === login.role} onClick={() => save.mutate()}>
+          {save.isPending ? 'Saving…' : 'Save role'}
+        </button>
+      </div>
+      {msg && <p role="status" style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>{msg}</p>}
+      {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
+    </div>
   );
 }
 
@@ -1126,7 +1158,12 @@ function ManageTab({ bootstrap }) {
                   ) : (
                     <div className="field-grid">
                       <Field label="Email" value={login.email} />
-                      <Field label="Role" value={login.role} />
+                      {LOGIN_ROLES.has(bootstrap?.role?.key) && loginId && !isSelf
+                        ? <LoginRoleEditor key={`${loginId}:${login.role}`} bootstrap={bootstrap} login={login} loginId={loginId} onSaved={() => {
+                          queryClient.invalidateQueries({ queryKey: ['employee', profileId] });
+                          queryClient.invalidateQueries({ queryKey: ['employees'] });
+                        }} />
+                        : <Field label="Role" value={login.role} />}
                       <Field label="Active" value={String(login.isActive)} />
                     </div>
                   )}

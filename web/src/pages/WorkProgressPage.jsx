@@ -2,9 +2,10 @@ import { workAllocations } from '../lib/workAllocations.js';
 import EntryDocuments from '../components/EntryDocuments.jsx';
 import { addHours, businessDate, hoursText, workReportApi } from '../lib/workReport.js';
 import WorkReportStatus from '../components/work/WorkReportStatus.jsx';
+import WorkProgressLog from '../components/work/WorkProgressLog.jsx';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { bootstrapApi, employeesApi, teamsApi } from '../lib/api.js';
+import { bootstrapApi, teamsApi } from '../lib/api.js';
 import { holidaysApi } from '../lib/phase4bApi.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -86,8 +87,6 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
   const [date, setDate] = useState(todayISO());
   const [tab, setTab] = useState('wise');
   const [fDept, setFDept] = useState('');
-  const [fProject, setFProject] = useState('');
-  const [fStage, setFStage] = useState('');
 
   const entriesQ = useQuery({
     queryKey: ['work-entries-day', date],
@@ -104,18 +103,15 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
     return d.items ?? d.teams ?? [];
   }, [teamsQ.data]);
 
-  // AssocTD org view: employee directory for the not-updated KPI (Exited out).
-  const employeesQ = useQuery({ queryKey: ['employees-progress'], queryFn: () => employeesApi.list({}), retry: false });
-  const activeEmployees = useMemo(
-    () => (employeesQ.data?.items ?? []).filter((e) => String(e.status ?? 'Active') !== 'Exited'),
-    [employeesQ.data],
+  // TL / ATD view: only the saved reporting team counts toward "Not yet updated",
+  // never the whole company. Same directory as My Team (self excluded, Exited out).
+  const teamQ = useQuery({ queryKey: ['reporting-directory-progress'], queryFn: () => teamsApi.directory(false, ''), enabled: isAssocTD, retry: false });
+  const teamEmployees = useMemo(
+    () => (teamQ.data?.employees ?? []).filter((e) => String(e.status ?? 'Active') !== 'Exited'),
+    [teamQ.data],
   );
   const loggedIds = useMemo(() => new Set(entries.map(empKey)), [entries]);
-  const notUpdatedCount = activeEmployees.filter((e) => {
-    const id = String(e._id ?? e.id ?? '');
-    const name = empName(e).toLowerCase();
-    return !(id && loggedIds.has(id)) && ![...loggedIds].some((k) => k === name);
-  }).length;
+  const notUpdatedCount = teamEmployees.filter((e) => !loggedIds.has(String(e._id ?? e.id ?? ''))).length;
 
   const totalHours = entries.reduce((s, e) => addHours(s,e.hours), 0);
   const empIds = useMemo(() => new Set(entries.map(empKey)), [entries]);
@@ -210,28 +206,9 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
     }
     return [...s].sort();
   }, [entries]);
-  const projectOptions = useMemo(() => {
-    const m = new Map();
-    for (const e of entries.flatMap(workAllocations)) m.set(projKey(e.project), projLabel(e.project));
-    return [...m.entries()].map(([key, label]) => ({ key, label })).sort((a, b) => a.label.localeCompare(b.label));
-  }, [entries]);
-  const stageOptions = useMemo(() => {
-    const s = new Set();
-    for (const e of entries.flatMap(workAllocations)) {
-      const st = e.stage ?? 'Not recorded';
-      if (st && st !== '—') s.add(st);
-    }
-    return [...s].sort();
-  }, [entries]);
   const wiseFiltered = useMemo(
-    () =>
-      entries.flatMap(workAllocations).filter(
-        (e) =>
-          (!fDept || deptOf(e) === fDept) &&
-          (!fProject || projKey(e.project) === fProject) &&
-          (!fStage || (e.stage ?? 'Not recorded') === fStage),
-      ),
-    [entries, fDept, fProject, fStage],
+    () => entries.flatMap(workAllocations).filter((e) => !fDept || deptOf(e) === fDept),
+    [entries, fDept],
   );
 
   const assocRows = useMemo(() => wiseFiltered.map((e) => ({
@@ -272,11 +249,10 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
           <label className="form-label">Date</label>
           <input aria-label="Work progress date" type="date" className="form-input" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
-        <div className="kpi-grid cols-4">
+        <div className="kpi-grid cols-3">
           <KpiCard label={`Total hours logged (${date}, IST)`} value={entriesQ.isLoading || entriesQ.isError ? '—' : hoursText(totalHours)} accent="blueprint" />
-          <KpiCard label="Employees logged in" value={empIds.size} accent="forest" />
-          <KpiCard label="Departments covered" value={departments.length} accent="amber" />
-          <KpiCard label="Not yet updated" value={employeesQ.isLoading ? '…' : notUpdatedCount} accent="rust" />
+          <KpiCard label="Employees logged in" value={entriesQ.isLoading ? '…' : empIds.size} accent="forest" />
+          <KpiCard label="Not yet updated" value={teamQ.isLoading ? '…' : teamQ.isError ? '—' : notUpdatedCount} accent="rust" />
         </div>
         <Panel title={`Activity by department - ${date} (IST)`} sub="Admin and HR entries are administrative work, not billable project hours">
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -343,44 +319,7 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
 
       {tab === 'wise' && (
         isDirector ? (
-          <Panel title={`Work logged on ${date} (IST)`} sub="Filter by department, project or stage — any combination">
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-              <select className="filter-select" value={fDept} onChange={(e) => setFDept(e.target.value)}>
-                <option value="">All departments</option>
-                {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-              <select aria-label="Work progress project" className="filter-select" value={fProject} onChange={(e) => setFProject(e.target.value)}>
-                <option value="">All projects</option>
-                {projectOptions.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-              </select>
-              <select aria-label="Work progress stage" className="filter-select" value={fStage} onChange={(e) => setFStage(e.target.value)}>
-                <option value="">All stages</option>
-                {stageOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            {entriesQ.isLoading ? (
-              <EmptyState text="Loading…" />
-            ) : entriesQ.isError ? (
-              <div className="login-error" role="alert" style={{ display: 'block' }}>
-                {entriesQ.error.message}
-              </div>
-            ) : (
-              <DataTable
-                columns={[
-                  { key: 'employee', label: 'Employee', render: (e) => empName(e.employee) },
-                  { key: 'department', label: 'Department', render: (e) => deptOf(e) },
-                  { key: 'project', label: 'Project', render: (e) => projLabel(e.project) },
-                  { key: 'stage', label: 'Stage', render: (e) => e.stage ?? 'Not recorded' },
-                  { key: 'source', label: 'Source' },
-                { key: 'service', label: 'Service' },
-                  { key: 'work', label: 'Saved work', render: (e) => <details><summary>{workText(e)}</summary><EntryDocuments entry={e} spoc={e.source === 'SpocEntry'} readOnly /></details> },
-                  { key: 'hours', label: 'Hours', render: (e) => (e.hours == null ? '—' : Number(e.hours)) },
-                ]}
-                rows={wiseFiltered}
-                emptyText="No work logged for this date."
-              />
-            )}
-          </Panel>
+          <WorkProgressLog entries={entries} date={date} loading={entriesQ.isLoading} error={entriesQ.isError ? entriesQ.error : null} />
         ) : (
         <>
           <Panel title={`By department — ${date}`}>

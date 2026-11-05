@@ -33,6 +33,12 @@ function pathForLink(link, role) {
       return link.id ? `/projects/${link.id}` : '/design-management';
     case 'my-coordination':
       return '/my-coordination';
+    // Assigned-work alerts (assigned, due soon, overdue).
+    case 'my-work':
+      if (role === 'coordinator') return '/my-coordination';
+      return ['team_lead', 'assoc_technical_director'].includes(role) ? '/my-team' : '/my-work';
+    case 'my-team':
+      return '/my-team';
     default:
       return null;
   }

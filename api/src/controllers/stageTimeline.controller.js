@@ -31,6 +31,13 @@ async function assignments(user, project, service) {
     ...(project.principalTeamLeads ?? []).filter(t => id(t.employee) === employee && t.approvalStatus !== 'Proposed').map(t => t.service),
     ...teams.filter(t => id(t.lead) === employee).map(t => t.service),
   ];
+  // A TL under an Executive Director (Electrical / Mitra) is the PTL for that
+  // service on every project the ED hierarchy reflects to them, so they can enter
+  // the start, expected and actual completion dates without a Team document.
+  if (user.role === 'team_lead' && employee) {
+    const { derivedProjectLinks } = await import('../utils/derivedProjects.js');
+    for (const link of await derivedProjectLinks(user)) if (link.via === 'hierarchy' && link.project === id(project)) ptlServices.push(link.service);
+  }
   const ptl = user.role === 'team_lead' && !!employee && coversService(ptlServices, service);
   const spocServices = allocations.filter(a => id(a.coordinator) === employee)
     .flatMap(a => (a.services ?? []).length ? a.services : projectServices);

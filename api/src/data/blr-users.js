@@ -141,7 +141,7 @@ export const USERS = [
   { name: "Archana V", email: "archana@designtreeconsultants.com", role: "engineer_drafter" },
   { name: "Arun Kumar M", email: "arunm@designtreeconsultants.com", role: "team_lead" },
   { name: "Arunkumar K D", email: "arunkd@designtreeconsultants.com", role: "engineer_drafter" },
-  { name: "Arunkumar Sekar", email: "arunkumar@designtreeconsultants.com", role: "engineer_drafter" },
+  { name: "Arun Kumar S R", email: "arunkumar@designtreeconsultants.com", role: "team_lead" },
   { name: "Arunkumar T", email: "arunkumart@designtreeconsultants.com", role: "engineer_drafter" },
   { name: "Bindu S M", email: "bindusm@designtreeconsultants.com", role: "engineer_drafter" },
   { name: "Chandan N V", email: "chandannv@designtreeconsultants.com", role: "engineer_drafter" },

@@ -28,6 +28,9 @@ const taskSchema = new mongoose.Schema(
     notes: { type: String, trim: true },
     status: { type: String, enum: TASK_STATUSES, default: 'Open', index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    // Set once the due-soon / overdue bell alerts went out, so each fires once.
+    dueSoonNotifiedAt: { type: Date },
+    overdueNotifiedAt: { type: Date },
   },
   { timestamps: true },
 );

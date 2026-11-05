@@ -27,6 +27,9 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
   const [needEarly, setNeedEarly] = useState(false);
   const [lateReason, setLateReason] = useState('');
   const [earlyReason, setEarlyReason] = useState('');
+  // Working beyond 8 hours: the reason goes to the reporting TL / PTL for approval.
+  const [needExtra, setNeedExtra] = useState(false);
+  const [extraReason, setExtraReason] = useState('');
   const [attendErr, setAttendErr] = useState('');
   const [attendInfo, setAttendInfo] = useState(null);
   const [refreshErr, setRefreshErr] = useState('');
@@ -37,7 +40,7 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
       try {
         const status = await attendanceApi.status();
         if (!active) return;
-        setAttendInfo(status);setNeedLate(!!status.late);setNeedEarly(!!status.underHours);setRefreshErr('');
+        setAttendInfo(status);setNeedLate(!!status.late);setNeedEarly(!!status.underHours);setNeedExtra(!!status.overHours);setRefreshErr('');
       } catch {
         if (active) setRefreshErr('Could not refresh elapsed time. Sign-out is still checked by the server.');
       }
@@ -58,6 +61,10 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
         setNeedEarly(true);
         setAttendInfo({ durationHours: res.error?.data?.durationHours });
       }
+      if (code === 'EXTRA_HOURS_REASON_REQUIRED') {
+        setNeedExtra(true);
+        setAttendInfo({ durationHours: res.error?.data?.durationHours });
+      }
       setAttendErr(res.error?.message ?? 'A reason is required to sign out.');
       setAttendOpen(true);
       return;
@@ -65,8 +72,8 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
     navigate('/');
   }
 
-  // Attendance gate after the man-hour gate: late sign-in (9:45 IST) and
-  // early sign-out (under 8 hours) each need a reason. Exempt roles and
+  // Attendance gate after the man-hour gate: late sign-in (9:45 IST),
+  // early sign-out (under 8 hours) and extra hours (beyond 8 hours) each need a reason. Exempt roles and
   // non-working days (Sunday / Holiday) skip it entirely.
   async function checkAttendance() {
     if (isAttendanceExemptRole(roleKey)) {
@@ -87,12 +94,14 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
     }
     const late = !!s.late;
     const early = !!s.underHours;
-    if (!late && !early) {
+    const extra = !!s.overHours;
+    if (!late && !early && !extra) {
       await doLogout();
       return;
     }
     setNeedLate(late);
     setNeedEarly(early);
+    setNeedExtra(extra);
     setAttendInfo(s);
     setAttendErr('');
     setAttendOpen(true);
@@ -107,11 +116,16 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
       setAttendErr('A reason is required for signing out before 8 hours.');
       return;
     }
+    if (needExtra && !extraReason.trim()) {
+      setAttendErr('A reason is required for working beyond 8 hours.');
+      return;
+    }
     setAttendErr('');
     setAttendOpen(false);
     await doLogout({
       ...(needLate ? { lateReason: lateReason.trim() } : {}),
       ...(needEarly ? { earlyLogoutReason: earlyReason.trim() } : {}),
+      ...(needExtra ? { extraHoursReason: extraReason.trim() } : {}),
     });
   }
 
@@ -184,6 +198,8 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
           <p style={{ fontSize: 13.5, color: 'var(--ink-muted)', marginBottom: 8 }}>
             {needLate && needEarly
               ? `You signed in after 9:45 and have worked ${worked} — both need a reason.`
+              : needExtra
+                ? `You have worked ${worked} — why are you working beyond 8 hours? Your reporting TL / PTL will approve or decline it.${needLate ? ' A reason for the late sign-in is also required.' : ''}`
               : needLate
                 ? 'You signed in after 9:45 — a reason is required.'
                 : needEarly ? `You have worked ${worked} — signing out before 8 hours needs a reason.`
@@ -212,6 +228,17 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
               />
             </div>
           )}
+          {needExtra && (
+            <div className="form-row">
+              <label className="form-label">Reason for working beyond 8 hours *</label>
+              <textarea
+                className="form-input"
+                value={extraReason}
+                onChange={(e) => setExtraReason(e.target.value)}
+                placeholder="e.g. Drawing issue deadline, client submission tomorrow"
+              />
+            </div>
+          )}
           {attendErr && (
             <div className="login-error" role="alert" style={{ display: 'block' }}>
               {attendErr}
@@ -219,7 +246,7 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
           )}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
             <button type="button" className="btn-primary" onClick={saveAttendAndLogout}>
-              {needLate || needEarly ? 'Save reason & sign out' : 'Sign out'}
+              {needLate || needEarly || needExtra ? 'Save reason & sign out' : 'Sign out'}
             </button>
           </div>
         </Modal>

@@ -98,6 +98,12 @@ export const attendanceApi = {
       body: JSON.stringify(body),
     }),
   list: (params = {}) => request(`/api/attendance${toQuery(params)}`),
+  extraHours: (params = {}) => request(`/api/attendance/extra-hours${toQuery(params)}`),
+  decideExtraHours: (id, body) =>
+    request(`/api/attendance/extra-hours/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 };
 
 export const projectsApi = {

@@ -4,6 +4,7 @@ import { config, requireJwtSecret } from './src/config/config.js';
 import { connectDb } from './src/config/db.js';
 import { Transmittal } from './src/models/Transmittal.js';
 import { initRealtime } from './src/realtime/io.js';
+import { startTaskAlerts } from './src/services/taskAlerts.js';
 
 requireJwtSecret();
 
@@ -66,6 +67,7 @@ const app = createApp();
 // the socket.io transport for live bell pushes (see src/realtime/io.js).
 const httpServer = http.createServer(app);
 initRealtime(httpServer);
+startTaskAlerts();
 httpServer.listen(config.port, () => {
   console.log(`API listening on http://localhost:${config.port}`);
 });

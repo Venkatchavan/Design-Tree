@@ -1,3 +1,6 @@
+import { derivedProjectLinks } from '../utils/derivedProjects.js';
+import { expandServices } from '../config/services.js';
+import { Employee } from '../models/Employee.js';
 import { directorTeams } from '../utils/directorTeams.js';
 import { directorDirectory } from '../utils/directorDirectory.js';
 
@@ -37,6 +40,37 @@ async function weekHoursByEmployee(employeeIds) {
   return new Map(rows.map((r) => [r._id.toString(), r.hours]));
 }
 
+const DERIVED_TEAM_ROLES = ['team_lead', 'engineer_drafter', 'qs', 'qaqc', 'bim', 'gbs', 'peer_reviewer'];
+
+// Projects reached through assigned tasks or the Executive Director hierarchy
+// (e.g. Electrical projects under Mitra) have no Team document for this person.
+// They are listed as read-only team-shaped rows so they show on My work / My team
+// and can be selected for logging and assigned work.
+async function derivedTeamRows(user, role, employeeId, teams) {
+  if (!DERIVED_TEAM_ROLES.includes(role)) return [];
+  const covered = new Set(teams.flatMap((t) => (t.projects ?? []).map((p) => String(p._id))));
+  const links = (await derivedProjectLinks(user)).filter((l) => !covered.has(l.project));
+  if (!links.length) return [];
+  const [projects, employee] = await Promise.all([
+    Project.find({ _id: { $in: links.map((l) => l.project) }, status: { $in: ['Active', 'On Hold'] } })
+      .select('name jobNumber code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services hold').lean(),
+    Employee.findById(employeeId).select('department').lean(),
+  ]);
+  const fallback = expandServices([employee?.department]).join(' + ') || 'Assigned';
+  const byProject = new Map(links.map((l) => [l.project, l]));
+  return projects.map((p) => ({
+    _id: `derived:${p._id}`,
+    name: p.name,
+    service: byProject.get(String(p._id))?.service || fallback,
+    branch: p.branch,
+    active: true,
+    derived: true,
+    lead: null,
+    members: [],
+    projects: [p],
+  }));
+}
+
 export async function myTeams(req, res, next) {
   try {
     const { User } = await import('../models/User.js');
@@ -57,7 +91,8 @@ export async function myTeams(req, res, next) {
       .populate('projects', 'name jobNumber code branch currentStage status clientName description projectType completion expectedCompletion actualCompletion services hold')
       .populate('lead', memberSelect)
       .populate('members.employee', memberSelect);
-    return res.status(200).json({ items: teams, total: teams.length });
+    const items = [...teams, ...await derivedTeamRows(req.user, role, me.employee, teams)];
+    return res.status(200).json({ items, total: items.length });
   } catch (err) {
     return next(err);
   }

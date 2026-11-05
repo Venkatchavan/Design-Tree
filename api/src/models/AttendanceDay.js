@@ -19,6 +19,15 @@ const attendanceDaySchema = new mongoose.Schema(
     lateReason: { type: String, trim: true, default: null },
     // Required when (logoutAt - loginAt) is under 8 hours.
     earlyLogoutReason: { type: String, trim: true, default: null },
+    // Required when (logoutAt - loginAt) exceeds 8 hours. The reporting
+    // TL / PTL (or mapped director) then approves or declines it.
+    extraHoursReason: { type: String, trim: true, default: null },
+    extraHours: { type: Number, min: 0, default: null },
+    extraHoursStatus: { type: String, enum: ['pending', 'approved', 'declined'], default: null, index: true },
+    // Approver's remark: mandatory when approving, optional when declining.
+    extraHoursDecisionReason: { type: String, trim: true, default: null },
+    extraHoursDecidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    extraHoursDecidedAt: { type: Date },
     decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     decidedAt: { type: Date },
     // Sunday / Holiday logins carry no reason requirement.

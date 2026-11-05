@@ -21,7 +21,11 @@ export async function projectScopeIds(user) {
   const teams = await Team.find({ $or: [{ lead: empId }, { 'members.employee': empId }] })
     .select('projects')
     .lean();
-  return [...new Set(teams.flatMap((t) => (t.projects ?? []).map(String)))];
+  // Projects reached through assigned tasks or the Executive Director hierarchy
+  // are readable too; otherwise assigned work answers "Not found".
+  const { derivedProjectLinks } = await import('./derivedProjects.js');
+  const derived = await derivedProjectLinks(user);
+  return [...new Set([...teams.flatMap((t) => (t.projects ?? []).map(String)), ...derived.map((d) => d.project)])];
 }
 
 // Narrow a Mongo filter on a project-reference field to the allowed ids.

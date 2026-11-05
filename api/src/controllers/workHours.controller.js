@@ -6,11 +6,30 @@ import { Team } from '../models/Team.js';
 import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { directorEntryScope } from './workEntries.controller.js';
 import { workDate, workDateFilter } from '../utils/workDates.js';
+import { Employee } from '../models/Employee.js';
+import { employeeOwnership } from '../utils/directorTeams.js';
+
+// Employees in the caller's saved reporting chain (self included). A TL reads their team's hours from it, so the report does not depend on
+// a Team document existing for every project the team logs against.
+async function reportingEmployeeIds(user) {
+  const [employees, users] = await Promise.all([
+    Employee.find({ status: { $ne: 'Exited' } })
+      .select('firstName middleName lastName empId email director reportingManager teamViewOf headOfDepartments department status').lean(),
+    User.find({}).select('name email employee').lean(),
+  ]);
+  const { reporting } = employeeOwnership(user, employees, users);
+  return [...reporting];
+}
 
 export async function listWorkHours(req,res,next) {
   try {
     const filter={};
-    narrowByProject(filter,'project',await projectScopeIds(req.user));
+    const isLead=req.user.role==='team_lead';
+    // Directors (AD/TD/ATD) keep the stricter team-project + team-member scope below.
+    const reporting=isLead?await reportingEmployeeIds(req.user):null;
+    // A TL reads the hours of their reporting team on any project; others stay project-scoped.
+    if(!(isLead&&reporting)) narrowByProject(filter,'project',await projectScopeIds(req.user));
+    if(isLead&&reporting) (filter.$and??=[]).push({employee:{$in:reporting}});
     if(req.query.mine==='true') {
       const me=await User.findById(req.user.id).select('employee');
       filter.employee=me?.employee ?? {$in:[]};

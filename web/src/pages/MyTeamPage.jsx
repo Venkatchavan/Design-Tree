@@ -1,5 +1,6 @@
 import EmployeeSelect, { EmployeeFilter } from '../components/EmployeeSelect.jsx';
 import DirectorTeamsPage from './DirectorTeamsPage.jsx';
+import ExtraHoursApprovals from '../components/ExtraHoursApprovals.jsx';
 import DesignTeamPage from './DesignTeamPage.jsx';
 import { projectMembers } from '../lib/projectRoster.js';
 import { CoordinationPanel } from '../components/ProjectUpdates.jsx';
@@ -289,7 +290,13 @@ function ProposeCoordinatorPanel() {
   );
 }
 
+// Extra-hours approvals sit under every My Team view; they render only when
+// someone in the caller's reporting chain has logged extra hours.
 export default function MyTeamPage(props) {
+  return <><MyTeamBody {...props}/>{!props.projectId && !props.projectWorkspace && <ExtraHoursApprovals/>}</>;
+}
+
+function MyTeamBody(props) {
   if (props.bootstrap?.capabilities?.designTeam) return <DesignTeamPage />;
   const role=props.bootstrap?.role?.key;
   if (['associate_director','technical_director'].includes(role)) return <DirectorTeamsPage/>;

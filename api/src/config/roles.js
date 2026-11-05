@@ -169,9 +169,11 @@ const FULL_LEADERSHIP_NAV = [
 ];
 
 export const NAV_BY_ROLE = {
-  founding_director: [...FULL_LEADERSHIP_NAV, { view: 'my-team' }],
-  working_director: [...FULL_LEADERSHIP_NAV, { view: 'my-team' }],
-  executive_director: [...FULL_LEADERSHIP_NAV, { view: 'my-team' }],
+  // 05 Nov 2026: "My projects and team" removed from the FD / WD / ED dashboards.
+  // Company teams stay under Teams.
+  founding_director: [...FULL_LEADERSHIP_NAV],
+  working_director: [...FULL_LEADERSHIP_NAV],
+  executive_director: [...FULL_LEADERSHIP_NAV],
   // Associate/Technical Directors intentionally have no `hr` entry:
   // canAccess(role, 'hr') is false and the client never mounts /hr for them.
   associate_director: [
