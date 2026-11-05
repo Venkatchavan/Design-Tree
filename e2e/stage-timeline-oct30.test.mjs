@@ -373,11 +373,15 @@ test('legacy rows without a version can plan atomically without inventing unknow
 });
 test('team membership and proposed SPOC allocation grant reads but cannot mutate, nor can unrelated TD', async () => {
   await reset();
+  // 05 Nov 2026: a TL may plan their own department's services, so the "wrong"
+  // TL is one whose department has nothing to do with the tracker's services.
+  await f.models.Employee.findByIdAndUpdate(f.cast.engineer.employee, { department: 'Accounts' });
   for (const role of ['wrongtl', 'wrongspoc', 'wrongtd']) assert.equal((await call(role, payload({
     planDates: true,
     startDate: '2026-08-01',
     plannedCompletion: '2026-08-14'
   }))).status, 403, role);
+  await f.models.Employee.findByIdAndUpdate(f.cast.engineer.employee, { department: 'Structural' });
   let row = await plan();
   row = (await action('tl', row, {
     requestCompletion: true,

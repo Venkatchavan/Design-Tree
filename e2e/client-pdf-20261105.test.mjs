@@ -103,3 +103,27 @@ test('directors no longer get My team; the PTL login is no longer named after an
   const row = USERS.find((u) => u.email === 'arunkumar@designtreeconsultants.com');
   assert.deepEqual([row.name, row.role], ['Arun Kumar S R', 'team_lead']);
 });
+
+test('any TL who can open the project enters stage start, expected and actual dates for their own department only', async () => {
+  const { models, cast } = f;
+  const sample = await models.User.findById(cast.tl.user).select('+passwordHash').lean();
+  // Team member (not the named lead) with the TL role, and a TL from an unrelated department.
+  const make = async (key, employee) => {
+    const u = await models.User.create({ name: key, email: `${key}@stage.example`, role: 'team_lead', employee, passwordHash: sample.passwordHash });
+    const r = await fetch(f.base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: u.email, password: f.password }) });
+    cookies[key] = r.headers.get('set-cookie').split(';')[0];
+  };
+  await make('memberTl', cast.engineer.employee);
+  await make('otherTl', cast.qs.employee);
+  await models.Employee.updateOne({ _id: cast.qs.employee }, { department: 'Accounts' });
+  const stage = (extra) => ({ project: f.project, service: 'SMEPF', stage: 'CD', expectedVersion: 0, ...extra });
+  const dates = { planDates: true, startDate: '2026-08-01', plannedCompletion: '2026-08-14' };
+  assert.equal((await call('otherTl', '/api/billing/stages', 'POST', stage(dates))).status, 403, 'unrelated department stays out');
+  const planned = await call('memberTl', '/api/billing/stages', 'POST', stage(dates));
+  assert.equal(planned.status, 200, JSON.stringify(planned.data));
+  const timeline = await call('memberTl', `/api/billing/stage-timeline?project=${f.project}`);
+  const cd = timeline.data.items.find((r) => r.service === 'SMEPF' && r.stage === 'CD');
+  assert.equal(cd.permissions.request, true, 'Mark complete is offered');
+  const done = await call('memberTl', '/api/billing/stages', 'POST', stage({ expectedVersion: planned.data.item.__v, requestCompletion: true, actualCompletion: '2026-08-12' }));
+  assert.equal(done.status, 200, JSON.stringify(done.data));
+});

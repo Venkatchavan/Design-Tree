@@ -1,6 +1,7 @@
 import { StageStatus } from '../models/StageStatus.js';
 import { Project } from '../models/Project.js';
 import { User } from '../models/User.js';
+import { Employee } from '../models/Employee.js';
 import { Team } from '../models/Team.js';
 import { SpocAllocation } from '../models/SpocAllocation.js';
 import { notify, userIdsForEmployees } from '../models/Notification.js';
@@ -31,14 +32,14 @@ async function assignments(user, project, service) {
     ...(project.principalTeamLeads ?? []).filter(t => id(t.employee) === employee && t.approvalStatus !== 'Proposed').map(t => t.service),
     ...teams.filter(t => id(t.lead) === employee).map(t => t.service),
   ];
-  // A TL under an Executive Director (Electrical / Mitra) is the PTL for that
-  // service on every project the ED hierarchy reflects to them, so they can enter
-  // the start, expected and actual completion dates without a Team document.
-  if (user.role === 'team_lead' && employee) {
-    const { derivedProjectLinks } = await import('../utils/derivedProjects.js');
-    for (const link of await derivedProjectLinks(user)) if (link.via === 'hierarchy' && link.project === id(project)) ptlServices.push(link.service);
-  }
-  const ptl = user.role === 'team_lead' && !!employee && coversService(ptlServices, service);
+  // 05 Nov 2026: every Team Lead / Sr. TL / PTL who can open the project may enter
+  // the start, expected and actual completion dates for the services of their own
+  // department (a bundle tracker such as SMEPF counts when it includes their service),
+  // not only the one named as the project's Team lead. A TL with no saved department
+  // keeps only the named-lead authority above.
+  let ownDepartment = '';
+  if (user.role === 'team_lead' && employee) ownDepartment = (await Employee.findById(employee).select('department').lean())?.department ?? '';
+  const ptl = user.role === 'team_lead' && !!employee && (coversService(ptlServices, service) || !!ownDepartment && overlapsService(ownDepartment, service));
   const spocServices = allocations.filter(a => id(a.coordinator) === employee)
     .flatMap(a => (a.services ?? []).length ? a.services : projectServices);
   const activatedSpoc = id(project.activation?.spoc) === employee;
