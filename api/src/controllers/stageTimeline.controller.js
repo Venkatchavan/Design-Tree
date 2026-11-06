@@ -46,16 +46,18 @@ async function assignments(user, project, service) {
   const spoc = user.role === 'coordinator' && !!employee &&
     (!project.activation?.spoc || activatedSpoc) &&
     (coversService(spocServices, service) || activatedSpoc && coversService(projectServices, service));
-  let approver = false;
+  let director = false;
   if (APPROVERS.includes(user.role)) {
     const owned = await directorTeams(user);
-    approver = coversService(owned.filter(t => t.projects.some(p => id(p) === id(project))).map(t => t.service), service);
+    director = coversService(owned.filter(t => t.projects.some(p => id(p) === id(project))).map(t => t.service), service);
   }
   return {
-    plan: ptl || approver,
+    plan: ptl || director,
     request: ptl,
     confirm: spoc,
-    approve: approver,
+    // 06 Nov 2026: completion is approved by the PTL, then the SPOC, and finally
+    // by the Design Management Head (company-wide, not tied to a director team).
+    approve: user.role === 'design_mgmt_head',
     teams,
     allocations
   };
@@ -200,7 +202,7 @@ async function stageNotification(user, project, service, doc, access, action) {
   users.push(id(user.id));
   await notify({
     users: [...new Set(users)],
-    roles: doc.confirmationStatus === 'TD Approved' ? ['admin_billing'] : [],
+    roles: doc.confirmationStatus === 'TD Approved' ? ['admin_billing'] : doc.confirmationStatus === 'SPOC Confirmed' ? ['design_mgmt_head'] : [],
     project: project._id,
     link: {
       view: 'stage-timeline',
@@ -233,8 +235,8 @@ export async function upsertStage(req, res, next) {
       message: 'Service is not assigned to this project.'
     });
     const access = await assignments(req.user, project, service);
-    if (!access.plan && !access.confirm) return res.status(403).json({
-      message: 'Only the assigned PTL, SPOC or authorized TD/ATD can act.'
+    if (!access.plan && !access.confirm && !access.approve) return res.status(403).json({
+      message: 'Only the assigned PTL, SPOC, Design Management Head or authorized TD/ATD can act.'
     });
     const serviceRows = rows.filter(r => sameService(r.service, service));
     const old = serviceRows.find(r => r.stage === data.stage),
@@ -355,12 +357,12 @@ export async function upsertStage(req, res, next) {
             spocConfirmedBy: req.user.id,
             spocConfirmedAt: new Date(),
             spocRemark: data.spocRemark,
-            currentStatus: 'Pending TD approval'
+            currentStatus: 'Pending Design Management Head approval'
           };
           action = 'SPOC confirmed completion';
         } else {
           if (!access.approve) return res.status(403).json({
-            message: 'Only the authorized TD/ATD approves.'
+            message: 'Only the Design Management Head gives the final approval.'
           });
           if (from !== 'SPOC Confirmed') return res.status(409).json({
             message: 'Assigned SPOC confirmation is required first.'
@@ -378,7 +380,7 @@ export async function upsertStage(req, res, next) {
             currentStatus: 'Completed',
             billingReadiness: 'Ready for billing'
           };
-          action = req.user.role === 'technical_director' ? 'TD approved completion' : 'ATD approved completion';
+          action = 'Design Management Head approved completion';
         }
       }
     }

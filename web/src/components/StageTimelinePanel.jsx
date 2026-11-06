@@ -30,10 +30,10 @@ function Approval({
   row
 }) {
   const n = Math.max(['None', 'PTL Requested', 'SPOC Confirmed', 'TD Approved'].indexOf(row.confirmationStatus), 0);
-  const status = row.confirmationStatus === 'PTL Requested' ? 'PTL Completed' : !row.confirmationStatus || row.confirmationStatus === 'None' ? 'Not started' : row.confirmationStatus;
+  const status = row.confirmationStatus === 'PTL Requested' ? 'PTL Completed' : !row.confirmationStatus || row.confirmationStatus === 'None' ? 'Not started' : row.confirmationStatus === 'TD Approved' ? 'DMH Approved' : row.confirmationStatus;
   // One compact line of steps (never wraps per step), with the status underneath.
   return <div className="stage-approval">
-    <span className="stage-approval-steps" role="img" aria-label={`${n} of 3 approvals: ${status}`}>{['PTL', 'SPOC', 'TD'].map((label, i) => <span key={label} className={`stage-approval-step${n > i ? ' is-done' : ''}`}>
+    <span className="stage-approval-steps" role="img" aria-label={`${n} of 3 approvals: ${status}`}>{['PTL', 'SPOC', 'DMH'].map((label, i) => <span key={label} className={`stage-approval-step${n > i ? ' is-done' : ''}`}>
       {i > 0 && <span className="stage-approval-link" aria-hidden="true" />}
       <span className="stage-approval-dot" aria-hidden="true" />{label}
     </span>)}</span>
@@ -136,11 +136,11 @@ export default function StageTimelinePanel({
       });
     }}>Mark complete</button>;
     if (p.confirm) return <button type="button" className="btn-primary" disabled={save.isPending} onClick={() => act(row, 'confirmCompletion')}>SPOC confirm</button>;
-    if (p.approve) return <button type="button" className="btn-primary" disabled={save.isPending} onClick={() => act(row, 'approveCompletion')}>TD approve</button>;
+    if (p.approve) return <button type="button" className="btn-primary" disabled={save.isPending} onClick={() => act(row, 'approveCompletion')}>DMH approve</button>;
     return '—';
   }
   const duration = dialog?.mode === 'plan' ? calendarDays(dialog.plannedCompletion, dialog.startDate) : null;
-  return <Panel title="Stage completion approvals" sub="PTL marks complete → assigned SPOC confirms → TD / ATD approves. Dates and variance use calendar days.">
+  return <Panel title="Stage completion approvals" sub="PTL marks complete → assigned SPOC confirms → Design Management Head gives final approval. Dates and variance use calendar days.">
     {list.isLoading && <p role="status">Loading stage timeline…</p>}
     {list.isError && <p role="alert">{list.error.message}</p>}
     {save.isError && !dialog && <p role="alert">{save.error.message}</p>}

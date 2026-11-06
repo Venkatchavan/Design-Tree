@@ -185,7 +185,7 @@ export const projectSchema = z.object({
 export const projectUpdateSchema = projectSchema.partial();
 
 export const projectHoldSchema = z.object({
-  status: z.enum(['Active', 'On Hold']),
+  status: z.enum(['Active', 'On Hold', 'Completed']),
   reason: z.string().trim().min(1, 'A reason is required.').max(2000),
 }).strict();
 

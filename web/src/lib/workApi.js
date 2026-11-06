@@ -12,6 +12,8 @@ export const tasksApi = {
     request('/api/work/tasks', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) =>
     request(`/api/work/tasks/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  extend: (id, body) =>
+    request(`/api/work/tasks/${id}/extend`, { method: 'POST', body: JSON.stringify(body) }),
   setStatus: (id, status) =>
     request(`/api/work/tasks/${id}/status`, {
       method: 'PATCH',

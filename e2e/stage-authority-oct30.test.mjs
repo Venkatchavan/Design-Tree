@@ -5,7 +5,7 @@ let f;
 const cookies = {};
 before(async () => {
   f = await startLocalFixture();
-  for (const key of ['td', 'atd', 'tl', 'spoc']) {
+  for (const key of ['td', 'atd', 'tl', 'spoc', 'dmh']) {
     const r = await fetch(f.base + '/api/auth/login', {
       method: 'POST',
       headers: {
@@ -198,7 +198,7 @@ test('union of all assigned component services authorizes PTL planning, SPOC con
   });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   row = r.data.item;
-  r = await call('td', {
+  r = await call('dmh', {
     ...identity(p),
     expectedVersion: row.__v,
     approveCompletion: true
@@ -262,7 +262,7 @@ test('normal approved SMEPF allocation synchronizes a composite team and authori
   });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   row = r.data.item;
-  r = await call('atd', {
+  r = await call('dmh', {
     ...identity(p),
     service: 'SMEPF',
     expectedVersion: row.__v,

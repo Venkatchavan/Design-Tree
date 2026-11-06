@@ -102,15 +102,16 @@ export function ProjectHold({ project }) {
       setReason('');
     },
   });
-  return <Panel title="Project hold status" sub="Project status only; stage completion and billing approvals are retained.">
+  return <Panel title="Project hold status" sub="Set the project Active, On Hold or Completed. Stage completion and billing approvals are retained.">
     <p>Current status: <b>{project.status}</b></p>
     {project.hold?.reason && <p>Last status reason: {project.hold.reason}</p>}
     {['Active', 'On Hold'].includes(project.status) ? <form onSubmit={e => { e.preventDefault(); save.mutate(); }}>
       <div className="field-grid">
-        <label className="form-label">Project status<select aria-label="Project hold status" className="filter-select" value={status} onChange={e => setStatus(e.target.value)}><option>Active</option><option>On Hold</option></select></label>
+        <label className="form-label">Project status<select aria-label="Project hold status" className="filter-select" value={status} onChange={e => setStatus(e.target.value)}><option>Active</option><option>On Hold</option><option>Completed</option></select></label>
         <label className="form-label">Reason<textarea aria-label="Project status reason" className="form-input" required maxLength={2000} value={reason} onChange={e => setReason(e.target.value)} /></label>
       </div>
       {errBox(save.error)}
+      {status === 'Completed' && <p role="note">Completed is final: a completed project cannot be put back on hold or made active here.</p>}
       <button type="submit" className="btn-primary" disabled={save.isPending || !reason.trim()}>{save.isPending ? 'Saving…' : 'Save project status'}</button>
     </form> : <p>Completed projects cannot be placed on hold here.</p>}
   </Panel>;

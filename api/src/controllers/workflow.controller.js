@@ -401,6 +401,52 @@ export async function setRecruitmentStatus(req, res, next) {
   }
 }
 
+const zTaskExtend = z
+  .object({
+    dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Enter a valid new due date.'),
+    reason: z.string().trim().min(1, 'A reason is required.').max(1000),
+  })
+  .strict();
+
+// 06 Nov 2026: a Team Lead (or the TL chain) extends a task's due date with a
+// reason instead of entering the task again. Access follows taskMemberAccess.
+export async function extendTaskDueDate(req, res, next) {
+  try {
+    const parsed = zTaskExtend.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? 'Invalid data.' });
+    const task = await Task.findById(req.params.id);
+    if (!task || !await canReadProject(req.user, task.project)) return res.status(404).json({ message: 'Task not found.' });
+    if (task.status === 'Approved') return res.status(409).json({ message: 'An approved task cannot be extended.' });
+    const to = new Date(`${parsed.data.dueDate}T00:00:00.000Z`);
+    if (Number.isNaN(to.getTime())) return res.status(400).json({ message: 'Enter a valid new due date.' });
+    const from = task.dueDate ?? null;
+    if (from && to <= new Date(`${new Date(from).toISOString().slice(0, 10)}T00:00:00.000Z`)) {
+      return res.status(400).json({ message: 'The new due date must be after the current due date.' });
+    }
+    task.dueDate = to;
+    task.dueDateHistory.push({ from, to, reason: parsed.data.reason, by: req.user.id, at: new Date() });
+    // The due-soon / overdue bell alerts fire once per due date; re-arm them.
+    task.dueSoonNotifiedAt = undefined;
+    task.overdueNotifiedAt = undefined;
+    await task.save();
+    try {
+      const users = await userIdsForEmployees(task.members ?? []);
+      if (users.length) {
+        const what = [task.stage, task.deliverable].filter(Boolean).join(' · ') || 'Task';
+        await notify({
+          users, project: task.project, link: { view: 'my-work' }, type: 'task-extended',
+          title: `Due date extended: ${what}`,
+          detail: `Now due ${parsed.data.dueDate}. ${parsed.data.reason}`,
+        });
+      }
+    } catch { /* The saved extension stays; the bell notice is best effort. */ }
+    const item = await Task.findById(task._id).populate([{ path: 'members', select: POP_EMP }, { path: 'project', select: POP_PROJ }]);
+    return res.status(200).json({ item });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 const TASK_SET_STATUSES = ['Open', 'In Progress', 'Submitted'];
 
 // Assigned members advance their own tasks; TL chain sets any status.

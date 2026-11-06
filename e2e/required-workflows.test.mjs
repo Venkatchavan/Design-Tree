@@ -111,14 +111,15 @@ test('billing requires PTL then SPOC then TD/ATD and MD is read-only', async () 
   assert.equal((await call('admin', '/api/billing/stages', 'PUT', { ...identity, currentStatus: 'Completed' })).status, 404);
   assert.equal((await call('admin', `/api/billing/stages/${confirm.data.item._id}`, 'PUT', { expectedVersion:confirm.data.item.__v, billingReadiness: 'Ready for billing' })).status, 403);
   assert.equal((await call('md', '/api/billing/stages', 'POST', { ...identity, expectedVersion:confirm.data.item.__v, approveCompletion: true })).status, 403);
-  const approve = await call('td', '/api/billing/stages', 'POST', { ...identity, expectedVersion:confirm.data.item.__v, approveCompletion: true });
+  const approve = await call('dmh', '/api/billing/stages', 'POST', { ...identity, expectedVersion:confirm.data.item.__v, approveCompletion: true });
   assert.equal(approve.status, 200); assert.equal(approve.data.item.billingReadiness, 'Ready for billing');
   assert.equal(approve.data.item.confirmationStatus, 'TD Approved'); assert.equal(approve.data.item.history.length, 4);
-  assert.equal((await call('td', '/api/billing/stages', 'POST', { ...identity, expectedVersion:approve.data.item.__v, approveCompletion: true })).status, 409);
+  assert.equal((await call('dmh', '/api/billing/stages', 'POST', { ...identity, expectedVersion:approve.data.item.__v, approveCompletion: true })).status, 409);
   const claim = await call('admin', '/api/billing/claims', 'POST', { ...identity, amount: 100 }); assert.equal(claim.status, 201);
   assert.equal((await call('admin', `/api/billing/claims/${claim.data.item._id}/status`, 'PATCH', { status: 'Billed' })).status, 200);
-  // The authorized strict chain supersedes the historical director shortcut.
-  for(const role of ['td','atd'])assert.equal((await call(role,'/api/billing/stages','POST',{...identity,stage:'SD',expectedVersion:0,approveCompletion:true})).status,409);
+  // The strict chain supersedes the historical director shortcut; the Design Management Head gives the final approval, so TD/ATD cannot.
+  for(const role of ['td','atd'])assert.equal((await call(role,'/api/billing/stages','POST',{...identity,stage:'SD',expectedVersion:0,approveCompletion:true})).status,403);
+  assert.equal((await call('dmh','/api/billing/stages','POST',{...identity,stage:'SD',expectedVersion:0,approveCompletion:true})).status,409);
 
 });
 

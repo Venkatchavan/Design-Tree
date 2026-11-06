@@ -23,6 +23,7 @@ import {
   setRecruitmentStatus,
   setRevisionStatus,
   setTaskStatus,
+  extendTaskDueDate,
   tasks,
 } from '../controllers/workflow.controller.js';
 
@@ -49,6 +50,7 @@ router.get('/tasks/:id', requireInternal(), tasks.get);
 router.post('/tasks', requireRole(...TL_CHAIN), taskMemberAccess, tasks.create);
 router.put('/tasks/:id', requireRole(...TL_CHAIN), taskMemberAccess, tasks.update);
 router.patch('/tasks/:id/status', requireInternal(), setTaskStatus);
+router.post('/tasks/:id/extend', requireRole(...TL_CHAIN), taskMemberAccess, extendTaskDueDate);
 
 // Deliverables (+log)
 router.get('/deliverables', requireInternal(), deliverables.list);

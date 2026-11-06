@@ -103,7 +103,7 @@ async function action(role, row, extra) {
 }
 test('strict TD chain rejects direct completion and unplanned PTL submission', async () => {
   await reset();
-  assert.equal((await call('td', payload({
+  assert.equal((await call('dmh', payload({
     approveCompletion: true
   }))).status, 409);
   assert.equal((await call('tl', payload({
@@ -186,14 +186,14 @@ test('PTL date captures once, assigned SPOC confirms then TD approves and return
     actualCompletion: '2026-08-18'
   })).item;
   assert.equal(row.actualCompletion.slice(0, 10), '2026-08-18');
-  assert.equal((await call('td', payload({
+  assert.equal((await call('dmh', payload({
     approveCompletion: true,
     expectedVersion: row.__v
   }))).status, 409);
   row = (await action('spoc', row, {
     confirmCompletion: true
   })).item;
-  const result = await action('td', row, {
+  const result = await action('dmh', row, {
     approveCompletion: true
   });
   assert.equal(result.item.billingReadiness, 'Ready for billing');
@@ -283,7 +283,7 @@ test('legacy approved/billed dates stay unknown, edits and alternate billing byp
     confirmationStatus: 'TD Approved',
     billingReadiness: 'Billed'
   });
-  assert.equal((await call('td', payload({
+  assert.equal((await call('dmh', payload({
     approveCompletion: true
   }), 'PUT', '/api/billing/stages/' + row._id)).status, 409);
   const read = await call('td', undefined, 'GET', '/api/billing/stage-timeline?project=' + f.project);
@@ -359,7 +359,7 @@ test('legacy rows without a version can plan atomically without inventing unknow
   const confirmed = await action('spoc', row, {
     confirmCompletion: true
   });
-  const done = await action('td', confirmed.item, {
+  const done = await action('dmh', confirmed.item, {
     approveCompletion: true
   });
   const billed = await call('admin', {
@@ -396,7 +396,7 @@ test('team membership and proposed SPOC allocation grant reads but cannot mutate
     expectedVersion: row.__v,
     actualCompletion: '2026-08-15'
   }))).status, 400);
-  assert.equal((await call('td', {
+  assert.equal((await call('dmh', {
     expectedVersion: row.__v,
     service: 'BIM',
     approveCompletion: true
@@ -456,7 +456,7 @@ test('same service alias requests cannot create duplicate trackers and final GFC
     row = (await action('spoc', row, {
       confirmCompletion: true
     })).item;
-    const done = await action('atd', row, {
+    const done = await action('dmh', row, {
       approveCompletion: true
     });
     assert.equal(done.nextStage === null, stage === 'GFC');
@@ -520,7 +520,7 @@ test('next-stage target retains a legacy saved baseline so the popup requests a 
   row = (await action('spoc', row, {
     confirmCompletion: true
   })).item;
-  const done = await action('td', row, {
+  const done = await action('dmh', row, {
     approveCompletion: true
   });
   assert.equal(done.nextStage.startDate.slice(0, 10), '2026-08-19');

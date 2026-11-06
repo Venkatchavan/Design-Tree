@@ -300,9 +300,10 @@ function MyTeamBody(props) {
   if (props.bootstrap?.capabilities?.designTeam) return <DesignTeamPage />;
   const role=props.bootstrap?.role?.key;
   if (['associate_director','technical_director'].includes(role)) return <DirectorTeamsPage/>;
-  // TLs, ATDs, the ED and department heads also get their saved reporting team
-  // (only rendered when that chain has people).
-  return <><WorkingTeamPage {...props}/>{!props.projectId && !props.projectWorkspace && <DirectorTeamsPage embedded/>}</>;
+  // ATDs, the ED and department heads also get their saved reporting team (only
+  // rendered when that chain has people). 06 Nov 2026: PTL / TL / Sr. TL no longer
+  // get the Project team log here; it repeated the Assign Work team list.
+  return <><WorkingTeamPage {...props}/>{!props.projectId && !props.projectWorkspace && role!=='team_lead' && <DirectorTeamsPage embedded/>}</>;
 }
 
 function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace = false }) {
@@ -1506,6 +1507,7 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
   const [priority,setPriority]=useState('Medium');
   const [notes,setNotes]=useState('');
   const [err,setErr]=useState('');
+  const [extendTask,setExtendTask]=useState(null);
   const roster = useQuery({ queryKey: ['task-assignees', project], queryFn: () => tasksApi.assignees(project), enabled: !!project, retry: false, refetchInterval: 10000 });
   const eligible = (roster.data?.items ?? []).filter(member => includeLeads || !member.isLead);
   const members = [...new Map(eligible.map(member => [memberId(member) + (includeLeads ? ':' + member.service : ''), member])).values()];
@@ -1656,6 +1658,7 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
               { key: 'due', label: 'Due', render: (t) => fmtDate(t.dueDate) },
               { key: 'priority', label: 'Priority', render: (t) => t.priority ?? '—' },
               { key: 'status', label: 'Status', render: (t) => <StatusPill tone={toneFor(t.status)}>{t.status ?? '—'}</StatusPill> },
+              { key: 'extend', label: 'Due date', render: (t) => t.status === 'Approved' ? '—' : <button type="button" className="approve-btn" onClick={() => setExtendTask(t)}>Extend</button> },
             ]}
             rows={myTasks}
             emptyText="No tasks assigned by you yet."
@@ -1663,7 +1666,43 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
         )}
       </Panel>
 )}
+    {extendTask && <ExtendDueDateModal task={extendTask} onClose={() => setExtendTask(null)} />}
   </>;
+}
+
+// 06 Nov 2026: extend a task's due date with a reason, so the task is not entered again.
+function ExtendDueDateModal({ task, onClose }) {
+  const queryClient = useQueryClient();
+  const current = task.dueDate ? new Date(task.dueDate).toISOString().slice(0, 10) : '';
+  const [dueDate, setDueDate] = useState('');
+  const [reason, setReason] = useState('');
+  const extend = useMutation({
+    mutationFn: () => tasksApi.extend(task._id, { dueDate, reason: reason.trim() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      onClose();
+    },
+  });
+  const what = [task.stage, task.deliverable].filter(Boolean).join(' · ') || 'Task';
+  return (
+    <Modal title={`Extend due date — ${what}`} onClose={onClose}>
+      <form onSubmit={(e) => { e.preventDefault(); extend.mutate(); }}>
+        <p>Current due date: <b>{current || 'Not set'}</b></p>
+        <div className="form-row">
+          <label className="form-label">New due date *</label>
+          <input type="date" className="form-input" required min={current || undefined} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </div>
+        <div className="form-row">
+          <label className="form-label">Reason *</label>
+          <textarea className="form-input" required maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why does this task need more time?" />
+        </div>
+        {extend.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{extend.error.message}</div>}
+        <button type="submit" className="btn-primary" disabled={extend.isPending || !dueDate || !reason.trim()}>
+          {extend.isPending ? 'Saving…' : 'Extend due date'}
+        </button>
+      </form>
+    </Modal>
+  );
 }
 
 function DeliverableAddPanel({ teamProjects, members }) {
