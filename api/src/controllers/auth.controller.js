@@ -12,7 +12,7 @@ import {
   istDayKey,
 } from '../config/attendance.js';
 import { AttendanceDay } from '../models/AttendanceDay.js';
-import { recordExtraHours, recordLogin } from './attendance.controller.js';
+import { notifyExtraHoursRequest, recordExtraHours, recordLogin, refreshExtraHours } from './attendance.controller.js';
 
 const INVALID_MSG =
   "That email and password don't match our records. Try again.";
@@ -103,8 +103,29 @@ export async function logout(req, res, next) {
           employee: user.employee,
           date: dayKey,
         });
-        if (doc?.loginAt && doc.workingDay) {
+        if (doc?.loginAt && !doc.workingDay) {
+          // Sunday / holiday: no late or early rule, but the work is extra hours that
+          // the reporting TL / PTL and directors approve (07 Nov 2026).
           const now = new Date();
+          let requested = false;
+          if (!doc.extraHoursReason?.trim()) {
+            const reason = body.extraHoursReason?.trim?.() ?? '';
+            if (!reason) {
+              return res.status(400).json({
+                message: 'A reason is required for working on a Sunday or holiday.',
+                code: 'EXTRA_HOURS_REASON_REQUIRED',
+                durationHours: Math.round(((now.getTime() - new Date(doc.loginAt).getTime()) / 3600000) * 10) / 10,
+              });
+            }
+            recordExtraHours(doc, reason, user._id, now);
+            requested = true;
+          } else refreshExtraHours(doc, now);
+          doc.logoutAt = now;
+          await doc.save().catch(() => {});
+          if (requested) await notifyExtraHoursRequest(doc);
+        } else if (doc?.loginAt && doc.workingDay) {
+          const now = new Date();
+          let requested = false;
           const loginMs = new Date(doc.loginAt).getTime();
           // Late-login reason missing and not supplied: hold the session
           // open (don't clear the cookie) until a reason is given.
@@ -154,9 +175,11 @@ export async function logout(req, res, next) {
               });
             }
             recordExtraHours(doc, reason, user._id, now);
-          }
+            requested = true;
+          } else if (durationHrs > EXTRA_HOURS_THRESHOLD) refreshExtraHours(doc, now);
           doc.logoutAt = now;
           await doc.save().catch(() => {});
+          if (requested) await notifyExtraHoursRequest(doc);
         } else if (doc && !doc.logoutAt) {
           doc.logoutAt = new Date();
           await doc.save().catch(() => {});

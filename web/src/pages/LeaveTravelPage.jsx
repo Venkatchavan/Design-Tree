@@ -797,6 +797,11 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
   async function decide(kind, id, status) {
     setErr('');
     const remark = (remarks[id] ?? '').trim() || undefined;
+    // 07 Nov 2026: a leave approval needs a reason as well as a rejection.
+    if (kind === 'leave' && !remark) {
+      setErr(`A reason is required to ${status === 'Approved' ? 'approve' : 'reject'} a leave request.`);
+      return;
+    }
     try {
       if (kind === 'leave') await leaveApi.decide(id, { status, remarks: remark });
       else if (kind === 'travel') await travelApi.decide(id, { status, remarks: remark });
@@ -820,7 +825,7 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
           style={{ minWidth: 140 }}
           value={remarks[id] ?? ''}
           onChange={(e) => setRemark(id, e.target.value)}
-          placeholder="Remarks (required to reject)"
+          placeholder="Reason (required for leave)"
         />
         <button type="button" className="approve-btn" onClick={() => decide(kind, id, 'Approved')}>Approve</button>
         <button type="button" className="approve-btn" onClick={() => decide(kind, id, 'Rejected')}>Reject</button>
@@ -870,12 +875,14 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
   async function decideDirect(kind, id, status) {
     setErr('');
     let remarks;
-    if (status === 'Rejected') {
-      const v = window.prompt('Reason for rejecting (required, shown to the requester):', '');
+    // Leave needs a reason to approve and to reject; travel only to reject.
+    if (status === 'Rejected' || kind === 'leave') {
+      const verb = status === 'Rejected' ? 'rejecting' : 'approving';
+      const v = window.prompt(`Reason for ${verb} (required, shown to the requester):`, '');
       if (v == null) return;
       remarks = v.trim();
       if (!remarks) {
-        setErr('A reason is required when rejecting.');
+        setErr(`A reason is required when ${verb}.`);
         return;
       }
     }

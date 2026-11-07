@@ -13,8 +13,8 @@ import { AttendanceDay } from '../models/AttendanceDay.js';
 import { Holiday } from '../models/Holiday.js';
 import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
-import { isSuperRole } from '../config/roles.js';
-import { employeeOwnership } from '../utils/directorTeams.js';
+import { approverScope, approverUserIdsFor } from '../utils/approverScope.js';
+import { notify, userIdsForEmployees } from '../models/Notification.js';
 
 const reasonSchema = z
   .object({
@@ -30,6 +30,8 @@ const extraHoursDecisionSchema = z
     reason: z.string().trim().max(1000).optional(),
   })
   .strict();
+// A reason is mandatory both when approving and when declining.
+const decisionReasonMessage = (status) => `A reason is required to ${status === 'approved' ? 'approve' : 'decline'} extra hours.`;
 
 async function resolveEmployeeId(userId) {
   const me = await User.findById(userId);
@@ -63,20 +65,50 @@ function needsEarlyReason(doc) {
   return durationHours(doc) < ATTENDANCE_STANDARD_HOURS;
 }
 
-// Working past the standard day: the session has run longer than the
-// threshold and no reason is recorded yet (asked at sign-out).
+// Extra hours: a working day that has run past the standard day, or ANY work on a
+// Sunday / holiday (07 Nov 2026: Sunday work was never queued for approval).
+// Asked at sign-out while no reason is recorded yet.
 export function needsExtraHoursReason(doc, at = new Date()) {
-  if (!doc?.workingDay || !doc?.loginAt) return false;
+  if (!doc?.loginAt) return false;
   if (doc.extraHoursReason?.trim()) return false;
+  if (!doc.workingDay) return true;
   return (at.getTime() - new Date(doc.loginAt).getTime()) / 3600000 > EXTRA_HOURS_THRESHOLD;
+}
+
+// Hours to approve: beyond 8 on a working day, the whole session on a Sunday / holiday.
+export function extraHoursFor(doc, at = new Date()) {
+  const hrs = (at.getTime() - new Date(doc.loginAt).getTime()) / 3600000;
+  const extra = doc.workingDay ? Math.max(0, hrs - EXTRA_HOURS_THRESHOLD) : Math.max(0, hrs);
+  return Math.round(extra * 10) / 10;
+}
+
+// A pending request follows later sign-outs the same day so the TL approves the
+// real total; a decided one is left as decided.
+export function refreshExtraHours(doc, at = new Date()) {
+  if (doc?.extraHoursStatus === 'pending' && doc.loginAt) doc.extraHours = extraHoursFor(doc, at);
+}
+
+// Tell the TL / PTL / directors who must decide it. Best effort, after the doc is saved.
+export async function notifyExtraHoursRequest(doc) {
+  try {
+    const employee = await Employee.findById(doc.employee).select('firstName lastName').lean();
+    const who = [employee?.firstName, employee?.lastName].filter(Boolean).join(' ') || 'A team member';
+    await notify({
+      users: await approverUserIdsFor(doc.employee),
+      roles: ['founding_director', 'working_director', 'executive_director'],
+      link: { view: 'my-team' },
+      title: `${doc.workingDay ? 'Extra hours' : 'Sunday / holiday work'}: ${who}`,
+      detail: `${doc.date} · ${doc.extraHours} h · ${String(doc.extraHoursReason ?? '').slice(0, 100)}`,
+      type: 'extra-hours',
+    });
+  } catch { /* the request is saved; the bell is best effort */ }
 }
 
 // Stores the reason and queues it for the reporting TL / PTL (or mapped
 // director). Callers save the doc.
 export function recordExtraHours(doc, reason, userId, at = new Date()) {
-  const hrs = (at.getTime() - new Date(doc.loginAt).getTime()) / 3600000;
   doc.extraHoursReason = reason.trim();
-  doc.extraHours = Math.round(Math.max(0, hrs - EXTRA_HOURS_THRESHOLD) * 10) / 10;
+  doc.extraHours = extraHoursFor(doc, at);
   doc.extraHoursStatus = 'pending';
   doc.extraHoursDecisionReason = null;
   doc.extraHoursDecidedBy = undefined;
@@ -145,6 +177,8 @@ export async function attendanceStatus(req, res, next) {
       required: true,
       late: needsLateReason(doc),
       underHours: doc.workingDay && dur < ATTENDANCE_STANDARD_HOURS,
+      // Sunday / holiday work is asked as extra hours for the whole session.
+      sundayWork: !doc.workingDay,
       overHours: needsExtraHoursReason(doc),
       extraHoursReason: doc.extraHoursReason ?? null,
       extraHoursStatus: doc.extraHoursStatus ?? null,
@@ -178,6 +212,7 @@ export async function saveReason(req, res, next) {
     const dayKey = istDayKey(new Date());
     const doc = await AttendanceDay.findOne({ employee: employeeId, date: dayKey });
     if (!doc?.loginAt) return res.status(400).json({ message: 'No sign-in recorded today.' });
+    let requested = false;
     if (parsed.data.lateReason !== undefined && needsLateReason(doc)) {
       if (!parsed.data.lateReason.trim()) {
         return res.status(400).json({ message: 'A reason is required for signing in after 9:45.' });
@@ -197,10 +232,12 @@ export async function saveReason(req, res, next) {
         return res.status(400).json({ message: `A reason is required for working beyond ${EXTRA_HOURS_THRESHOLD} hours.` });
       }
       recordExtraHours(doc, parsed.data.extraHoursReason, req.user.id);
+      requested = true;
     }
     doc.decidedBy = req.user.id;
     doc.decidedAt = new Date();
     await doc.save();
+    if (requested) await notifyExtraHoursRequest(doc);
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -232,25 +269,10 @@ export async function listAttendance(req, res, next) {
   }
 }
 
-// Who an approver may act for: the saved reporting chain (TL / PTL via
-// reportingManager, AD / TD / ATD via director). FD / WD / ED see everyone so
-// a request with no resolvable approver is never stranded.
-async function extraHoursScope(user) {
-  if (isSuperRole(user?.role)) return { all: true, ids: null };
-  const [employees, users] = await Promise.all([
-    Employee.find({ status: { $ne: 'Exited' } })
-      .select('firstName middleName lastName empId email director reportingManager teamViewOf headOfDepartments department status').lean(),
-    User.find({}).select('name email employee').lean(),
-  ]);
-  const { own, active, reporting } = employeeOwnership(user, employees, users);
-  if (!active.has(own)) return { all: false, ids: [] };
-  return { all: false, ids: [...reporting].filter((id) => id !== own) };
-}
-
 // Extra-hours requests awaiting (or past) a decision for the caller's team.
 export async function listExtraHours(req, res, next) {
   try {
-    const scope = await extraHoursScope(req.user);
+    const scope = await approverScope(req.user);
     const status = ['pending', 'approved', 'declined'].includes(req.query.status) ? req.query.status : null;
     const filter = status ? { extraHoursStatus: status } : { extraHoursStatus: { $ne: null } };
     if (!scope.all) filter.employee = { $in: scope.ids };
@@ -265,17 +287,15 @@ export async function listExtraHours(req, res, next) {
   }
 }
 
-// Approve or decline. Approving needs the approver's reason; declining may
-// carry one. Only pending requests inside the caller's reporting chain.
+// Approve or decline. Both need the approver's reason, which is recorded with who
+// decided and when. Only pending requests inside the caller's scope.
 export async function decideExtraHours(req, res, next) {
   const parsed = extraHoursDecisionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: 'Invalid decision.' });
   const reason = parsed.data.reason?.trim() ?? '';
-  if (parsed.data.status === 'approved' && !reason) {
-    return res.status(400).json({ message: 'A reason is required to approve extra hours.' });
-  }
+  if (!reason) return res.status(400).json({ message: decisionReasonMessage(parsed.data.status) });
   try {
-    const scope = await extraHoursScope(req.user);
+    const scope = await approverScope(req.user);
     const doc = await AttendanceDay.findById(req.params.id);
     const inScope = doc && (scope.all || scope.ids.includes(String(doc.employee)));
     if (!doc?.extraHoursStatus || !inScope) {
@@ -285,10 +305,20 @@ export async function decideExtraHours(req, res, next) {
       return res.status(409).json({ message: `This request was already ${doc.extraHoursStatus}.` });
     }
     doc.extraHoursStatus = parsed.data.status;
-    doc.extraHoursDecisionReason = reason || null;
+    doc.extraHoursDecisionReason = reason;
     doc.extraHoursDecidedBy = req.user.id;
     doc.extraHoursDecidedAt = new Date();
     await doc.save();
+    try {
+      const users = await userIdsForEmployees([doc.employee]);
+      await notify({
+        users,
+        link: { view: 'my-work' },
+        title: `Your ${doc.workingDay ? 'extra hours' : 'Sunday / holiday work'} on ${doc.date} ${parsed.data.status}`,
+        detail: reason.slice(0, 140),
+        type: 'extra-hours',
+      });
+    } catch { /* best effort */ }
     return res.status(200).json({ item: doc });
   } catch (err) {
     return next(err);

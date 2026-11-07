@@ -7,6 +7,7 @@ import WorkReportStatus from '../components/work/WorkReportStatus.jsx';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { attendanceApi, employeesApi, projectsApi, request, toQuery } from '../lib/api.js';
+import ExtraHoursApprovals from '../components/ExtraHoursApprovals.jsx';
 import { billingApi, certificatesApi, transmittalsApi } from '../lib/phase3Api.js';
 import { reportsApi } from '../lib/phase4aApi.js';
 import { bimApi, discApi, peerApi, rfiApi, visitsApi } from '../lib/functionsApi.js';
@@ -656,6 +657,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
 
   return (
     <div id="view-management">
+      <ExtraHoursApprovals />
       <div className="page-head">
         <div className="page-title">Management & Leadership Dashboard</div>
         <div className="page-sub">

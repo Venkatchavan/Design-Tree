@@ -4,7 +4,8 @@ import { startLocalFixture } from './local-fixture.mjs';
 
 // 05 Nov 2026 client request: after 8 hours of login the employee is asked why
 // at sign-out; the reason goes to the reporting TL / PTL (and mapped
-// directors), who approve or decline. Approving needs a reason.
+// directors), who approve or decline. Both need a reason (07 Nov 2026); Sunday /
+// holiday work is queued the same way; a TL also sees people on their team.
 let f; const cookies = {};
 async function call(role, path, method = 'GET', body) {
   const r = await fetch(f.base + path, { method, headers: { Cookie: cookies[role], ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -63,20 +64,61 @@ test('only the reporting chain sees the request; approving needs a reason; it is
   assert.equal(ok.status, 200);
   assert.equal(ok.data.item.extraHoursStatus, 'approved');
   assert.equal(ok.data.item.extraHoursDecisionReason, 'Client deadline confirmed');
-  assert.equal((await call('tl', `/api/attendance/extra-hours/${id}`, 'PATCH', { status: 'declined' })).status, 409);
+  assert.equal((await call('tl', `/api/attendance/extra-hours/${id}`, 'PATCH', { status: 'declined', reason: 'second try' })).status, 409);
   assert.equal((await call('tl', '/api/attendance/extra-hours?status=pending')).data.items.length, 0);
 });
 
-test('decline needs no reason; under 8 hours never asks', async () => {
+test('decline needs a reason too and it is recorded; under 8 hours never asks', async () => {
   const A = await AttendanceDay();
   await A.updateOne({ employee: f.cast.engineer.employee }, { extraHoursStatus: 'pending', extraHoursDecisionReason: null });
   const id = String((await A.findOne({ employee: f.cast.engineer.employee }))._id);
-  const declined = await call('tl', `/api/attendance/extra-hours/${id}`, 'PATCH', { status: 'declined' });
+  const none = await call('tl', `/api/attendance/extra-hours/${id}`, 'PATCH', { status: 'declined' });
+  assert.equal(none.status, 400);
+  assert.match(none.data.message, /decline/);
+  assert.equal((await call('tl', `/api/attendance/extra-hours/${id}`, 'PATCH', { status: 'declined', reason: '   ' })).status, 400);
+  const declined = await call('tl', `/api/attendance/extra-hours/${id}`, 'PATCH', { status: 'declined', reason: 'Not agreed in advance' });
   assert.equal(declined.status, 200);
   assert.equal(declined.data.item.extraHoursStatus, 'declined');
+  assert.equal(declined.data.item.extraHoursDecisionReason, 'Not agreed in advance');
+  assert.ok(declined.data.item.extraHoursDecidedAt);
+  assert.equal(String(declined.data.item.extraHoursDecidedBy), f.cast.tl.user);
 
   await login('qs');
   await A.updateOne({ employee: f.cast.qs.employee }, { loginAt: new Date(Date.now() - 8.5 * 3600000 + 60 * 60000), workingDay: true, lateReason: 'n/a' });
   const st = await call('qs', '/api/attendance/status');
   assert.equal(st.data.overHours, false);
+});
+
+test('Sunday work asks for a reason at sign-out and is queued for the TL and directors', async () => {
+  const A = await AttendanceDay();
+  await login('qs');
+  await A.updateOne({ employee: f.cast.qs.employee }, { loginAt: new Date(Date.now() - 3 * 3600000), workingDay: false, extraHoursReason: null, extraHoursStatus: null, extraHours: null });
+  const st = await call('qs', '/api/attendance/status');
+  assert.equal(st.data.overHours, true);
+  assert.equal(st.data.sundayWork, true);
+  const held = await fetch(f.base + '/api/auth/logout', { method: 'POST', headers: { Cookie: cookies.qs, 'Content-Type': 'application/json' }, body: '{}' });
+  assert.equal(held.status, 400);
+  assert.equal((await held.json()).code, 'EXTRA_HOURS_REASON_REQUIRED');
+  const out = await fetch(f.base + '/api/auth/logout', { method: 'POST', headers: { Cookie: cookies.qs, 'Content-Type': 'application/json' }, body: JSON.stringify({ extraHoursReason: 'Client site support on Sunday' }) });
+  assert.equal(out.status, 200);
+  const doc = await A.findOne({ employee: f.cast.qs.employee });
+  assert.equal(doc.extraHoursStatus, 'pending');
+  assert.ok(doc.extraHours >= 2.9 && doc.extraHours <= 3.1, `whole Sunday session counts: ${doc.extraHours}`);
+  assert.ok(doc.logoutAt);
+  // qs is a member of the TL's team (fixture), so the TL and the directors see it.
+  for (const role of ['tl', 'md']) {
+    const rows = (await call(role, '/api/attendance/extra-hours?status=pending')).data.items;
+    assert.ok(rows.some(r => String(r.employee?._id) === f.cast.qs.employee && r.workingDay === false), role);
+  }
+  assert.equal((await call('outsider', '/api/attendance/extra-hours')).data.items.some(r => String(r.employee?._id) === f.cast.qs.employee), false);
+  const row = (await call('tl', '/api/attendance/extra-hours?status=pending')).data.items.find(r => String(r.employee?._id) === f.cast.qs.employee);
+  assert.equal((await call('tl', `/api/attendance/extra-hours/${row._id}`, 'PATCH', { status: 'approved' })).status, 400);
+  const ok = await call('tl', `/api/attendance/extra-hours/${row._id}`, 'PATCH', { status: 'approved', reason: 'Client request confirmed' });
+  assert.equal(ok.status, 200);
+  // The employee and the approvers are told.
+  const { Notification } = await import('../api/src/models/Notification.js');
+  const notes = await Notification.find({ type: 'extra-hours' }).lean();
+  assert.ok(notes.some(n => /Sunday/.test(n.title) && (n.roles ?? []).includes('founding_director')), 'directors told about the request');
+  assert.ok(notes.some(n => (n.users ?? []).map(String).includes(f.cast.tl.user)), 'TL told about the request');
+  assert.ok(notes.some(n => (n.users ?? []).map(String).includes(f.cast.qs.user) && /approved/.test(n.title)), 'employee told of the decision');
 });

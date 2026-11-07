@@ -24,13 +24,14 @@ const attendanceDaySchema = new mongoose.Schema(
     extraHoursReason: { type: String, trim: true, default: null },
     extraHours: { type: Number, min: 0, default: null },
     extraHoursStatus: { type: String, enum: ['pending', 'approved', 'declined'], default: null, index: true },
-    // Approver's remark: mandatory when approving, optional when declining.
+    // Approver's remark: mandatory when approving AND when declining.
     extraHoursDecisionReason: { type: String, trim: true, default: null },
     extraHoursDecidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     extraHoursDecidedAt: { type: Date },
     decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     decidedAt: { type: Date },
-    // Sunday / Holiday logins carry no reason requirement.
+    // Sunday / Holiday logins carry no late-login reason, but the whole session is
+    // extra hours: a reason at sign-out, then TL / PTL approval.
     workingDay: { type: Boolean, default: true },
   },
   { timestamps: true },

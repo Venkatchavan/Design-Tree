@@ -7,10 +7,10 @@ import DataTable from './DataTable.jsx';
 const empName = (e) => [e?.firstName, e?.middleName, e?.lastName].filter(Boolean).join(' ') || e?.empId || 'Not recorded';
 const dateText = (d) => String(d ?? '').slice(0, 10) || '—';
 
-// Extra hours (beyond 8h of login) logged at sign-out by people in the
-// caller's reporting chain. The reporting TL / PTL (or mapped director)
-// approves or declines; approving needs a reason. Renders nothing when the
-// caller has no such requests.
+// Extra hours (beyond 8h of login) and Sunday / holiday work logged at sign-out by
+// people in the caller's reporting chain, team or project. The TL / PTL (or mapped
+// director) approves or declines; BOTH need a reason, which is recorded with the
+// decision. Renders nothing when the caller has no such requests.
 export default function ExtraHoursApprovals() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(null); // { id, status }
@@ -27,18 +27,18 @@ export default function ExtraHoursApprovals() {
   const pending = items.filter((i) => i.extraHoursStatus === 'pending');
 
   function submit() {
-    if (open.status === 'approved' && !reason.trim()) { setErr('A reason is required to approve extra hours.'); return; }
+    if (!reason.trim()) { setErr(`A reason is required to ${open.status === 'approved' ? 'approve' : 'decline'} extra hours.`); return; }
     setErr('');
     decide.mutate({ id: open.id, status: open.status, reason: reason.trim() });
   }
   function start(row, status) { setOpen({ id: row._id, status }); setReason(''); setErr(''); }
 
   return (
-    <Panel title="Extra hours approvals" sub={`${pending.length} awaiting a decision · logged at sign-out after 8 hours of login`}>
+    <Panel title="Extra hours approvals" sub={`${pending.length} awaiting a decision · extra hours after 8 hours of login, and Sunday / holiday work`}>
       <DataTable rows={items} emptyText="No extra-hours requests." columns={[
         { key: 'date', label: 'Date', render: (r) => dateText(r.date) },
         { key: 'who', label: 'Employee', render: (r) => <>{empName(r.employee)}{r.employee?.designation ? <span style={{ color: 'var(--ink-muted)' }}> · {r.employee.designation}</span> : null}</> },
-        { key: 'hours', label: 'Extra hours', render: (r) => (r.extraHours != null ? `${r.extraHours} h` : '—') },
+        { key: 'hours', label: 'Extra hours', render: (r) => <>{r.extraHours != null ? `${r.extraHours} h` : '—'}{r.workingDay === false && <span className="load-badge" style={{ marginLeft: 6 }}>Sunday / holiday</span>}</> },
         { key: 'why', label: 'Reason given', render: (r) => r.extraHoursReason || '—' },
         {
           key: 'status', label: 'Decision', render: (r) => {
@@ -48,8 +48,8 @@ export default function ExtraHoursApprovals() {
                   <div style={{ minWidth: 240 }}>
                     <textarea
                       className="form-input"
-                      aria-label={open.status === 'approved' ? 'Reason for approving' : 'Reason for declining (optional)'}
-                      placeholder={open.status === 'approved' ? 'Reason for approving *' : 'Reason for declining (optional)'}
+                      aria-label={open.status === 'approved' ? 'Reason for approving' : 'Reason for declining'}
+                      placeholder={open.status === 'approved' ? 'Reason for approving *' : 'Reason for declining *'}
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
                     />

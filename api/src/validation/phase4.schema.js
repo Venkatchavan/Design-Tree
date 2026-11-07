@@ -31,7 +31,18 @@ const stageDecision = z
     }
   });
 
-export const leaveDecisionSchema = stageDecision;
+// 07 Nov 2026: a leave decision needs a reason whether it approves or rejects.
+export const leaveDecisionSchema = z
+  .object({
+    status: z.enum([FLOW_APPROVED, FLOW_REJECTED]),
+    remarks: strOpt,
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (!v.remarks?.trim()) {
+      ctx.addIssue({ code: 'custom', message: `A reason is required when ${v.status === FLOW_APPROVED ? 'approving' : 'rejecting'} a leave request.` });
+    }
+  });
 export const travelDecisionSchema = stageDecision;
 export const allowanceDecisionSchema = stageDecision;
 

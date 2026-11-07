@@ -7,6 +7,7 @@ import { Team } from '../models/Team.js';
 import { TravelRequest } from '../models/TravelRequest.js';
 import { User } from '../models/User.js';
 import { makeCrud } from '../utils/crud.js';
+import { approverScope, approverUserIdsFor } from '../utils/approverScope.js';
 import {
   FLOW_APPROVED,
   STAGE_LABELS,
@@ -63,6 +64,13 @@ async function teamMemberIds(userId) {
     for (const m of t.members) ids.add(m.employee.toString());
   }
   return [...ids];
+}
+
+// A Team Lead acts for their teams plus the people on projects they are the
+// Principal Team Lead of and their saved reports (the same scope as extra hours).
+async function tlScopeIds(userId) {
+  const [team, extra] = await Promise.all([teamMemberIds(userId), approverScope({ id: userId, role: 'team_lead' })]);
+  return [...new Set([...team, ...(extra.ids ?? [])])];
 }
 
 // A requester has a Team Lead step only when they actually sit in a team
@@ -144,13 +152,15 @@ export async function createLeave(req, res, next) {
     });
     await attachFlowStages(doc, employee);
     await doc.save();
-    notify({
+    // The TL / PTL who must decide it hears about it too, not only HR and Admin.
+    approverUserIdsFor(employee._id).catch(() => []).then((tlUsers) => notify({
       roles: ['hr', 'admin_billing'],
+      users: tlUsers,
       link: { view: 'leave', id: String(doc._id) },
       title: `Leave request: ${empShort(employee) || 'team member'}`,
       detail: `${String(parsed.data.from ?? '').slice(0, 10)} → ${String(parsed.data.to ?? '').slice(0, 10)} · ${parsed.data.leaveType ?? ''}`,
       type: 'leave',
-    }).catch(() => {});
+    })).catch(() => {});
     return res.status(201).json({ item: doc });
   } catch (err) {
     return next(err);
@@ -177,7 +187,7 @@ export async function myLeaves(req, res, next) {
 export async function approvalQueue(req, res, next) {
   try {
     const role = req.user?.role;
-    const scope = stageForRole(role) === 'tl' ? await teamMemberIds(req.user.id) : null;
+    const scope = stageForRole(role) === 'tl' ? await tlScopeIds(req.user.id) : null;
     const pendingFlow = { status: { $nin: ['Approved', 'Rejected'] } };
 
     const leaveQuery = { ...pendingFlow };
@@ -268,8 +278,9 @@ async function decideStage({ req, res, next, Model, schema, kind, isFinanceFinal
 
     // Team Leads act only for the people under them.
     if (stage === 'tl') {
-      const scope = await teamMemberIds(req.user.id);
-      if (!scope.includes(String(doc.employee))) {
+      const scope = await tlScopeIds(req.user.id);
+      // doc.employee is populated here: compare its id, not the document's string form.
+      if (!scope.includes(String(doc.employee?._id ?? doc.employee))) {
         return res.status(403).json({
           message: 'This request is not from anyone in your team.',
         });

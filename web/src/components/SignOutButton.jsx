@@ -73,8 +73,8 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
   }
 
   // Attendance gate after the man-hour gate: late sign-in (9:45 IST),
-  // early sign-out (under 8 hours) and extra hours (beyond 8 hours) each need a reason. Exempt roles and
-  // non-working days (Sunday / Holiday) skip it entirely.
+  // early sign-out (under 8 hours) and extra hours (beyond 8 hours, or any Sunday / holiday work)
+  // each need a reason. Exempt roles skip it entirely.
   async function checkAttendance() {
     if (isAttendanceExemptRole(roleKey)) {
       await doLogout();
@@ -199,7 +199,9 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
             {needLate && needEarly
               ? `You signed in after 9:45 and have worked ${worked} — both need a reason.`
               : needExtra
-                ? `You have worked ${worked} — why are you working beyond 8 hours? Your reporting TL / PTL will approve or decline it.${needLate ? ' A reason for the late sign-in is also required.' : ''}`
+                ? (attendInfo?.sundayWork
+                  ? `You worked ${worked} on a Sunday / holiday — why? Your reporting TL / PTL and the directors will approve or decline it.`
+                  : `You have worked ${worked} — why are you working beyond 8 hours? Your reporting TL / PTL will approve or decline it.${needLate ? ' A reason for the late sign-in is also required.' : ''}`)
               : needLate
                 ? 'You signed in after 9:45 — a reason is required.'
                 : needEarly ? `You have worked ${worked} — signing out before 8 hours needs a reason.`
@@ -230,7 +232,7 @@ export default function SignOutButton({ user, roleKey, className = 'nav-item' })
           )}
           {needExtra && (
             <div className="form-row">
-              <label className="form-label">Reason for working beyond 8 hours *</label>
+              <label className="form-label">{attendInfo?.sundayWork ? 'Reason for working on a Sunday / holiday *' : 'Reason for working beyond 8 hours *'}</label>
               <textarea
                 className="form-input"
                 value={extraReason}
