@@ -1021,7 +1021,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   );
   const myEmployee = (myTeam?.members ?? []).find((member) => idOf(member.employee) === myEmployeeId)?.employee;
   const myLead = myTeam?.lead;
-  const leadName = typeof myTeam?.lead === 'object'
+  const leadName = myTeam?.lead && typeof myTeam.lead === 'object'
     ? [myTeam.lead.firstName, myTeam.lead.lastName].filter(Boolean).join(' ')
     : '';
   const ownName = [myEmployee?.firstName, myEmployee?.lastName].filter(Boolean).join(' ')

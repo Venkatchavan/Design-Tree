@@ -1392,7 +1392,7 @@ function TrackTab() {
       ? `Leads own team, ${currentTeam.service ?? currentTeam.name ?? ''}`.trim()
       : `${(() => {
         const lead = currentTeam.lead;
-        const name = typeof lead === 'object'
+        const name = lead && typeof lead === 'object'
           ? ([lead.firstName, lead.lastName].filter(Boolean).join(' ') || '')
           : String(lead ?? '');
         return name ? `${name}'s team, ${currentTeam.service ?? currentTeam.name ?? ''}` : (currentTeam.name ?? '');
