@@ -1,3 +1,4 @@
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 import PeerDashboardPage from './pages/PeerDashboardPage.jsx';
 import DtPeerReviewPage from './pages/DtPeerReviewPage.jsx';
 import { lazy, Suspense } from 'react'
@@ -133,11 +134,13 @@ function ShellPage({ bootstrap, user, viewKey, activeView }) {
       activeView={activeView ?? viewKey}
       crumbs={['DesignTree', def.label]}
     >
-      {Cmp ? (
-        <Suspense fallback={<p role="status">Loading page…</p>}><Cmp bootstrap={bootstrap} user={user} viewKey={viewKey} /></Suspense>
-      ) : (
-        <ComingSoon title={def.label} sub={def.sub} phase={def.phase} />
-      )}
+      <ErrorBoundary scope="page" resetKey={viewKey}>
+        {Cmp ? (
+          <Suspense fallback={<p role="status">Loading page…</p>}><Cmp bootstrap={bootstrap} user={user} viewKey={viewKey} /></Suspense>
+        ) : (
+          <ComingSoon title={def.label} sub={def.sub} phase={def.phase} />
+        )}
+      </ErrorBoundary>
     </AppShell>
   )
 }

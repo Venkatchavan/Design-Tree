@@ -6,6 +6,7 @@ import { enhanceSelects } from './lib/enhanceSelects.js'
 import { enhanceSearch } from './lib/enhanceSearch.js'
 import { enhanceDates } from './lib/enhanceDates.js'
 import ToastViewport from './components/ToastViewport.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { queryClient } from './lib/queryClient.js'
 
 // Styled dropdown lists and expanding search fields (see src/lib/enhance*.js).
@@ -15,7 +16,11 @@ enhanceDates()
 
 createRoot(document.getElementById('root')).render(
   <QueryClientProvider client={queryClient}>
-    <App />
-    <ToastViewport />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+    <ErrorBoundary>
+      <ToastViewport />
+    </ErrorBoundary>
   </QueryClientProvider>
 )
