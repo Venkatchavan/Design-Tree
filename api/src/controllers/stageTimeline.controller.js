@@ -55,8 +55,9 @@ async function assignments(user, project, service) {
     plan: ptl || director,
     request: ptl,
     confirm: spoc,
-    // 06 Nov 2026: completion is approved by the PTL, then the SPOC, and finally
-    // by the Design Management Head (company-wide, not tied to a director team).
+    // 07 Nov 2026: the assigned SPOC gives the final approval once the PTL has marked
+    // the stage complete (the 'confirm' permission). Only rows already SPOC Confirmed
+    // under the earlier 3-step flow are left for the Design Management Head.
     approve: user.role === 'design_mgmt_head',
     teams,
     allocations
@@ -202,7 +203,7 @@ async function stageNotification(user, project, service, doc, access, action) {
   users.push(id(user.id));
   await notify({
     users: [...new Set(users)],
-    roles: doc.confirmationStatus === 'TD Approved' ? ['admin_billing'] : doc.confirmationStatus === 'SPOC Confirmed' ? ['design_mgmt_head'] : [],
+    roles: doc.confirmationStatus === 'TD Approved' ? ['admin_billing'] : [],
     project: project._id,
     link: {
       view: 'stage-timeline',
@@ -236,7 +237,7 @@ export async function upsertStage(req, res, next) {
     });
     const access = await assignments(req.user, project, service);
     if (!access.plan && !access.confirm && !access.approve) return res.status(403).json({
-      message: 'Only the assigned PTL, SPOC, Design Management Head or authorized TD/ATD can act.'
+      message: 'Only the assigned PTL, SPOC or authorized TD/ATD can act.'
     });
     const serviceRows = rows.filter(r => sameService(r.service, service));
     const old = serviceRows.find(r => r.stage === data.stage),
@@ -343,29 +344,33 @@ export async function upsertStage(req, res, next) {
         });
         if (data.confirmCompletion) {
           if (!access.confirm) return res.status(403).json({
-            message: 'Only the assigned SPOC can confirm.'
+            message: 'Only the assigned SPOC can approve.'
           });
           if (from !== 'PTL Requested') return res.status(409).json({
             message: 'A PTL submission is required first.'
           });
           if (!old.startDate || !old.plannedCompletion) return res.status(400).json({
-            message: 'Set the stage dates before confirming this legacy submission.'
+            message: 'Set the stage dates before approving this legacy submission.'
           });
+          // The SPOC's approval completes the stage. 'TD Approved' stays as the stored
+          // "fully approved" value because billing and the stage chain read it.
           patch = {
             ...patch,
-            confirmationStatus: 'SPOC Confirmed',
+            confirmationStatus: 'TD Approved',
+            approvalSequenceVerified: true,
             spocConfirmedBy: req.user.id,
             spocConfirmedAt: new Date(),
             spocRemark: data.spocRemark,
-            currentStatus: 'Pending Design Management Head approval'
+            currentStatus: 'Completed',
+            billingReadiness: 'Ready for billing'
           };
-          action = 'SPOC confirmed completion';
+          action = 'SPOC approved completion';
         } else {
           if (!access.approve) return res.status(403).json({
-            message: 'Only the Design Management Head gives the final approval.'
+            message: 'Only the assigned SPOC approves a completed stage.'
           });
           if (from !== 'SPOC Confirmed') return res.status(409).json({
-            message: 'Assigned SPOC confirmation is required first.'
+            message: 'Only stages the SPOC confirmed under the earlier flow can be approved here.'
           });
           if (!old.startDate || !old.plannedCompletion) return res.status(400).json({
             message: 'Set the stage dates before approving this legacy submission.'
@@ -436,7 +441,7 @@ export async function upsertStage(req, res, next) {
     try {
       await stageNotification(req.user, project, service, doc, access, action);
     } catch {/* A saved action survives notification transport failure. */}
-    const nextStage = data.approveCompletion && data.stage !== 'GFC' ? targetFor(service, [...serviceRows.filter(r => r.stage !== data.stage), doc], STAGES[STAGES.indexOf(data.stage) + 1]) : null;
+    const nextStage = doc.confirmationStatus === 'TD Approved' && data.stage !== 'GFC' ? targetFor(service, [...serviceRows.filter(r => r.stage !== data.stage), doc], STAGES[STAGES.indexOf(data.stage) + 1]) : null;
     return res.json({
       item: doc,
       nextStage

@@ -344,7 +344,7 @@ export default function FunctionHeadPage({ bootstrap, user, viewKey }) {
   if (isDirector && active === 'peer-review-head') {
     return (
       <div id={`view-${active}`}>
-        <PeerReviewTabs overview={<><CoordinationPanel service="Peer Review"/>
+        <PeerReviewTabs canSeeDt={!!bootstrap?.capabilities?.dtPeerReview?.read} overview={<><CoordinationPanel service="Peer Review"/>
           <DirectorPeerView
             reviews={peerRows}
             openComments={openPeerComments}
@@ -792,8 +792,11 @@ function DirectorGbsView({ items, teamLogCount, loading, loadError }) {
 // 03 Nov 2026: DT Peer Review (Structural peer review dashboard) opens first
 // under the Peer Review nav item; the existing overview stays a tab away.
 const PEER_TABS = [{ key: 'dt', label: 'DT Peer Review' }, { key: 'overview', label: 'Peer review overview' }];
-function PeerReviewTabs({ overview }) {
-  const [tab, setTab] = useState('dt');
+// 07 Nov 2026: the DT peer review log is for Srinivasa Rao and the Founding Directors
+// only; other directors keep the overview.
+function PeerReviewTabs({ overview, canSeeDt }) {
+  const [tab, setTab] = useState(canSeeDt ? 'dt' : 'overview');
+  if (!canSeeDt) return overview;
   return (
     <>
       <Tabs tabs={PEER_TABS} active={tab} onChange={setTab} label="Peer Review" />

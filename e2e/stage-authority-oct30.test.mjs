@@ -152,7 +152,7 @@ test('partial PTL and SPOC service allocations do not authorize whole-bundle mut
   assert.equal(read.status, 200);
   assert.equal(read.data.items.find(r => r.stage === 'CD').permissions.confirm, false);
 });
-test('union of all assigned component services authorizes PTL planning, SPOC confirmation and TD final approval', async () => {
+test('union of all assigned component services authorizes PTL planning, SPOC final approval', async () => {
   const p = await fixture('FULL-COMPONENT-UNION');
   const {
     ServiceDashboard
@@ -195,13 +195,6 @@ test('union of all assigned component services authorizes PTL planning, SPOC con
     ...identity(p),
     expectedVersion: row.__v,
     confirmCompletion: true
-  });
-  assert.equal(r.status, 200, JSON.stringify(r.data));
-  row = r.data.item;
-  r = await call('dmh', {
-    ...identity(p),
-    expectedVersion: row.__v,
-    approveCompletion: true
   });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.equal(r.data.item.billingReadiness, 'Ready for billing');
@@ -259,14 +252,6 @@ test('normal approved SMEPF allocation synchronizes a composite team and authori
     service: 'SMEPF',
     expectedVersion: row.__v,
     confirmCompletion: true
-  });
-  assert.equal(r.status, 200, JSON.stringify(r.data));
-  row = r.data.item;
-  r = await call('dmh', {
-    ...identity(p),
-    service: 'SMEPF',
-    expectedVersion: row.__v,
-    approveCompletion: true
   });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.equal(r.data.item.billingReadiness, 'Ready for billing');
@@ -329,7 +314,8 @@ test('saved activated SPOC retains explicit project-wide authority and other-pro
     confirmCompletion: true
   });
   assert.equal(r.status, 200, JSON.stringify(r.data));
-  assert.equal(r.data.item.confirmationStatus, 'SPOC Confirmed');
+  assert.equal(r.data.item.confirmationStatus, 'TD Approved');
+  assert.equal(r.data.item.billingReadiness, 'Ready for billing');
   // Earlier full-union fixtures belong to other projects and cannot be added
   // to this project's Electrical-only lead scope.
   assert.equal((await call('tl', {
@@ -338,5 +324,5 @@ test('saved activated SPOC retains explicit project-wide authority and other-pro
     ...dates,
     expectedVersion: r.data.item.__v
   })).status, 403);
-  assert.equal((await f.models.StageStatus.findById(row._id).lean()).confirmationStatus, 'SPOC Confirmed');
+  assert.equal((await f.models.StageStatus.findById(row._id).lean()).confirmationStatus, 'TD Approved');
 });

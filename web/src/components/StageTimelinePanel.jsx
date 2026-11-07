@@ -30,10 +30,10 @@ function Approval({
   row
 }) {
   const n = Math.max(['None', 'PTL Requested', 'SPOC Confirmed', 'TD Approved'].indexOf(row.confirmationStatus), 0);
-  const status = row.confirmationStatus === 'PTL Requested' ? 'PTL Completed' : !row.confirmationStatus || row.confirmationStatus === 'None' ? 'Not started' : row.confirmationStatus === 'TD Approved' ? 'DMH Approved' : row.confirmationStatus;
+  const status = row.confirmationStatus === 'PTL Requested' ? 'PTL Completed' : !row.confirmationStatus || row.confirmationStatus === 'None' ? 'Not started' : row.confirmationStatus === 'TD Approved' ? 'SPOC Approved' : row.confirmationStatus;
   // One compact line of steps (never wraps per step), with the status underneath.
   return <div className="stage-approval">
-    <span className="stage-approval-steps" role="img" aria-label={`${n} of 3 approvals: ${status}`}>{['PTL', 'SPOC', 'DMH'].map((label, i) => <span key={label} className={`stage-approval-step${n > i ? ' is-done' : ''}`}>
+    <span className="stage-approval-steps" role="img" aria-label={`${Math.min(n, 2)} of 2 approvals: ${status}`}>{['PTL', 'SPOC'].map((label, i) => <span key={label} className={`stage-approval-step${n > i ? ' is-done' : ''}`}>
       {i > 0 && <span className="stage-approval-link" aria-hidden="true" />}
       <span className="stage-approval-dot" aria-hidden="true" />{label}
     </span>)}</span>
@@ -135,12 +135,12 @@ export default function StageTimelinePanel({
         heading: `Submit ${row.stage} completion`
       });
     }}>Mark complete</button>;
-    if (p.confirm) return <button type="button" className="btn-primary" disabled={save.isPending} onClick={() => act(row, 'confirmCompletion')}>SPOC confirm</button>;
-    if (p.approve) return <button type="button" className="btn-primary" disabled={save.isPending} onClick={() => act(row, 'approveCompletion')}>DMH approve</button>;
+    if (p.confirm) return <button type="button" className="btn-primary" disabled={save.isPending} onClick={() => act(row, 'confirmCompletion')}>SPOC approve</button>;
+    if (p.approve) return <button type="button" className="btn-primary" disabled={save.isPending} onClick={() => act(row, 'approveCompletion')}>DMH approve (earlier flow)</button>;
     return '—';
   }
   const duration = dialog?.mode === 'plan' ? calendarDays(dialog.plannedCompletion, dialog.startDate) : null;
-  return <Panel title="Stage completion approvals" sub="PTL marks complete → assigned SPOC confirms → Design Management Head gives final approval. Dates and variance use calendar days.">
+  return <Panel title="Stage completion approvals" sub="PTL marks complete → assigned SPOC approves. Dates and variance use calendar days.">
     {list.isLoading && <p role="status">Loading stage timeline…</p>}
     {list.isError && <p role="alert">{list.error.message}</p>}
     {save.isError && !dialog && <p role="alert">{save.error.message}</p>}
@@ -152,7 +152,7 @@ export default function StageTimelinePanel({
     {!list.isLoading && !list.isError && rows.length === 0 && <p>No services or stages on this project yet.</p>}
     {rows.length > 0 && <div style={{
       overflowX: 'auto'
-    }}><table className="data stage-timeline"><thead><tr>{['Service', 'Stage', 'PTL / SPOC / TD', 'Start Date', 'Planned Completion', 'Actual Completion', 'Variance', 'Billing Status', 'Complete Stage'].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map(row => <tr key={`${row.service}-${row.stage}`} data-service={row.service} data-stage={row.stage} aria-current={row.isCurrent ? 'step' : undefined} style={row.isCurrent ? {
+    }}><table className="data stage-timeline"><thead><tr>{['Service', 'Stage', 'PTL / SPOC', 'Start Date', 'Planned Completion', 'Actual Completion', 'Variance', 'Billing Status', 'Complete Stage'].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map(row => <tr key={`${row.service}-${row.stage}`} data-service={row.service} data-stage={row.stage} aria-current={row.isCurrent ? 'step' : undefined} style={row.isCurrent ? {
             background: '#eef5ff'
           } : undefined}>
       <td>{row.service}</td><td>{row.stage} – {NAMES[row.stage]}</td><td><Approval row={row} /></td>

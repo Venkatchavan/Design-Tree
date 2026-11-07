@@ -190,11 +190,8 @@ test('PTL date captures once, assigned SPOC confirms then TD approves and return
     approveCompletion: true,
     expectedVersion: row.__v
   }))).status, 409);
-  row = (await action('spoc', row, {
+  const result = await action('spoc', row, {
     confirmCompletion: true
-  })).item;
-  const result = await action('dmh', row, {
-    approveCompletion: true
   });
   assert.equal(result.item.billingReadiness, 'Ready for billing');
   assert.equal(result.nextStage.stage, 'SD');
@@ -356,11 +353,8 @@ test('legacy rows without a version can plan atomically without inventing unknow
   const row = await plan();
   assert.equal(row.__v, 1);
   assert.equal(row.actualCompletion, undefined);
-  const confirmed = await action('spoc', row, {
+  const done = await action('spoc', row, {
     confirmCompletion: true
-  });
-  const done = await action('dmh', confirmed.item, {
-    approveCompletion: true
   });
   const billed = await call('admin', {
     project: f.project,
@@ -453,11 +447,8 @@ test('same service alias requests cannot create duplicate trackers and final GFC
       requestCompletion: true,
       actualCompletion: actual
     })).item;
-    row = (await action('spoc', row, {
+    const done = await action('spoc', row, {
       confirmCompletion: true
-    })).item;
-    const done = await action('dmh', row, {
-      approveCompletion: true
     });
     assert.equal(done.nextStage === null, stage === 'GFC');
     priorActual = actual;
@@ -517,11 +508,8 @@ test('next-stage target retains a legacy saved baseline so the popup requests a 
     requestCompletion: true,
     actualCompletion: '2026-08-18'
   })).item;
-  row = (await action('spoc', row, {
+  const done = await action('spoc', row, {
     confirmCompletion: true
-  })).item;
-  const done = await action('dmh', row, {
-    approveCompletion: true
   });
   assert.equal(done.nextStage.startDate.slice(0, 10), '2026-08-19');
   assert.equal(done.nextStage.baselineCompletion.slice(0, 10), '2026-08-30');

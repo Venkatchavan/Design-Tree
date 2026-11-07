@@ -33,3 +33,13 @@ The page follows the report: project block, 1 Package status (status, blockers a
 - `e2e/dt-peer-review.test.mjs`: 4 API tests covering scope, read-only directors, comment rounds, sign-off, approval and release rules.
 - Full native suite: 164 tests, 161 pass. The 3 failures also fail on the baseline.
 - Web build passes. Browser check against the local fixture at 1360px and 390px, as Peer Review Head and FD. No horizontal page scroll.
+
+
+## 7 November 2026 changes (access and review team)
+
+- **Admin allots the review team.** Arpitha D and Sandeep N (`DT_PR_ALLOTTER_EMAILS`) allot a Structural project to the review team: Veeshal Rathod V, T Anusha Chowdary and Mallappa S Maranur (`DT_PR_REVIEWER_EMP_IDS`). Allotting creates the package. They can change the team until the package is released, but cannot edit its content.
+- **No team names are typed.** The review team no longer picks Design Engineer / Checker / Lead / Principal. The package shows the allotted team instead.
+- **Review team works the package.** Only the allotted team (and the Peer Review Head) can edit details, update the checklist, raise comments, sign off stages, approve deliverables and release. The earlier Lead / Principal Engineer restrictions are gone because those roles no longer exist.
+- **Read only for directors.** The log is read only for the Founding Directors and Srinivasa Rao (`DT_PR_VIEWER_EMAILS`). Working, Executive, Technical and Associate Technical Directors, and every other login, are refused (403) and do not see the DT Peer Review tab or nav item. Their existing Peer review overview is unchanged.
+- **Navigation.** The DT Peer Review nav item is added per login (Admin allotters, Srinivasa Rao, allotted reviewers, Peer Review Head) instead of for every Peer Reviewer.
+- **Login needed.** Review team members need a normal login linked to their employee record; they do not need the Peer Reviewer role.

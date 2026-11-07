@@ -25,7 +25,7 @@ router.get('/mine', requireInternal(), myTeams);
 // Scoped to the caller's own saved reporting chain, so every internal role may ask;
 // people with no reporting links receive an empty directory.
 router.get('/reporting-directory', requireInternal(), reportingDirectory);
-router.get('/company-directory', requireRole('hr','founding_director','working_director','executive_director','finance','associate_director','technical_director','assoc_technical_director'), companyDirectory);
+router.get('/company-directory', requireRole('hr','admin_billing','founding_director','working_director','executive_director','finance','associate_director','technical_director','assoc_technical_director'), companyDirectory);
 router.get('/:id', requireInternal(), getTeam);
 router.post('/', requireUserAdmin(), createTeam);
 router.put('/:id', requireUserAdmin(), updateTeam);

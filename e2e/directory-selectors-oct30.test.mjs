@@ -2,10 +2,10 @@ import { before, after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startLocalFixture } from './local-fixture.mjs';
 let f; const cookies={};
-before(async()=>{f=await startLocalFixture();for(const role of ['md','ed','wd','td','engineer','dmh']){const r=await fetch(f.base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:f.cast[role].email,password:f.password})});cookies[role]=r.headers.get('set-cookie').split(';')[0];}});
+before(async()=>{f=await startLocalFixture();for(const role of ['md','ed','wd','td','engineer','dmh','admin']){const r=await fetch(f.base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:f.cast[role].email,password:f.password})});cookies[role]=r.headers.get('set-cookie').split(';')[0];}});
 after(async()=>f?.stop());
 test('company directory includes founding and executive observers without opening unrelated roles or writes',async()=>{
- for(const role of ['md','ed','wd']){const r=await fetch(f.base+'/api/teams/company-directory',{headers:{Cookie:cookies[role]}});assert.equal(r.status,200,role);const d=await r.json();assert(d.employees.some(e=>e._id===f.cast.outsider.employee));assert(d.projects.some(p=>p._id===f.other));assert(!JSON.stringify(d).includes('passwordHash'));}
+ for(const role of ['md','ed','wd','admin']){const r=await fetch(f.base+'/api/teams/company-directory',{headers:{Cookie:cookies[role]}});assert.equal(r.status,200,role);const d=await r.json();assert(d.employees.some(e=>e._id===f.cast.outsider.employee));assert(d.projects.some(p=>p._id===f.other));assert(!JSON.stringify(d).includes('passwordHash'));}
  // 02 Nov 2026: TD Teams is limited to the TD's own departments.
  {const r=await fetch(f.base+'/api/teams/company-directory',{headers:{Cookie:cookies.td}});assert.equal(r.status,200);const d=await r.json();assert.equal(d.scope,'department');assert(d.employees.every(e=>e.department==='Structural'));assert(!d.projects.some(p=>p._id===f.other));}
  for(const role of ['engineer','dmh'])assert.equal((await fetch(f.base+'/api/teams/company-directory',{headers:{Cookie:cookies[role]}})).status,403,role);

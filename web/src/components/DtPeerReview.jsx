@@ -10,6 +10,8 @@ import './DtPeerReview.css';
 // DT Peer Review (3 Nov 2026): the DesignTree Structural Peer Review dashboard,
 // laid out like the client's status report. Lives under the left-nav Peer
 // Review item; the per-project Peer Review column is a separate record set.
+// 07 Nov 2026: Admin allots the project to the review team (nobody types team
+// names); the allotted team works the package; directors only read it.
 
 const B = '/api/dt-peer-review';
 const send = (path, method, body) => request(path, { method, body: body ? JSON.stringify(body) : undefined });
@@ -24,7 +26,7 @@ const stampText = (s) => (s?.at ? `${s.byName || '—'} · ${dmy(s.at)}` : '—'
 const projectLabel = (p) => (p ? [p.jobNumber || p.code, p.name].filter(Boolean).join(' · ') : '—');
 const STATUS_TONE = { 'Signed off': 'forest', 'Open comments': 'rust', 'In review': 'amber', 'Not started': 'neutral', Verified: 'forest', 'In Progress': 'amber', 'Not Started': 'neutral', 'N.A.': 'neutral', Approved: 'forest', Submitted: 'teal', Pending: 'amber' };
 
-export default function DtPeerReview({ canEdit = false }) {
+export default function DtPeerReview() {
   const qc = useQueryClient();
   const meta = useQuery({ queryKey: ['dt-peer-review', 'meta'], queryFn: () => request(`${B}/meta`) });
   const list = useQuery({ queryKey: ['dt-peer-review', 'list'], queryFn: () => request(B) });
@@ -47,6 +49,8 @@ export default function DtPeerReview({ canEdit = false }) {
   const run = (path, body, method) => mutate.mutate({ path, body, method });
 
   const free = (meta.data?.projects ?? []).filter((p) => !packages.some((x) => id(x.item.project) === id(p)));
+  const canAllot = !!meta.data?.access?.allot;
+  const canEdit = !!current?.canWrite;
 
   return (
     <div className="dtpr">
@@ -67,57 +71,71 @@ export default function DtPeerReview({ canEdit = false }) {
               <option key={id(item)} value={id(item)}>{projectLabel(item.project)} — {summary.status}</option>
             ))}
           </select>
-          {canEdit && <NewPackage projects={free} busy={mutate.isPending} onCreate={(body) => run(B, body)} />}
+          {canAllot && <AllotProject projects={free} employees={meta.data?.employees ?? []} busy={mutate.isPending} onCreate={(body) => run(B, body)} />}
         </div>
         {(list.error || meta.error) && <div className="login-error" role="alert" style={{ display: 'block' }}>{(list.error || meta.error).message}</div>}
         {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
       </Panel>
 
       {list.isLoading ? <EmptyState text="Loading peer review packages…" /> : !current ? (
-        <EmptyState text={canEdit ? 'Start a peer review package for a Structural project above.' : 'No DT Peer Review packages have been started yet.'} />
+        <EmptyState text={canAllot ? 'Allot a Structural project to the review team above.' : 'No project has been allotted for DT Peer Review yet.'} />
       ) : (
-        <Package key={selected} data={current} meta={meta.data ?? {}} canEdit={canEdit && !current.summary.released} busy={mutate.isPending} run={(path, body, method) => run(`${B}/${selected}${path}`, body, method)} />
+        <Package key={selected} data={current} meta={meta.data ?? {}} canEdit={canEdit && !current.summary.released} canAllot={canAllot && !current.summary.released} busy={mutate.isPending} run={(path, body, method) => run(`${B}/${selected}${path}`, body, method)} />
       )}
     </div>
   );
 }
 
-function NewPackage({ projects, busy, onCreate }) {
+// Admin only: pick a Structural project and the review team it is allotted to.
+function AllotProject({ projects, employees, busy, onCreate }) {
   const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ project: '', location: '', client: '', principalConsultant: '', deliverableStage: 'GFC' });
-  if (!open) return <button type="button" className="btn-primary" onClick={() => setOpen(true)} disabled={!projects.length} title={projects.length ? '' : 'Every eligible Structural project already has a package'}>New peer review package</button>;
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const [project, setProject] = useState('');
+  const [team, setTeam] = useState([]);
+  if (!open) return <button type="button" className="btn-primary" onClick={() => setOpen(true)} disabled={!projects.length} title={projects.length ? '' : 'Every eligible Structural project is already allotted'}>Allot project to review team</button>;
   return (
-    <form className="dtpr-form" onSubmit={(e) => { e.preventDefault(); onCreate(f); setOpen(false); }}>
-      <select className="filter-select" aria-label="Structural project" value={f.project} onChange={set('project')} required>
+    <form className="dtpr-form" onSubmit={(e) => { e.preventDefault(); onCreate({ project, reviewTeam: team }); setOpen(false); setProject(''); setTeam([]); }}>
+      <select className="filter-select" aria-label="Structural project" value={project} onChange={(e) => setProject(e.target.value)} required>
         <option value="">Select Structural project</option>
         {projects.map((p) => <option key={id(p)} value={id(p)}>{projectLabel(p)}</option>)}
       </select>
-      <input className="form-input" placeholder="Location" value={f.location} onChange={set('location')} />
-      <input className="form-input" placeholder="Client" value={f.client} onChange={set('client')} />
-      <input className="form-input" placeholder="Principal Consultant" value={f.principalConsultant} onChange={set('principalConsultant')} />
-      <input className="form-input" placeholder="Deliverable stage" value={f.deliverableStage} onChange={set('deliverableStage')} />
-      <button type="submit" className="btn-primary" disabled={busy || !f.project}>Create package</button>
+      <TeamPicker employees={employees} value={team} onChange={setTeam} />
+      <button type="submit" className="btn-primary" disabled={busy || !project || !team.length}>Allot project</button>
       <button type="button" className="btn sm ghost" onClick={() => setOpen(false)}>Cancel</button>
     </form>
   );
 }
 
-function Package({ data, meta, canEdit, busy, run }) {
+function TeamPicker({ employees, value, onChange }) {
+  if (!employees.length) return <span className="dtpr-note">No review team members are available to allot.</span>;
+  return (
+    <fieldset className="dtpr-team-pick">
+      <legend className="form-label">Review team</legend>
+      {employees.map((e) => (
+        <label key={id(e)} className="dtpr-check">
+          <input type="checkbox" checked={value.includes(id(e))} onChange={(ev) => onChange(ev.target.checked ? [...value, id(e)] : value.filter((v) => v !== id(e)))} />
+          {person(e)}{e.designation ? ` · ${e.designation}` : ''}
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+function Package({ data, meta, canEdit, canAllot, busy, run }) {
   const { item, summary: s } = data;
   const [editing, setEditing] = useState(false);
+  const [allotting, setAllotting] = useState(false);
   const stages = meta.stages ?? [];
   return (
     <>
       <Panel title={item.project?.name ?? 'Project'} sub={`${item.deliverableStage || '—'} · Peer Review applies to Structural (STR) services only`}>
-        {editing ? <HeaderForm item={item} meta={meta} busy={busy} onSave={(body) => { run('', body, 'PATCH'); setEditing(false); }} onCancel={() => setEditing(false)} /> : (
+        {editing ? <HeaderForm item={item} busy={busy} onSave={(body) => { run('', body, 'PATCH'); setEditing(false); }} onCancel={() => setEditing(false)} /> : (
           <>
             <dl className="dtpr-info">
               {[['Project', item.project?.name], ['Location', item.location], ['Client', item.client], ['Principal Consultant', item.principalConsultant], ['Service', 'Structural (STR)'], ['Deliverable stage', item.deliverableStage], ['Peer review', 'DesignTree Service Consultants Pvt. Ltd.']].map(([k, v]) => (
                 <div key={k}><dt>{k}</dt><dd>{v || '—'}</dd></div>
               ))}
             </dl>
-            {canEdit && <button type="button" className="btn sm" onClick={() => setEditing(true)}>Edit details and team</button>}
+            {canEdit && <button type="button" className="btn sm" onClick={() => setEditing(true)}>Edit details</button>}
           </>
         )}
       </Panel>
@@ -142,12 +160,15 @@ function Package({ data, meta, canEdit, busy, run }) {
         </p>
       </Panel>
 
-      <Panel title="2. Review team">
+      <Panel title="2. Review team" sub={item.allottedBy?.at ? `Allotted by ${stampText(item.allottedBy)}` : 'Allotted by Admin'}>
         <div className="dtpr-scroll">
-          <table className="data"><thead><tr><th>Role</th><th>Name</th><th>Responsibility</th></tr></thead>
-            <tbody>{(meta.teamRoles ?? []).map((r) => <tr key={r.key}><td>{r.label}</td><td>{person(item.team?.[r.key]) || 'Not assigned'}</td><td>{r.duty}</td></tr>)}</tbody>
+          <table className="data"><thead><tr><th>Name</th><th>Employee ID</th><th>Designation</th></tr></thead>
+            <tbody>{(item.reviewTeam ?? []).length === 0 ? <tr><td colSpan={3}>No review team allotted.</td></tr> : item.reviewTeam.map((e) => <tr key={id(e)}><td>{person(e)}</td><td>{e.empId || '—'}</td><td>{e.designation || '—'}</td></tr>)}</tbody>
           </table>
         </div>
+        {canAllot && (allotting
+          ? <TeamForm employees={meta.employees ?? []} current={(item.reviewTeam ?? []).map(id)} busy={busy} onSave={(reviewTeam) => { run('/team', { reviewTeam }, 'PUT'); setAllotting(false); }} onCancel={() => setAllotting(false)} />
+          : <button type="button" className="btn sm" onClick={() => setAllotting(true)}>Change review team</button>)}
       </Panel>
 
       <Panel title="3. Review stage progress">
@@ -165,7 +186,7 @@ function Package({ data, meta, canEdit, busy, run }) {
             ))}</tbody>
           </table>
         </div>
-        <p className="dtpr-note">A stage can be marked complete only when all its checklist items are Verified or N.A. and it has no open comments, and only by the Lead or Principal Engineer.</p>
+        <p className="dtpr-note">A stage can be marked complete only when all its checklist items are Verified or N.A. and it has no open comments, and only by the allotted review team.</p>
       </Panel>
 
       <Panel title="4. Approval gate">
@@ -182,7 +203,7 @@ function Package({ data, meta, canEdit, busy, run }) {
             </tr>
           ))}</tbody>
         </table></div>
-        <p className="dtpr-note">The package stays blocked while any review comment is open. Only the Principal Engineer can mark it Released for Issue.</p>
+        <p className="dtpr-note">The package stays blocked while any review comment is open. Only the allotted review team can mark it Released for Issue.</p>
       </Panel>
 
       <Panel title="5. Comments log" sub={`${s.comments.total} comments · ${s.comments.open} open (${s.comments.awaitingConsultant} awaiting consultant response, ${s.comments.awaitingDt} awaiting DesignTree review) · ${s.comments.closed} closed`}>
@@ -307,10 +328,20 @@ function Remarks({ value, onSave }) {
   return <input className="form-input" aria-label="Remarks" value={v} onChange={(e) => setV(e.target.value)} onBlur={() => v !== (value ?? '') && onSave(v)} />;
 }
 
-function HeaderForm({ item, meta, busy, onSave, onCancel }) {
+function TeamForm({ employees, current, busy, onSave, onCancel }) {
+  const [team, setTeam] = useState(current);
+  return (
+    <form className="dtpr-form" onSubmit={(e) => { e.preventDefault(); onSave(team); }}>
+      <TeamPicker employees={employees} value={team} onChange={setTeam} />
+      <button type="submit" className="btn-primary" disabled={busy || !team.length}>Save team</button>
+      <button type="button" className="btn sm ghost" onClick={onCancel}>Cancel</button>
+    </form>
+  );
+}
+
+function HeaderForm({ item, busy, onSave, onCancel }) {
   const [f, setF] = useState({
     location: item.location ?? '', client: item.client ?? '', principalConsultant: item.principalConsultant ?? '', deliverableStage: item.deliverableStage ?? '',
-    team: Object.fromEntries((meta.teamRoles ?? []).map((r) => [r.key, id(item.team?.[r.key])])),
   });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   return (
@@ -318,14 +349,6 @@ function HeaderForm({ item, meta, busy, onSave, onCancel }) {
       <div className="field-grid">
         {[['location', 'Location'], ['client', 'Client'], ['principalConsultant', 'Principal Consultant'], ['deliverableStage', 'Deliverable stage']].map(([k, label]) => (
           <div className="form-row" key={k}><label className="form-label">{label}<input className="form-input" value={f[k]} onChange={set(k)} /></label></div>
-        ))}
-        {(meta.teamRoles ?? []).map((r) => (
-          <div className="form-row" key={r.key}><label className="form-label">{r.label}
-            <select className="form-input" value={f.team[r.key]} onChange={(e) => setF({ ...f, team: { ...f.team, [r.key]: e.target.value } })}>
-              <option value="">Not assigned</option>
-              {(meta.employees ?? []).map((e) => <option key={id(e)} value={id(e)}>{person(e)}{e.empId ? ` · ${e.empId}` : ''}{e.designation ? ` · ${e.designation}` : ''}</option>)}
-            </select>
-          </label></div>
         ))}
       </div>
       <button type="submit" className="btn-primary" disabled={busy}>Save</button>{' '}

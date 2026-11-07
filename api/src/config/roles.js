@@ -296,9 +296,10 @@ export const NAV_BY_ROLE = {
     { view: 'work-tracking' },
   { view: 'my-meetings' },
   ],
+  // 07 Nov 2026: DT Peer Review is added per login (navFor dtPeerReview), only for
+  // the review team allotted by Admin, not for every peer reviewer.
   peer_reviewer: [
     {view:'peer-dashboard',label:'Dashboard'},
-    {view:'dt-peer-review'},
     {view:'leave-travel'}, {view:'employee-support'}, {view:'my-meetings'},
   ],
   marketing: [
@@ -381,11 +382,13 @@ export const TRAVEL_WRITER_ROLES = ['hr', 'finance'];
 
 // Nav with resolved labels/paths for a role. `traveller` adds the personal
 // Travel Booking entry for a non-manager who has saved bookings.
-export function navFor(role, { traveller = false } = {}) {
+export function navFor(role, { traveller = false, dtPeerReview = false } = {}) {
   const items = [...(NAV_BY_ROLE[role] ?? [])];
   if (ROLE_KEYS.includes(role) && !['client', 'architect', 'superuser'].includes(role)) items.push({ view: 'announcements' });
   const travelVisible = TRAVEL_MANAGER_ROLES.includes(role) || (traveller && INTERNAL_ROLES.includes(role) && role !== 'superuser');
   if (travelVisible && !items.some(i => i.view === 'travel-booking')) items.push({ view: 'travel-booking' });
+  // DT Peer Review log: Admin allotters, Srinivasa Rao and the allotted review team.
+  if (dtPeerReview && !items.some(i => i.view === 'dt-peer-review')) items.push({ view: 'dt-peer-review' });
   return items.map((item) => {
     const def = VIEWS[item.view];
     return {

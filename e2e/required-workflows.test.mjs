@@ -93,7 +93,7 @@ test('Internal roles can access shared bookings; role navigation reflects requir
   assert(!nav.includes('design-mgmt')); assert(nav.includes('my-team')); assert(nav.includes('certificates'));
 });
 
-test('billing requires PTL then SPOC then TD/ATD and MD is read-only', async () => {
+test('billing requires PTL then SPOC final approval and MD is read-only', async () => {
   const {ServiceDashboard}=await import('../api/src/models/ServiceDashboard.js');
   await ServiceDashboard.findOneAndUpdate({project:f.project,service:'STR'},{technicalDirector:'TEST-td'},{upsert:true});
   await f.models.Employee.findByIdAndUpdate(f.cast.tl.employee,{reportingManager:f.cast.atd.employee,director:f.cast.td.employee});
@@ -106,20 +106,18 @@ test('billing requires PTL then SPOC then TD/ATD and MD is read-only', async () 
   let row=(await call('tl','/api/billing/stages','POST',{...identity,expectedVersion:0,planDates:true,startDate:'2026-08-01',plannedCompletion:'2026-08-14'})).data.item;
   assert(row);
   row=(await call('tl', '/api/billing/stages', 'POST', { ...identity, expectedVersion:row.__v, requestCompletion: true, actualCompletion:'2026-08-14' })).data.item;
-  const confirm = await call('spoc', '/api/billing/stages', 'POST', { ...identity, expectedVersion:row.__v, confirmCompletion: true });
-  assert.equal(confirm.status, 200); assert.equal(confirm.data.item.billingReadiness, 'Pending');
-  assert.equal((await call('admin', '/api/billing/stages', 'PUT', { ...identity, currentStatus: 'Completed' })).status, 404);
-  assert.equal((await call('admin', `/api/billing/stages/${confirm.data.item._id}`, 'PUT', { expectedVersion:confirm.data.item.__v, billingReadiness: 'Ready for billing' })).status, 403);
-  assert.equal((await call('md', '/api/billing/stages', 'POST', { ...identity, expectedVersion:confirm.data.item.__v, approveCompletion: true })).status, 403);
-  const approve = await call('dmh', '/api/billing/stages', 'POST', { ...identity, expectedVersion:confirm.data.item.__v, approveCompletion: true });
+  const approve = await call('spoc', '/api/billing/stages', 'POST', { ...identity, expectedVersion:row.__v, confirmCompletion: true });
   assert.equal(approve.status, 200); assert.equal(approve.data.item.billingReadiness, 'Ready for billing');
-  assert.equal(approve.data.item.confirmationStatus, 'TD Approved'); assert.equal(approve.data.item.history.length, 4);
-  assert.equal((await call('dmh', '/api/billing/stages', 'POST', { ...identity, expectedVersion:approve.data.item.__v, approveCompletion: true })).status, 409);
+  assert.equal(approve.data.item.confirmationStatus, 'TD Approved'); assert.equal(approve.data.item.history.length, 3);
+  assert.equal((await call('admin', '/api/billing/stages', 'PUT', { ...identity, currentStatus: 'Completed' })).status, 404);
+  assert.equal((await call('admin', `/api/billing/stages/${approve.data.item._id}`, 'PUT', { expectedVersion:approve.data.item.__v, billingReadiness: 'Ready for billing' })).status, 403);
+  assert.equal((await call('md', '/api/billing/stages', 'POST', { ...identity, expectedVersion:approve.data.item.__v, approveCompletion: true })).status, 403);
+  assert.equal((await call('spoc', '/api/billing/stages', 'POST', { ...identity, expectedVersion:approve.data.item.__v, confirmCompletion: true })).status, 409);
   const claim = await call('admin', '/api/billing/claims', 'POST', { ...identity, amount: 100 }); assert.equal(claim.status, 201);
   assert.equal((await call('admin', `/api/billing/claims/${claim.data.item._id}/status`, 'PATCH', { status: 'Billed' })).status, 200);
-  // The strict chain supersedes the historical director shortcut; the Design Management Head gives the final approval, so TD/ATD cannot.
+  // The strict chain supersedes the historical director shortcut; the SPOC gives the final approval, so TD/ATD cannot approve.
   for(const role of ['td','atd'])assert.equal((await call(role,'/api/billing/stages','POST',{...identity,stage:'SD',expectedVersion:0,approveCompletion:true})).status,403);
-  assert.equal((await call('dmh','/api/billing/stages','POST',{...identity,stage:'SD',expectedVersion:0,approveCompletion:true})).status,409);
+  assert.equal((await call('spoc','/api/billing/stages','POST',{...identity,stage:'SD',expectedVersion:0,confirmCompletion:true})).status,409);
 
 });
 

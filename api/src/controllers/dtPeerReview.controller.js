@@ -1,13 +1,13 @@
 import mongoose from 'mongoose';
 import {
   DtPeerReview, DT_PR_STAGES, DT_PR_CHECKLIST, DT_PR_DELIVERABLES, DT_PR_ITEM_STATUS,
-  DT_PR_APPROVAL_STATUS, DT_PR_TEAM_ROLES, DT_PR_RESPONSE_TARGET_DAYS,
+  DT_PR_APPROVAL_STATUS, DT_PR_RESPONSE_TARGET_DAYS,
 } from '../models/DtPeerReview.js';
+import { DT_PR_ALLOTTER_EMAILS, DT_PR_VIEWER_EMAILS, DT_PR_REVIEWER_EMP_IDS } from '../config/dtPeerReviewAccess.js';
 import { Project } from '../models/Project.js';
 import { User } from '../models/User.js';
 import { Employee } from '../models/Employee.js';
 import { expandServices } from '../config/services.js';
-import { projectScopeIds, canReadProject } from '../utils/projectScope.js';
 
 const id = (v) => String(v?._id ?? v ?? '');
 const DAY = 86400000;
@@ -16,13 +16,33 @@ const fullName = (e) => (e ? [e.firstName, e.middleName, e.lastName].filter(Bool
 const isClosedItem = (s) => s === 'Verified' || s === 'N.A.';
 const isDone = (s) => s === 'Approved' || s === 'N.A.';
 const POP = [
-  ...DT_PR_TEAM_ROLES.map((r) => ({ path: `team.${r.key}`, select: 'firstName middleName lastName empId designation' })),
+  { path: 'reviewTeam', select: 'firstName middleName lastName empId designation' },
   { path: 'project', select: 'name code jobNumber services status branch' },
 ];
 
 // Peer Review applies to Structural services; a project qualifies when its
 // saved services include Structural (incl. SMEP/SMEPF) or Peer Review.
 const eligible = (p) => expandServices(p.services ?? []).some((s) => s === 'Structural' || s === 'Peer Review');
+
+// Who may do what (07 Nov 2026): Admin allots the project and review team; the
+// allotted review team (and the Peer Review Head) work the package; Srinivasa
+// Rao and the Founding Directors only read; every other login is refused.
+export async function dtPrAccess(user) {
+  const none = { employee: '', allot: false, head: false, viewer: false, reviewer: false, read: false };
+  if (!user) return none;
+  const me = await User.findById(user.id).select('email employee').lean();
+  const email = String(me?.email ?? user.email ?? '').trim().toLowerCase();
+  const employee = me?.employee ? id(me.employee) : '';
+  const allot = DT_PR_ALLOTTER_EMAILS.includes(email);
+  const head = user.role === 'peer_review_head';
+  const viewer = user.role === 'founding_director' || DT_PR_VIEWER_EMAILS.includes(email);
+  const reviewer = !!employee && !!(await DtPeerReview.exists({ reviewTeam: employee }));
+  return { employee, allot, head, viewer, reviewer, read: allot || head || viewer || reviewer };
+}
+const onTeam = (a, doc) => !!a.employee && (doc.reviewTeam ?? []).some((e) => id(e) === a.employee);
+const canWritePkg = (a, doc) => a.head || onTeam(a, doc);
+const canReadPkg = (a, doc) => a.allot || a.head || a.viewer || onTeam(a, doc);
+const denied = () => fail(403, 'You do not have access to the DT Peer Review log.');
 
 export function commentState(c, now = Date.now()) {
   const rounds = c.rounds ?? [];
@@ -101,13 +121,24 @@ const stampOf = (a) => ({ by: a.employee, byName: a.name, at: new Date() });
 async function loadPackage(req, { write = false } = {}) {
   if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, 'Peer review package not found.');
   const doc = await DtPeerReview.findById(req.params.id);
-  if (!doc || !(await canReadProject(req.user, doc.project))) throw fail(404, 'Peer review package not found.');
+  const a = await dtPrAccess(req.user);
+  if (!doc || !canReadPkg(a, doc)) throw fail(404, 'Peer review package not found.');
+  if (write && !canWritePkg(a, doc)) throw fail(403, 'Only the review team allotted to this project can update the package.');
   if (write && doc.released?.at) throw fail(409, 'This package is Released for Issue and is now read-only.');
   return doc;
 }
-async function respond(res, doc, status = 200) {
+async function respond(req, res, doc, status = 200) {
   const full = await DtPeerReview.findById(doc._id).populate(POP).lean();
-  return res.status(status).json({ item: full, summary: summarize(full) });
+  const a = await dtPrAccess(req.user);
+  return res.status(status).json({ item: full, summary: summarize(full), canWrite: canWritePkg(a, full) && !full.released?.at });
+}
+// The review team can only be chosen from the people Admin may allot.
+async function reviewTeamFrom(ids) {
+  const list = [...new Set((Array.isArray(ids) ? ids : []).map(id))];
+  if (!list.length || list.some((v) => !mongoose.isValidObjectId(v))) throw fail(400, 'Allot at least one review team member.');
+  const found = await Employee.find({ _id: { $in: list }, empId: { $in: DT_PR_REVIEWER_EMP_IDS } }).select('_id').lean();
+  if (found.length !== list.length) throw fail(400, 'Choose review team members from the approved list.');
+  return list;
 }
 const handle = (fn) => async (req, res, next) => {
   try { return await fn(req, res); } catch (err) { if (err.status) return res.status(err.status).json({ message: err.message }); return next(err); }
@@ -116,36 +147,41 @@ const text = (v, max = 4000) => String(v ?? '').trim().slice(0, max);
 const date = (v) => { if (!v) return null; const d = new Date(v); if (Number.isNaN(d.getTime())) throw fail(400, 'Enter a valid date.'); return d; };
 
 export const meta = handle(async (req, res) => {
-  const ids = await projectScopeIds(req.user);
-  const projects = (await Project.find(ids ? { _id: { $in: ids } } : {}).select('name code jobNumber services status').sort({ name: 1 }).lean()).filter(eligible);
+  const a = await dtPrAccess(req.user);
+  if (!a.read) throw denied();
+  // Only Admin allots, so only Admin needs the project list and the reviewer list.
+  const projects = a.allot ? (await Project.find({}).select('name code jobNumber services status').sort({ name: 1 }).lean()).filter(eligible) : [];
+  const employees = a.allot ? await Employee.find({ empId: { $in: DT_PR_REVIEWER_EMP_IDS }, status: { $ne: 'Exited' } }).select('firstName middleName lastName empId designation').sort({ firstName: 1 }).lean() : [];
   res.json({
     stages: DT_PR_STAGES, deliverables: DT_PR_DELIVERABLES, itemStatus: DT_PR_ITEM_STATUS,
-    approvalStatus: DT_PR_APPROVAL_STATUS, teamRoles: DT_PR_TEAM_ROLES, responseTargetDays: DT_PR_RESPONSE_TARGET_DAYS,
-    projects,
-    // Team pickers for the Peer Review team only.
-    employees: ['peer_reviewer', 'peer_review_head'].includes(req.user.role)
-      ? (await Employee.find({ status: { $ne: 'Exited' } }).select('firstName middleName lastName empId designation department').sort({ firstName: 1 }).lean())
-      : [],
+    approvalStatus: DT_PR_APPROVAL_STATUS, responseTargetDays: DT_PR_RESPONSE_TARGET_DAYS,
+    projects, employees, access: { allot: a.allot },
   });
 });
 
 export const list = handle(async (req, res) => {
-  const ids = await projectScopeIds(req.user);
-  const items = await DtPeerReview.find(ids ? { project: { $in: ids } } : {}).populate(POP).sort({ updatedAt: -1 }).lean();
-  res.json({ items: items.map((item) => ({ item, summary: summarize(item) })) });
+  const a = await dtPrAccess(req.user);
+  if (!a.read) throw denied();
+  const all = await DtPeerReview.find({}).populate(POP).sort({ updatedAt: -1 }).lean();
+  const items = all.filter((item) => canReadPkg(a, item));
+  res.json({ items: items.map((item) => ({ item, summary: summarize(item), canWrite: canWritePkg(a, item) && !item.released?.at })) });
 });
 
-export const get = handle(async (req, res) => respond(res, await loadPackage(req)));
+export const get = handle(async (req, res) => respond(req, res, await loadPackage(req)));
 
+// Admin allots a Structural project to the review team; this creates the package.
 export const create = handle(async (req, res) => {
+  const a = await dtPrAccess(req.user);
+  if (!a.allot) throw fail(403, 'Only Admin can allot a project to the review team.');
   const project = req.body?.project;
-  if (!mongoose.isValidObjectId(project) || !(await canReadProject(req.user, project))) throw fail(403, 'Project is not assigned to you.');
+  if (!mongoose.isValidObjectId(project)) throw fail(400, 'Choose a project.');
+  const reviewTeam = await reviewTeamFrom(req.body?.reviewTeam);
   const p = await Project.findById(project).select('services').lean();
   if (!p) throw fail(404, 'Project not found.');
   if (!eligible(p)) throw fail(400, 'Peer Review applies to Structural (STR) services only.');
   if (await DtPeerReview.exists({ project })) throw fail(409, 'This project already has a DT Peer Review package.');
   const doc = await DtPeerReview.create({
-    project,
+    project, reviewTeam, allottedBy: stampOf(await actor(req)),
     location: text(req.body.location, 200), client: text(req.body.client, 200),
     principalConsultant: text(req.body.principalConsultant, 200), deliverableStage: text(req.body.deliverableStage, 60) || 'GFC',
     stages: DT_PR_STAGES.map((s) => ({ ...s })),
@@ -153,22 +189,26 @@ export const create = handle(async (req, res) => {
     approvals: DT_PR_DELIVERABLES.map((deliverable) => ({ deliverable })),
     createdBy: req.user.id,
   });
-  return respond(res, doc, 201);
+  return respond(req, res, doc, 201);
+});
+
+// Admin changes who the project is allotted to.
+export const setTeam = handle(async (req, res) => {
+  const a = await dtPrAccess(req.user);
+  if (!a.allot) throw fail(403, 'Only Admin can allot a project to the review team.');
+  const doc = await loadPackage(req, { write: false });
+  if (doc.released?.at) throw fail(409, 'This package is Released for Issue and is now read-only.');
+  doc.reviewTeam = await reviewTeamFrom(req.body?.reviewTeam);
+  doc.allottedBy = stampOf(await actor(req));
+  await doc.save();
+  return respond(req, res, doc);
 });
 
 export const updateHeader = handle(async (req, res) => {
   const doc = await loadPackage(req, { write: true });
   for (const k of ['location', 'client', 'principalConsultant', 'deliverableStage']) if (k in (req.body ?? {})) doc[k] = text(req.body[k], 200);
-  if (req.body?.team) {
-    for (const r of DT_PR_TEAM_ROLES) {
-      if (!(r.key in req.body.team)) continue;
-      const v = req.body.team[r.key];
-      if (v && (!mongoose.isValidObjectId(v) || !(await Employee.exists({ _id: v })))) throw fail(400, `Choose a valid ${r.label}.`);
-      doc.team[r.key] = v || null;
-    }
-  }
   await doc.save();
-  return respond(res, doc);
+  return respond(req, res, doc);
 });
 
 export const addChecklistItem = handle(async (req, res) => {
@@ -178,7 +218,7 @@ export const addChecklistItem = handle(async (req, res) => {
   if (doc.stages.find((s) => s.code === stage)?.signedOff?.at) throw fail(409, 'That stage is signed off.');
   doc.checklist.push({ stage, item });
   await doc.save();
-  return respond(res, doc, 201);
+  return respond(req, res, doc, 201);
 });
 
 export const updateChecklistItem = handle(async (req, res) => {
@@ -195,7 +235,7 @@ export const updateChecklistItem = handle(async (req, res) => {
   }
   if ('remarks' in (req.body ?? {})) row.remarks = text(req.body.remarks, 1000);
   await doc.save();
-  return respond(res, doc);
+  return respond(req, res, doc);
 });
 
 export const updateApproval = handle(async (req, res) => {
@@ -204,14 +244,10 @@ export const updateApproval = handle(async (req, res) => {
   if (!row) throw fail(404, 'Deliverable not found.');
   if (!DT_PR_APPROVAL_STATUS.includes(req.body?.status)) throw fail(400, 'Choose a valid status.');
   const a = await actor(req);
-  // Approval is the Principal Engineer's decision (or the Peer Review Head).
-  if (req.body.status === 'Approved' && !(req.user.role === 'peer_review_head' || (a.employee && id(a.employee) === id(doc.team?.principal)))) {
-    throw fail(403, 'Only the Principal Engineer can approve a deliverable.');
-  }
   row.status = req.body.status;
   row.stamped = req.body.status === 'Pending' ? { by: null, byName: '', at: null } : stampOf(a);
   await doc.save();
-  return respond(res, doc);
+  return respond(req, res, doc);
 });
 
 export const addComment = handle(async (req, res) => {
@@ -224,7 +260,7 @@ export const addComment = handle(async (req, res) => {
     rounds: [{ commentDate: date(req.body.commentDate) ?? new Date(), comment }],
   });
   await doc.save();
-  return respond(res, doc, 201);
+  return respond(req, res, doc, 201);
 });
 
 // One action per call: record the consultant's response to the latest round,
@@ -243,23 +279,15 @@ export const addRound = handle(async (req, res) => {
   } else if (req.body?.kind === 'review') {
     if (!['Open', 'Closed'].includes(req.body.verdict)) throw fail(400, 'Mark the comment Open or Closed.');
     if (!last.response) throw fail(409, 'Record the consultant response before the next DesignTree round.');
-    const a = await actor(req);
-    // Closing a comment is the Lead / Principal Engineer's call.
-    if (req.body.verdict === 'Closed' && !(req.user.role === 'peer_review_head' || [doc.team?.lead, doc.team?.principal].some((t) => t && id(t) === id(a.employee)))) {
-      throw fail(403, 'Only the Lead or Principal Engineer can close a comment.');
-    }
     c.rounds.push({ commentDate: date(req.body.commentDate) ?? new Date(), verdict: req.body.verdict, comment: text(req.body.comment) });
   } else throw fail(400, 'Choose response or review.');
   await doc.save();
-  return respond(res, doc, 201);
+  return respond(req, res, doc, 201);
 });
 
 export const signOffStage = handle(async (req, res) => {
   const doc = await loadPackage(req, { write: true });
   const a = await actor(req);
-  if (!a.employee || ![doc.team?.lead, doc.team?.principal].some((t) => t && id(t) === id(a.employee))) {
-    throw fail(403, 'Only the Lead or Principal Engineer can sign off a stage.');
-  }
   const s = summarize(doc.toObject()).stages.find((x) => x.code === req.params.code);
   if (!s) throw fail(404, 'Stage not found.');
   if (s.signedOff) throw fail(409, 'Stage already signed off.');
@@ -267,16 +295,15 @@ export const signOffStage = handle(async (req, res) => {
   doc.stages.find((x) => x.code === s.code).signedOff = stampOf(a);
   doc.markModified('stages');
   await doc.save();
-  return respond(res, doc);
+  return respond(req, res, doc);
 });
 
 export const release = handle(async (req, res) => {
   const doc = await loadPackage(req, { write: true });
   const a = await actor(req);
-  if (!a.employee || id(a.employee) !== id(doc.team?.principal)) throw fail(403, 'Only the Principal Engineer can mark the package Released for Issue.');
   const sum = summarize(doc.toObject());
   if (sum.blockers.length) throw fail(409, `Package is blocked: ${sum.blockers.join('; ')}.`);
   doc.released = stampOf(a);
   await doc.save();
-  return respond(res, doc);
+  return respond(req, res, doc);
 });

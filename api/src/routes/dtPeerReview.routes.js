@@ -1,25 +1,26 @@
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { denyRoles, requireInternal, requireRole } from '../middlewares/requireRole.js';
+import { requireInternal } from '../middlewares/requireRole.js';
 import * as c from '../controllers/dtPeerReview.controller.js';
 
-// DT Peer Review: internal logins read within their project scope; only the
-// Peer Review team writes. Directors (incl. FD/WD/ED) are read-only.
+// DT Peer Review (07 Nov 2026). Access is decided per request in the controller
+// (dtPrAccess): Admin allots, the allotted review team writes, Srinivasa Rao and
+// the Founding Directors read only, everyone else is refused. Directors never write.
 const router = Router();
 router.use(requireAuth, requireInternal());
-const write = [denyRoles('founding_director', 'working_director', 'executive_director'), requireRole('peer_reviewer', 'peer_review_head')];
 
 router.get('/meta', c.meta);
 router.get('/', c.list);
 router.get('/:id', c.get);
-router.post('/', ...write, c.create);
-router.patch('/:id', ...write, c.updateHeader);
-router.post('/:id/checklist', ...write, c.addChecklistItem);
-router.patch('/:id/checklist/:itemId', ...write, c.updateChecklistItem);
-router.patch('/:id/approvals/:itemId', ...write, c.updateApproval);
-router.post('/:id/comments', ...write, c.addComment);
-router.post('/:id/comments/:commentId/rounds', ...write, c.addRound);
-router.post('/:id/stages/:code/sign-off', ...write, c.signOffStage);
-router.post('/:id/release', ...write, c.release);
+router.post('/', c.create);
+router.put('/:id/team', c.setTeam);
+router.patch('/:id', c.updateHeader);
+router.post('/:id/checklist', c.addChecklistItem);
+router.patch('/:id/checklist/:itemId', c.updateChecklistItem);
+router.patch('/:id/approvals/:itemId', c.updateApproval);
+router.post('/:id/comments', c.addComment);
+router.post('/:id/comments/:commentId/rounds', c.addRound);
+router.post('/:id/stages/:code/sign-off', c.signOffStage);
+router.post('/:id/release', c.release);
 
 export default router;

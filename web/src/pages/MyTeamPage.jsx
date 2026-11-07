@@ -180,7 +180,7 @@ function StageRequestPanel({ projectId }) {
     onError: (e) => { setErr(e.message); setMsg(''); },
   });
   return (
-    <Panel title="Stage completed — request to SPOC" sub="For all PTLs. Goes to SPOC for final confirm, then DMH, directors and Admin billing.">
+    <Panel title="Stage completed — request to SPOC" sub="For all PTLs. Goes to the SPOC for final approval, then Admin billing.">
       <div className="field-grid">
         <div className="form-row">
           <label className="form-label">Project</label>

@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { auditProjectSchema } from '../utils/projectAudit.js';
 
 // DT Peer Review (3 Nov 2026): the DesignTree Structural Peer Review package
-// for one project — review team, seven review stages, master checklist,
+// for one project — allotted review team, seven review stages, master checklist,
 // approval gate and round-by-round comment log. The per-project PeerReview
 // records (project Peer Review column) are separate and unchanged.
 
@@ -27,12 +27,6 @@ export const DT_PR_CHECKLIST = [
 export const DT_PR_DELIVERABLES = ['Design Basis Report', 'Analysis / design models', 'Design calculations', 'Drawings', 'Design Review Checklist', 'Design Verification Checklist', 'Comment Closure Register'];
 export const DT_PR_ITEM_STATUS = ['Not Started', 'In Progress', 'Verified', 'N.A.'];
 export const DT_PR_APPROVAL_STATUS = ['Pending', 'Submitted', 'Approved', 'N.A.'];
-export const DT_PR_TEAM_ROLES = [
-  { key: 'designEngineer', label: 'Design Engineer', duty: 'Prepares the design and self-checks' },
-  { key: 'checker', label: 'Checker / Senior Engineer', duty: 'Independent review' },
-  { key: 'lead', label: 'Lead Engineer', duty: 'Technical review and comment closure' },
-  { key: 'principal', label: 'Principal Engineer', duty: 'Final verification and approval for issue' },
-];
 // A comment is overdue when the awaited reply is older than this many days.
 export const DT_PR_RESPONSE_TARGET_DAYS = 7;
 
@@ -62,9 +56,9 @@ const dtPeerReviewSchema = new mongoose.Schema({
   client: { type: String, trim: true, default: '' },
   principalConsultant: { type: String, trim: true, default: '' },
   deliverableStage: { type: String, trim: true, default: 'GFC' },
-  team: {
-    designEngineer: ref, checker: ref, lead: ref, principal: ref,
-  },
+  // Allotted by Admin (not typed by the review team): the only people who can work this package.
+  reviewTeam: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }], default: [] },
+  allottedBy: stamp,
   stages: [{ _id: false, code: String, name: String, signedOff: stamp }],
   checklist: [new mongoose.Schema({
     stage: { type: String, enum: DT_PR_STAGES.map((s) => s.code), required: true },

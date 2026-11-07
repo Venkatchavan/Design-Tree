@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { designTeamAccess } from '../utils/designTeam.js';
+import { dtPrAccess } from '../controllers/dtPeerReview.controller.js';
 import {
   ATTENDANCE_LATE_CUTOFF,
   ATTENDANCE_STANDARD_HOURS,
@@ -28,6 +29,7 @@ const router = Router();
 router.get('/bootstrap', requireAuth, async (req, res, next) => {
   try {
   const designAccess = await designTeamAccess(req.user);
+  const dtPr = await dtPrAccess(req.user);
   const role = req.user.role;
   const travelManager = TRAVEL_MANAGER_ROLES.includes(role);
   const traveller = !travelManager && ['client', 'architect', 'superuser'].indexOf(role) < 0
@@ -38,10 +40,11 @@ router.get('/bootstrap', requireAuth, async (req, res, next) => {
     views: VIEWS,
     role: { key: role, label: roleLabel(role) },
     home: homeView(role),
-    nav: navFor(role, { traveller }),
+    nav: navFor(role, { traveller, dtPeerReview: dtPr.read && !['founding_director', 'working_director', 'executive_director'].includes(role) }),
     capabilities: {
       designTeam: designAccess.designTeam,
       stageTimeline: canAccess(role, 'stage-timeline'),
+      dtPeerReview: { read: dtPr.read, allot: dtPr.allot },
       travel: travelManager
         ? (TRAVEL_WRITER_ROLES.includes(role) ? 'manage' : 'read')
         : (traveller ? 'own' : null),

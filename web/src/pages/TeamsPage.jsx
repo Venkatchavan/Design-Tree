@@ -6,7 +6,8 @@ import { projectsApi, employeesApi, teamsApi } from '../lib/api.js';
 import EmptyState from '../components/EmptyState.jsx';
 
 export default function TeamsPage({bootstrap}) {
-  if (['hr','founding_director','executive_director','associate_director','technical_director','assoc_technical_director'].includes(bootstrap?.role?.key)) return <DirectorTeamsPage company />;
+  // 07 Nov 2026: Admin / Billing uses the same Teams layout as the directors and HR.
+  if (['hr','admin_billing','founding_director','working_director','executive_director','associate_director','technical_director','assoc_technical_director'].includes(bootstrap?.role?.key)) return <DirectorTeamsPage company />;
   return <CompanyTeamsPage bootstrap={bootstrap}/>;
 }
 
