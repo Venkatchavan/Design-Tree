@@ -27,6 +27,7 @@ export function isManHourExemptRole(role) {
   return (
     isDirectiveRole(role) ||
     role === 'superuser' ||
+    role === 'receptionist' ||
     role === 'client' ||
     role === 'architect'
   );
@@ -37,6 +38,7 @@ export function isManHourExemptRole(role) {
 export const ATTENDANCE_EXEMPT_ROLES = [
   ...DIRECTIVE_ROLES,
   'superuser',
+  'receptionist',
   'client',
   'architect',
 ];

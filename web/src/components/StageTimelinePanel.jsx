@@ -27,17 +27,24 @@ function Chip({
   }}>{metrics.label}</span>;
 }
 function Approval({
-  row
+  row,
+  onProgress,
+  busy
 }) {
   const n = Math.max(['None', 'PTL Requested', 'SPOC Confirmed', 'TD Approved'].indexOf(row.confirmationStatus), 0);
-  const status = row.confirmationStatus === 'PTL Requested' ? 'PTL Completed' : !row.confirmationStatus || row.confirmationStatus === 'None' ? 'Not started' : row.confirmationStatus === 'TD Approved' ? 'SPOC Approved' : row.confirmationStatus;
+  const status = row.confirmationStatus === 'PTL Requested' ? 'PTL Completed' : !row.confirmationStatus || row.confirmationStatus === 'None' ? (row.progressStatus || 'Not started') : row.confirmationStatus === 'TD Approved' ? 'SPOC Approved' : row.confirmationStatus;
   // One compact line of steps (never wraps per step), with the status underneath.
   return <div className="stage-approval">
     <span className="stage-approval-steps" role="img" aria-label={`${Math.min(n, 2)} of 2 approvals: ${status}`}>{['PTL', 'SPOC'].map((label, i) => <span key={label} className={`stage-approval-step${n > i ? ' is-done' : ''}`}>
       {i > 0 && <span className="stage-approval-link" aria-hidden="true" />}
       <span className="stage-approval-dot" aria-hidden="true" />{label}
     </span>)}</span>
-    <small className="stage-approval-status">{status}</small>
+    {onProgress && row.permissions?.progress ? <select className="filter-select" aria-label={`${row.service} ${row.stage} stage status`} disabled={busy} value={row.progressStatus || ''} onChange={e => onProgress(row, e.target.value)}>
+      <option value="" disabled>Not started</option>
+      <option value="Started">Started</option>
+      <option value="In progress">In progress</option>
+      <option value="Completed" disabled={!row.startDate || !row.plannedCompletion}>{row.startDate && row.plannedCompletion ? 'Completed' : 'Completed (set dates first)'}</option>
+    </select> : <small className="stage-approval-status">{status}</small>}
   </div>;
 }
 export default function StageTimelinePanel({
@@ -111,15 +118,30 @@ export default function StageTimelinePanel({
       })
     });
   }
-  function act(row, action) {
+  function act(row, action, value = true) {
     save.reset();
     save.mutate({
       project: projectId,
       service: row.service,
       stage: row.stage,
       expectedVersion: row.__v ?? 0,
-      [action]: true
+      [action]: value
     });
+  }
+  // PTL stage status: Started / In progress are saved directly; Completed opens the
+  // existing completion submission, which the SPOC then approves.
+  function setProgress(row, value) {
+    if (value === 'Completed') {
+      save.reset();
+      setDialog({
+        mode: 'submit',
+        row,
+        actualCompletion: today(),
+        heading: `Submit ${row.stage} completion`
+      });
+      return;
+    }
+    act(row, 'progressStatus', value);
   }
   function action(row) {
     if (row.confirmationStatus === 'TD Approved' || row.billingReadiness === 'Billed') return '—';
@@ -140,7 +162,7 @@ export default function StageTimelinePanel({
     return '—';
   }
   const duration = dialog?.mode === 'plan' ? calendarDays(dialog.plannedCompletion, dialog.startDate) : null;
-  return <Panel title="Stage completion approvals" sub="PTL marks complete → assigned SPOC approves. Dates and variance use calendar days.">
+  return <Panel title="Stage completion approvals" sub="PTL sets the stage Started / In progress / Completed → assigned SPOC approves. Dates and variance use calendar days.">
     {list.isLoading && <p role="status">Loading stage timeline…</p>}
     {list.isError && <p role="alert">{list.error.message}</p>}
     {save.isError && !dialog && <p role="alert">{save.error.message}</p>}
@@ -155,7 +177,7 @@ export default function StageTimelinePanel({
     }}><table className="data stage-timeline"><thead><tr>{['Service', 'Stage', 'PTL / SPOC', 'Start Date', 'Planned Completion', 'Actual Completion', 'Variance', 'Billing Status', 'Complete Stage'].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map(row => <tr key={`${row.service}-${row.stage}`} data-service={row.service} data-stage={row.stage} aria-current={row.isCurrent ? 'step' : undefined} style={row.isCurrent ? {
             background: '#eef5ff'
           } : undefined}>
-      <td>{row.service}</td><td>{row.stage} – {NAMES[row.stage]}</td><td><Approval row={row} /></td>
+      <td>{row.service}</td><td>{row.stage} – {NAMES[row.stage]}</td><td><Approval row={row} onProgress={setProgress} busy={save.isPending} /></td>
       <td>{dateOnly(row.startDate) || (row.planningTarget.previousStage ? `Set on ${row.planningTarget.previousStage} completion` : 'Dates not set')}</td>
       <td>{dateOnly(row.plannedCompletion) || '—'}{row.metrics.plannedDuration !== null && <small style={{
                 display: 'block'

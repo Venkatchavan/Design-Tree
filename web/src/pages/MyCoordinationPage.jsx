@@ -504,6 +504,48 @@ export function TeamAllocationPanel({ projects, employees }) {
     }
   }
 
+  // Saved rows may carry "Structure"/"STR"/"HVAC"; map them onto the dropdown keys
+  // so the Service field is pre-filled instead of coming up blank on edit.
+  function canonicalService(value) {
+    const mapped = serviceNames([value])[0] ?? '';
+    return TEAM_SERVICES.some((s) => s.key === mapped) ? mapped : (value ?? '');
+  }
+
+  function startEdit(p, r) {
+    const byName = pool.find((e) => empName(e) === r.name) ?? employeeByName(employees, r.name);
+    setProject(projectIdOf(p));
+    setService(canonicalService(r.service));
+    setMembers([]); setTeamLead('');
+    setMember(r.employee || String(byName?._id ?? byName?.id ?? ''));
+    setNominatedBy(r.nominatedBy || '');
+    setStatus(r.approvalStatus || 'Approved');
+    setEditing(r);
+    setErr(''); setOk('');
+  }
+
+  const remove = useMutation({
+    mutationFn: async ({ project: projectId, row }) => {
+      const detail = await projectsApi.get(projectId);
+      const current = teamEntries(detail?.project ?? detail ?? {});
+      const next = current.filter((r) => !(r.service === row.service && (row.employee ? r.employee === row.employee : r.name === row.name)));
+      return projectsApi.saveTeamLeads(projectId, { principalTeamLeads: toTeamPayload(next) });
+    },
+    onSuccess: (_d, { project: projectId }) => {
+      for (const key of ['projects','teams','my-teams','teams-allocation-projects']) queryClient.invalidateQueries({queryKey:[key]});
+      queryClient.invalidateQueries({ queryKey: ['project-team', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      resetForm();
+      setErr('');
+      setOk('Team allocation removed.');
+    },
+    onError: (e) => { setErr(e.message); setOk(''); },
+  });
+
+  function removeAllocation(p, r) {
+    if (!window.confirm(`Remove ${r.name || 'this member'} from ${r.service || 'this service'}?`)) return;
+    remove.mutate({ project: projectIdOf(p), row: r });
+  }
+
   function toggleMember(value) {
     setMembers((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
   }
@@ -586,6 +628,7 @@ export function TeamAllocationPanel({ projects, employees }) {
             <label className="form-label">Service</label>
             <select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}>
               <option value="">Select service</option>
+              {service && !TEAM_SERVICES.some((s) => s.key === service) && <option value={service}>{service}</option>}
               {TEAM_SERVICES.map((s) => <option key={s.key} value={s.key}>{s.key}</option>)}
             </select>
           </div>
@@ -662,7 +705,10 @@ export function TeamAllocationPanel({ projects, employees }) {
             <div className="section-label">{p.name ?? p.code ?? '—'}</div>
             <DataTable
               columns={[
-                { key: 'edit', label: 'Action', render:r=><button type="button" className="approve-btn" onClick={()=>{setProject(projectIdOf(p));setService(r.service);setMembers([]);setTeamLead('');setMember(r.employee||String(employeeByName(employees,r.name)?._id||''));setNominatedBy(r.nominatedBy||'');setStatus(r.approvalStatus||'Approved');setEditing(r);setOk('');}}>Edit allocation</button> },
+                { key: 'edit', label: 'Action', render:r=><>
+                  <button type="button" className="approve-btn" onClick={()=>startEdit(p,r)}>Edit allocation</button>
+                  <button type="button" className="approve-btn" disabled={remove.isPending} onClick={()=>removeAllocation(p,r)}>Remove</button>
+                </> },
                 { key: 'service', label: 'Service' },
                 { key: 'nominatedBy', label: 'Nominated by', render: (r) => r.nominatedBy || '—' },
                 { key: 'name', label: 'Team member' },

@@ -2,6 +2,7 @@ import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
 export const BILLING_READINESS = ['Billed', 'Ready for billing', 'Pending'];
+export const STAGE_PROGRESS = ['Started', 'In progress'];
 
 // Per-project/service stage tracker + billing readiness (§4.4).
 // Strict PTL submission → assigned SPOC confirmation → TD/ATD approval.
@@ -25,6 +26,9 @@ const stageStatusSchema = new mongoose.Schema(
     approvalSequenceVerified: Boolean,
     timelineManaged: { type: Boolean, default: false },
     planRevisions: [{ startDate: Date, plannedCompletion: Date, previousStartDate: Date, previousPlannedCompletion: Date, reason: String, by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, at: { type: Date, default: Date.now } }],
+    // 07 Nov 2026: the PTL records whether work on the current stage has Started or is
+    // In progress. Absent = Not started. "Completed" is the existing PTL submission.
+    progressStatus: { type: String, enum: STAGE_PROGRESS },
     currentStatus: { type: String, trim: true },
     delayDays: { type: Number, default: 0 },
     reason: { type: String, trim: true },

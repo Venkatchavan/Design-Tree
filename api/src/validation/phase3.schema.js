@@ -4,7 +4,7 @@ import {
   TRANSMITTAL_RECIPIENTS,
   TRANSMITTAL_STATUSES,
 } from '../models/Transmittal.js';
-import { BILLING_READINESS } from '../models/StageStatus.js';
+import { BILLING_READINESS, STAGE_PROGRESS } from '../models/StageStatus.js';
 import { BOOKING_STATUSES } from '../models/TravelBooking.js';
 import { CERT_STATUSES } from '../models/Certificate.js';
 import { CLAIM_STATUSES } from '../models/Claim.js';
@@ -110,6 +110,7 @@ export const stageStatusSchema = z.object({
   ptlRemark: strOpt, spocRemark: strOpt, tdRemark: strOpt,
   requestCompletion: z.boolean().optional(), confirmCompletion: z.boolean().optional(), approveCompletion: z.boolean().optional(),
   billingReadiness: z.enum(BILLING_READINESS).optional(),
+  progressStatus: z.enum(STAGE_PROGRESS).optional(),
 }).strict();
 export const stageStatusUpdateSchema = stageStatusSchema.partial();
 

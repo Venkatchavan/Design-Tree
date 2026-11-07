@@ -2,7 +2,7 @@ import { Meeting } from '../models/Meeting.js';
 import { User } from '../models/User.js';
 import { canReadProject } from '../utils/projectScope.js';
 
-export const MEETING_OBSERVERS = ['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director', 'design_mgmt_head', 'team_lead', 'coordinator'];
+export const MEETING_OBSERVERS = ['founding_director', 'working_director', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director', 'design_mgmt_head', 'hr', 'team_lead', 'coordinator'];
 export async function applyMeetingAudience(filter, user, mine = false) {
   if (mine || !MEETING_OBSERVERS.includes(user.role)) {
     const me = await User.findById(user.id).select('employee').lean();

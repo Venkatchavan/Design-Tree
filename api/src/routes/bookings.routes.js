@@ -20,7 +20,7 @@ router.use((req, res, next) =>
     ? next()
     : res.status(403).json({ message: 'Internal travel bookings only.' }),
 );
-// HR, Founding Directors and Finance read the company log. Every other
+// HR, Founding Directors, Finance and the Receptionist read the company log. Every other
 // internal user reads only bookings saved against their own employee record.
 router.use(async (req, res, next) => {
   try {
@@ -32,7 +32,7 @@ router.use(async (req, res, next) => {
     if (!own.length)
       return res
         .status(403)
-        .json({ message: 'Travel bookings are limited to HR, Founding Directors, Finance and the traveller.' });
+        .json({ message: 'Travel bookings are limited to HR, Founding Directors, Finance, the Receptionist and the traveller.' });
     req.travelScope = own;
     return next();
   } catch (error) {
@@ -43,7 +43,7 @@ const writer = (req, res, next) =>
   TRAVEL_WRITER_ROLES.includes(req.user.role)
     ? next()
     : res.status(403).json({
-        message: 'Only HR and Finance record travel bookings.',
+        message: 'Only the Receptionist records travel bookings.',
       });
 router.get('/summary', bookingSummary);
 router.get('/', bookings.list);

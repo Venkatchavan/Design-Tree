@@ -154,6 +154,7 @@ export async function stageTimeline(req, res, next) {
           permissions: {
             plan: stage === current && permissions.plan && !row.actualCompletion,
             request: stage === current && permissions.request && row.confirmationStatus === 'None',
+            progress: stage === current && permissions.request && row.confirmationStatus === 'None',
             confirm: stage === current && permissions.confirm && row.confirmationStatus === 'PTL Requested',
             approve: stage === current && permissions.approve && row.confirmationStatus === 'SPOC Confirmed'
           },
@@ -248,7 +249,7 @@ export async function upsertStage(req, res, next) {
     if ((old?.__v ?? 0) !== data.expectedVersion) return res.status(409).json({
       message: 'Stage changed; refresh before continuing.'
     });
-    const count = [data.planDates, data.requestCompletion, data.confirmCompletion, data.approveCompletion, data.billingReadiness].filter(Boolean).length;
+    const count = [data.planDates, data.requestCompletion, data.confirmCompletion, data.approveCompletion, data.billingReadiness, data.progressStatus].filter(Boolean).length;
     if (count !== 1 || data.billingReadiness) return res.status(400).json({
       message: 'Choose one planning or approval action. Billing is recorded through an approved claim.'
     });
@@ -262,7 +263,23 @@ export async function upsertStage(req, res, next) {
       },
       action;
     let revision;
-    if (data.planDates) {
+    if (data.progressStatus) {
+      if (!access.request) return res.status(403).json({
+        message: 'Only the assigned PTL can set the stage progress.'
+      });
+      if (from !== 'None') return res.status(409).json({
+        message: 'Stage has already been submitted.'
+      });
+      if (data.startDate || data.plannedCompletion || data.actualCompletion || data.reason) return res.status(400).json({
+        message: 'Progress status cannot be combined with dates.'
+      });
+      patch = {
+        ...patch,
+        progressStatus: data.progressStatus,
+        currentStatus: data.progressStatus
+      };
+      action = `PTL marked stage ${data.progressStatus.toLowerCase()}`;
+    } else if (data.planDates) {
       if (!access.plan) return res.status(403).json({
         message: 'Only the assigned PTL or authorized TD/ATD can plan dates.'
       });

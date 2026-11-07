@@ -22,7 +22,8 @@ export const DIRECTIVE_ROLES = [
 
 // Roles exempt from the man-hour sign-out gate (directive + external + superuser).
 // Superuser only provisions employees/logins (HR view) and has no own entry.
-export const MAN_HOUR_EXEMPT_ROLES = [...DIRECTIVE_ROLES, 'client', 'architect', 'superuser'];
+// The receptionist books travel only and logs no project man-hours.
+export const MAN_HOUR_EXEMPT_ROLES = [...DIRECTIVE_ROLES, 'receptionist', 'client', 'architect', 'superuser'];
 
 export const ROLES = [
   { key: 'founding_director', label: 'Founding Director', designation: 'Founding Director', home: 'dashboard' },
@@ -50,6 +51,7 @@ export const ROLES = [
   { key: 'peer_review_head', label: 'Peer Review Head', designation: 'Peer Review Head', home: 'peer-dashboard' },
   { key: 'qs_head', label: 'QS Head', designation: 'QS Head', home: 'work-tracking' },
   { key: 'peer_reviewer', label: 'Peer Review', designation: 'Peer Reviewer, Mechanical', home: 'peer-dashboard' },
+  { key: 'receptionist', label: 'Receptionist', designation: 'Receptionist', home: 'travel-booking' },
   { key: 'client', label: 'Client', designation: 'Client', home: 'project-portal' },
   { key: 'architect', label: 'Architect', designation: 'Architect of record', home: 'project-portal' },
 ];
@@ -184,6 +186,7 @@ export const NAV_BY_ROLE = {
     { view: 'transmittal-log' },
     { view: 'billing-status' },
     { view: 'my-meetings' },
+    { view: 'meetings', label: 'All meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'my-team' },
@@ -196,6 +199,7 @@ export const NAV_BY_ROLE = {
     { view: 'teams' },
     { view: 'transmittal-log' },
     { view: 'my-meetings' },
+    { view: 'meetings', label: 'All meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'my-team' },
@@ -206,6 +210,7 @@ export const NAV_BY_ROLE = {
     { view: 'certificates', label: 'Completion Certificates' },
     { view: 'transmittal-log' },
     { view: 'my-meetings' },
+    { view: 'meetings', label: 'All meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'my-team' },
@@ -361,6 +366,13 @@ export const NAV_BY_ROLE = {
     { view: 'employee-support' },
   { view: 'my-meetings' },
   ],
+  // 07 Nov 2026: the receptionist books the tickets and hotels; every other dashboard
+  // only views the travel log.
+  receptionist: [
+    { view: 'travel-booking' },
+    { view: 'leave-travel' },
+    { view: 'employee-support' },
+  ],
   client: [{ view: 'project-portal' }],
   architect: [{ view: 'project-portal' }],
 };
@@ -376,9 +388,10 @@ export function homeView(role) {
 // Travel Booking (02 Nov 2026): only HR, Founding Directors and Finance see
 // the company travel log. Any other internal user sees the page only when
 // they are the traveller on at least one saved booking, and then only their
-// own bookings. HR and Finance record bookings; Founding Directors read.
-export const TRAVEL_MANAGER_ROLES = ['founding_director', 'hr', 'finance'];
-export const TRAVEL_WRITER_ROLES = ['hr', 'finance'];
+// own bookings. 07 Nov 2026: only the Receptionist records (books, edits,
+// reschedules, cancels) bookings; HR, Finance and Founding Directors view the log.
+export const TRAVEL_MANAGER_ROLES = ['founding_director', 'hr', 'finance', 'receptionist'];
+export const TRAVEL_WRITER_ROLES = ['receptionist'];
 
 // Nav with resolved labels/paths for a role. `traveller` adds the personal
 // Travel Booking entry for a non-manager who has saved bookings.

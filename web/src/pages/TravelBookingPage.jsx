@@ -8,7 +8,7 @@ export default function TravelBookingPage({ bootstrap, readOnly = false, embedde
   const location = useLocation();
   const role = bootstrap?.role?.key;
   const access = bootstrap?.capabilities?.travel;
-  // Travellers outside HR / Founding Directors / Finance see only their own
+  // Travellers outside HR / Founding Directors / Finance / Receptionist see only their own
   // bookings, read-only, without the company request log.
   const ownOnly = access === 'own';
   const canManage = access === 'manage';
