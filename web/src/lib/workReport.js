@@ -15,7 +15,8 @@ export async function collectPages(load, params = {}) {
       keys.add(identity);
     }
     if(!page.items?.length && offset<page.total) throw new Error('Work report changed while loading. Retry the report.');
-    items.push(...page.items);offset+=page.items.length;
+    const pageItems=page.items ?? [];
+    items.push(...pageItems);offset+=pageItems.length;
   } while(offset<page.total);
   return {...page,items,total:items.length};
 }
