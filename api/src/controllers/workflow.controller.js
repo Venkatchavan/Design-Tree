@@ -1,6 +1,7 @@
 import { isTeamDirector } from '../utils/directorTeams.js';
 import { taskRoster } from '../utils/taskRoster.js';
 import { canReadProject } from '../utils/projectScope.js';
+import { isSuperRole } from '../config/roles.js';
 import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { z } from 'zod';
 import { Deliverable, DeliverableLog } from '../models/Deliverable.js';
@@ -342,6 +343,8 @@ export async function createRevision(req, res, next) {
   }
 }
 
+const REVISION_CLEAR_ROLES = ['team_lead', 'assoc_technical_director', 'technical_director'];
+
 export async function setRevisionStatus(req, res, next) {
   const parsed = revisionStatusSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -349,7 +352,24 @@ export async function setRevisionStatus(req, res, next) {
   }
   try {
     const old = await Revision.findById(req.params.id);
-    if (!old || !await canReadProject(req.user, old.project)) return res.status(404).json({ message: 'Not found.' });
+    if (!old) return res.status(404).json({ message: 'Not found.' });
+    if (parsed.data.status === 'Resubmitted') {
+      // A resubmission is the team member's own act: only the employee the
+      // revision is assigned to can mark it resubmitted, not the team lead who
+      // logged it.
+      const { User } = await import('../models/User.js');
+      const me = await User.findById(req.user.id).select('employee').lean();
+      if (!old.assignedTo || !me?.employee || String(me.employee) !== String(old.assignedTo)) {
+        return res.status(403).json({ message: 'Only the team member this revision is assigned to can resubmit it.' });
+      }
+      if (old.status !== 'Open') return res.status(409).json({ message: `This revision is already ${old.status.toLowerCase()}.` });
+    } else {
+      // Clearing is the lead's decision.
+      if (!REVISION_CLEAR_ROLES.includes(req.user.role) && !isSuperRole(req.user.role)) {
+        return res.status(403).json({ message: 'Only the team lead or a director can clear a revision.' });
+      }
+      if (!await canReadProject(req.user, old.project)) return res.status(404).json({ message: 'Not found.' });
+    }
     const patch = { status: parsed.data.status };
     if (parsed.data.status === 'Resubmitted')
       patch.resubmittedAt = new Date();

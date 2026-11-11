@@ -9,6 +9,7 @@ import {
   takePendingLogout,
 } from '../lib/session.js';
 import Panel from '../components/Panel.jsx';
+import { useLoggedHours } from '../lib/loggedHours.js';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -65,7 +66,10 @@ export default function DesignHeadWorkUpdatePage({ bootstrap, user }) {
   const totalHours =
     (Number(hours) || 0) +
     otherRows.reduce((s, r) => s + (Number(r.hours) || 0), 0);
-  const needsExtraReason = totalHours > EXTRA_HOURS_AT;
+  // The server also counts hours already logged on this date.
+  const loggedToday = useLoggedHours(date);
+  const dayTotal = totalHours + loggedToday;
+  const needsExtraReason = dayTotal > EXTRA_HOURS_AT;
 
   const projectsQ = useQuery({
     queryKey: ['active-projects'],
@@ -136,6 +140,7 @@ export default function DesignHeadWorkUpdatePage({ bootstrap, user }) {
     mutationFn: (body) => workEntriesApi.create(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['work-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['my-work-entries'] });
       setOk('Submitted for team lead action.');
       setErr('');
       setTaskId('');
@@ -173,7 +178,7 @@ export default function DesignHeadWorkUpdatePage({ bootstrap, user }) {
       .filter((r) => r.project && Number(r.hours) > 0)
       .map((r) => ({ project: r.project, hours: Number(r.hours) }));
     const total = h + otherHours.reduce((s, r) => s + r.hours, 0);
-    if (total > EXTRA_HOURS_AT && !extraHoursReason.trim()) {
+    if (total + loggedToday > EXTRA_HOURS_AT && !extraHoursReason.trim()) {
       setErr(`A reason is required for extra hours (over ${EXTRA_HOURS_AT}h in a day).`);
       return null;
     }
@@ -188,7 +193,7 @@ export default function DesignHeadWorkUpdatePage({ bootstrap, user }) {
       drawing: drawing.trim() || undefined,
       notes: notes.trim() || undefined,
       otherHours: otherHours.length > 0 ? otherHours : undefined,
-      extraHoursReason: total > EXTRA_HOURS_AT ? extraHoursReason.trim() : undefined,
+      extraHoursReason: total + loggedToday > EXTRA_HOURS_AT ? extraHoursReason.trim() : undefined,
     };
   }
 
@@ -380,7 +385,7 @@ export default function DesignHeadWorkUpdatePage({ bootstrap, user }) {
                 className="form-input"
                 value={extraHoursReason}
                 onChange={(e) => setExtraHoursReason(e.target.value)}
-                placeholder={`Required — total ${totalHours.toFixed(1)}h exceeds ${EXTRA_HOURS_AT}h`}
+                placeholder={`Required — ${dayTotal.toFixed(1)}h for this day (${loggedToday.toFixed(1)}h already logged) exceeds ${EXTRA_HOURS_AT}h`}
               />
             </div>
           )}

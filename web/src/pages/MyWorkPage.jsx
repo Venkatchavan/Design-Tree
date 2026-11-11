@@ -34,6 +34,7 @@ import {
   takePendingLogout,
 } from '../lib/session.js';
 import Panel from '../components/Panel.jsx';
+import { useLoggedHours } from '../lib/loggedHours.js';
 import ProjectDeliverables from '../components/ProjectDeliverables.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -143,7 +144,10 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
   const totalHours =
     (Number(hours) || 0) +
     otherRows.reduce((s, r) => s + (Number(r.hours) || 0), 0);
-  const needsExtraReason = totalHours > EXTRA_HOURS_AT;
+  // The server also counts hours already logged on this date.
+  const loggedToday = useLoggedHours(date);
+  const dayTotal = totalHours + loggedToday;
+  const needsExtraReason = dayTotal > EXTRA_HOURS_AT;
 
   const projectOptions = hasPtl ? ptlProjects : activeProjects;
   const selectedOption = (projectOptions ?? []).find((p) => String(p._id ?? p.id) === project)
@@ -231,7 +235,7 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
       .filter((r) => r.project && Number(r.hours) > 0)
       .map((r) => ({ project: r.project, hours: Number(r.hours) }));
     const total = h + otherHours.reduce((s, r) => s + r.hours, 0);
-    if (total > EXTRA_HOURS_AT && !extraHoursReason.trim()) {
+    if (total + loggedToday > EXTRA_HOURS_AT && !extraHoursReason.trim()) {
       setErr(`A reason is required for extra hours (over ${EXTRA_HOURS_AT}h in a day).`);
       return;
     }
@@ -246,7 +250,7 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
       drawing: drawing.trim() || undefined,
       notes: notes.trim() || undefined,
       otherHours: otherHours.length > 0 ? otherHours : undefined,
-      extraHoursReason: total > EXTRA_HOURS_AT ? extraHoursReason.trim() : undefined,
+      extraHoursReason: total + loggedToday > EXTRA_HOURS_AT ? extraHoursReason.trim() : undefined,
     });
   }
 
@@ -421,7 +425,7 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
                 className="form-input"
                 value={extraHoursReason}
                 onChange={(e) => setExtraHoursReason(e.target.value)}
-                placeholder={`Required — total ${totalHours.toFixed(1)}h exceeds ${EXTRA_HOURS_AT}h`}
+                placeholder={`Required — ${dayTotal.toFixed(1)}h for this day (${loggedToday.toFixed(1)}h already logged) exceeds ${EXTRA_HOURS_AT}h`}
               />
             </div>
           )}
@@ -1254,6 +1258,15 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
     },
     onError: (e) => setRevErr(e.message),
   });
+  const resubmitRevision = useMutation({
+    mutationFn: (id) => revisionsApi.setStatus(id, 'Resubmitted'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['revisions-mine'] });
+      queryClient.invalidateQueries({ queryKey: ['revisions'] });
+      setRevErr('');
+    },
+    onError: (e) => setRevErr(e.message),
+  });
   const createAwaitingItem = useMutation({
     mutationFn: (body) => rfiApi.create(body),
     onSuccess: () => {
@@ -1419,6 +1432,16 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
                   <article className="team-card" key={revision._id ?? revision.id}>
                     <div className="team-card-name">{projLabel(revision.project)} · {revision.stage ?? '—'} · {revision.details}</div>
                     <div className="deliv-label">Awaiting employee update</div>
+                    <div style={{ marginTop: 10 }}>
+                      <button
+                        type="button"
+                        className="approve-btn"
+                        disabled={resubmitRevision.isPending}
+                        onClick={() => resubmitRevision.mutate(revision._id ?? revision.id)}
+                      >
+                        Resubmit
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>

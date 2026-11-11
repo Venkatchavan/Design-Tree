@@ -74,9 +74,10 @@ router.post(
   createRevision,
 );
 router.put('/revisions/:id', requireRole(...TL_CHAIN), revisions.update);
+// The assigned team member resubmits, the lead clears; the controller checks which.
 router.patch(
   '/revisions/:id/status',
-  requireRole(...TL_CHAIN),
+  requireInternal(),
   setRevisionStatus,
 );
 

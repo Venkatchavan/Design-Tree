@@ -13,6 +13,7 @@ import {
   takePendingLogout,
 } from '../lib/session.js';
 import Panel from '../components/Panel.jsx';
+import { useLoggedHours } from '../lib/loggedHours.js';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill from '../components/StatusPill.jsx';
 import { statusTone } from '../components/StatusPill.jsx';
@@ -86,7 +87,10 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
   const totalHours =
     (Number(hours) || 0) +
     otherRows.reduce((s, r) => s + (Number(r.hours) || 0), 0);
-  const needsExtraReason = totalHours > EXTRA_HOURS_AT;
+  // The server also counts hours already logged on this date.
+  const loggedToday = useLoggedHours(date);
+  const dayTotal = totalHours + loggedToday;
+  const needsExtraReason = dayTotal > EXTRA_HOURS_AT;
 
   const projectsQ = useQuery({
     queryKey: ['active-projects'],
@@ -192,7 +196,7 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
       return null;
     }
     const total = h + otherRows.reduce((s, r) => s + (Number(r.hours) || 0), 0);
-    if (total > EXTRA_HOURS_AT && !extraHoursReason.trim()) {
+    if (total + loggedToday > EXTRA_HOURS_AT && !extraHoursReason.trim()) {
       setErr(`A reason is required for extra hours (over ${EXTRA_HOURS_AT}h in a day).`);
       return null;
     }
@@ -202,7 +206,7 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
       hours: h,
       stage: selectedTask?.stage || undefined,
       notes: notes || undefined,
-      extraHoursReason: total > EXTRA_HOURS_AT ? extraHoursReason.trim() : undefined,
+      extraHoursReason: total + loggedToday > EXTRA_HOURS_AT ? extraHoursReason.trim() : undefined,
       category: selectedTask ? 'Assigned Daily Work' : 'Hourly',
       deliverable: selectedTask?.deliverable || undefined,
       taskActivity: taskActivity || undefined,
@@ -356,7 +360,7 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
                 className="form-input"
                 value={extraHoursReason}
                 onChange={(e) => setExtraHoursReason(e.target.value)}
-                placeholder={`Required — total ${totalHours.toFixed(1)}h exceeds ${EXTRA_HOURS_AT}h`}
+                placeholder={`Required — ${dayTotal.toFixed(1)}h for this day (${loggedToday.toFixed(1)}h already logged) exceeds ${EXTRA_HOURS_AT}h`}
               />
             </div>
           )}

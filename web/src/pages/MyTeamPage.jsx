@@ -152,7 +152,8 @@ function revisionSourceOf(name) {
   return 'Internal';
 }
 function revisionDisplayStatus(r) {
-  return String(r.status ?? '') === 'Cleared' ? 'Cleared' : 'Awaiting employee update';
+  const s = String(r.status ?? '');
+  return s === 'Cleared' ? 'Cleared' : s === 'Resubmitted' ? 'Resubmitted' : 'Awaiting employee update';
 }
 
 function useBootstrapProp(prop) {
@@ -918,7 +919,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
               <Panel title="Revision log" sub="Structural revisions across my projects, from raised to cleared — includes revisions requested by client or architect and logged by the SPOC">
                 {!canApprove && (
                   <p style={{ fontSize: 12.5, color: 'var(--ink-muted)', marginBottom: 12 }}>
-                    Status actions are available to team leads and directors.
+                    Clearing is available to team leads and directors. Resubmission is done by the team member the revision is assigned to.
                   </p>
                 )}
                 {revQ.isLoading ? (
@@ -947,14 +948,6 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                         render: (r) =>
                           canApprove ? (
                             <span style={{ display: 'flex', gap: 8 }}>
-                              <button
-                                type="button"
-                                className="approve-btn"
-                                disabled={revStatus.isPending}
-                                onClick={() => revStatus.mutate({ id: r._id, status: 'Resubmitted' })}
-                              >
-                                Resubmit
-                              </button>
                               <button
                                 type="button"
                                 className="approve-btn"
