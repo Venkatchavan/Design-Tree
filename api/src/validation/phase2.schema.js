@@ -74,6 +74,7 @@ export const drawingSchema = z
     issuedTo: strOpt,
     method: strOpt,
     status: z.enum(DRAWING_STATUSES).optional(),
+    statusRemark: z.string().trim().max(1000).optional(),
   })
   .strict();
 export const drawingUpdateSchema = drawingSchema.partial();

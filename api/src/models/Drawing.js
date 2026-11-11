@@ -24,6 +24,8 @@ const drawingSchema = new mongoose.Schema(
     proof: { type: String, trim: true },
     // Review status set by the team lead: Revise / Resubmit / Approved.
     status: { type: String, enum: DRAWING_STATUSES },
+    // What the lead asked for when sending the drawing back (or a note with the decision).
+    statusRemark: { type: String, trim: true },
     sharedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },

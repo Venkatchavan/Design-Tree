@@ -569,9 +569,11 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
     },
   });
 
+  const [drawingAction, setDrawingAction] = useState(null);
   const drawingStatus = useMutation({
-    mutationFn: ({ id, status }) => drawingsApi.update(id, { status }),
+    mutationFn: ({ id, status, remark }) => drawingsApi.update(id, { status, statusRemark: remark ?? '' }),
     onSuccess: () => {
+      setDrawingAction(null);
       queryClient.invalidateQueries({ queryKey: ['drawings'] });
       queryClient.invalidateQueries({ queryKey: ['drawings-recent'] });
       queryClient.invalidateQueries({ queryKey: ['project-drawings'] });
@@ -1002,18 +1004,17 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                   {
                     key: 'status',
                     label: 'Status',
-                    render: (d) => isTL ? (
-                      <select
-                        aria-label={`Status of drawing ${d.drawingNo ?? ''}`}
-                        className="filter-select"
-                        value={d.status ?? ''}
-                        disabled={drawingStatus.isPending}
-                        onChange={(e) => e.target.value && drawingStatus.mutate({ id: d._id ?? d.id, status: e.target.value })}
-                      >
-                        <option value="" disabled>Select status</option>
-                        {DRAWING_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
-                      </select>
-                    ) : (d.status ? <StatusPill tone={toneFor(d.status)}>{d.status}</StatusPill> : '—'),
+                    render: (d) => (
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                        {d.status ? <StatusPill tone={toneFor(d.status)}>{d.status}</StatusPill> : (isTL ? null : '—')}
+                        {d.statusRemark && <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{d.statusRemark}</span>}
+                        {isTL && (
+                          <button type="button" className="approve-btn" aria-label={`Set status of drawing ${d.drawingNo ?? ''}`} onClick={() => setDrawingAction(d)}>
+                            {d.status ? 'Change status' : 'Set status'}
+                          </button>
+                        )}
+                      </span>
+                    ),
                   },
                   { key: 'ack', label: 'Acknowledgement', render: (d) => <StatusPill tone={toneFor(drawingAckStatus(d, ackedDrawingIds, transmittedDrawingIds))}>{drawingAckStatus(d, ackedDrawingIds, transmittedDrawingIds)}</StatusPill> },
                 ]}
@@ -1061,6 +1062,9 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       {allocOpen && selectedTeam && (
         <AllocationModal team={selectedTeam} onClose={() => setAllocOpen(false)} />
       )}
+      {drawingAction && (
+        <DrawingActionModal drawing={drawingAction} onClose={() => setDrawingAction(null)} act={drawingStatus} />
+      )}
       {revisionAction && (
         <RevisionActionModal revision={revisionAction} onClose={() => setRevisionAction(null)} act={revStatus} />
       )}
@@ -1079,7 +1083,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
 const TASK_STAGES = ['Preliminary concept', 'Concept', 'Schematic', 'Design development', 'Tender', 'GFC'];
 const TL_DELIVERABLE_STATUSES = ['Planned', 'In Progress', 'Submitted', 'Approved', 'Overdue'];
 const TL_STAGES = ['CD', 'SD', 'DD', 'TD', 'GFC'];
-const DRAWING_STATUSES = ['Revise', 'Resubmit', 'Approved'];
+const DRAWING_STATUSES = ['Approved', 'Revise', 'Resubmit'];
 const TL_SERVICES = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS', 'Peer Review'];
 const TL_ISSUED_TO = ['Client', 'Architect', 'PMC', 'Contractor', 'Authority', 'Other'];
 const TL_METHODS = ['Portal', 'Email', 'Courier', 'Hand delivery', 'Transmittal'];
@@ -1615,6 +1619,65 @@ const WORK_DECISIONS = [
   { label: 'Revise', status: 'Needs Attention' },
   { label: 'Awaiting', status: 'Pending' },
 ];
+
+// Team lead's decision on a drawing, same layout as the work-update dialog.
+function DrawingActionModal({ drawing, onClose, act }) {
+  const [choice, setChoice] = useState(drawing.status ?? 'Approved');
+  const [remark, setRemark] = useState('');
+  const revise = choice === 'Revise';
+  return (
+    <Modal title="Action by team lead" onClose={onClose}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          act.mutate({ id: drawing._id ?? drawing.id, status: choice, remark: remark.trim() || undefined });
+        }}
+      >
+        <p style={{ color: 'var(--ink-muted)', margin: '0 0 10px' }}>{drawing.drawingNo ?? '—'}{drawing.rev ? ` · ${drawing.rev}` : ''}</p>
+        <div className="panel-body" style={{ background: 'var(--surface-2, rgba(0,0,0,0.04))', borderRadius: 8, marginBottom: 14 }}>
+          <div><b>{drawing.title ?? '—'}</b> · {projLabel(drawing.project)}</div>
+          <div>{[drawing.service, drawing.stage, drawing.status ? `Now: ${drawing.status}` : null].filter(Boolean).join(' · ') || '—'}</div>
+        </div>
+        <div role="group" aria-label="Decision" style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+          {DRAWING_STATUSES.map((st) => (
+            <button
+              key={st}
+              type="button"
+              className="approve-btn"
+              aria-pressed={choice === st}
+              style={{ flex: 1, padding: '14px 10px', ...(choice === st ? { outline: '2px solid var(--blueprint)', fontWeight: 700 } : {}) }}
+              onClick={() => setChoice(st)}
+            >
+              {st}
+            </button>
+          ))}
+        </div>
+        {choice !== 'Approved' && (
+          <div className="form-row">
+            <label className="form-label" htmlFor="drawing-decision-remark">{revise ? 'What needs to be revised *' : 'Remark'}</label>
+            <textarea
+              id="drawing-decision-remark"
+              className="form-input"
+              rows={3}
+              maxLength={1000}
+              required={revise}
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              placeholder={revise ? 'Tell the team what to change on this drawing' : 'Optional note'}
+            />
+          </div>
+        )}
+        {act.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{act.error.message}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button type="button" className="approve-btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn-primary" disabled={act.isPending || (revise && !remark.trim())}>
+            {act.isPending ? 'Saving…' : 'Confirm decision'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 function DecideModal({ entry, onClose, decide }) {
   const [choice, setChoice] = useState('Approved');

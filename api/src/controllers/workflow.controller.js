@@ -485,13 +485,13 @@ const drawingCrud = makeCrud(Drawing, {
 export const drawings = {
   ...drawingCrud,
   create(req, res, next) {
-    if (req.body?.status !== undefined && req.user?.role !== 'team_lead') {
+    if ((req.body?.status !== undefined || req.body?.statusRemark !== undefined) && req.user?.role !== 'team_lead') {
       return res.status(403).json({ message: 'Only the team lead can set a drawing status.' });
     }
     return drawingCrud.create(req, res, next);
   },
   update(req, res, next) {
-    if (req.body?.status !== undefined && req.user?.role !== 'team_lead') {
+    if ((req.body?.status !== undefined || req.body?.statusRemark !== undefined) && req.user?.role !== 'team_lead') {
       return res.status(403).json({ message: 'Only the team lead can set a drawing status.' });
     }
     return drawingCrud.update(req, res, next);

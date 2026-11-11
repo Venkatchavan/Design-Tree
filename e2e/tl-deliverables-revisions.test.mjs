@@ -100,6 +100,9 @@ test('drawing status Revise / Resubmit / Approved is set by the team lead only',
     const r = await call('tl', `/api/work/drawings/${id}`, 'PUT', { status });
     assert.equal(r.status, 200); assert.equal(r.data.item.status, status);
   }
+  const withNote = await call('tl', `/api/work/drawings/${id}`, 'PUT', { status: 'Revise', statusRemark: 'Increase slab thickness' });
+  assert.equal(withNote.data.item.statusRemark, 'Increase slab thickness');
+  assert.equal((await call('td', `/api/work/drawings/${id}`, 'PUT', { statusRemark: 'x' })).status, 403);
   assert.equal((await call('tl', `/api/work/drawings/${id}`, 'PUT', { status: 'Done' })).status, 400);
   assert.equal((await call('td', `/api/work/drawings/${id}`, 'PUT', { status: 'Revise' })).status, 403);
   assert.equal((await call('engineer', '/api/work/drawings', 'POST', { project: f.project, drawingNo: 'S-303', title: 'x', status: 'Approved' })).status, 403);
