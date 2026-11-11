@@ -1,7 +1,11 @@
 import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
-export const REVISION_STATUSES = ['Open', 'Resubmitted', 'Cleared'];
+// Open        – logged by the lead and allotted to a team member
+// Resubmitted – the team member has addressed it; the lead must now act
+// Revise      – the lead sent it back, with instructions in leadNote
+// Cleared     – approved by the lead
+export const REVISION_STATUSES = ['Open', 'Resubmitted', 'Revise', 'Cleared'];
 
 const revisionSchema = new mongoose.Schema(
   {
@@ -26,6 +30,16 @@ const revisionSchema = new mongoose.Schema(
     status: { type: String, enum: REVISION_STATUSES, default: 'Open', index: true },
     resubmittedAt: { type: Date },
     clearedAt: { type: Date },
+    // What the lead asked to be revised (latest), and every step taken.
+    leadNote: { type: String, trim: true },
+    reviewLog: [
+      {
+        action: { type: String, trim: true },
+        note: { type: String, trim: true },
+        by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        at: { type: Date, default: Date.now },
+      },
+    ],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },

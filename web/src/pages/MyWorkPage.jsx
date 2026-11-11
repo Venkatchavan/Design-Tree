@@ -1146,7 +1146,9 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   const extraHoursToday = Math.max(0, todayHours - 8);
   const leadFirst = String(leadName ?? '').split(' ')[0] || 'Team lead';
 
-  const openMyRevisions = myRevisions.filter((r) => String(r.status ?? '').toLowerCase() === 'open');
+  // Needs my update: new, or sent back by the lead with instructions.
+  const openMyRevisions = myRevisions.filter((r) => ['open', 'revise'].includes(String(r.status ?? '').toLowerCase()));
+  const waitingOnLeadRevisions = myRevisions.filter((r) => String(r.status ?? '').toLowerCase() === 'resubmitted');
   const myEntryStatuses = entriesMineQ.data?.statusCounts ?? myEntries.reduce((counts, entry) => {
     const status = String(entry.status ?? '').toLowerCase();
     if (status === 'approved') counts.approved += 1;
@@ -1426,12 +1428,15 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
           <Panel title="My revisions" sub="From the team revision log">
             {revMineQ.isLoading ? <EmptyState text="Loading revisions…" /> : revMineQ.isError ? (
               <div className="login-error" role="alert" style={{ display: 'block' }}>{revMineQ.error.message}</div>
-            ) : openMyRevisions.length === 0 ? <EmptyState text="No revisions awaiting your update." /> : (
+            ) : openMyRevisions.length === 0 && waitingOnLeadRevisions.length === 0 ? <EmptyState text="No revisions awaiting your update." /> : (
               <div className="teams-grid">
                 {openMyRevisions.map((revision) => (
                   <article className="team-card" key={revision._id ?? revision.id}>
                     <div className="team-card-name">{projLabel(revision.project)} · {revision.stage ?? '—'} · {revision.details}</div>
-                    <div className="deliv-label">Awaiting employee update</div>
+                    <div className="deliv-label">{String(revision.status).toLowerCase() === 'revise' ? 'Sent back for revision' : 'Awaiting employee update'}</div>
+                    {revision.leadNote && String(revision.status).toLowerCase() === 'revise' && (
+                      <p style={{ margin: '8px 0 0', fontSize: 13 }}><b>Team lead asks:</b> {revision.leadNote}</p>
+                    )}
                     <div style={{ marginTop: 10 }}>
                       <button
                         type="button"
@@ -1442,6 +1447,12 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
                         Resubmit
                       </button>
                     </div>
+                  </article>
+                ))}
+                {waitingOnLeadRevisions.map((revision) => (
+                  <article className="team-card" key={revision._id ?? revision.id}>
+                    <div className="team-card-name">{projLabel(revision.project)} · {revision.stage ?? '—'} · {revision.details}</div>
+                    <div className="deliv-label">Resubmitted — awaiting team lead action</div>
                   </article>
                 ))}
               </div>
@@ -1719,7 +1730,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
 
       {tab === 'deliverables' && (
         <>
-          <ProjectDeliverables projects={availableProjects} myEmployeeId={myEmployeeId} />
+          <ProjectDeliverables projects={availableProjects} />
           <Panel title="Drawing submission status" sub="Stage-wise, across my allotted projects">
             <DataTable
               columns={[

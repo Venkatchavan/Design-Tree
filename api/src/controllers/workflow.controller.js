@@ -141,6 +141,10 @@ async function logDeliverable(project, action, payload, by) {
     stage: payload.stage,
     deliverable: payload.deliverable ?? payload.specify,
     details: payload.details,
+    plannedDate: payload.plannedDate,
+    dueDate: payload.dueDate,
+    revisedDate: payload.revisedDate,
+    reason: payload.reason,
     by,
   });
 }
@@ -162,11 +166,12 @@ const deliverableCrud = makeCrud(Deliverable, {
   ],
 });
 
-const DELIVERABLE_TRACKED = ['deliverable', 'stage', 'assignedTo', 'plannedDate', 'dueDate', 'status'];
+const DELIVERABLE_TRACKED = ['deliverable', 'stage', 'assignedTo', 'plannedDate', 'dueDate', 'revisedDate', 'revisedReason', 'status'];
+const TRACKED_LABEL = { assignedTo: 'assignee', revisedDate: 'revised date', revisedReason: 'reason' };
 const dayOf = (v) => (v ? new Date(v).toISOString().slice(0, 10) : '');
 const trackedValue = (doc, key) => {
   const v = doc?.[key];
-  if (key === 'plannedDate' || key === 'dueDate') return dayOf(v);
+  if (key === 'plannedDate' || key === 'dueDate' || key === 'revisedDate') return dayOf(v);
   return v == null ? '' : String(v);
 };
 
@@ -185,6 +190,11 @@ export const deliverables = {
       }
       const parsed = deliverableUpdateSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: 'Invalid data.' });
+      // A revised date is only accepted with the reason for it.
+      const dateRevised = parsed.data.revisedDate && dayOf(parsed.data.revisedDate) !== dayOf(before.revisedDate);
+      if (dateRevised && !parsed.data.revisedReason?.trim()) {
+        return res.status(400).json({ message: 'Give a reason for the revised date.' });
+      }
       const doc = await Deliverable.findByIdAndUpdate(req.params.id, parsed.data, {
         new: true,
         returnDocument: 'after',
@@ -201,12 +211,20 @@ export const deliverables = {
       }
       const show = (d, k) => (k === 'assignedTo' ? names.get(trackedValue(d, k)) : trackedValue(d, k)) || '—';
       const changes = changedKeys
-        .map((k) => `${k === 'assignedTo' ? 'assignee' : k}: ${show(before, k)} → ${show(doc, k)}`);
+        .map((k) => `${TRACKED_LABEL[k] ?? k}: ${show(before, k)} → ${show(doc, k)}`);
       if (changes.length > 0) {
         await logDeliverable(
           doc.project,
-          'Changed',
-          { stage: doc.stage, deliverable: doc.deliverable, details: changes.join('; ') },
+          dateRevised ? 'Revised' : 'Changed',
+          {
+            stage: doc.stage,
+            deliverable: doc.deliverable,
+            details: changes.join('; '),
+            plannedDate: doc.plannedDate,
+            dueDate: doc.dueDate,
+            revisedDate: doc.revisedDate,
+            reason: dateRevised ? doc.revisedReason : undefined,
+          },
           req.user.id,
         );
       }
@@ -222,6 +240,9 @@ export async function createDeliverable(req, res, next) {
   if (!parsed.success) {
     return res.status(400).json({ message: 'Invalid data.' });
   }
+  if (parsed.data.revisedDate && !parsed.data.revisedReason?.trim()) {
+    return res.status(400).json({ message: 'Give a reason for the revised date.' });
+  }
   try {
     const doc = await Deliverable.create({
       ...parsed.data,
@@ -230,7 +251,7 @@ export async function createDeliverable(req, res, next) {
     await logDeliverable(
       doc.project,
       'Created',
-      { ...parsed.data, details: `Due ${parsed.data.dueDate ?? '—'}` },
+      { ...parsed.data, reason: parsed.data.revisedDate ? parsed.data.revisedReason : undefined, details: `Due ${parsed.data.dueDate ?? '—'}` },
       req.user.id,
     );
     return res.status(201).json({ item: doc });
@@ -244,11 +265,26 @@ export async function listDeliverableLog(req, res, next) {
     const filter = {};
     if (req.query.project) filter.project = req.query.project;
     narrowByProject(filter, 'project', await projectScopeIds(req.user));
-    const items = await DeliverableLog.find(filter)
+    const rows = await DeliverableLog.find(filter)
       .populate('project', POP_PROJ)
       .populate('by', 'name email')
       .sort({ createdAt: -1 })
-      .limit(200);
+      .limit(200)
+      .lean();
+    // Entries written before dates were stored take them from the deliverable's current row.
+    const missing = rows.filter((r) => !r.dueDate && !r.plannedDate);
+    let items = rows;
+    if (missing.length > 0) {
+      const live = await Deliverable.find({ project: { $in: [...new Set(missing.map((r) => String(r.project?._id ?? r.project)))] } })
+        .select('project stage deliverable plannedDate dueDate revisedDate').lean();
+      const key = (p, s, d) => `${String(p?._id ?? p)}|${s ?? ''}|${d ?? ''}`;
+      const byKey = new Map(live.map((d) => [key(d.project, d.stage, d.deliverable), d]));
+      items = rows.map((r) => {
+        if (r.dueDate || r.plannedDate) return r;
+        const d = byKey.get(key(r.project, r.stage, r.deliverable));
+        return d ? { ...r, plannedDate: d.plannedDate, dueDate: d.dueDate, revisedDate: r.revisedDate ?? d.revisedDate } : r;
+      });
+    }
     return res.status(200).json({ items, total: items.length });
   } catch (err) {
     return next(err);
@@ -281,7 +317,7 @@ export async function deleteDeliverable(req, res, next) {
     await logDeliverable(
       doc.project,
       'Removed',
-      { stage: doc.stage, deliverable: doc.deliverable, details: 'Removed from the list' },
+      { stage: doc.stage, deliverable: doc.deliverable, details: 'Removed from the list', plannedDate: doc.plannedDate, dueDate: doc.dueDate, revisedDate: doc.revisedDate },
       req.user.id,
     );
     return res.status(200).json({ ok: true });
@@ -345,54 +381,77 @@ export async function createRevision(req, res, next) {
 
 const REVISION_CLEAR_ROLES = ['team_lead', 'assoc_technical_director', 'technical_director'];
 
+// Revision workflow:
+//   lead logs it and allots it to a team member            -> Open
+//   the team member addresses it and resubmits             -> Resubmitted (lead is notified)
+//   the lead acts: Approve (Cleared) or Revise + what to do -> Revise goes back to the member
 export async function setRevisionStatus(req, res, next) {
   const parsed = revisionStatusSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: 'Invalid data.' });
   }
   try {
+    const { status } = parsed.data;
+    const note = parsed.data.note?.trim() ?? '';
     const old = await Revision.findById(req.params.id);
     if (!old) return res.status(404).json({ message: 'Not found.' });
-    if (parsed.data.status === 'Resubmitted') {
+    const patch = { status };
+    const entry = { action: status === 'Cleared' ? 'Approved' : status, note: note || undefined, by: req.user.id, at: new Date() };
+    if (status === 'Resubmitted') {
       // A resubmission is the team member's own act: only the employee the
-      // revision is assigned to can mark it resubmitted, not the team lead who
+      // revision is assigned to can mark it resubmitted, not the lead who
       // logged it.
       const { User } = await import('../models/User.js');
       const me = await User.findById(req.user.id).select('employee').lean();
       if (!old.assignedTo || !me?.employee || String(me.employee) !== String(old.assignedTo)) {
         return res.status(403).json({ message: 'Only the team member this revision is assigned to can resubmit it.' });
       }
-      if (old.status !== 'Open') return res.status(409).json({ message: `This revision is already ${old.status.toLowerCase()}.` });
-    } else {
-      // Clearing is the lead's decision.
+      if (!['Open', 'Revise'].includes(old.status)) {
+        return res.status(409).json({ message: `This revision is already ${old.status.toLowerCase()}.` });
+      }
+      patch.resubmittedAt = new Date();
+    } else if (status === 'Revise' || status === 'Cleared') {
+      // Approve / revise is the lead's decision, taken once the member has resubmitted.
       if (!REVISION_CLEAR_ROLES.includes(req.user.role) && !isSuperRole(req.user.role)) {
-        return res.status(403).json({ message: 'Only the team lead or a director can clear a revision.' });
+        return res.status(403).json({ message: 'Only the team lead or a director can approve or send back a revision.' });
       }
       if (!await canReadProject(req.user, old.project)) return res.status(404).json({ message: 'Not found.' });
+      if (old.status === 'Cleared') return res.status(409).json({ message: 'This revision is already approved.' });
+      // A revision nobody is allotted to has no member to wait for.
+      if (old.assignedTo && old.status !== 'Resubmitted') {
+        return res.status(409).json({ message: 'Waiting for the team member to resubmit this revision.' });
+      }
+      if (status === 'Revise') {
+        if (!note) return res.status(400).json({ message: 'Say what needs to be revised.' });
+        patch.leadNote = note;
+      } else {
+        patch.clearedAt = new Date();
+      }
+    } else {
+      return res.status(400).json({ message: 'Invalid data.' });
     }
-    const patch = { status: parsed.data.status };
-    if (parsed.data.status === 'Resubmitted')
-      patch.resubmittedAt = new Date();
-    if (parsed.data.status === 'Cleared') patch.clearedAt = new Date();
-    const doc = await Revision.findByIdAndUpdate(req.params.id, patch, {
-      new: true,
-      returnDocument: 'after',
-      runValidators: true,
-    });
+    const doc = await Revision.findByIdAndUpdate(
+      req.params.id,
+      { ...patch, $push: { reviewLog: entry } },
+      { new: true, returnDocument: 'after', runValidators: true },
+    );
     if (!doc) return res.status(404).json({ message: 'Not found.' });
     try {
       const assignees = doc.assignedTo ? await userIdsForEmployees([doc.assignedTo]).catch(() => []) : [];
       const creator = doc.createdBy ? String(doc.createdBy?._id ?? doc.createdBy) : null;
-      const recipients = [...new Set([...assignees, ...(creator ? [creator] : [])])].filter(
+      // Resubmitted goes to the lead who logged it; Revise / Approved go to the member.
+      const targets = status === 'Resubmitted' ? (creator ? [creator] : []) : assignees;
+      const recipients = [...new Set(targets)].filter(
         (u) => /^[0-9a-fA-F]{24}$/.test(u) && u !== String(req.user.id),
       );
       if (recipients.length > 0) {
+        const what = { Resubmitted: 'resubmitted', Revise: 'needs revision', Cleared: 'approved' }[status];
         await notify({
           users: recipients,
           project: doc.project,
           link: { view: 'revision', id: String(doc._id) },
-          title: `Revision ${parsed.data.status?.toLowerCase() ?? 'updated'}: ${doc.drawing ?? doc.refNo ?? ''}`.trim(),
-          detail: '',
+          title: `Revision ${what}: ${doc.drawing ?? doc.refNo ?? doc.details ?? ''}`.trim().slice(0, 140),
+          detail: status === 'Revise' ? note.slice(0, 120) : '',
           type: 'revision',
         });
       }

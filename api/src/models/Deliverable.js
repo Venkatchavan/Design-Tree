@@ -23,6 +23,9 @@ const deliverableSchema = new mongoose.Schema(
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
     plannedDate: { type: Date },
     dueDate: { type: Date },
+    // A new date agreed after the due date was set, always with the reason.
+    revisedDate: { type: Date },
+    revisedReason: { type: String, trim: true },
     status: {
       type: String,
       enum: DELIVERABLE_STATUSES,
@@ -45,6 +48,11 @@ const deliverableLogSchema = new mongoose.Schema(
     stage: { type: String, trim: true },
     deliverable: { type: String, trim: true },
     details: { type: String, trim: true },
+    // Dates of the deliverable as they stood when this entry was logged.
+    plannedDate: { type: Date },
+    dueDate: { type: Date },
+    revisedDate: { type: Date },
+    reason: { type: String, trim: true },
     by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },

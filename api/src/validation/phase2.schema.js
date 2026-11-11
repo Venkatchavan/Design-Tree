@@ -34,6 +34,8 @@ export const deliverableSchema = z
     assignedTo: objectId.optional(),
     plannedDate: dateOpt,
     dueDate: dateOpt,
+    revisedDate: dateOpt,
+    revisedReason: strOpt,
     status: z.enum(DELIVERABLE_STATUSES).optional(),
   })
   .strict();
@@ -57,7 +59,7 @@ export const revisionSchema = z
   .strict();
 export const revisionUpdateSchema = revisionSchema.partial();
 export const revisionStatusSchema = z
-  .object({ status: z.enum(REVISION_STATUSES) })
+  .object({ status: z.enum(REVISION_STATUSES), note: z.string().trim().max(2000).optional() })
   .strict();
 
 export const drawingSchema = z

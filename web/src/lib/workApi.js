@@ -44,10 +44,10 @@ export const revisionsApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
-  setStatus: (id, status) =>
+  setStatus: (id, status, note) =>
     request(`/api/work/revisions/${id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(note ? { status, note } : { status }),
     }),
 };
 

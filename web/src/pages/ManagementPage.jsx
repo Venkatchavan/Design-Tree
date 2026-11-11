@@ -300,7 +300,7 @@ export default function ManagementPage({ bootstrap, user, viewKey }) {
       item: r.details ?? r.drawing ?? '—',
       source: revisionSourceOf(r.raisedBy),
       raised: r.dateRaised ?? r.createdAt,
-      status: String(r.status ?? '') === 'Cleared' ? 'Cleared' : 'Awaiting employee update',
+      status: { Cleared: 'Cleared', Resubmitted: 'Resubmitted', Revise: 'Sent back for revision' }[String(r.status ?? '')] ?? 'Awaiting employee update',
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [revisions.data, projects.data]);

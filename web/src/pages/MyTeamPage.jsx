@@ -153,7 +153,10 @@ function revisionSourceOf(name) {
 }
 function revisionDisplayStatus(r) {
   const s = String(r.status ?? '');
-  return s === 'Cleared' ? 'Cleared' : s === 'Resubmitted' ? 'Resubmitted' : 'Awaiting employee update';
+  if (s === 'Cleared') return 'Approved';
+  if (s === 'Resubmitted') return 'Resubmitted, awaiting your action';
+  if (s === 'Revise') return 'Sent back for revision';
+  return 'Awaiting employee update';
 }
 
 function useBootstrapProp(prop) {
@@ -551,7 +554,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
     [entries],
   );
   const openRevisions = useMemo(
-    () => teamRevisions.filter((r) => String(r.status ?? '').toLowerCase() === 'open'),
+    () => teamRevisions.filter((r) => String(r.status ?? '').toLowerCase() !== 'cleared'),
     [teamRevisions],
   );
 
@@ -585,11 +588,13 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
     },
   });
 
+  const [revisionAction, setRevisionAction] = useState(null);
   const revStatus = useMutation({
-    mutationFn: ({ id, status }) => revisionsApi.setStatus(id, status),
+    mutationFn: ({ id, status, note }) => revisionsApi.setStatus(id, status, note),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['revisions'] });
       queryClient.invalidateQueries({ queryKey: ['revisions-mine'] });
+      setRevisionAction(null);
     },
   });
 
@@ -652,7 +657,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
 
   function projectFlag(p) {
     if (String(p.status ?? '').toLowerCase().includes('delay')) return 'Behind schedule';
-    const n = teamRevisions.filter((r) => idOf(r.project) === String(p._id ?? p.id) && String(r.status ?? '').toLowerCase() === 'open').length;
+    const n = teamRevisions.filter((r) => idOf(r.project) === String(p._id ?? p.id) && String(r.status ?? '').toLowerCase() !== 'cleared').length;
     return n > 0 ? `${n} open flag${n === 1 ? '' : 's'}` : 'None';
   }
 
@@ -875,7 +880,6 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
               myTasks={myAssignedTasks}
               deliverables={teamDeliverables}
               delivLog={delivLog}
-              deliverablesOnly={isTL}
             />
           )}
 
@@ -928,7 +932,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
               <Panel title="Revision log" sub="Structural revisions across my projects, from raised to cleared — includes revisions requested by client or architect and logged by the SPOC">
                 {!canApprove && (
                   <p style={{ fontSize: 12.5, color: 'var(--ink-muted)', marginBottom: 12 }}>
-                    Clearing is available to team leads and directors. Resubmission is done by the team member the revision is assigned to.
+                    Approving or sending a revision back is done by team leads and directors. Resubmission is done by the team member the revision is assigned to.
                   </p>
                 )}
                 {revQ.isLoading ? (
@@ -945,7 +949,8 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                       { key: 'raisedBy', label: 'Raised by', render: (r) => revisionSourceOf(r.raisedBy) },
                       { key: 'raised', label: 'Raised', render: (r) => fmtDate(r.dateRaised ?? r.createdAt) },
                       { key: 'resubmitted', label: 'Resubmitted', render: (r) => fmtDate(r.resubmittedAt) },
-                      { key: 'cleared', label: 'Cleared', render: (r) => fmtDate(r.clearedAt) },
+                      { key: 'cleared', label: 'Approved', render: (r) => fmtDate(r.clearedAt) },
+                      { key: 'leadNote', label: 'Lead instruction', render: (r) => r.leadNote ?? '—' },
                       {
                         key: 'status',
                         label: 'Status',
@@ -954,21 +959,20 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                       {
                         key: 'actions',
                         label: 'Actions',
-                        render: (r) =>
-                          canApprove ? (
-                            <span style={{ display: 'flex', gap: 8 }}>
-                              <button
-                                type="button"
-                                className="approve-btn"
-                                disabled={revStatus.isPending}
-                                onClick={() => revStatus.mutate({ id: r._id, status: 'Cleared' })}
-                              >
-                                Clear
+                        render: (r) => {
+                          const st = String(r.status ?? '');
+                          if (st === 'Cleared') return '—';
+                          if (!canApprove) return '—';
+                          // The lead acts once the member has resubmitted (or when nobody is allotted).
+                          if (st === 'Resubmitted' || !r.assignedTo) {
+                            return (
+                              <button type="button" className="approve-btn" disabled={revStatus.isPending} onClick={() => setRevisionAction(r)}>
+                                Take action
                               </button>
-                            </span>
-                          ) : (
-                            '—'
-                          ),
+                            );
+                          }
+                          return <span style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>{st === 'Revise' ? 'With team member for revision' : 'Awaiting team member'}</span>;
+                        },
                       },
                     ]}
                     rows={teamRevisions}
@@ -1055,6 +1059,9 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       {allocOpen && selectedTeam && (
         <AllocationModal team={selectedTeam} onClose={() => setAllocOpen(false)} />
       )}
+      {revisionAction && (
+        <RevisionActionModal revision={revisionAction} onClose={() => setRevisionAction(null)} act={revStatus} />
+      )}
       {decideEntry && (
         <DecideModal
           entry={decideEntry}
@@ -1080,13 +1087,13 @@ function dateInput(v) {
 }
 
 function blankDeliverable() {
-  return { _id: '', deliverable: '', stage: '', assignedTo: '', plannedDate: '', dueDate: '', status: 'Planned', _custom: false };
+  return { _id: '', deliverable: '', stage: '', plannedDate: '', dueDate: '', revisedDate: '', revisedReason: '', status: 'Planned', _custom: false };
 }
 
 const OTHER_DELIVERABLE = '__other';
-const rowSnapshot = (r) => JSON.stringify([r.deliverable.trim(), r.stage, r.assignedTo, r.plannedDate, r.dueDate, r.status]);
+const rowSnapshot = (r) => JSON.stringify([r.deliverable.trim(), r.stage, r.plannedDate, r.dueDate, r.revisedDate, r.revisedReason.trim(), r.status]);
 
-function DeliverableListPanel({ teamProjects, members: teamMembers = [] }) {
+function DeliverableListPanel({ teamProjects }) {
   const queryClient = useQueryClient();
   const [projectId, setProjectId] = useState('');
   const [rows, setRows] = useState([]);
@@ -1098,19 +1105,6 @@ function DeliverableListPanel({ teamProjects, members: teamMembers = [] }) {
     queryFn: () => deliverablesApi.list({ project: activeProject }),
     enabled: !!activeProject,
   });
-  // People who can be given a deliverable on the chosen project (the TL's own team).
-  const rosterQ = useQuery({
-    queryKey: ['task-assignees', activeProject],
-    queryFn: () => tasksApi.assignees(activeProject),
-    enabled: !!activeProject,
-    retry: false,
-  });
-  const members = useMemo(() => {
-    const roster = (rosterQ.data?.items ?? []).filter((m) => !m.isLead);
-    const source = roster.length > 0 ? roster : teamMembers;
-    return [...new Map(source.map((m) => [memberId(m), m])).values()].filter((m) => memberId(m));
-  }, [rosterQ.data, teamMembers]);
-
   useEffect(() => {
     const items = (listQ.data?.items ?? []).filter((d) => idOf(d.project) === activeProject);
     setRows(items.map((d) => {
@@ -1118,9 +1112,10 @@ function DeliverableListPanel({ teamProjects, members: teamMembers = [] }) {
         _id: String(d._id ?? ''),
         deliverable: d.deliverable ?? '',
         stage: manualStage(d.stage),
-        assignedTo: idOf(d.assignedTo),
         plannedDate: dateInput(d.plannedDate),
         dueDate: dateInput(d.dueDate),
+        revisedDate: dateInput(d.revisedDate),
+        revisedReason: d.revisedReason ?? '',
         status: d.status ?? 'Planned',
       };
       return { ...row, _custom: !!row.deliverable && !stageDeliverables(row.stage).includes(row.deliverable), _snap: rowSnapshot(row) };
@@ -1138,15 +1133,17 @@ function DeliverableListPanel({ teamProjects, members: teamMembers = [] }) {
     mutationFn: async (list) => {
       if (list.some((r) => !r.stage)) throw new Error('Choose a stage for every deliverable.');
       if (list.some((r) => !r.deliverable.trim())) throw new Error('Every row needs a deliverable name.');
+      if (list.some((r) => r.revisedDate && !r.revisedReason.trim())) throw new Error('Give a reason for every revised date.');
       for (const r of list) {
         if (r._id && r._snap === rowSnapshot(r)) continue;
         const body = {
           project: activeProject,
           deliverable: r.deliverable.trim(),
           stage: r.stage || undefined,
-          assignedTo: r.assignedTo || undefined,
           plannedDate: r.plannedDate || undefined,
           dueDate: r.dueDate || undefined,
+          revisedDate: r.revisedDate || undefined,
+          revisedReason: r.revisedDate ? r.revisedReason.trim() : undefined,
           status: r.status || undefined,
         };
         if (r._id) await deliverablesApi.update(r._id, body);
@@ -1203,12 +1200,12 @@ function DeliverableListPanel({ teamProjects, members: teamMembers = [] }) {
         <table className="data">
           <thead>
             <tr>
-              <th>Stage</th><th>Deliverable</th><th>Assigned to</th><th>Planned date</th><th>Due date</th><th>Status</th><th></th>
+              <th>Stage</th><th>Deliverable</th><th>Planned date</th><th>Due date</th><th>Revised date</th><th>Reason for revised date</th><th>Status</th><th></th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={7}>No deliverables for this project yet.</td></tr>
+              <tr><td colSpan={8}>No deliverables for this project yet.</td></tr>
             ) : rows.map((r, i) => {
               const options = stageDeliverables(r.stage);
               return (
@@ -1236,14 +1233,19 @@ function DeliverableListPanel({ teamProjects, members: teamMembers = [] }) {
                     <input aria-label="Deliverable name" className="form-input" style={{ marginTop: 6 }} value={r.deliverable} placeholder="Name the deliverable" onChange={(e) => patchRow(i, { deliverable: e.target.value })} />
                   )}
                 </td>
-                <td>
-                  <EmployeeSelect employees={members} className="filter-select" value={r.assignedTo} onChange={(e) => patchRow(i, { assignedTo: e.target.value })}>
-                    <option value="">Unassigned</option>
-                    {members.map((m) => <option key={memberId(m)} value={memberId(m)}>{memberName(m)}</option>)}
-                  </EmployeeSelect>
-                </td>
                 <td><input type="date" className="form-input" value={r.plannedDate} onChange={(e) => patchRow(i, { plannedDate: e.target.value })} /></td>
                 <td><input type="date" className="form-input" value={r.dueDate} onChange={(e) => patchRow(i, { dueDate: e.target.value })} /></td>
+                <td><input type="date" aria-label="Revised date" className="form-input" value={r.revisedDate} onChange={(e) => patchRow(i, { revisedDate: e.target.value, ...(e.target.value ? {} : { revisedReason: '' }) })} /></td>
+                <td>
+                  <input
+                    aria-label="Reason for revised date"
+                    className="form-input"
+                    value={r.revisedReason}
+                    disabled={!r.revisedDate}
+                    placeholder={r.revisedDate ? 'Why is the date revised? *' : 'Set a revised date first'}
+                    onChange={(e) => patchRow(i, { revisedReason: e.target.value })}
+                  />
+                </td>
                 <td>
                   <select className="filter-select" value={r.status} onChange={(e) => patchRow(i, { status: e.target.value })}>
                     {TL_DELIVERABLE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -1264,7 +1266,7 @@ function DeliverableListPanel({ teamProjects, members: teamMembers = [] }) {
         </button>
       </div>
     </Panel>
-    <ProjectDeliverables projects={teamProjects.filter((p) => idOf(p) === activeProject)} showList={false} />
+    <ProjectDeliverables projects={teamProjects.filter((p) => idOf(p) === activeProject)} showList={false} canRevise />
     </>
   );
 }
@@ -1544,6 +1546,66 @@ function AllocationModal({ team, onClose }) {
   );
 }
 
+function RevisionActionModal({ revision, onClose, act }) {
+  const [decision, setDecision] = useState('Cleared');
+  const [note, setNote] = useState('');
+  const revise = decision === 'Revise';
+  const choices = [['Cleared', 'Approved'], ['Revise', 'Revise']];
+  return (
+    <Modal title="Action by team lead" onClose={onClose}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          act.mutate({ id: revision._id, status: decision, note: revise ? note.trim() : undefined });
+        }}
+      >
+        <p style={{ color: 'var(--ink-muted)', margin: '0 0 10px' }}>{revision.refNo ?? revision.drawing ?? 'Revision'}</p>
+        <div className="panel-body" style={{ background: 'var(--surface-2, rgba(0,0,0,0.04))', borderRadius: 8, marginBottom: 14 }}>
+          <div><b>{revisionEmployee(revision)}</b> · {projLabel(revision.project)}</div>
+          <div>{[revision.stage, revision.details ?? revision.drawing].filter(Boolean).join(' · ') || '—'}</div>
+          {revision.resubmittedAt && <div className="deliv-label">Resubmitted {fmtDate(revision.resubmittedAt)}</div>}
+        </div>
+        <div role="group" aria-label="Decision" style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+          {choices.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className="approve-btn"
+              aria-pressed={decision === value}
+              style={{ flex: 1, padding: '14px 10px', ...(decision === value ? { outline: '2px solid var(--blueprint)', fontWeight: 700 } : {}) }}
+              onClick={() => setDecision(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {revise && (
+          <div className="form-row">
+            <label className="form-label" htmlFor="revision-instruction">What needs to be revised *</label>
+            <textarea
+              id="revision-instruction"
+              className="form-input"
+              rows={4}
+              maxLength={2000}
+              required
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Tell the team member what to change before resubmitting"
+            />
+          </div>
+        )}
+        {act.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{act.error.message}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button type="button" className="approve-btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn-primary" disabled={act.isPending || (revise && !note.trim())}>
+            {act.isPending ? 'Saving…' : 'Confirm decision'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function DecideModal({ entry, onClose, decide }) {
   const [status, setStatus] = useState('Approved');
   const [remark, setRemark] = useState('');
@@ -1579,7 +1641,7 @@ function DecideModal({ entry, onClose, decide }) {
   );
 }
 
-function AssignWorkPanel({teamProjects,myTasks,includeLeads=false,deliverablesOnly=false}) {
+function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
   const queryClient=useQueryClient();
   const [section,setSection]=useState('deliverables');
   const [selMembers,setSelMembers]=useState([]);
@@ -1643,7 +1705,6 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false,deliverablesOn
     });
   }
 
-  if (deliverablesOnly) return <DeliverableListPanel teamProjects={teamProjects} members={[]}/>;
   return <><Tabs tabs={[{key:'deliverables',label:'List of Deliverables'},{key:'task',label:'Assign Task'},{key:'mine',label:'Work Assigned by Me'}]} active={section} onChange={setSection}/>
     {section==='deliverables'&&<DeliverableListPanel teamProjects={teamProjects} members={members}/>}
     {section==='task'&&(      <Panel title="Assign work to a team member" sub="Creates a task that appears in that designer's “My work” view, grouped by stage">

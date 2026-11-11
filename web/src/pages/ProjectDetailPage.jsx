@@ -1102,9 +1102,10 @@ export default function ProjectDetailPage({ bootstrap }) {
                   columns={[
                     { key: 'deliverable', label: 'Deliverable', render: (d) => d.deliverable ?? d.specify ?? '—' },
                     { key: 'stage', label: 'Stage', render: (d) => d.stage ?? '—' },
-                    { key: 'assigned', label: 'Assigned to', render: (d) => (d.assignedTo && typeof d.assignedTo === 'object' ? empName(d.assignedTo) : '—') },
                     { key: 'planned', label: 'Planned', render: (d) => fmtDate(d.plannedDate) },
                     { key: 'due', label: 'Due', render: (d) => fmtDate(d.dueDate) },
+                    { key: 'revised', label: 'Revised', render: (d) => fmtDate(d.revisedDate) },
+                    { key: 'reason', label: 'Reason for revised date', render: (d) => d.revisedReason ?? '—' },
                     { key: 'status', label: 'Status', render: (d) => d.status ?? '—' },
                   ]}
                   rows={deliverables}
