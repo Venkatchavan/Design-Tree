@@ -149,6 +149,7 @@ function revisionSourceOf(name) {
   const t = String(name ?? '');
   if (/architect/i.test(t)) return 'Architect';
   if (/client/i.test(t)) return 'Client';
+  if (/pmc/i.test(t)) return 'PMC';
   return 'Internal';
 }
 function revisionDisplayStatus(r) {
@@ -384,6 +385,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
     queryKey: ['team-work-entries', selectedKey, scopedProjectId],
     queryFn: () => workEntriesApi.list({ team: selectedId, project: scopedProjectId }),
     enabled: !!selectedId,
+    refetchInterval: 15000,
   });
   const entries = entriesQ.data?.items ?? [];
 
@@ -791,7 +793,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                     {
                       key: 'status',
                       label: 'Status',
-                      render: (e) => <StatusPill tone={toneFor(e.status)}>{e.status ?? '—'}</StatusPill>,
+                      render: (e) => <StatusPill tone={toneFor(e.status)}>{e.status === 'Needs Attention' ? 'Revise' : (e.status ?? '—')}</StatusPill>,
                     },
                     {
                       key: 'actions',
@@ -1606,36 +1608,74 @@ function RevisionActionModal({ revision, onClose, act }) {
   );
 }
 
+// Team lead's decision on a work update. "Revise" is stored as "Needs Attention"
+// (the employee sees it as Revise); "Awaiting" leaves the update pending with a remark.
+const WORK_DECISIONS = [
+  { label: 'Approved', status: 'Approved' },
+  { label: 'Revise', status: 'Needs Attention' },
+  { label: 'Awaiting', status: 'Pending' },
+];
+
 function DecideModal({ entry, onClose, decide }) {
-  const [status, setStatus] = useState('Approved');
+  const [choice, setChoice] = useState('Approved');
   const [remark, setRemark] = useState('');
+  const revise = choice === 'Revise';
+  const progress = entry.progressPct ?? entry.progress;
+  const what = [entry.deliverable ?? entry.taskActivity, progress != null && progress !== '' ? `${progress}% complete` : null].filter(Boolean).join(' · ');
   return (
-    <Modal title={`Take action — ${wuDisplay(entry)}`} onClose={onClose}>
+    <Modal title="Action by team lead" onClose={onClose}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          decide.mutate({ id: entry._id, status, remark: remark || undefined });
+          const { status } = WORK_DECISIONS.find((d) => d.label === choice);
+          decide.mutate({ id: entry._id, status, remark: remark.trim() || undefined });
         }}
       >
-        <div className="form-row">
-          <label className="form-label">Decision *</label>
-          <select className="filter-select" style={{ width: '100%' }} value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="Approved">Approve</option>
-            <option value="Rejected">Take action (reject / needs work)</option>
-          </select>
+        <p style={{ color: 'var(--ink-muted)', margin: '0 0 10px' }}>{wuDisplay(entry)}</p>
+        <div className="panel-body" style={{ background: 'var(--surface-2, rgba(0,0,0,0.04))', borderRadius: 8, marginBottom: 14 }}>
+          <div><b>{empName(entry.employee)}</b> · {projLabel(entry.project)}</div>
+          <div>{what || '—'}</div>
         </div>
-        <div className="form-row">
-          <label className="form-label">Remark</label>
-          <textarea className="form-input" value={remark} onChange={(e) => setRemark(e.target.value)} />
+        <div role="group" aria-label="Decision" style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+          {WORK_DECISIONS.map(({ label }) => (
+            <button
+              key={label}
+              type="button"
+              className="approve-btn"
+              aria-pressed={choice === label}
+              style={{ flex: 1, padding: '14px 10px', ...(choice === label ? { outline: '2px solid var(--blueprint)', fontWeight: 700 } : {}) }}
+              onClick={() => setChoice(label)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
+        {choice !== 'Approved' && (
+          <div className="form-row">
+            <label className="form-label" htmlFor="work-decision-remark">{revise ? 'What needs to be revised *' : 'Remark'}</label>
+            <textarea
+              id="work-decision-remark"
+              className="form-input"
+              rows={3}
+              maxLength={1000}
+              required={revise}
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              placeholder={revise ? 'Tell the team member what to change' : 'Optional note'}
+            />
+          </div>
+        )}
         {decide.isError && (
           <div className="login-error" role="alert" style={{ display: 'block' }}>
             {decide.error.message}
           </div>
         )}
-        <button type="submit" className="btn-primary" disabled={decide.isPending}>
-          {decide.isPending ? 'Saving…' : 'Submit decision'}
-        </button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button type="button" className="approve-btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn-primary" disabled={decide.isPending || (revise && !remark.trim())}>
+            {decide.isPending ? 'Saving…' : 'Confirm decision'}
+          </button>
+        </div>
       </form>
     </Modal>
   );
@@ -1944,7 +1984,9 @@ function DeliverableAddPanel({ teamProjects, members }) {
   );
 }
 
-function RevisionEntryPanel({ teamProjects, members=[], canCreate }) {
+const REVISION_RAISED_BY = ['Internal', 'Client', 'Architect', 'PMC'];
+
+function RevisionEntryPanel({ teamProjects, members: teamMembers = [], canCreate }) {
   const queryClient = useQueryClient();
   const [project, setProject] = useState('');
   const [stage, setStage] = useState('');
@@ -1953,7 +1995,20 @@ function RevisionEntryPanel({ teamProjects, members=[], canCreate }) {
   const [details, setDetails] = useState('');
   const [resubmissionDue, setResubmissionDue] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
+  const [raisedBy, setRaisedBy] = useState('Internal');
   const priority = 'Normal';
+  // The people a revision can be allotted to are the project's team (same list as Assign Task).
+  const rosterQ = useQuery({
+    queryKey: ['task-assignees', project],
+    queryFn: () => tasksApi.assignees(project),
+    enabled: !!project,
+    retry: false,
+  });
+  const members = useMemo(() => {
+    // Roles that cannot read the project roster (QA/QC, peer review) keep the team's own members.
+    const source = rosterQ.isError ? teamMembers : (rosterQ.data?.items ?? []).filter((m) => !m.isLead);
+    return [...new Map(source.filter((m) => memberId(m)).map((m) => [memberId(m), m])).values()];
+  }, [rosterQ.data, rosterQ.isError, teamMembers]);
   const [err, setErr] = useState('');
   const [emailLog, setEmailLog] = useState(null);
   const [notifyEmployees, setNotifyEmployees] = useState([]);
@@ -1990,12 +2045,17 @@ function RevisionEntryPanel({ teamProjects, members=[], canCreate }) {
             setErr('Select a project.');
             return;
           }
+          if (!assignedTo) {
+            setErr('Select the team member this revision is assigned to.');
+            return;
+          }
           if (!details.trim()) {
             setErr('Details are required.');
             return;
           }
           create.mutate({
             project,
+            raisedBy,
             stage: stage || undefined,
             drawing: drawing || undefined,
             revNo: revNo || undefined,
@@ -2010,7 +2070,7 @@ function RevisionEntryPanel({ teamProjects, members=[], canCreate }) {
         <div className="field-grid">
           <div className="form-row">
             <label className="form-label">Project *</label>
-            <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => setProject(e.target.value)}>
+            <select className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => { setProject(e.target.value); setAssignedTo(''); }}>
               <option value="">Select project</option>
               {teamProjects.map((p) => (
                 <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
@@ -2033,11 +2093,15 @@ function RevisionEntryPanel({ teamProjects, members=[], canCreate }) {
           </div>
           <div className="form-row">
             <label className="form-label">Assigned to *</label>
-            <EmployeeSelect employees={members} aria-label="Revision assigned to" className="filter-select" value={assignedTo} onChange={e=>setAssignedTo(e.target.value)}><option value="">Select team member</option>{members.map(m=><option key={memberId(m)} value={memberId(m)}>{memberName(m)}</option>)}</EmployeeSelect>
+            {!project ? <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>Select a project to load its team members.</p> : rosterQ.isLoading ? <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>Loading the project team…</p> : (
+              <EmployeeSelect employees={members} aria-label="Revision assigned to" className="filter-select" value={assignedTo} onChange={e=>setAssignedTo(e.target.value)}><option value="">Select team member</option>{members.map(m=><option key={memberId(m)} value={memberId(m)}>{memberName(m)}</option>)}</EmployeeSelect>
+            )}
           </div>
           <div className="form-row">
             <label className="form-label">Raised by</label>
-            <input className="form-input" value="Internal" readOnly />
+            <select aria-label="Raised by" className="filter-select" style={{ width: '100%' }} value={raisedBy} onChange={(e) => setRaisedBy(e.target.value)}>
+              {REVISION_RAISED_BY.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
           </div>
           <div className="form-row">
             <label className="form-label">Date raised</label>

@@ -10,6 +10,7 @@ import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import Modal from '../components/Modal.jsx';
 
 function fmtDate(v) {
   if (!v) return '—';
@@ -780,6 +781,9 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
   const queryClient = useQueryClient();
   const [remarks, setRemarks] = useState({});
   const [err, setErr] = useState('');
+  // Reason for an approval / rejection is asked in a dialog (window.prompt is blocked in some browsers).
+  const [reasonAsk, setReasonAsk] = useState(null);
+  const [reasonText, setReasonText] = useState('');
 
   const myStage = isTeamLead ? 'tl' : isHr ? 'hr' : isFinance ? 'finance' : null;
 
@@ -872,20 +876,8 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
 
   // Team Lead and HR see only their panels (no Chain column, no
   // allowance / decision-log panels). Reject prompts for the required reason.
-  async function decideDirect(kind, id, status) {
+  async function sendDecision(kind, id, status, remarks) {
     setErr('');
-    let remarks;
-    // Leave needs a reason to approve and to reject; travel only to reject.
-    if (status === 'Rejected' || kind === 'leave') {
-      const verb = status === 'Rejected' ? 'rejecting' : 'approving';
-      const v = window.prompt(`Reason for ${verb} (required, shown to the requester):`, '');
-      if (v == null) return;
-      remarks = v.trim();
-      if (!remarks) {
-        setErr(`A reason is required when ${verb}.`);
-        return;
-      }
-    }
     try {
       if (kind === 'leave') await leaveApi.decide(id, { status, remarks });
       else await travelApi.decide(id, { status, remarks });
@@ -895,6 +887,41 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
       setErr(e.message);
     }
   }
+
+  function decideDirect(kind, id, status) {
+    setErr('');
+    // Leave needs a reason to approve and to reject; travel only to reject.
+    if (status === 'Rejected' || kind === 'leave') {
+      setReasonText('');
+      setReasonAsk({ kind, id, status });
+      return;
+    }
+    return sendDecision(kind, id, status);
+  }
+
+  const reasonModal = reasonAsk && (
+    <Modal title={`Reason for ${reasonAsk.status === 'Rejected' ? 'rejecting' : 'approving'}`} onClose={() => setReasonAsk(null)}>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const { kind, id, status } = reasonAsk;
+          setReasonAsk(null);
+          await sendDecision(kind, id, status, reasonText.trim());
+        }}
+      >
+        <div className="form-row">
+          <label className="form-label" htmlFor="decision-reason">Reason (required, shown to the requester) *</label>
+          <textarea id="decision-reason" className="form-input" rows={3} required value={reasonText} onChange={(e) => setReasonText(e.target.value)} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button type="button" className="approve-btn" onClick={() => setReasonAsk(null)}>Cancel</button>
+          <button type="submit" className="btn-primary" disabled={!reasonText.trim()}>
+            {reasonAsk.status === 'Rejected' ? 'Reject' : 'Approve'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
 
   function decideSimpleButtons(kind, r) {
     const id = String(r._id ?? r.id);
@@ -914,6 +941,7 @@ function ApprovalsTab({ queue, loading, error, roleKey, canDecide, isTeamLead, i
   if (isTeamLead || isHr) {
     return (
       <>
+        {reasonModal}
         <Panel title="Leave approvals" sub={scopeSub}>
           {loading ? <EmptyState text="Loading…" /> : error ? (
             <div className="login-error" role="alert" style={{ display: 'block' }}>{error.message}</div>

@@ -121,3 +121,21 @@ test('extra-hours reason is required once the day total, including earlier entri
   const total = mine.data.items.filter(e => String(e.date).slice(0, 10) === day).reduce((s, e) => s + e.hours, 0);
   assert.equal(total, 9);
 });
+
+test('team lead takes action on a work update: Approved / Revise / Awaiting', async () => {
+  const day = new Date(Date.now() - 86400000 * 3).toISOString().slice(0, 10);
+  const make = async (activity) => (await call('engineer', '/api/work-entries', 'POST', { project: f.project, date: day, hours: 1, category: 'Hourly', taskActivity: activity })).data.entry._id;
+  const [a, b, c] = [await make('one'), await make('two'), await make('three')];
+  const decide = (id, body) => call('tl', `/api/work-entries/${id}/decision`, 'PATCH', body);
+  // The old dialog sent "Rejected", which the API has never accepted.
+  assert.equal((await decide(a, { status: 'Rejected' })).status, 400);
+  const revise = await decide(a, { status: 'Needs Attention', remark: 'Recheck beam depth' });
+  assert.equal(revise.status, 200);
+  assert.equal(revise.data.entry.status, 'Needs Attention');
+  assert.equal(revise.data.entry.remark, 'Recheck beam depth');
+  assert.equal((await decide(b, { status: 'Approved' })).data.entry.status, 'Approved');
+  const awaiting = await decide(c, { status: 'Pending', remark: 'Waiting for the drawing' });
+  assert.equal(awaiting.data.entry.status, 'Pending');
+  assert.equal(awaiting.data.entry.remark, 'Waiting for the drawing');
+  assert.equal((await call('engineer', `/api/work-entries/${b}/decision`, 'PATCH', { status: 'Approved' })).status, 403);
+});
