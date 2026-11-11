@@ -49,6 +49,11 @@ export default class ErrorBoundary extends Component {
   render() {
     const { error } = this.state
     if (!error) return this.props.children
+    // Shell parts (sidebar, top bar) pass a compact fallback so their crash
+    // leaves the rest of the screen working.
+    if (typeof this.props.fallback === 'function') {
+      return this.props.fallback({ error, retry: () => this.setState({ error: null, where: '' }) })
+    }
     const page = this.props.scope === 'page'
     return (
       <div
