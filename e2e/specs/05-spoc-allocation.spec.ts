@@ -5,13 +5,13 @@ import { apiUrl, apiLogin, apiLogout } from '../helpers/api';
 
 /**
  * §5 SPOC ALLOCATION → PROJECT ACTIVATION.
- * New flow: Technical Director proposes SPOC on Project Detail
- * (UI) → Design Management Head approves (API — no approve UI exists)
+ * Current flow: Technical Director picks the SPOC on Project Detail and
+ * clicks "Activate project" (UI); the allocation is created Approved
  * → SPOC sees the allocation (UI).
  * Scorecard #6: Overview "1 allocated project(s)".
  */
 test.describe.serial('05 spoc allocation', () => {
-  test('S5.1-S5.2 TD proposes SPOC, DMH approves, SPOC verifies', async ({ page, request }) => {
+  test('S5.1-S5.2 TD activates project with SPOC, SPOC verifies', async ({ page, request }) => {
     const td = byKey('td');
     const dmh = byKey('dmh');
     const spoc = byKey('spoc');
@@ -27,31 +27,24 @@ test.describe.serial('05 spoc allocation', () => {
     const projectId = project!._id;
     await apiLogout(request);
 
-    // S5.1 TD proposes Ananya Rao as SPOC (Project Detail UI).
+    // S5.1 TD activates the project with Ananya Rao as SPOC (Project Detail UI).
     await signIn(page, td.email, TEST_PASSWORD);
     await page.goto(`/projects/${projectId}`);
-    await expect(page.getByText('SPOC for this project').first()).toBeVisible({ timeout: 20_000 });
-    const coordSelect = page.locator('#td-spoc-coord');
-    await expect(coordSelect).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('Open this project for a team').first()).toBeVisible({ timeout: 20_000 });
+    const coordSelect = page.locator('#pd-spoc');
+    await expect(coordSelect).toBeAttached({ timeout: 20_000 });
     await selectOptionContaining(coordSelect, 'Ananya Rao');
-    await page.getByRole('button', { name: /propose spoc/i }).first().click();
-    // Allocations table must show the persisted Proposed row (not just the
-    // panel subtitle, which always contains "SPOC proposed").
-    const row = page.getByRole('row', { name: /Ananya Rao.*Proposed|Proposed.*Ananya Rao/ }).first();
-    await expect(row).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'Activate project' }).click();
+    // Activation assigns the SPOC (allocation is created as Approved).
+    await expect(page.getByText(/^Activated/).first()).toBeVisible({ timeout: 20_000 });
     await signOut(page);
 
-    // S5.2 DMH approves the Proposed allocation (API).
+    // The allocation exists and is already Approved (DMH can read it).
     await apiLogin(request, dmh.email, TEST_PASSWORD);
     const list = await request.get(`${apiUrl()}/api/spoc/allocations?project=${projectId}`);
     expect(list.ok()).toBeTruthy();
     const allocs: Array<{ _id: string; status: string }> = (await list.json()).items ?? [];
-    const proposed = allocs.find((a) => a.status === 'Proposed') ?? allocs[0];
-    expect(proposed, 'allocation proposed').toBeTruthy();
-    const approve = await request.patch(`${apiUrl()}/api/spoc/allocations/${proposed!._id}`, {
-      data: { status: 'Approved' },
-    });
-    expect(approve.ok(), `approve failed: ${await approve.text()}`).toBeTruthy();
+    expect(allocs.some((a) => a.status === 'Approved'), 'approved SPOC allocation').toBeTruthy();
     await apiLogout(request);
 
     // SPOC verifies: My Coordination → "1 allocated project(s)".

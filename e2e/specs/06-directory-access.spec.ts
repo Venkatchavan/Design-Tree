@@ -18,9 +18,9 @@ test.describe.serial('06 directory access', () => {
     expect(project, 'DT-2601 exists').toBeTruthy();
     const users = await request.get(`${apiUrl()}/api/users?search=${encodeURIComponent('designtree.test')}`);
     expect(users.ok(), `users list failed: ${await users.text()}`).toBeTruthy();
-    const logins: Array<{ _id: string; email: string; role: string }> =
+    const logins: Array<{ _id?: string; id?: string; email: string; role: string }> =
       (await users.json()).items ?? (await users.json()).users ?? [];
-    const ids = logins.filter((u) => u.role === 'client' || u.role === 'architect').map((u) => u._id);
+    const ids = logins.filter((u) => u.role === 'client' || u.role === 'architect').map((u) => u._id ?? u.id);
     expect(ids.length, 'client + architect logins').toEqual(2);
     const grant = await request.patch(`${apiUrl()}/api/projects/${project!._id}/portal-users`, {
       data: { userIds: ids },
@@ -35,7 +35,8 @@ test.describe.serial('06 directory access', () => {
     await page.locator('nav.nav').getByRole('button', { name: /my coordination/i }).first().click();
     await expect(page.getByText('My Coordination').first()).toBeVisible();
     await expect(page.getByText(/1 allocated project\(s\)/i).first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/Sunrise Heights Tower A/).first()).toBeVisible();
+    // The allocated project is offered in the daily-work Project dropdown.
+    await expect(page.locator('select[aria-label="Project 1"] option', { hasText: 'Sunrise Heights Tower A' })).toHaveCount(1);
     await signOut(page);
   });
 

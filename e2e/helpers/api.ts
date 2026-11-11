@@ -101,15 +101,19 @@ export async function ensureTeamsViaApi(
     const existing = await request.get(
       `${apiUrl()}/api/teams?service=${encodeURIComponent(def.service)}`,
     );
-    let found = false;
+    let found: { _id?: string; id?: string; name: string; members?: unknown[] } | undefined;
     if (existing.ok()) {
       const body = await existing.json();
       const items = body.teams ?? body.items ?? body ?? [];
-      found = (items as Array<{ name: string }>).some((t) => t.name === def.name);
+      found = (items as Array<{ _id?: string; id?: string; name: string; members?: unknown[] }>).find((t) => t.name === def.name);
     }
     if (!found) {
       const res = await request.post(`${apiUrl()}/api/teams`, { data: def });
       expect(res.ok(), `team create ${def.name} failed: ${await res.text()}`).toBeTruthy();
+    } else if (!(found.members ?? []).length) {
+      // A team left member-less by an earlier run: meetings need project team members.
+      const res = await request.put(`${apiUrl()}/api/teams/${found._id ?? found.id}/members`, { data: { members: def.members } });
+      expect(res.ok(), `team members ${def.name} failed: ${await res.text()}`).toBeTruthy();
     }
   }
 }
@@ -117,13 +121,16 @@ export async function ensureTeamsViaApi(
 export async function getEmployeeIdMap(
   request: APIRequestContext,
 ): Promise<Record<string, string>> {
-  const res = await request.get(`${apiUrl()}/api/employees?search=${encodeURIComponent('designtree.test')}`);
+  // Employee records carry no login email, so list them all and match by name.
+  const res = await request.get(`${apiUrl()}/api/employees?page=1&limit=200`);
   expect(res.ok(), `employees list failed: ${await res.text()}`).toBeTruthy();
   const body = await res.json();
-  const items: Array<{ _id: string; firstName: string; lastName: string }> =
+  const items: Array<{ _id?: string; id?: string; firstName: string; lastName: string }> =
     body.employees ?? body.items ?? body ?? [];
-  const byName = (fn: string, ln: string) =>
-    items.find((e) => e.firstName === fn && e.lastName === ln)?._id ?? '';
+  const byName = (fn: string, ln: string) => {
+    const e = items.find((x) => x.firstName === fn && x.lastName === ln);
+    return e?._id ?? e?.id ?? '';
+  };
   return {
     arjun: byName('Arjun', 'Reddy'),
     karthik: byName('Karthik', 'Nair'),

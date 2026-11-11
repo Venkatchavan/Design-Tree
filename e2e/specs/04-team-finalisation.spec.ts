@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { byKey, TEST_PASSWORD } from '../fixtures/roles';
 import { signIn, signOut } from '../helpers/auth-ui';
-import { apiLogin, apiLogout, ensureBranchViaApi, ensureProjectViaApi, getEmployeeIdMap, ensureTeamsViaApi, apiUrl } from '../helpers/api';
+import { apiLogin, apiLogout, ensureBranchViaApi, ensureProjectViaApi, getEmployeeIdMap, ensureTeamsViaApi } from '../helpers/api';
 import { PROJECT } from '../fixtures/project';
 
 /**
  * §4 PROJECT TEAM FINALISATION — 3 teams + members.
- * Scorecard #5: 3 cards, counts correct.
+ * Scorecard #5: teams created; directory lists the project and member count.
  * Verified UI fact (F-01): Teams page is cards-only, no Create button.
  * Creation is POST /api/teams (admin session), verification is UI.
  */
@@ -29,24 +29,12 @@ test.describe.serial('04 team finalisation', () => {
     });
     const ids = await getEmployeeIdMap(request);
     await ensureBranchViaApi(request, 'Bengaluru HQ');
-    // Fallback if directory lookup is empty (fresh DB without §1 UI run):
-    // teams still creatable with lead/projects only.
+    for (const [who, id] of Object.entries(ids)) expect(id, `employee id for ${who}`).toBeTruthy();
     await ensureTeamsViaApi(request, projectId, {
-      arjun: ids.arjun || undefined as unknown as string,
-      karthik: ids.karthik || undefined as unknown as string,
-      meera: ids.meera || undefined as unknown as string,
-      ananya: ids.ananya || undefined as unknown as string,
-    }).catch(async () => {
-      // Minimal retry: create teams without members if employee ids missing.
-      for (const def of [
-        { name: 'Structural Design', service: 'Structural' },
-        { name: 'Mechanical Design', service: 'Mechanical' },
-        { name: 'MEP Coordination', service: 'MEP Coordination' },
-      ]) {
-        await request.post(`${apiUrl()}/api/teams`, {
-          data: { ...def, branch: 'Bengaluru HQ', projects: [projectId] },
-        });
-      }
+      arjun: ids.arjun,
+      karthik: ids.karthik,
+      meera: ids.meera,
+      ananya: ids.ananya,
     });
     await apiLogout(request);
 
@@ -54,18 +42,13 @@ test.describe.serial('04 team finalisation', () => {
     await signIn(page, admin.email, TEST_PASSWORD);
     await page.locator('nav.nav').getByRole('button', { name: /^teams$/i }).first().click();
     await expect(page.getByText('Teams').first()).toBeVisible();
-    await expect(page.getByText('Structural Design').first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText('Mechanical Design').first()).toBeVisible();
-    await expect(page.getByText('MEP Coordination').first()).toBeVisible();
-
-    // Open one card → Team detail → Edit allocations → Save members smoke.
-    await page.getByText('Structural Design').first().click();
-    const editBtn = page.getByRole('button', { name: /edit allocations/i }).first();
-    if (await editBtn.isVisible({ timeout: 10_000 }).catch(() => false)) {
-      await editBtn.click();
-      const saveBtn = page.getByRole('button', { name: /save members/i }).first();
-      if (await saveBtn.isVisible().catch(() => false)) await saveBtn.click();
-    }
+    // Teams is now a company directory: filters plus a project table.
+    await expect(page.getByText('Find company teams').first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/1 projects · 10 members/).first()).toBeVisible({ timeout: 20_000 });
+    const row = page.getByRole('row', { name: /JOB-2601.*Sunrise Heights Tower A/ }).first();
+    await expect(row).toBeVisible();
+    await expect(row).toContainText('Structural');
+    await expect(page.getByText('Project team log').first()).toBeVisible();
     await signOut(page);
   });
 });

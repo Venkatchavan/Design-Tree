@@ -24,7 +24,7 @@ test.describe.serial('02 admin create project', () => {
 
     // --- Information ---
     await page.getByPlaceholder('e.g. Business park - Tower A').fill(PROJECT.name);
-    await page.getByLabel('Job number mode').selectOption('manual');
+    await page.locator('select[aria-label="Job number mode"]').selectOption('manual');
     await page.getByPlaceholder('Enter job number').fill(PROJECT.jobNumber);
     await page.getByPlaceholder('Search Entities...').fill(PROJECT.entityName);
 

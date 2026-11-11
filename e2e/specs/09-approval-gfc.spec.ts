@@ -91,7 +91,8 @@ test.describe.serial('09 approval and gfc', () => {
     const spoc = byKey('spoc');
     await signIn(page, spoc.email, TEST_PASSWORD);
     await page.locator('nav.nav').getByRole('button', { name: /my coordination/i }).first().click();
-    await expect(page.getByText(/DT-2601/).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/1 allocated project\(s\)/i).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('select[aria-label="Project 1"] option', { hasText: 'Sunrise Heights Tower A' })).toHaveCount(1);
     await signOut(page);
   });
 });

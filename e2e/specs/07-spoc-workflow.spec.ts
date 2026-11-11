@@ -1,39 +1,43 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { byKey, TEST_PASSWORD } from '../fixtures/roles';
 import { MEETING_WEEK1, MEETING_SUDDEN, MOM, ACTIONS, COORDINATION, RFI, REVISION } from '../fixtures/project';
-import { signIn, signOut, selectOptionContaining } from '../helpers/auth-ui';
+import { signIn, signOut } from '../helpers/auth-ui';
 import { expectToast } from '../helpers/asserts';
 
 /**
  * §7 SPOC WORKFLOW — meetings, MOM, actions, coordination, RFI, revision.
  * Scorecard #8-#16.
  */
+// SPOC meetings now live on the project page: Coordinator > Meetings tab.
+async function openProjectMeetings(page: Page) {
+  const found = await page.request.get(`/api/projects?search=${encodeURIComponent('DT-2601')}`);
+  expect(found.ok(), `project lookup failed: ${await found.text()}`).toBeTruthy();
+  const items: Array<{ _id: string; code: string }> = (await found.json()).items ?? [];
+  const project = items.find((p) => p.code === 'DT-2601');
+  expect(project, 'DT-2601 visible to SPOC').toBeTruthy();
+  await page.goto(`/projects/${project!._id}`);
+  await page.getByRole('tab', { name: 'Meetings', exact: true }).click();
+  await expect(page.getByRole('button', { name: '+ Schedule Meeting' })).toBeVisible({ timeout: 20_000 });
+}
+
 test.describe.serial('07 spoc workflow', () => {
   test('S7.1 schedule Week-1 DRM meeting', async ({ page }) => {
     const spoc = byKey('spoc');
     await signIn(page, spoc.email, TEST_PASSWORD);
-    await page.locator('nav.nav').getByRole('button', { name: /my coordination/i }).first().click();
-    const meetings = page.getByRole('tab', { name: /meetings/i }).first();
-    if (await meetings.isVisible().catch(() => false)) await meetings.click();
+    await openProjectMeetings(page);
 
-    await page.getByRole('button', { name: /\+ schedule meeting/i }).click();
-    const projectSelect = page.getByLabel(/project/i).first();
-    if (await projectSelect.isVisible().catch(() => false)) {
-      await selectOptionContaining(projectSelect, 'DT-2601').catch(async () => {});
-    }
-    await page.getByLabel(/meeting title|subject/i).first().fill(MEETING_WEEK1.title).catch(async () => {
-      await page.locator('input.form-input').first().fill(MEETING_WEEK1.title);
-    });
+    await page.getByRole('button', { name: '+ Schedule Meeting' }).click();
+    const modal = page.locator('form').filter({ hasText: 'Meeting title / subject' });
+    // Project is preset from the project page; fields have no label links,
+    // so use their placeholders.
+    await modal.getByPlaceholder('e.g. Weekly DRM review, Week 41').fill(MEETING_WEEK1.title);
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const iso = tomorrow.toISOString().slice(0, 10);
-    const dateInput = page.locator('input[type="date"]').first();
-    if (await dateInput.isVisible().catch(() => false)) await dateInput.fill(iso);
-    await page.getByLabel(/start time/i).first().fill(MEETING_WEEK1.startTime).catch(async () => {});
-    await page.getByLabel(/end time/i).first().fill(MEETING_WEEK1.endTime).catch(async () => {});
-    await page.getByLabel(/agenda|purpose/i).first().fill(MEETING_WEEK1.agenda).catch(async () => {});
+    await modal.locator('input[type="date"]').first().fill(tomorrow.toISOString().slice(0, 10));
+    await modal.locator('input[type="time"]').nth(0).fill(MEETING_WEEK1.startTime);
+    await modal.locator('input[type="time"]').nth(1).fill(MEETING_WEEK1.endTime);
 
-    await page.getByRole('button', { name: /schedule meeting/i }).last().click();
+    await modal.getByRole('button', { name: 'Schedule meeting', exact: true }).click();
     await expectToast(page, /meeting scheduled\. invitations sent to/i);
 
     await signOut(page);
@@ -42,18 +46,23 @@ test.describe.serial('07 spoc workflow', () => {
   test('S7.2 sudden meeting + S7.3 held/attendance/MOM + S7.4 actions + S7.5 logs', async ({ page }) => {
     const spoc = byKey('spoc');
     await signIn(page, spoc.email, TEST_PASSWORD);
-    await page.locator('nav.nav').getByRole('button', { name: /my coordination/i }).first().click();
-    const meetings = page.getByRole('tab', { name: /meetings/i }).first();
-    if (await meetings.isVisible().catch(() => false)) await meetings.click();
+    await openProjectMeetings(page);
 
     // Sudden meeting.
-    await page.getByRole('button', { name: /\+ add sudden meeting/i }).click();
-    await page.getByLabel(/meeting title/i).first().fill(MEETING_SUDDEN.title).catch(async () => {});
-    await page.getByLabel(/reason for the sudden meeting/i).first().fill(MEETING_SUDDEN.reason).catch(async () => {
-      await page.getByLabel(/reason/i).first().fill(MEETING_SUDDEN.reason);
-    });
-    await page.getByRole('button', { name: /save sudden meeting/i }).click();
+    await page.getByRole('button', { name: '+ Add Sudden Meeting' }).click();
+    const sudden = page.locator('form').filter({ hasText: 'Reason for the sudden meeting' });
+    await sudden.getByPlaceholder('e.g. Weekly DRM review, Week 41').fill(MEETING_SUDDEN.title);
+    await sudden.getByPlaceholder('What triggered this meeting?').fill(MEETING_SUDDEN.reason);
+    await sudden.getByRole('button', { name: /save sudden meeting/i }).click();
     await expectToast(page, /sudden meeting saved/i);
+
+    // Saving a sudden meeting opens its details dialog; close it so the
+    // Week-1 row underneath can be opened.
+    const details = page.getByRole('dialog', { name: 'Meeting details' });
+    if (await details.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await details.getByRole('button', { name: 'Close' }).click();
+      await expect(details).toBeHidden();
+    }
 
     // Open Week-1 row → Mark held → attendance → MOM → actions.
     const week1 = page.getByRole('row', { name: new RegExp(MEETING_WEEK1.title) }).first();
