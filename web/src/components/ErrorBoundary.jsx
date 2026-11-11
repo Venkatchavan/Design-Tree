@@ -17,7 +17,7 @@ function reloadedRecently() {
 }
 
 export default class ErrorBoundary extends Component {
-  state = { error: null }
+  state = { error: null, where: '' }
 
   static getDerivedStateFromError(error) {
     return { error }
@@ -25,6 +25,10 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error('DesignTree render error:', error, info?.componentStack)
+    // Keep the first few component frames so a photo of this screen is enough to
+    // locate the failing component (production builds minify the JS stack).
+    const frames = String(info?.componentStack ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
+    this.setState({ where: frames.slice(0, 6).join('\n') })
     // A page chunk that no longer exists means a new version was deployed under an
     // open tab. One automatic reload picks up the new files; never repeat it.
     if (CHUNK_ERROR.test(String(error?.message ?? '')) && !reloadedRecently()) {
@@ -87,9 +91,10 @@ export default class ErrorBoundary extends Component {
             }}
           >
             {String(error?.message ?? error)}
+            {this.state.where ? `\n\n${this.state.where}` : ''}
           </pre>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button type="button" className="btn-primary" onClick={() => this.setState({ error: null })}>
+            <button type="button" className="btn-primary" onClick={() => this.setState({ error: null, where: '' })}>
               Try again
             </button>
             <button type="button" className="approve-btn" onClick={() => window.location.reload()}>

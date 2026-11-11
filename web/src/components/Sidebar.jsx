@@ -194,7 +194,7 @@ export default function Sidebar({
       const hit = byKey.get(k);
       if (hit) { out.push(hit.n); byKey.delete(k); }
     }
-    for (const [, v] of [...byKey.values()].sort((a, b) => a.i - b.i)) out.push(v.n);
+    for (const v of [...byKey.values()].sort((a, b) => a.i - b.i)) out.push(v.n);
     return out;
   }, [nav, order]);
 
