@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DELIVERABLE_STATUSES } from '../models/Deliverable.js';
+import { DRAWING_STATUSES } from '../models/Drawing.js';
 import { RECRUITMENT_STATUSES } from '../models/Recruitment.js';
 import { REVISION_STATUSES } from '../models/Revision.js';
 import { SPOC_REVISION_STATUSES, SPOC_SERVICES, SPOC_WORK_AREAS } from '../models/SpocEntry.js';
@@ -70,6 +71,7 @@ export const drawingSchema = z
     date: dateOpt,
     issuedTo: strOpt,
     method: strOpt,
+    status: z.enum(DRAWING_STATUSES).optional(),
   })
   .strict();
 export const drawingUpdateSchema = drawingSchema.partial();

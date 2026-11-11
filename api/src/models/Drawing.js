@@ -1,6 +1,8 @@
 import { auditProjectSchema } from '../utils/projectAudit.js';
 import mongoose from 'mongoose';
 
+export const DRAWING_STATUSES = ['Revise', 'Resubmit', 'Approved'];
+
 // TL-shared drawing register (basis for Phase 3 transmittals).
 const drawingSchema = new mongoose.Schema(
   {
@@ -20,6 +22,8 @@ const drawingSchema = new mongoose.Schema(
     method: { type: String, trim: true },
     // Email proof screenshot / PDF for a drawing submission (§4.2).
     proof: { type: String, trim: true },
+    // Review status set by the team lead: Revise / Resubmit / Approved.
+    status: { type: String, enum: DRAWING_STATUSES },
     sharedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },

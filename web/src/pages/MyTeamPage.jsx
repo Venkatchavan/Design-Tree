@@ -564,6 +564,15 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
     },
   });
 
+  const drawingStatus = useMutation({
+    mutationFn: ({ id, status }) => drawingsApi.update(id, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['drawings'] });
+      queryClient.invalidateQueries({ queryKey: ['drawings-recent'] });
+      queryClient.invalidateQueries({ queryKey: ['project-drawings'] });
+    },
+  });
+
   const bulkApprove = useMutation({
     mutationFn: async (ids) => {
       for (const id of ids) {
@@ -984,11 +993,28 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                   { key: 'date', label: 'Date', render: (d) => fmtDate(d.date ?? d.createdAt) },
                   { key: 'issuedTo', label: 'To', render: (d) => d.issuedTo ?? '—' },
                   { key: 'method', label: 'Method', render: (d) => d.method ?? '—' },
-                  { key: 'status', label: 'Status', render: (d) => <StatusPill tone={toneFor(drawingAckStatus(d, ackedDrawingIds, transmittedDrawingIds))}>{drawingAckStatus(d, ackedDrawingIds, transmittedDrawingIds)}</StatusPill> },
+                  {
+                    key: 'status',
+                    label: 'Status',
+                    render: (d) => isTL ? (
+                      <select
+                        aria-label={`Status of drawing ${d.drawingNo ?? ''}`}
+                        className="filter-select"
+                        value={d.status ?? ''}
+                        disabled={drawingStatus.isPending}
+                        onChange={(e) => e.target.value && drawingStatus.mutate({ id: d._id ?? d.id, status: e.target.value })}
+                      >
+                        <option value="" disabled>Select status</option>
+                        {DRAWING_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+                      </select>
+                    ) : (d.status ? <StatusPill tone={toneFor(d.status)}>{d.status}</StatusPill> : '—'),
+                  },
+                  { key: 'ack', label: 'Acknowledgement', render: (d) => <StatusPill tone={toneFor(drawingAckStatus(d, ackedDrawingIds, transmittedDrawingIds))}>{drawingAckStatus(d, ackedDrawingIds, transmittedDrawingIds)}</StatusPill> },
                 ]}
                 rows={teamDrawings}
                 emptyText="No drawings yet."
               />
+              {drawingStatus.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{drawingStatus.error.message}</div>}
             </Panel>
             </>
           )}
@@ -1044,6 +1070,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
 const TASK_STAGES = ['Preliminary concept', 'Concept', 'Schematic', 'Design development', 'Tender', 'GFC'];
 const TL_DELIVERABLE_STATUSES = ['Planned', 'In Progress', 'Submitted', 'Approved', 'Overdue'];
 const TL_STAGES = ['CD', 'SD', 'DD', 'TD', 'GFC'];
+const DRAWING_STATUSES = ['Revise', 'Resubmit', 'Approved'];
 const TL_SERVICES = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS', 'Peer Review'];
 const TL_ISSUED_TO = ['Client', 'Architect', 'PMC', 'Contractor', 'Authority', 'Other'];
 const TL_METHODS = ['Portal', 'Email', 'Courier', 'Hand delivery', 'Transmittal'];
