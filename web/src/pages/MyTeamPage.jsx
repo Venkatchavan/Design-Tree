@@ -39,6 +39,8 @@ import KpiCard from '../components/KpiCard.jsx';
 import ReportingTeamPanel from '../components/ReportingTeamPanel.jsx';
 import { useReportingTeam } from '../lib/reportingTeam.js';
 import { departmentLabel } from '../lib/services.js';
+import { PROCESS_STAGES, manualStage, stageDeliverables } from '../lib/processManual.js';
+import ProjectDeliverables from '../components/ProjectDeliverables.jsx';
 
 const TL_CHAIN = new Set(['team_lead', 'assoc_technical_director', 'technical_director']);
 const REV_CREATE_ROLES = new Set([
@@ -618,7 +620,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       { key: 'recruitment', label: 'Recruitment requests' },
     ];
 
-  const tabs = (isTL || isATD) ? (projectWorkspace ? [...workspaceTabs.filter(t => t.key !== 'assign'), { key: 'meetings', label: 'Meetings' }, { key: 'completion', label: 'Stage completion' }] : [
+  const allTabs = (isTL || isATD) ? (projectWorkspace ? [...workspaceTabs.filter(t => t.key !== 'assign'), { key: 'meetings', label: 'Meetings' }, { key: 'completion', label: 'Stage completion' }] : [
       { key: 'overview', label: 'Overview' },
       { key: 'team', label: 'Project & team' },
       { key: 'monitoring', label: 'Team work monitoring' },
@@ -630,6 +632,8 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       { key: 'recruitment', label: 'Recruitment requests' },
       ...(isATD ? [{ key: 'people', label: 'People' }] : []),
     ]) : workspaceTabs;
+  // The Team Lead keeps the list of deliverables (with its log) under Assign work.
+  const tabs = isTL && !projectWorkspace ? allTabs.filter((t) => t.key !== 'deliverables') : allTabs;
   const activeProjects = useMemo(
     () => teamProjects.filter((p) => String(p.status ?? '') !== 'Completed'),
     [teamProjects],
@@ -861,6 +865,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
               myTasks={myAssignedTasks}
               deliverables={teamDeliverables}
               delivLog={delivLog}
+              deliverablesOnly={isTL}
             />
           )}
 
@@ -889,13 +894,10 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
           {tab === 'deliverables' && (
             <>
               {isTL && projectWorkspace && <DeliverableListPanel teamProjects={teamProjects} members={members} />}
-              {(isTL && !projectWorkspace) && (
+              {!isTL && canDeliverAdd && (
                 <DeliverableAddPanel teamProjects={teamProjects} members={members} />
               )}
-              {!isTL && (canDeliverAdd || role === 'team_lead') && (
-                <DeliverableAddPanel teamProjects={teamProjects} members={members} />
-              )}
-              {(!isTL || !projectWorkspace) && <Panel title="My project deliverables" sub="Also visible on the Design Management deliverables tracker">
+              {(!isTL || !projectWorkspace) && <Panel title="Project deliverables" sub="Also visible on the Design Management deliverables tracker">
                 <DataTable
                   columns={[
                     { key: 'project', label: 'Project', render: (d) => projLabel(d.project) },
@@ -1058,43 +1060,66 @@ function dateInput(v) {
 }
 
 function blankDeliverable() {
-  return { _id: '', deliverable: '', stage: '', assignedTo: '', plannedDate: '', dueDate: '', status: 'Planned' };
+  return { _id: '', deliverable: '', stage: '', assignedTo: '', plannedDate: '', dueDate: '', status: 'Planned', _custom: false };
 }
 
-function DeliverableListPanel({ teamProjects, members }) {
+const OTHER_DELIVERABLE = '__other';
+const rowSnapshot = (r) => JSON.stringify([r.deliverable.trim(), r.stage, r.assignedTo, r.plannedDate, r.dueDate, r.status]);
+
+function DeliverableListPanel({ teamProjects, members: teamMembers = [] }) {
   const queryClient = useQueryClient();
   const [projectId, setProjectId] = useState('');
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState('');
+  const [standardStage, setStandardStage] = useState('');
   const activeProject = projectId || String(teamProjects[0]?._id ?? teamProjects[0]?.id ?? '');
   const listQ = useQuery({
     queryKey: ['tl-deliverables', activeProject],
     queryFn: () => deliverablesApi.list({ project: activeProject }),
     enabled: !!activeProject,
   });
+  // People who can be given a deliverable on the chosen project (the TL's own team).
+  const rosterQ = useQuery({
+    queryKey: ['task-assignees', activeProject],
+    queryFn: () => tasksApi.assignees(activeProject),
+    enabled: !!activeProject,
+    retry: false,
+  });
+  const members = useMemo(() => {
+    const roster = (rosterQ.data?.items ?? []).filter((m) => !m.isLead);
+    const source = roster.length > 0 ? roster : teamMembers;
+    return [...new Map(source.map((m) => [memberId(m), m])).values()].filter((m) => memberId(m));
+  }, [rosterQ.data, teamMembers]);
+
   useEffect(() => {
     const items = (listQ.data?.items ?? []).filter((d) => idOf(d.project) === activeProject);
-    setRows(items.map((d) => ({
-      _id: String(d._id ?? ''),
-      deliverable: d.deliverable ?? '',
-      stage: d.stage ?? '',
-      assignedTo: idOf(d.assignedTo),
-      plannedDate: dateInput(d.plannedDate),
-      dueDate: dateInput(d.dueDate),
-      status: d.status ?? 'Planned',
-    })));
+    setRows(items.map((d) => {
+      const row = {
+        _id: String(d._id ?? ''),
+        deliverable: d.deliverable ?? '',
+        stage: manualStage(d.stage),
+        assignedTo: idOf(d.assignedTo),
+        plannedDate: dateInput(d.plannedDate),
+        dueDate: dateInput(d.dueDate),
+        status: d.status ?? 'Planned',
+      };
+      return { ...row, _custom: !!row.deliverable && !stageDeliverables(row.stage).includes(row.deliverable), _snap: rowSnapshot(row) };
+    }));
   }, [listQ.data, activeProject]);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['tl-deliverables'] });
     queryClient.invalidateQueries({ queryKey: ['deliverables'] });
+    queryClient.invalidateQueries({ queryKey: ['deliverables-project'] });
+    queryClient.invalidateQueries({ queryKey: ['deliverables-log-project'] });
   };
   const save = useMutation({
     meta: { success: 'List saved.' },
     mutationFn: async (list) => {
-      const valid = list.filter((r) => r.deliverable.trim());
-      if (valid.length !== list.length) throw new Error('Every row needs a deliverable name.');
-      for (const r of valid) {
+      if (list.some((r) => !r.stage)) throw new Error('Choose a stage for every deliverable.');
+      if (list.some((r) => !r.deliverable.trim())) throw new Error('Every row needs a deliverable name.');
+      for (const r of list) {
+        if (r._id && r._snap === rowSnapshot(r)) continue;
         const body = {
           project: activeProject,
           deliverable: r.deliverable.trim(),
@@ -1125,9 +1150,20 @@ function DeliverableListPanel({ teamProjects, members }) {
     if (r._id) remove.mutate(r._id);
     else setRows((prev) => prev.filter((_, j) => j !== i));
   }
+  function addStandard() {
+    if (!standardStage) return;
+    setRows((prev) => {
+      const have = new Set(prev.filter((r) => r.stage === standardStage).map((r) => r.deliverable.trim().toLowerCase()));
+      const add = stageDeliverables(standardStage)
+        .filter((name) => !have.has(name.toLowerCase()))
+        .map((name) => ({ ...blankDeliverable(), stage: standardStage, deliverable: name }));
+      return [...prev, ...add];
+    });
+  }
 
   return (
-    <Panel title="List of deliverables" sub="Editable list for the project — change any field in place, add or remove rows, then save">
+    <>
+    <Panel title="List of deliverables" sub="Stages and deliverables follow the process manual — change any field in place, add or remove rows, then save. The whole project team sees this list.">
       <div className="form-row" style={{ maxWidth: 360 }}>
         <label className="form-label">Project</label>
         <select className="filter-select" style={{ width: '100%' }} value={activeProject} onChange={(e) => setProjectId(e.target.value)}>
@@ -1135,6 +1171,13 @@ function DeliverableListPanel({ teamProjects, members }) {
             <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>{p.name ?? p.code ?? '—'}</option>
           ))}
         </select>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+        <select aria-label="Stage to add standard deliverables for" className="filter-select" value={standardStage} onChange={(e) => setStandardStage(e.target.value)}>
+          <option value="">Add the process-manual deliverables for…</option>
+          {PROCESS_STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
+        </select>
+        <button type="button" className="approve-btn" disabled={!standardStage} onClick={addStandard}>Add standard deliverables</button>
       </div>
       <div style={{ overflowX: 'auto', marginTop: 12 }}>
         <table className="data">
@@ -1146,15 +1189,33 @@ function DeliverableListPanel({ teamProjects, members }) {
           <tbody>
             {rows.length === 0 ? (
               <tr><td colSpan={7}>No deliverables for this project yet.</td></tr>
-            ) : rows.map((r, i) => (
+            ) : rows.map((r, i) => {
+              const options = stageDeliverables(r.stage);
+              return (
               <tr key={r._id || `new-${i}`}>
                 <td>
-                  <select className="filter-select" value={r.stage} onChange={(e) => patchRow(i, { stage: e.target.value })}>
-                    <option value="">—</option>
-                    {TL_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  <select aria-label="Stage" className="filter-select" value={r.stage} onChange={(e) => patchRow(i, { stage: e.target.value, ...(r._custom ? {} : { deliverable: '' }) })}>
+                    <option value="">Select stage</option>
+                    {[...new Set([...PROCESS_STAGES, r.stage].filter(Boolean))].map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </td>
-                <td><input className="form-input" value={r.deliverable} onChange={(e) => patchRow(i, { deliverable: e.target.value })} /></td>
+                <td>
+                  <select
+                    aria-label="Deliverable"
+                    className="filter-select"
+                    value={r._custom ? OTHER_DELIVERABLE : r.deliverable}
+                    onChange={(e) => (e.target.value === OTHER_DELIVERABLE
+                      ? patchRow(i, { _custom: true, deliverable: '' })
+                      : patchRow(i, { _custom: false, deliverable: e.target.value }))}
+                  >
+                    <option value="">{r.stage ? 'Select deliverable' : 'Select a stage first'}</option>
+                    {options.map((name) => <option key={name} value={name}>{name}</option>)}
+                    <option value={OTHER_DELIVERABLE}>Other (specify)</option>
+                  </select>
+                  {r._custom && (
+                    <input aria-label="Deliverable name" className="form-input" style={{ marginTop: 6 }} value={r.deliverable} placeholder="Name the deliverable" onChange={(e) => patchRow(i, { deliverable: e.target.value })} />
+                  )}
+                </td>
                 <td>
                   <EmployeeSelect employees={members} className="filter-select" value={r.assignedTo} onChange={(e) => patchRow(i, { assignedTo: e.target.value })}>
                     <option value="">Unassigned</option>
@@ -1170,7 +1231,8 @@ function DeliverableListPanel({ teamProjects, members }) {
                 </td>
                 <td><button type="button" className="approve-btn" disabled={remove.isPending} onClick={() => removeRow(i)}>Remove</button></td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -1182,6 +1244,8 @@ function DeliverableListPanel({ teamProjects, members }) {
         </button>
       </div>
     </Panel>
+    <ProjectDeliverables projects={teamProjects.filter((p) => idOf(p) === activeProject)} showList={false} />
+    </>
   );
 }
 
@@ -1495,7 +1559,7 @@ function DecideModal({ entry, onClose, decide }) {
   );
 }
 
-function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
+function AssignWorkPanel({teamProjects,myTasks,includeLeads=false,deliverablesOnly=false}) {
   const queryClient=useQueryClient();
   const [section,setSection]=useState('deliverables');
   const [selMembers,setSelMembers]=useState([]);
@@ -1559,6 +1623,7 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
     });
   }
 
+  if (deliverablesOnly) return <DeliverableListPanel teamProjects={teamProjects} members={[]}/>;
   return <><Tabs tabs={[{key:'deliverables',label:'List of Deliverables'},{key:'task',label:'Assign Task'},{key:'mine',label:'Work Assigned by Me'}]} active={section} onChange={setSection}/>
     {section==='deliverables'&&<DeliverableListPanel teamProjects={teamProjects} members={members}/>}
     {section==='task'&&(      <Panel title="Assign work to a team member" sub="Creates a task that appears in that designer's “My work” view, grouped by stage">
@@ -1711,14 +1776,17 @@ function DeliverableAddPanel({ teamProjects, members }) {
   const [project, setProject] = useState('');
   const [deliverable, setDeliverable] = useState('');
   const [stage, setStage] = useState('');
+  const [other, setOther] = useState(false);
   const [dueDate, setDueDate] = useState('');
   const [err, setErr] = useState('');
   const create = useMutation({
     mutationFn: (body) => deliverablesApi.create(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deliverables'] });
+      queryClient.invalidateQueries({ queryKey: ['deliverables-log-project'] });
       setErr('');
       setDeliverable('');
+      setOther(false);
       setStage('');
       setDueDate('');
     },
@@ -1732,6 +1800,10 @@ function DeliverableAddPanel({ teamProjects, members }) {
           setErr('');
           if (!project) {
             setErr('Select a project.');
+            return;
+          }
+          if (!stage) {
+            setErr('Select a stage.');
             return;
           }
           if (!deliverable.trim()) {
@@ -1759,12 +1831,20 @@ function DeliverableAddPanel({ teamProjects, members }) {
             </select>
           </div>
           <div className="form-row">
-            <label className="form-label">Deliverable *</label>
-            <input className="form-input" value={deliverable} onChange={(e) => setDeliverable(e.target.value)} placeholder="Structural Design Basis Report" />
+            <label className="form-label">Stage *</label>
+            <select className="form-input" aria-label="Stage" value={stage} onChange={(e) => { setStage(e.target.value); setDeliverable(''); setOther(false); }}>
+              <option value="">Select stage</option>
+              {PROCESS_STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
+            </select>
           </div>
           <div className="form-row">
-            <label className="form-label">Stage</label>
-            <input className="form-input" value={stage} onChange={(e) => setStage(e.target.value)} placeholder="CD" />
+            <label className="form-label">Deliverable *</label>
+            <select className="form-input" aria-label="Deliverable" value={other ? OTHER_DELIVERABLE : deliverable} onChange={(e) => (e.target.value === OTHER_DELIVERABLE ? (setOther(true), setDeliverable('')) : (setOther(false), setDeliverable(e.target.value)))}>
+              <option value="">{stage ? 'Select deliverable' : 'Select a stage first'}</option>
+              {stageDeliverables(stage).map((name) => <option key={name} value={name}>{name}</option>)}
+              <option value={OTHER_DELIVERABLE}>Other (specify)</option>
+            </select>
+            {other && <input className="form-input" style={{ marginTop: 6 }} aria-label="Deliverable name" value={deliverable} onChange={(e) => setDeliverable(e.target.value)} placeholder="Name the deliverable" />}
           </div>
           <div className="form-row">
             <label className="form-label">Due date</label>

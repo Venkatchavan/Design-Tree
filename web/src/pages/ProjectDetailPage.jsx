@@ -13,6 +13,7 @@ import { deliverablesApi, drawingsApi, revisionsApi } from '../lib/workApi.js';
 import { summarizeRevisions } from '../lib/revisionSummary.js';
 import { meetingsApi } from '../lib/phase4bApi.js';
 import Panel from '../components/Panel.jsx';
+import ProjectDeliverables from '../components/ProjectDeliverables.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
 import KpiCard from '../components/KpiCard.jsx';
@@ -1110,6 +1111,7 @@ export default function ProjectDetailPage({ bootstrap }) {
                   emptyText="No deliverables recorded for this project yet."
                 />
               </Panel>
+              <ProjectDeliverables projects={[{ _id: id, name: project.name, jobNumber: project.jobNumber }]} showList={false} />
               <Panel title="Drawing submission register">
                 <DataTable
                   columns={[

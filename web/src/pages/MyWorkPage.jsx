@@ -34,6 +34,7 @@ import {
   takePendingLogout,
 } from '../lib/session.js';
 import Panel from '../components/Panel.jsx';
+import ProjectDeliverables from '../components/ProjectDeliverables.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
@@ -1695,6 +1696,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
 
       {tab === 'deliverables' && (
         <>
+          <ProjectDeliverables projects={availableProjects} myEmployeeId={myEmployeeId} />
           <Panel title="Drawing submission status" sub="Stage-wise, across my allotted projects">
             <DataTable
               columns={[

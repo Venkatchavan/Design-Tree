@@ -4,6 +4,7 @@ import { canReadProject } from '../utils/projectScope.js';
 import { narrowByProject, projectScopeIds } from '../utils/projectScope.js';
 import { z } from 'zod';
 import { Deliverable, DeliverableLog } from '../models/Deliverable.js';
+import { Employee } from '../models/Employee.js';
 import { TASK_STATUSES } from '../models/Task.js';
 
 const zTaskStatus = z
@@ -143,7 +144,7 @@ async function logDeliverable(project, action, payload, by) {
   });
 }
 
-export const deliverables = makeCrud(Deliverable, {
+const deliverableCrud = makeCrud(Deliverable, {
   scopedByProject: true,
   create: deliverableSchema,
   update: deliverableUpdateSchema,
@@ -159,6 +160,61 @@ export const deliverables = makeCrud(Deliverable, {
     { path: 'createdBy', select: 'name email' },
   ],
 });
+
+const DELIVERABLE_TRACKED = ['deliverable', 'stage', 'assignedTo', 'plannedDate', 'dueDate', 'status'];
+const dayOf = (v) => (v ? new Date(v).toISOString().slice(0, 10) : '');
+const trackedValue = (doc, key) => {
+  const v = doc?.[key];
+  if (key === 'plannedDate' || key === 'dueDate') return dayOf(v);
+  return v == null ? '' : String(v);
+};
+
+// Every change to the list is written to the deliverables log, which the whole
+// project team can read.
+export const deliverables = {
+  ...deliverableCrud,
+  async update(req, res, next) {
+    try {
+      const before = await Deliverable.findById(req.params.id).lean();
+      if (!before || !await canReadProject(req.user, before.project)) {
+        return res.status(404).json({ message: 'Not found.' });
+      }
+      if (req.body?.project && String(req.body.project) !== String(before.project)) {
+        return res.status(400).json({ message: 'A record cannot be moved to another project.' });
+      }
+      const parsed = deliverableUpdateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: 'Invalid data.' });
+      const doc = await Deliverable.findByIdAndUpdate(req.params.id, parsed.data, {
+        new: true,
+        returnDocument: 'after',
+        runValidators: true,
+      });
+      if (!doc) return res.status(404).json({ message: 'Not found.' });
+      const changedKeys = DELIVERABLE_TRACKED
+        .filter((k) => k in parsed.data && trackedValue(before, k) !== trackedValue(doc, k));
+      const names = new Map();
+      if (changedKeys.includes('assignedTo')) {
+        const emps = await Employee.find({ _id: { $in: [before.assignedTo, doc.assignedTo].filter(Boolean) } })
+          .select('firstName lastName').lean();
+        for (const e of emps) names.set(String(e._id), [e.firstName, e.lastName].filter(Boolean).join(' '));
+      }
+      const show = (d, k) => (k === 'assignedTo' ? names.get(trackedValue(d, k)) : trackedValue(d, k)) || '—';
+      const changes = changedKeys
+        .map((k) => `${k === 'assignedTo' ? 'assignee' : k}: ${show(before, k)} → ${show(doc, k)}`);
+      if (changes.length > 0) {
+        await logDeliverable(
+          doc.project,
+          'Changed',
+          { stage: doc.stage, deliverable: doc.deliverable, details: changes.join('; ') },
+          req.user.id,
+        );
+      }
+      return res.status(200).json({ item: doc });
+    } catch (err) {
+      return next(err);
+    }
+  },
+};
 
 export async function createDeliverable(req, res, next) {
   const parsed = deliverableSchema.safeParse(req.body);
@@ -189,6 +245,7 @@ export async function listDeliverableLog(req, res, next) {
     narrowByProject(filter, 'project', await projectScopeIds(req.user));
     const items = await DeliverableLog.find(filter)
       .populate('project', POP_PROJ)
+      .populate('by', 'name email')
       .sort({ createdAt: -1 })
       .limit(200);
     return res.status(200).json({ items, total: items.length });
@@ -220,6 +277,12 @@ export async function deleteDeliverable(req, res, next) {
     if (!old || !await canReadProject(req.user, old.project)) return res.status(404).json({ message: 'Not found.' });
     const doc = await Deliverable.findByIdAndDelete(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Not found.' });
+    await logDeliverable(
+      doc.project,
+      'Removed',
+      { stage: doc.stage, deliverable: doc.deliverable, details: 'Removed from the list' },
+      req.user.id,
+    );
     return res.status(200).json({ ok: true });
   } catch (err) {
     return next(err);
