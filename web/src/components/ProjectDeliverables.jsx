@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { deliverablesApi } from '../lib/workApi.js';
 import { manualStage } from '../lib/processManual.js';
 import Panel from './Panel.jsx';
@@ -18,68 +18,12 @@ const day = (v) => {
 const projectName = (p) => (typeof p === 'object' && p ? p.name ?? p.code ?? '—' : String(p ?? '—'));
 
 
-// Team lead: log a revised date for a deliverable, with the reason.
-function RevisedDateForm({ projectId, deliverables }) {
-  const queryClient = useQueryClient();
-  const [deliverableId, setDeliverableId] = useState('');
-  const [revisedDate, setRevisedDate] = useState('');
-  const [reason, setReason] = useState('');
-  const [err, setErr] = useState('');
-  const add = useMutation({
-    mutationFn: () => deliverablesApi.update(deliverableId, { revisedDate, revisedReason: reason.trim() }),
-    onSuccess: () => {
-      setDeliverableId('');
-      setRevisedDate('');
-      setReason('');
-      setErr('');
-      for (const key of ['deliverables-project', 'deliverables-log-project', 'tl-deliverables', 'deliverables']) {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      }
-    },
-    onError: (e) => setErr(e.message),
-  });
-  return (
-    <form
-      style={{ marginBottom: 14 }}
-      onSubmit={(e) => {
-        e.preventDefault();
-        setErr('');
-        if (!deliverableId || !revisedDate) return setErr('Choose the deliverable and the revised date.');
-        if (!reason.trim()) return setErr('Give a reason for the revised date.');
-        add.mutate();
-      }}
-    >
-      <div className="section-label">Add a revised date</div>
-      <div className="field-grid">
-        <div className="form-row">
-          <label className="form-label" htmlFor={`rev-deliv-${projectId}`}>Deliverable *</label>
-          <select id={`rev-deliv-${projectId}`} className="filter-select" style={{ width: '100%' }} value={deliverableId} onChange={(e) => setDeliverableId(e.target.value)}>
-            <option value="">Select deliverable</option>
-            {deliverables.map((d) => <option key={d._id} value={d._id}>{[manualStage(d.stage), d.deliverable].filter(Boolean).join(' · ')}</option>)}
-          </select>
-        </div>
-        <div className="form-row">
-          <label className="form-label" htmlFor={`rev-date-${projectId}`}>Revised date *</label>
-          <input id={`rev-date-${projectId}`} type="date" className="form-input" value={revisedDate} onChange={(e) => setRevisedDate(e.target.value)} />
-        </div>
-        <div className="form-row">
-          <label className="form-label" htmlFor={`rev-reason-${projectId}`}>Reason *</label>
-          <input id={`rev-reason-${projectId}`} className="form-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is the date revised?" />
-        </div>
-      </div>
-      {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
-      <button type="submit" className="approve-btn" disabled={add.isPending}>{add.isPending ? 'Saving…' : 'Add revised date'}</button>
-    </form>
-  );
-}
-
 // Read-only view of a project's deliverables and the log of every change made to
 // them. Shown to the whole project team, so a list the Team Lead edits is the
 // same list everyone works from.
 //   projects: [{ _id, name, jobNumber }] the viewer can see
 //   showList: also show the current list (default true)
-//   canRevise: team lead only, adds the "Add a revised date" form to the log
-export default function ProjectDeliverables({ projects = [], showList = true, canRevise = false }) {
+export default function ProjectDeliverables({ projects = [], showList = true }) {
   const [picked, setPicked] = useState('');
   const options = projects.map((p) => ({ id: idOf(p), label: [p.jobNumber, p.name ?? p.code].filter(Boolean).join(' · ') || '—' }));
   const projectId = picked && options.some((o) => o.id === picked) ? picked : options[0]?.id ?? '';
@@ -87,7 +31,7 @@ export default function ProjectDeliverables({ projects = [], showList = true, ca
   const listQ = useQuery({
     queryKey: ['deliverables-project', projectId],
     queryFn: () => deliverablesApi.list({ project: projectId }),
-    enabled: !!projectId && (showList || canRevise),
+    enabled: !!projectId && showList,
     refetchInterval: 15000,
   });
   const logQ = useQuery({
@@ -137,7 +81,6 @@ export default function ProjectDeliverables({ projects = [], showList = true, ca
         </Panel>
       )}
       <Panel title="Deliverables log" sub="Every deliverable added, changed, revised or removed from the list, newest first">
-        {canRevise && <RevisedDateForm projectId={projectId} deliverables={rows} />}
         {logQ.isLoading ? <EmptyState text="Loading log…" /> : logQ.isError ? (
           <div className="login-error" role="alert" style={{ display: 'block' }}>{logQ.error.message}</div>
         ) : (

@@ -1159,19 +1159,8 @@ function DeliverableListPanel({ teamProjects }) {
     onSuccess: () => { setErr(''); refresh(); },
     onError: (e) => { setErr(e.message); },
   });
-  const remove = useMutation({
-    mutationFn: (id) => deliverablesApi.remove(id),
-    onSuccess: () => { setErr(''); refresh(); },
-    onError: (e) => setErr(e.message),
-  });
-
   function patchRow(i, patch) {
     setRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  }
-  function removeRow(i) {
-    const r = rows[i];
-    if (r._id) remove.mutate(r._id);
-    else setRows((prev) => prev.filter((_, j) => j !== i));
   }
   function addStandard() {
     if (!standardStage) return;
@@ -1206,12 +1195,12 @@ function DeliverableListPanel({ teamProjects }) {
         <table className="data">
           <thead>
             <tr>
-              <th>Stage</th><th>Deliverable</th><th>Planned date</th><th>Due date</th><th>Revised date</th><th>Reason for revised date</th><th>Status</th><th></th>
+              <th>Stage</th><th>Deliverable</th><th>Planned date</th><th>Due date</th><th>Revised date</th><th>Reason for revised date</th><th>Status</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={8}>No deliverables for this project yet.</td></tr>
+              <tr><td colSpan={7}>No deliverables for this project yet.</td></tr>
             ) : rows.map((r, i) => {
               const options = stageDeliverables(r.stage);
               return (
@@ -1246,9 +1235,10 @@ function DeliverableListPanel({ teamProjects }) {
                   <input
                     aria-label="Reason for revised date"
                     className="form-input"
+                    style={{ minWidth: 200 }}
                     value={r.revisedReason}
                     disabled={!r.revisedDate}
-                    placeholder={r.revisedDate ? 'Why is the date revised? *' : 'Set a revised date first'}
+                    placeholder={r.revisedDate ? 'Why is the date revised? *' : 'Set revised date first'}
                     onChange={(e) => patchRow(i, { revisedReason: e.target.value })}
                   />
                 </td>
@@ -1257,7 +1247,6 @@ function DeliverableListPanel({ teamProjects }) {
                     {TL_DELIVERABLE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </td>
-                <td><button type="button" className="approve-btn" disabled={remove.isPending} onClick={() => removeRow(i)}>Remove</button></td>
               </tr>
               );
             })}
@@ -1272,7 +1261,7 @@ function DeliverableListPanel({ teamProjects }) {
         </button>
       </div>
     </Panel>
-    <ProjectDeliverables projects={teamProjects.filter((p) => idOf(p) === activeProject)} showList={false} canRevise />
+    <ProjectDeliverables projects={teamProjects.filter((p) => idOf(p) === activeProject)} showList={false} />
     </>
   );
 }
