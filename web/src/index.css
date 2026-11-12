@@ -8677,3 +8677,16 @@ input[type="file"]:disabled::file-selector-button {
     color: var(--ink);
     font-weight: 600;
 }
+
+/* My work > Overview: stage-grouped task list (Assigned to me / Awaiting response) */
+.mw-filter { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.mw-list { display: flex; flex-direction: column; }
+.mw-group + .mw-group { margin-top: 8px; }
+.mw-group-head { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); padding: 10px 0 4px; }
+.mw-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--line); }
+.mw-group-head + .mw-row, .mw-list > .mw-row:first-child { border-top: 0; }
+.mw-row-main { min-width: 0; flex: 1; }
+.mw-row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mw-row-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.mw-due { font-size: 12.5px; font-weight: 600; color: var(--ink-muted); background: var(--surface-2, rgba(0,0,0,.05)); border-radius: 999px; padding: 4px 12px; white-space: nowrap; }
+@media (max-width: 640px) { .mw-row { flex-direction: column; align-items: flex-start; gap: 8px; } }

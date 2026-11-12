@@ -41,6 +41,7 @@ import { useReportingTeam } from '../lib/reportingTeam.js';
 import { departmentLabel } from '../lib/services.js';
 import { PROCESS_STAGES, manualStage, stageDeliverables } from '../lib/processManual.js';
 import ProjectDeliverables from '../components/ProjectDeliverables.jsx';
+import { DRAWING_SUBMITTED, drawingStatusLabel, drawingSubmissionLabel } from '../lib/drawingStatus.js';
 
 const TL_CHAIN = new Set(['team_lead', 'assoc_technical_director', 'technical_director']);
 const REV_CREATE_ROLES = new Set([
@@ -403,7 +404,8 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
     return allDeliverables.filter((d) => teamProjectIds.has(idOf(d.project)));
   }, [allDeliverables, teamProjectIds]);
 
-  const drawingsQ = useQuery({ queryKey: ['drawings'], queryFn: () => drawingsApi.list({}) });
+  // Refreshes so drawings the team submits, and their status, show up without a reload.
+  const drawingsQ = useQuery({ queryKey: ['drawings'], queryFn: () => drawingsApi.list({}), refetchInterval: 15000 });
   const allDrawings = drawingsQ.data?.items ?? [];
   const teamDrawings = useMemo(() => {
     if (teamProjectIds.size === 0) return [];
@@ -976,7 +978,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                     label: 'Status',
                     render: (d) => (
                       <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-                        {d.status ? <StatusPill tone={toneFor(d.status === 'Resubmit' ? 'Awaiting' : d.status)}>{drawingStatusLabel(d)}</StatusPill> : (isTL ? null : '—')}
+                        <StatusPill tone={toneFor(d.status === 'Resubmit' ? 'Awaiting' : d.status ?? DRAWING_SUBMITTED)}>{drawingSubmissionLabel(d)}</StatusPill>
                         {d.statusRemark && <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{d.statusRemark}</span>}
                         {isTL && (
                           <button type="button" className="approve-btn" aria-label={`Set status of drawing ${d.drawingNo ?? ''}`} onClick={() => setDrawingAction(d)}>
@@ -1054,12 +1056,6 @@ const TL_DELIVERABLE_STATUSES = ['Planned', 'In Progress', 'Submitted', 'Approve
 const TL_STAGES = ['CD', 'SD', 'DD', 'TD', 'GFC'];
 const DRAWING_STATUSES = ['Approved', 'Revise', 'Awaiting'];
 const AWAITING_TARGETS = ['Client', 'Architect', 'Peer Review', 'STR', 'PHE', 'ELE', 'HVAC', 'F&LS'];
-// "Awaiting · Client"; legacy "Resubmit" rows read as Awaiting.
-function drawingStatusLabel(d) {
-  const s = d?.status === 'Resubmit' ? 'Awaiting' : d?.status;
-  if (!s) return '';
-  return s === 'Awaiting' && d?.awaitingOn ? `Awaiting · ${d.awaitingOn}` : s;
-}
 const TL_SERVICES = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS', 'Peer Review'];
 const TL_ISSUED_TO = ['Client', 'Architect', 'PMC', 'Contractor', 'Authority', 'Other'];
 const TL_METHODS = ['Portal', 'Email', 'Courier', 'Hand delivery', 'Transmittal'];

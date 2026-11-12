@@ -9,14 +9,12 @@ import {
 } from '../lib/api.js';
 import {
   drawingsApi,
-  revisionsApi,
   tasksApi,
   teamsMineApi,
 } from '../lib/workApi.js';
 import { holidaysApi, meetingsApi } from '../lib/phase4bApi.js';
 import { transmittalsApi } from '../lib/phase3Api.js';
 import { rfiApi } from '../lib/functionsApi.js';
-import { docsApi } from '../lib/docsApi.js';
 import {
   MeetingDetailModal,
   ResponseBox,
@@ -36,11 +34,10 @@ import {
 import Panel from '../components/Panel.jsx';
 import MyAbsencesPanel from '../components/meetings/MyAbsencesPanel.jsx';
 import { displayStatus, splitMeetings } from '../lib/meetingsLogic.js';
-import { PROCESS_STAGES } from '../lib/processManual.js';
-import { expandServiceCodes } from '../lib/serviceCodes.js';
 import ExtraHoursReasonField, { EXTRA_HOURS_AT, extraHoursRequired, isSundayKey } from '../components/ExtraHoursReasonField.jsx';
 import { useLoggedHours } from '../lib/loggedHours.js';
 import ProjectDeliverables from '../components/ProjectDeliverables.jsx';
+import { DRAWING_SUBMITTED, drawingSubmissionLabel } from '../lib/drawingStatus.js';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
@@ -953,49 +950,25 @@ function myAttendance(m, myEmpId) {
   return att.present ? 'Attended' : `Absent${att.reason ? ` – ${att.reason}` : ''}`;
 }
 
-function LeaveTravelCard() {
-  const navigate = useNavigate();
-  return (
-    <Panel title="Leave and travel">
-      <p>Leave and travel requests now have their own dedicated section.</p>
-      <button type="button" className="btn-primary" onClick={() => navigate('/leave-travel')}>
-        Go to Leave &amp; Travel
-      </button>
-    </Panel>
-  );
-}
-
 export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   const bootstrap = useBootstrapProp(bootstrapProp);
   const role = bootstrap?.role?.key ?? '';
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState('overview');
-  const [logTaskId, setLogTaskId] = useState('');
-  const [revProject, setRevProject] = useState('');
-  const [revStage, setRevStage] = useState('');
-  const [revItem, setRevItem] = useState('');
-  const [revDetails, setRevDetails] = useState('');
-  const [revErr, setRevErr] = useState('');
   const [awaitProject, setAwaitProject] = useState('');
   const [awaitItem, setAwaitItem] = useState('');
   const [awaitingOn, setAwaitingOn] = useState('Client');
   const [awaitErr, setAwaitErr] = useState('');
-  const [drawingProject, setDrawingProject] = useState('');
-  const [drawingStage, setDrawingStage] = useState('');
-  const [drawingService, setDrawingService] = useState('');
-  const [drawingNo, setDrawingNo] = useState('');
-  const [drawingRev, setDrawingRev] = useState('');
-  const [drawingFile, setDrawingFile] = useState(null);
-  const [drawingErr, setDrawingErr] = useState('');
   const [taskStage, setTaskStage] = useState('');
   const [subStatus, setSubStatus] = useState('');
 
   const meQ = useQuery({ queryKey: ['me'], queryFn: meApi });
   const teamsQ = useQuery({ queryKey: ['my-teams'], queryFn: teamsMineApi.list, refetchInterval: 10000 });
   const tasksMineQ = useQuery({ queryKey: ['tasks-mine'], queryFn: tasksApi.mine });
-  const revMineQ = useQuery({ queryKey: ['revisions-mine'], queryFn: revisionsApi.mine });
-  const drawingsQ = useQuery({ queryKey: ['drawings-recent'], queryFn: () => drawingsApi.list({ mine: true }) });
+  // The drawing log covers every drawing on my allotted projects, not only ones I
+  // uploaded, and refreshes so the team lead's status decisions show up.
+  const drawingsQ = useQuery({ queryKey: ['drawings-recent'], queryFn: () => drawingsApi.list({}), refetchInterval: 15000 });
   const rfisMineQ = useQuery({ queryKey: ['my-work-rfis'], queryFn: () => rfiApi.list({ mine: true }) });
   const transmittalsMineQ = useQuery({ queryKey: ['my-work-transmittals'], queryFn: transmittalsApi.teamScope });
   const entriesMineQ = useQuery({
@@ -1058,17 +1031,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   const ptlProjectIds = useMemo(() => new Set(ptlProjects.map((p) => String(p._id ?? p.id))), [ptlProjects]);
   const activeProjects = activeQ.data?.items ?? EMPTY_LIST;
   const availableProjects = ptlProjects.length ? ptlProjects : activeProjects;
-  // The server sets an engineer/drafter's drawing service from their team on
-  // the project, so they can only register drawings on projects they are on a
-  // team for. Do not fall back to every active project for them.
-  const isDrafter = (role || me.role) === 'engineer_drafter';
-  const drawingProjects = isDrafter ? ptlProjects : availableProjects;
-  const drawingProjectObj = drawingProjects.find((p) => String(p._id ?? p.id) === drawingProject);
-  const drawingServiceOptions = expandServiceCodes(drawingProjectObj?.teamServices ?? []);
-  const drawingServiceValue = drawingServiceOptions.includes(drawingService) ? drawingService
-    : (drawingServiceOptions.length === 1 ? drawingServiceOptions[0] : '');
   const myTasks = tasksMineQ.data?.items ?? tasksMineQ.data?.tasks ?? EMPTY_LIST;
-  const myRevisions = revMineQ.data?.items ?? EMPTY_LIST;
   const myEntries = entriesMineQ.data?.items ?? EMPTY_LIST;
   const drawings = drawingsQ.data?.items ?? EMPTY_LIST;
   const myRfis = rfisMineQ.data?.items ?? EMPTY_LIST;
@@ -1136,9 +1099,6 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   const extraHoursToday = Math.max(0, todayHours - 8);
   const leadFirst = String(leadName ?? '').split(' ')[0] || 'Team lead';
 
-  // Needs my update: new, or sent back by the lead with instructions.
-  const openMyRevisions = myRevisions.filter((r) => ['open', 'revise'].includes(String(r.status ?? '').toLowerCase()));
-  const waitingOnLeadRevisions = myRevisions.filter((r) => String(r.status ?? '').toLowerCase() === 'resubmitted');
   const myEntryStatuses = entriesMineQ.data?.statusCounts ?? myEntries.reduce((counts, entry) => {
     const status = String(entry.status ?? '').toLowerCase();
     if (status === 'approved') counts.approved += 1;
@@ -1148,12 +1108,19 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   }, { approved: 0, needsAttention: 0, pending: 0 });
   const stageOptions = [...new Set(myTasks.map((task) => task.stage).filter(Boolean))];
   const visibleTasks = taskStage ? myTasks.filter((task) => task.stage === taskStage) : myTasks;
+  const tasksByStage = useMemo(() => {
+    const groups = new Map();
+    for (const task of visibleTasks) {
+      const key = task.stage || 'All stages';
+      groups.set(key, [...(groups.get(key) ?? []), task]);
+    }
+    return [...groups.entries()];
+  }, [visibleTasks]);
   const awaitingRfis = myRfis.filter((rfi) => ['open', 'in progress', 'escalated'].includes(String(rfi.status ?? '').toLowerCase()));
   const projectSummaryRows = ptlProjects.map((project) => {
     const projectId = idOf(project);
     const tasks = myTasks.filter((task) => idOf(task.project) === projectId);
     const projectEntries = myEntries.filter((entry) => idOf(entry.project) === projectId);
-    const projectRevisions = openMyRevisions.filter((revision) => idOf(revision.project) === projectId);
     const projectRfis = awaitingRfis.filter((rfi) => idOf(rfi.project) === projectId);
     const projectDrawings = drawings.filter((drawing) => idOf(drawing.project) === projectId);
     const projectTransmittals = myTransmittals.filter((transmittal) => idOf(transmittal.drawing?.project) === projectId);
@@ -1206,7 +1173,6 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
       gfc: gfcDrawing
         ? `${gfcDrawing.title || gfcDrawing.drawingNo}${gfcUpdate?.progressPct == null ? '' : ` · ${gfcUpdate.progressPct}% complete`}`
         : 'No GFC drawing recorded',
-      revisionStatus: `${projectRevisions.length} open revision${projectRevisions.length === 1 ? '' : 's'}${projectRevisions[0] ? ` (${projectRevisions[0].details ?? projectRevisions[0].drawing ?? 'awaiting update'})` : ''}`,
       awaiting: projectRfis.length
         ? projectRfis.map((rfi) => rfi.description).join('; ')
         : 'None currently with me',
@@ -1238,27 +1204,6 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
-  const createRevision = useMutation({
-    mutationFn: (body) => revisionsApi.create(body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['revisions-mine'] });
-      queryClient.invalidateQueries({ queryKey: ['revisions'] });
-      setRevDetails('');
-      setRevStage('');
-      setRevItem('');
-      setRevErr('');
-    },
-    onError: (e) => setRevErr(e.message),
-  });
-  const resubmitRevision = useMutation({
-    mutationFn: (id) => revisionsApi.setStatus(id, 'Resubmitted'),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['revisions-mine'] });
-      queryClient.invalidateQueries({ queryKey: ['revisions'] });
-      setRevErr('');
-    },
-    onError: (e) => setRevErr(e.message),
-  });
   const createAwaitingItem = useMutation({
     mutationFn: (body) => rfiApi.create(body),
     onSuccess: () => {
@@ -1269,34 +1214,6 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
     },
     onError: (e) => setAwaitErr(e.message),
   });
-  const uploadDrawing = useMutation({
-    mutationFn: async (body) => {
-      const result = await drawingsApi.create(body);
-      const drawing = result?.item ?? result;
-      const drawingId = drawing?._id ?? drawing?.id;
-      if (!drawingId) throw new Error('Drawing was created, but its ID was not returned.');
-      if (drawingFile) {
-        try {
-          await docsApi.drawingProof(drawingId, drawingFile);
-        } catch (error) {
-          throw new Error(`Drawing ${body.drawingNo} was registered, but the file upload failed: ${error.message}`, { cause: error });
-        }
-      }
-      return result;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['drawings-recent'] });
-      setDrawingProject('');
-      setDrawingStage('');
-      setDrawingService('');
-      setDrawingNo('');
-      setDrawingRev('');
-      setDrawingFile(null);
-      setDrawingErr('');
-    },
-    onError: (e) => setDrawingErr(e.message),
-  });
-
   return (
     <>
       <div className="page-head">
@@ -1335,9 +1252,8 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
       {tab === 'overview' && (
         <>
           <Panel title="Assigned to me" sub={`Tasks from ${leadName || 'your team lead'}, my team lead`}>
-            <div className="form-row" style={{ maxWidth: 260 }}>
-              <label className="form-label" htmlFor="my-work-stage-filter">Stage</label>
-              <select id="my-work-stage-filter" className="filter-select" value={taskStage} onChange={(e) => setTaskStage(e.target.value)}>
+            <div className="mw-filter">
+              <select aria-label="Filter by stage" id="my-work-stage-filter" className="filter-select" value={taskStage} onChange={(e) => setTaskStage(e.target.value)}>
                 <option value="">All stages</option>
                 {stageOptions.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
               </select>
@@ -1345,21 +1261,27 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
             {tasksMineQ.isLoading ? <EmptyState text="Loading assigned tasks…" /> : tasksMineQ.isError ? (
               <div className="login-error" role="alert" style={{ display: 'block' }}>{tasksMineQ.error.message}</div>
             ) : visibleTasks.length === 0 ? <EmptyState text="No tasks assigned to you." /> : (
-              <div className="teams-grid">
-                {visibleTasks.map((task) => (
-                  <article className="team-card" key={task._id ?? task.id}>
-                    <div className="team-card-head">
-                      <span className="team-card-name">{task.stage ?? 'All stages'}</span>
-                      <StatusPill tone={toneFor(task.status)}>{task.status ?? '—'}</StatusPill>
-                    </div>
-                    <div>{projLabel(task.project)} · {task.deliverable ?? task.notes ?? '—'}</div>
-                    <div className="deliv-label">Due {displayDate(task.dueDate)}</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-                      <button type="button" className="approve-btn" disabled={setTaskStatus.isPending} onClick={() => setTaskStatus.mutate({ id: task._id ?? task.id, status: 'Open' })}>Acknowledge</button>
-                      <button type="button" className="approve-btn" disabled={setTaskStatus.isPending} onClick={() => setTaskStatus.mutate({ id: task._id ?? task.id, status: 'In Progress' })}>Start</button>
-                      <button type="button" className="approve-btn" disabled={setTaskStatus.isPending} onClick={() => setTaskStatus.mutate({ id: task._id ?? task.id, status: 'Submitted' })}>Submit</button>
-                    </div>
-                  </article>
+              <div className="mw-list">
+                {tasksByStage.map(([stage, stageTasks]) => (
+                  <section key={stage} className="mw-group">
+                    <div className="mw-group-head">{stage}</div>
+                    {stageTasks.map((task) => (
+                      <div className="mw-row" key={task._id ?? task.id}>
+                        <div className="mw-row-main">
+                          {projLabel(task.project)} · {task.deliverable ?? task.notes ?? '—'}
+                          <div className="mw-row-actions">
+                            <button type="button" className="approve-btn" disabled={setTaskStatus.isPending} onClick={() => setTaskStatus.mutate({ id: task._id ?? task.id, status: 'Open' })}>Acknowledge</button>
+                            <button type="button" className="approve-btn" disabled={setTaskStatus.isPending} onClick={() => setTaskStatus.mutate({ id: task._id ?? task.id, status: 'In Progress' })}>Start</button>
+                            <button type="button" className="approve-btn" disabled={setTaskStatus.isPending} onClick={() => setTaskStatus.mutate({ id: task._id ?? task.id, status: 'Submitted' })}>Submit</button>
+                          </div>
+                        </div>
+                        <div className="mw-row-meta">
+                          <StatusPill tone={toneFor(task.status)}>{task.status ?? '—'}</StatusPill>
+                          <span className="mw-due">Due {displayDate(task.dueDate)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </section>
                 ))}
               </div>
             )}
@@ -1370,12 +1292,14 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
             {rfisMineQ.isLoading ? <EmptyState text="Loading your waiting items…" /> : rfisMineQ.isError ? (
               <div className="login-error" role="alert" style={{ display: 'block' }}>{rfisMineQ.error.message}</div>
             ) : awaitingRfis.length === 0 ? <EmptyState text="Nothing is awaiting a response." /> : (
-              <div className="teams-grid">
+              <div className="mw-list">
                 {awaitingRfis.map((rfi) => (
-                  <article className="team-card" key={rfi._id ?? rfi.id}>
-                    <div className="team-card-name">{projLabel(rfi.project)} · {rfi.description}</div>
-                    <div className="deliv-label">{rfi.assignedTo ?? rfi.raisedBy?.role ?? 'External'} · {daysSince(rfi.createdAt)}</div>
-                  </article>
+                  <div className="mw-row" key={rfi._id ?? rfi.id}>
+                    <div className="mw-row-main">{projLabel(rfi.project)} · {rfi.description}</div>
+                    <div className="mw-row-meta">
+                      <span className="mw-due">{rfi.assignedTo ?? rfi.raisedBy?.role ?? 'External'} · {daysSince(rfi.createdAt)}</span>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -1414,181 +1338,6 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
               <button type="submit" className="btn-primary" disabled={createAwaitingItem.isPending}>{createAwaitingItem.isPending ? 'Saving…' : 'Log item'}</button>
             </form>
           </Panel>
-
-          <Panel title="My revisions" sub="From the team revision log">
-            {revMineQ.isLoading ? <EmptyState text="Loading revisions…" /> : revMineQ.isError ? (
-              <div className="login-error" role="alert" style={{ display: 'block' }}>{revMineQ.error.message}</div>
-            ) : openMyRevisions.length === 0 && waitingOnLeadRevisions.length === 0 ? <EmptyState text="No revisions awaiting your update." /> : (
-              <div className="teams-grid">
-                {openMyRevisions.map((revision) => (
-                  <article className="team-card" key={revision._id ?? revision.id}>
-                    <div className="team-card-name">{projLabel(revision.project)} · {revision.stage ?? '—'} · {revision.details}</div>
-                    <div className="deliv-label">{String(revision.status).toLowerCase() === 'revise' ? 'Sent back for revision' : 'Awaiting employee update'}</div>
-                    {revision.leadNote && String(revision.status).toLowerCase() === 'revise' && (
-                      <p style={{ margin: '8px 0 0', fontSize: 13 }}><b>Team lead asks:</b> {revision.leadNote}</p>
-                    )}
-                    <div style={{ marginTop: 10 }}>
-                      <button
-                        type="button"
-                        className="approve-btn"
-                        disabled={resubmitRevision.isPending}
-                        onClick={() => resubmitRevision.mutate(revision._id ?? revision.id)}
-                      >
-                        Resubmit
-                      </button>
-                    </div>
-                  </article>
-                ))}
-                {waitingOnLeadRevisions.map((revision) => (
-                  <article className="team-card" key={revision._id ?? revision.id}>
-                    <div className="team-card-name">{projLabel(revision.project)} · {revision.stage ?? '—'} · {revision.details}</div>
-                    <div className="deliv-label">Resubmitted — awaiting team lead action</div>
-                  </article>
-                ))}
-              </div>
-            )}
-            <div className="field-grid" style={{ marginTop: 16 }}>
-              <div className="form-row">
-                <label className="form-label">Project</label>
-                <select className="filter-select" value={revProject} onChange={(e) => setRevProject(e.target.value)}>
-                  <option value="">Select project</option>
-                  {availableProjects.map((project) => <option key={String(project._id ?? project.id)} value={String(project._id ?? project.id)}>{project.name}</option>)}
-                </select>
-              </div>
-              <div className="form-row">
-                <label className="form-label">Stage</label>
-                <select className="filter-select" value={revStage} onChange={(e) => setRevStage(e.target.value)}>
-                  <option value="">Select stage</option>
-                  {PROCESS_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
-                </select>
-              </div>
-              <div className="form-row">
-                <label className="form-label">Item · What&apos;s being revised</label>
-                <input className="form-input" value={revItem} onChange={(e) => setRevItem(e.target.value)} />
-              </div>
-              <div className="form-row">
-                <label className="form-label">Details *</label>
-                <textarea className="form-input" value={revDetails} onChange={(e) => setRevDetails(e.target.value)} />
-              </div>
-            </div>
-            {revErr && <div className="login-error" role="alert" style={{ display: 'block' }}>{revErr}</div>}
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={createRevision.isPending}
-              onClick={() => {
-                setRevErr('');
-                if (!revProject || !revDetails.trim()) {
-                  setRevErr('Select a project and enter revision details.');
-                  return;
-                }
-                createRevision.mutate({
-                  project: revProject,
-                  stage: revStage || undefined,
-                  drawing: revItem || undefined,
-                  details: revDetails.trim(),
-                  assignedTo: myEmployeeId || undefined,
-                });
-              }}
-            >
-              {createRevision.isPending ? 'Saving…' : 'Log revision'}
-            </button>
-          </Panel>
-
-          <Panel title="Drawing register" sub="Uploaded by you, across the team's projects">
-            {drawingsQ.isLoading ? <EmptyState text="Loading drawing register…" /> : drawingsQ.isError ? (
-              <div className="login-error" role="alert" style={{ display: 'block' }}>{drawingsQ.error.message}</div>
-            ) : (
-              <DataTable
-                columns={[
-                  { key: 'project', label: 'Project', render: (drawing) => projLabel(drawing.project) },
-                  { key: 'service', label: 'Service', render: (drawing) => drawing.service ?? '—' },
-                  { key: 'stage', label: 'Stage', render: (drawing) => drawing.stage ?? '—' },
-                  { key: 'drawingNo', label: 'Drawing no.', render: (drawing) => drawing.drawingNo ?? '—' },
-                  { key: 'rev', label: 'Rev', render: (drawing) => drawing.rev ?? '—' },
-                  { key: 'date', label: 'Date', render: (drawing) => displayDate(drawing.date ?? drawing.createdAt) },
-                ]}
-                rows={drawings}
-                emptyText="No drawings uploaded by you yet."
-              />
-            )}
-            <form className="field-grid" style={{ marginTop: 16 }} onSubmit={(e) => {
-              e.preventDefault();
-              setDrawingErr('');
-              if (!drawingProject || !drawingStage || !drawingNo.trim()) {
-                setDrawingErr('Project, stage, and drawing number are required.');
-                return;
-              }
-              if (isDrafter && !drawingServiceValue) {
-                setDrawingErr('Select the drawing service.');
-                return;
-              }
-              uploadDrawing.mutate({
-                project: drawingProject,
-                service: isDrafter ? drawingServiceValue : undefined,
-                stage: drawingStage,
-                drawingNo: drawingNo.trim(),
-                title: drawingNo.trim(),
-                rev: drawingRev || undefined,
-                date: todayISO(),
-              });
-            }}>
-              <div className="form-row">
-                <label className="form-label">Project</label>
-                <select className="filter-select" value={drawingProject} onChange={(e) => { setDrawingProject(e.target.value); setDrawingService(''); setDrawingErr(''); }} required>
-                  <option value="">Select project</option>
-                  {drawingProjects.map((project) => <option key={String(project._id ?? project.id)} value={String(project._id ?? project.id)}>{project.name}</option>)}
-                </select>
-              </div>
-              {isDrafter && (
-                <div className="form-row">
-                  <label className="form-label">Service</label>
-                  <select className="filter-select" value={drawingServiceValue} onChange={(e) => setDrawingService(e.target.value)} required disabled={!drawingProject}>
-                    <option value="">Select service</option>
-                    {drawingServiceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              )}
-              <div className="form-row">
-                <label className="form-label">Stage</label>
-                <select className="filter-select" value={drawingStage} onChange={(e) => setDrawingStage(e.target.value)} required>
-                  <option value="">Select stage</option>
-                  {['Preliminary concept', 'Concept', 'Schematic', 'Design development', 'Tender', 'GFC'].map((stage) => <option key={stage} value={stage}>{stage}</option>)}
-                </select>
-              </div>
-              <div className="form-row"><label className="form-label">Drawing no.</label><input className="form-input" placeholder="e.g. S-302" value={drawingNo} onChange={(e) => setDrawingNo(e.target.value)} required /></div>
-              <div className="form-row"><label className="form-label">Revision</label><input className="form-input" placeholder="e.g. R01" value={drawingRev} onChange={(e) => setDrawingRev(e.target.value)} /></div>
-              <div className="form-row"><label className="form-label">Drawing file</label><input key={drawingFile ? drawingFile.name : 'no-file'} type="file" onChange={(e) => setDrawingFile(e.target.files?.[0] ?? null)} /></div>
-              {drawingErr && <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>{drawingErr}</div>}
-              <button type="submit" className="btn-primary" disabled={uploadDrawing.isPending}>{uploadDrawing.isPending ? 'Uploading…' : 'Upload to register'}</button>
-            </form>
-          </Panel>
-
-          <Panel title="Today's work progress">
-            {todayEntries.length === 0 ? <p>Nothing logged yet today</p> : <p>{todayEntries.length} update(s) logged today</p>}
-            <div className="field-grid">
-              <Field label="Hours logged today" value={todayHours.toFixed(1)} />
-              <Field label="Tasks touched today" value={todayEntries.filter((entry) => entry.category === 'Task').length} />
-            </div>
-            <p style={{ color: 'var(--ink-muted)', fontSize: 13 }}>Hours logged against a task in &quot;Update progress&quot; will show up here through the day.</p>
-          </Panel>
-
-          <Panel title="Recent updates">
-            <DataTable
-              columns={[
-                { key: 'wu', label: 'WU no.', render: (entry) => wuDisplay(entry) },
-                { key: 'project', label: 'Project', render: (entry) => projLabel(entry.project) },
-                { key: 'deliverable', label: 'Deliverable', render: (entry) => entry.deliverable ?? entry.taskActivity ?? '—' },
-                { key: 'progress', label: '%', render: (entry) => entry.progressPct == null ? '—' : `${entry.progressPct}%` },
-                { key: 'status', label: 'Status', render: (entry) => <StatusPill tone={toneFor(entry.status)}>{updateStatusLabel(entry.status)}</StatusPill> },
-                { key: 'date', label: 'Date', render: (entry) => displayDate(entry.date) },
-              ]}
-              rows={myEntries.slice(0, 10)}
-              emptyText="No updates yet."
-            />
-          </Panel>
-
-          <LeaveTravelCard />
         </>
       )}
 
@@ -1626,7 +1375,6 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
                     <Field label="Submission status" value={row.submission} />
                     <Field label="Delayed / on-time" value={row.timing} />
                     <Field label="GFC status" value={row.gfc} />
-                    <Field label="Revision status" value={row.revisionStatus} />
                     <Field label="Awaiting response" value={row.awaiting} />
                     <Field label="Transmittal status" value={row.transmittal} />
                   </div>
@@ -1729,21 +1477,27 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
 
       {tab === 'deliverables' && (
         <>
-          <ProjectDeliverables projects={availableProjects} />
+          <ProjectDeliverables projects={availableProjects} showList={false} />
           <Panel title="Drawing submission status" sub="Stage-wise, across my allotted projects">
             <DataTable
               columns={[
                 { key: 'project', label: 'Project', render: (d) => projLabel(d.project) },
                 { key: 'stage', label: 'Stage', render: (d) => d.stage ?? '—' },
                 { key: 'drawingNo', label: 'Drawing no.', render: (d) => d.drawingNo ?? d.drawing ?? '—' },
-                { key: 'submission', label: 'Submission status', render: (d) => <StatusPill tone={toneFor(d.status ?? d.submissionStatus)}>{d.status ?? d.submissionStatus ?? '—'}</StatusPill> },
+                { key: 'rev', label: 'Rev', render: (d) => d.rev ?? '—' },
+                { key: 'submission', label: 'Submission status', render: (d) => (
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                    <StatusPill tone={toneFor(d.status === 'Resubmit' ? 'Awaiting' : d.status ?? DRAWING_SUBMITTED)}>{drawingSubmissionLabel(d)}</StatusPill>
+                    {d.statusRemark && <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{d.statusRemark}</span>}
+                  </span>
+                ) },
                 { key: 'delay', label: 'Delay / on-time', render: (d) => {
                   const v = d.delay ?? d.delayStatus ?? '—';
                   return /late|overdue|blocked/i.test(String(v)) ? <span style={{ color: 'var(--rust)' }}>{v}</span> : v;
                 } },
               ]}
               rows={myProjectDrawings}
-              emptyText="No drawings for your projects yet."
+              emptyText="No drawings logged for your projects yet."
             />
           </Panel>
           <Panel title="GFC drawing status">
@@ -1751,22 +1505,10 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
               columns={[
                 { key: 'drawing', label: 'Drawing', render: (d) => d.title ?? d.drawingNo ?? d.drawing ?? '—' },
                 { key: 'project', label: 'Project', render: (d) => projLabel(d.project) },
-                { key: 'status', label: 'Status', render: (d) => (d.progressPct != null && d.status == null ? `${d.progressPct}% complete` : <StatusPill tone={toneFor(d.status)}>{d.status ?? '—'}</StatusPill>) },
+                { key: 'status', label: 'Status', render: (d) => (d.progressPct != null && d.status == null ? `${d.progressPct}% complete` : <StatusPill tone={toneFor(d.status === 'Resubmit' ? 'Awaiting' : d.status ?? DRAWING_SUBMITTED)}>{drawingSubmissionLabel(d)}</StatusPill>) },
               ]}
               rows={gfcDrawings}
               emptyText="No GFC drawings for your projects."
-            />
-          </Panel>
-          <Panel title="Revision details">
-            <DataTable
-              columns={[
-                { key: 'project', label: 'Project', render: (r) => projLabel(r.project) },
-                { key: 'item', label: 'Item', render: (r) => r.details ?? r.drawing ?? r.item ?? '—' },
-                { key: 'reason', label: 'Reason', render: (r) => r.raisedBy ?? r.reason ?? '—' },
-                { key: 'status', label: 'Status', render: (r) => <StatusPill tone={toneFor(r.status)}>{r.status ?? '—'}</StatusPill> },
-              ]}
-              rows={myRevisions}
-              emptyText="No revisions logged."
             />
           </Panel>
           <Panel title="Pending / awaiting responses">
