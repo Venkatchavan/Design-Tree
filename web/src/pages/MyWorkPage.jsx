@@ -1536,7 +1536,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
               <div className="form-row">
                 <label className="form-label">Project</label>
                 <select className="filter-select" value={drawingProject} onChange={(e) => { setDrawingProject(e.target.value); setDrawingService(''); setDrawingErr(''); }} required>
-                  <option value="">{isDrafter && drawingProjects.length === 0 ? 'No team projects' : 'Select project'}</option>
+                  <option value="">Select project</option>
                   {drawingProjects.map((project) => <option key={String(project._id ?? project.id)} value={String(project._id ?? project.id)}>{project.name}</option>)}
                 </select>
               </div>
@@ -1559,13 +1559,8 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
               <div className="form-row"><label className="form-label">Drawing no.</label><input className="form-input" placeholder="e.g. S-302" value={drawingNo} onChange={(e) => setDrawingNo(e.target.value)} required /></div>
               <div className="form-row"><label className="form-label">Revision</label><input className="form-input" placeholder="e.g. R01" value={drawingRev} onChange={(e) => setDrawingRev(e.target.value)} /></div>
               <div className="form-row"><label className="form-label">Drawing file</label><input key={drawingFile ? drawingFile.name : 'no-file'} type="file" onChange={(e) => setDrawingFile(e.target.files?.[0] ?? null)} /></div>
-              {isDrafter && !teamsQ.isLoading && drawingProjects.length === 0 && (
-                <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>
-                  You are not on a team for any project yet, so you cannot register drawings. Ask your team lead to add you.
-                </div>
-              )}
               {drawingErr && <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>{drawingErr}</div>}
-              <button type="submit" className="btn-primary" disabled={uploadDrawing.isPending || (isDrafter && drawingProjects.length === 0)}>{uploadDrawing.isPending ? 'Uploading…' : 'Upload to register'}</button>
+              <button type="submit" className="btn-primary" disabled={uploadDrawing.isPending}>{uploadDrawing.isPending ? 'Uploading…' : 'Upload to register'}</button>
             </form>
           </Panel>
 

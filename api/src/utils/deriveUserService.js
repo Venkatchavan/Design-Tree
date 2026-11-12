@@ -1,6 +1,8 @@
 import { Team } from '../models/Team.js';
 import { User } from '../models/User.js';
-import { expandServiceCodes } from '../config/services.js';
+import { Employee } from '../models/Employee.js';
+import { expandServices, expandServiceCodes } from '../config/services.js';
+import { derivedProjectLinks } from './derivedProjects.js';
 
 async function teamServices(user, projectId) {
   if (!user?.id || !projectId) return [];
@@ -11,7 +13,16 @@ async function teamServices(user, projectId) {
     active: { $ne: false },
     $or: [{ 'members.employee': me.employee }, { lead: me.employee }],
   }).select('service').lean();
-  return [...new Set(teams.map((t) => String(t.service ?? '').trim()).filter(Boolean))];
+  const services = [...new Set(teams.map((t) => String(t.service ?? '').trim()).filter(Boolean))];
+  if (services.length) return services;
+  // Not on a Team record: the project may still be theirs through an assigned
+  // task (or the ED hierarchy). My work lists those with the link's service, else
+  // the employee's department — use the same service here.
+  const link = (await derivedProjectLinks(user)).find((l) => l.project === String(projectId));
+  if (!link) return [];
+  const employee = await Employee.findById(me.employee).select('department').lean();
+  const service = link.service || expandServices([employee?.department]).join(' + ');
+  return service ? [service] : [];
 }
 
 // The service a user works in on a project, taken from the active team(s) on

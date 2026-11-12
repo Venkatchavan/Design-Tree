@@ -520,7 +520,9 @@ export const drawings = {
           return res.status(400).json({ message: 'You are not on a team for this project, so the drawing service cannot be set. Ask your team lead to add you.' });
         }
         const picked = String(req.body.service ?? '').trim().toUpperCase();
-        const service = options.find((o) => o.toUpperCase() === picked) ?? (options.length === 1 ? options[0] : '');
+        const service = picked
+          ? options.find((o) => o.toUpperCase() === picked)
+          : (options.length === 1 ? options[0] : '');
         if (!service) {
           return res.status(400).json({ message: `Select the drawing's service (${options.join(', ')}).` });
         }
