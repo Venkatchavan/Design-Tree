@@ -1740,11 +1740,26 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
   const project = chosenProject || (teamProjects.length === 1 ? idOf(teamProjects[0]) : '');
   const [stage,setStage]=useState('');
   const [deliverable,setDeliverable]=useState('');
+  const [otherDeliverable,setOtherDeliverable]=useState(false);
   const [dueDate,setDueDate]=useState('');
   const [priority,setPriority]=useState('Medium');
   const [notes,setNotes]=useState('');
   const [err,setErr]=useState('');
   const [extendTask,setExtendTask]=useState(null);
+  // Deliverables for the chosen stage: the project's own list (saved under
+  // "List of Deliverables") plus the standard process-manual ones.
+  const projectDeliverablesQ = useQuery({
+    queryKey: ['tl-deliverables', project],
+    queryFn: () => deliverablesApi.list({ project }),
+    enabled: !!project,
+  });
+  const stageOptions = useMemo(() => {
+    if (!stage) return [];
+    const saved = (projectDeliverablesQ.data?.items ?? [])
+      .filter((d) => idOf(d.project) === project && manualStage(d.stage) === stage)
+      .map((d) => String(d.deliverable ?? '').trim());
+    return [...new Set([...stageDeliverables(stage), ...saved].filter(Boolean))];
+  }, [stage, project, projectDeliverablesQ.data]);
   const roster = useQuery({ queryKey: ['task-assignees', project], queryFn: () => tasksApi.assignees(project), enabled: !!project, retry: false, refetchInterval: 10000 });
   const eligible = (roster.data?.items ?? []).filter(member => includeLeads || !member.isLead);
   const members = [...new Map(eligible.map(member => [memberId(member) + (includeLeads ? ':' + member.service : ''), member])).values()];
@@ -1756,6 +1771,7 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
       setErr('');
       setSelMembers([]);
       setDeliverable('');
+      setOtherDeliverable(false);
       setPriority('Medium');
       setNotes('');
     },
@@ -1782,7 +1798,7 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
       return;
     }
     if (!deliverable.trim()) {
-      setErr('Deliverable / task text is required.');
+      setErr('Select a deliverable (or choose Other and name it).');
       return;
     }
     create.mutate({
@@ -1839,7 +1855,7 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
           <div className="field-grid">
             <div className="form-row">
               <label className="form-label">Project *</label>
-              <select aria-label="Task project" className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => { if (e.target.value !== project) { setProject(e.target.value); setSelMembers([]); } }}>
+              <select aria-label="Task project" className="filter-select" style={{ width: '100%' }} value={project} onChange={(e) => { if (e.target.value !== project) { setProject(e.target.value); setSelMembers([]); setDeliverable(''); setOtherDeliverable(false); } }}>
                 <option value="">Select project</option>
                 {teamProjects.map((p) => (
                   <option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>
@@ -1850,7 +1866,7 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
             </div>
             <div className="form-row">
               <label className="form-label">Stage</label>
-              <select className="form-input" aria-label="Stage" value={stage} onChange={(e) => setStage(e.target.value)}>
+              <select className="form-input" aria-label="Stage" value={stage} onChange={(e) => { setStage(e.target.value); setDeliverable(''); setOtherDeliverable(false); }}>
                 <option value="">Select stage</option>
                 {TASK_STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
               </select>
@@ -1869,7 +1885,19 @@ function AssignWorkPanel({teamProjects,myTasks,includeLeads=false}) {
           </div>
           <div className="form-row">
             <label className="form-label">Deliverable / task *</label>
-            <input className="form-input" value={deliverable} onChange={(e) => setDeliverable(e.target.value)} placeholder="Bore hole location and specifications" />
+            <select
+              className="form-input"
+              aria-label="Deliverable"
+              value={otherDeliverable ? OTHER_DELIVERABLE : deliverable}
+              onChange={(e) => (e.target.value === OTHER_DELIVERABLE
+                ? (setOtherDeliverable(true), setDeliverable(''))
+                : (setOtherDeliverable(false), setDeliverable(e.target.value)))}
+            >
+              <option value="">{stage ? 'Select deliverable' : 'Select a stage first'}</option>
+              {stageOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+              <option value={OTHER_DELIVERABLE}>Other (specify)</option>
+            </select>
+            {otherDeliverable && <input className="form-input" style={{ marginTop: 6 }} aria-label="Deliverable name" value={deliverable} onChange={(e) => setDeliverable(e.target.value)} placeholder="Name the deliverable / task" />}
           </div>
           <div className="form-row">
             <label className="form-label">Notes for the designer</label>

@@ -37,6 +37,7 @@ import Panel from '../components/Panel.jsx';
 import MyAbsencesPanel from '../components/meetings/MyAbsencesPanel.jsx';
 import { displayStatus, splitMeetings } from '../lib/meetingsLogic.js';
 import { PROCESS_STAGES } from '../lib/processManual.js';
+import { expandServiceCodes } from '../lib/serviceCodes.js';
 import ExtraHoursReasonField, { EXTRA_HOURS_AT, extraHoursRequired, isSundayKey } from '../components/ExtraHoursReasonField.jsx';
 import { useLoggedHours } from '../lib/loggedHours.js';
 import ProjectDeliverables from '../components/ProjectDeliverables.jsx';
@@ -982,6 +983,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   const [awaitErr, setAwaitErr] = useState('');
   const [drawingProject, setDrawingProject] = useState('');
   const [drawingStage, setDrawingStage] = useState('');
+  const [drawingService, setDrawingService] = useState('');
   const [drawingNo, setDrawingNo] = useState('');
   const [drawingRev, setDrawingRev] = useState('');
   const [drawingFile, setDrawingFile] = useState(null);
@@ -1056,6 +1058,15 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   const ptlProjectIds = useMemo(() => new Set(ptlProjects.map((p) => String(p._id ?? p.id))), [ptlProjects]);
   const activeProjects = activeQ.data?.items ?? EMPTY_LIST;
   const availableProjects = ptlProjects.length ? ptlProjects : activeProjects;
+  // The server sets an engineer/drafter's drawing service from their team on
+  // the project, so they can only register drawings on projects they are on a
+  // team for. Do not fall back to every active project for them.
+  const isDrafter = (role || me.role) === 'engineer_drafter';
+  const drawingProjects = isDrafter ? ptlProjects : availableProjects;
+  const drawingProjectObj = drawingProjects.find((p) => String(p._id ?? p.id) === drawingProject);
+  const drawingServiceOptions = expandServiceCodes(drawingProjectObj?.teamServices ?? []);
+  const drawingServiceValue = drawingServiceOptions.includes(drawingService) ? drawingService
+    : (drawingServiceOptions.length === 1 ? drawingServiceOptions[0] : '');
   const myTasks = tasksMineQ.data?.items ?? tasksMineQ.data?.tasks ?? EMPTY_LIST;
   const myRevisions = revMineQ.data?.items ?? EMPTY_LIST;
   const myEntries = entriesMineQ.data?.items ?? EMPTY_LIST;
@@ -1277,6 +1288,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
       queryClient.invalidateQueries({ queryKey: ['drawings-recent'] });
       setDrawingProject('');
       setDrawingStage('');
+      setDrawingService('');
       setDrawingNo('');
       setDrawingRev('');
       setDrawingFile(null);
@@ -1507,9 +1519,13 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
                 setDrawingErr('Project, stage, and drawing number are required.');
                 return;
               }
-              // Service comes from the uploader's own team on the server.
+              if (isDrafter && !drawingServiceValue) {
+                setDrawingErr('Select the drawing service.');
+                return;
+              }
               uploadDrawing.mutate({
                 project: drawingProject,
+                service: isDrafter ? drawingServiceValue : undefined,
                 stage: drawingStage,
                 drawingNo: drawingNo.trim(),
                 title: drawingNo.trim(),
@@ -1519,11 +1535,20 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
             }}>
               <div className="form-row">
                 <label className="form-label">Project</label>
-                <select className="filter-select" value={drawingProject} onChange={(e) => setDrawingProject(e.target.value)} required>
-                  <option value="">Select project</option>
-                  {availableProjects.map((project) => <option key={String(project._id ?? project.id)} value={String(project._id ?? project.id)}>{project.name}</option>)}
+                <select className="filter-select" value={drawingProject} onChange={(e) => { setDrawingProject(e.target.value); setDrawingService(''); setDrawingErr(''); }} required>
+                  <option value="">{isDrafter && drawingProjects.length === 0 ? 'No team projects' : 'Select project'}</option>
+                  {drawingProjects.map((project) => <option key={String(project._id ?? project.id)} value={String(project._id ?? project.id)}>{project.name}</option>)}
                 </select>
               </div>
+              {isDrafter && (
+                <div className="form-row">
+                  <label className="form-label">Service</label>
+                  <select className="filter-select" value={drawingServiceValue} onChange={(e) => setDrawingService(e.target.value)} required disabled={!drawingProject}>
+                    <option value="">Select service</option>
+                    {drawingServiceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="form-row">
                 <label className="form-label">Stage</label>
                 <select className="filter-select" value={drawingStage} onChange={(e) => setDrawingStage(e.target.value)} required>
@@ -1534,8 +1559,13 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
               <div className="form-row"><label className="form-label">Drawing no.</label><input className="form-input" placeholder="e.g. S-302" value={drawingNo} onChange={(e) => setDrawingNo(e.target.value)} required /></div>
               <div className="form-row"><label className="form-label">Revision</label><input className="form-input" placeholder="e.g. R01" value={drawingRev} onChange={(e) => setDrawingRev(e.target.value)} /></div>
               <div className="form-row"><label className="form-label">Drawing file</label><input key={drawingFile ? drawingFile.name : 'no-file'} type="file" onChange={(e) => setDrawingFile(e.target.files?.[0] ?? null)} /></div>
+              {isDrafter && !teamsQ.isLoading && drawingProjects.length === 0 && (
+                <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>
+                  You are not on a team for any project yet, so you cannot register drawings. Ask your team lead to add you.
+                </div>
+              )}
               {drawingErr && <div className="login-error" role="alert" style={{ display: 'block', gridColumn: '1 / -1' }}>{drawingErr}</div>}
-              <button type="submit" className="btn-primary" disabled={uploadDrawing.isPending}>{uploadDrawing.isPending ? 'Uploading…' : 'Upload to register'}</button>
+              <button type="submit" className="btn-primary" disabled={uploadDrawing.isPending || (isDrafter && drawingProjects.length === 0)}>{uploadDrawing.isPending ? 'Uploading…' : 'Upload to register'}</button>
             </form>
           </Panel>
 

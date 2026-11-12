@@ -17,7 +17,7 @@ import { Recruitment } from '../models/Recruitment.js';
 import { Revision } from '../models/Revision.js';
 import { Task } from '../models/Task.js';
 import { makeCrud } from '../utils/crud.js';
-import { deriveUserService } from '../utils/deriveUserService.js';
+import { deriveUserService, deriveUserServiceOptions } from '../utils/deriveUserService.js';
 import {
   deliverableSchema,
   deliverableUpdateSchema,
@@ -478,11 +478,9 @@ const drawingCrud = makeCrud(Drawing, {
   },
   decorate: async (data, req) => {
     if (req.method === 'POST') {
-      // Engineers / drafters work in one service: the drawing's service is
-      // their team's, never picked on the form. Others may still send one.
-      const service = req.user?.role === 'engineer_drafter' || !data.service
-        ? await deriveUserService(req.user, data.project)
-        : data.service;
+      // Engineers / drafters choose one of their team's individual services
+      // (validated in drawings.create). Others may send one or get the team's.
+      const service = data.service || await deriveUserService(req.user, data.project);
       return { ...data, ...(service ? { service } : {}), sharedBy: req.user.id };
     }
     // Leaving "Awaiting" clears who it was waiting on.
@@ -517,9 +515,16 @@ export const drawings = {
     if (!drawingStatusGuard(req, res)) return undefined;
     if (req.user?.role === 'engineer_drafter' && req.body?.project) {
       try {
-        if (!await deriveUserService(req.user, req.body.project)) {
+        const options = await deriveUserServiceOptions(req.user, req.body.project);
+        if (!options.length) {
           return res.status(400).json({ message: 'You are not on a team for this project, so the drawing service cannot be set. Ask your team lead to add you.' });
         }
+        const picked = String(req.body.service ?? '').trim().toUpperCase();
+        const service = options.find((o) => o.toUpperCase() === picked) ?? (options.length === 1 ? options[0] : '');
+        if (!service) {
+          return res.status(400).json({ message: `Select the drawing's service (${options.join(', ')}).` });
+        }
+        req.body.service = service;
       } catch (err) { return next(err); }
     }
     return drawingCrud.create(req, res, next);
