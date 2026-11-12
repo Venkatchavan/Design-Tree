@@ -79,6 +79,8 @@ export function manualStage(stage) {
   const s = String(stage ?? '').trim();
   if (!s) return '';
   if (PROCESS_STAGES.includes(s)) return s;
+  const exact = PROCESS_STAGES.find((p) => p.toLowerCase() === s.toLowerCase());
+  if (exact) return exact;
   return LEGACY_STAGE[s.toUpperCase()] ?? s;
 }
 

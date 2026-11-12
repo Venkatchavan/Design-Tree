@@ -34,6 +34,10 @@ import {
   takePendingLogout,
 } from '../lib/session.js';
 import Panel from '../components/Panel.jsx';
+import MyAbsencesPanel from '../components/meetings/MyAbsencesPanel.jsx';
+import { displayStatus, splitMeetings } from '../lib/meetingsLogic.js';
+import { PROCESS_STAGES } from '../lib/processManual.js';
+import ExtraHoursReasonField, { EXTRA_HOURS_AT, extraHoursRequired, isSundayKey } from '../components/ExtraHoursReasonField.jsx';
 import { useLoggedHours } from '../lib/loggedHours.js';
 import ProjectDeliverables from '../components/ProjectDeliverables.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -138,16 +142,14 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
   const [extraHoursReason, setExtraHoursReason] = useState('');
   const [err, setErr] = useState('');
   const pendingLogout = isPendingLogout();
-  // Day's extra-hours threshold (mirrors EXTRA_HOURS_THRESHOLD in
-  // api/src/config/attendance.js; the server enforces it as well).
-  const EXTRA_HOURS_AT = 8;
+  // Day's extra-hours threshold mirrors EXTRA_HOURS_THRESHOLD in
+  // api/src/config/attendance.js; the server enforces it as well.
   const totalHours =
     (Number(hours) || 0) +
     otherRows.reduce((s, r) => s + (Number(r.hours) || 0), 0);
   // The server also counts hours already logged on this date.
   const loggedToday = useLoggedHours(date);
   const dayTotal = totalHours + loggedToday;
-  const needsExtraReason = dayTotal > EXTRA_HOURS_AT;
 
   const projectOptions = hasPtl ? ptlProjects : activeProjects;
   const selectedOption = (projectOptions ?? []).find((p) => String(p._id ?? p.id) === project)
@@ -235,8 +237,10 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
       .filter((r) => r.project && Number(r.hours) > 0)
       .map((r) => ({ project: r.project, hours: Number(r.hours) }));
     const total = h + otherHours.reduce((s, r) => s + r.hours, 0);
-    if (total + loggedToday > EXTRA_HOURS_AT && !extraHoursReason.trim()) {
-      setErr(`A reason is required for extra hours (over ${EXTRA_HOURS_AT}h in a day).`);
+    if (extraHoursRequired(total + loggedToday, date) && !extraHoursReason.trim()) {
+      setErr(isSundayKey(date)
+        ? 'A reason is required for working on a Sunday. Fill in "Reason for extra hours".'
+        : `A reason is required for extra hours (over ${EXTRA_HOURS_AT}h in a day). Fill in "Reason for extra hours".`);
       return;
     }
     create.mutate({
@@ -250,7 +254,7 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
       drawing: drawing.trim() || undefined,
       notes: notes.trim() || undefined,
       otherHours: otherHours.length > 0 ? otherHours : undefined,
-      extraHoursReason: total + loggedToday > EXTRA_HOURS_AT ? extraHoursReason.trim() : undefined,
+      extraHoursReason: extraHoursReason.trim() || undefined,
     });
   }
 
@@ -418,17 +422,13 @@ export function UpdateProgressForm({ ptlProjects, activeProjects, myTasks = [], 
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
-          {needsExtraReason && (
-            <div className="form-row">
-              <label className="form-label">Extra hours reason *</label>
-              <textarea
-                className="form-input"
-                value={extraHoursReason}
-                onChange={(e) => setExtraHoursReason(e.target.value)}
-                placeholder={`Required — ${dayTotal.toFixed(1)}h for this day (${loggedToday.toFixed(1)}h already logged) exceeds ${EXTRA_HOURS_AT}h`}
-              />
-            </div>
-          )}
+          <ExtraHoursReasonField
+            value={extraHoursReason}
+            onChange={setExtraHoursReason}
+            dayTotal={dayTotal}
+            loggedToday={loggedToday}
+            dateKey={date}
+          />
           <div className="form-row" style={{ maxWidth: 250 }}>
             <label className="form-label">Date</label>
             <input
@@ -513,22 +513,10 @@ function MyMeetingsTab() {
     const mom = m.mom && typeof m.mom === 'object' ? m.mom : {};
     return !!((mom.discussion ?? '').trim() || (mom.decisions ?? '').trim() || m.momDoc);
   };
-  // Employee-facing status (§11.1): Upcoming / Rescheduled / Awaiting update /
-  // Completed · MOM pending / Completed / Cancelled.
-  const empStatus = (m) => {
-    const s = String(m.status ?? '').toLowerCase();
-    if (s === 'cancelled' || s === 'canceled') return 'Cancelled';
-    if (s === 'held') return momAvailable(m) ? 'Completed' : 'Completed · MOM pending';
-    const dk = dayKey(m.date);
-    if (m.originalDate && dk && dk >= todayKey) return 'Rescheduled';
-    if (dk && dk < todayKey) return 'Awaiting update';
-    return 'Upcoming';
-  };
-  const isUpcoming = (m) => ['Upcoming', 'Rescheduled'].includes(empStatus(m));
-  const inLog = (m) => !isUpcoming(m);
-
-  const upcoming = items.filter(isUpcoming);
-  const log = items.filter(inLog);
+  // Employee-facing status (§11.1) — shared with the Meetings page and the
+  // project Meetings tab so all three show the same log.
+  const empStatus = displayStatus;
+  const { upcoming, log } = splitMeetings(items);
   const todayMeetings = upcoming.filter((m) => dayKey(m.date) === todayKey);
   const pendingResponses = upcoming.filter((m) => {
     const inv = myInviteOf(m);
@@ -619,6 +607,7 @@ function MyMeetingsTab() {
           />
         )}
       </Panel>
+      <MyAbsencesPanel />
       <Panel title="Pending availability responses">
         {pendingResponses.length === 0 ? (
           <EmptyState text="You have responded to every invitation." />
@@ -960,7 +949,7 @@ function myAttendance(m, myEmpId) {
     (x) => String(typeof x.employee === 'object' ? (x.employee?._id ?? x.employee?.id ?? '') : x.employee) === String(myEmpId),
   );
   if (!att) return 'Not marked';
-  return att.present ? 'Attended' : 'Absent';
+  return att.present ? 'Attended' : `Absent${att.reason ? ` – ${att.reason}` : ''}`;
 }
 
 function LeaveTravelCard() {
@@ -992,7 +981,6 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   const [awaitingOn, setAwaitingOn] = useState('Client');
   const [awaitErr, setAwaitErr] = useState('');
   const [drawingProject, setDrawingProject] = useState('');
-  const [drawingService, setDrawingService] = useState('');
   const [drawingStage, setDrawingStage] = useState('');
   const [drawingNo, setDrawingNo] = useState('');
   const [drawingRev, setDrawingRev] = useState('');
@@ -1068,15 +1056,6 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   const ptlProjectIds = useMemo(() => new Set(ptlProjects.map((p) => String(p._id ?? p.id))), [ptlProjects]);
   const activeProjects = activeQ.data?.items ?? EMPTY_LIST;
   const availableProjects = ptlProjects.length ? ptlProjects : activeProjects;
-  const selectedDrawingProject = availableProjects.find(
-    (project) => String(project._id ?? project.id) === drawingProject,
-  );
-  const selectedDrawingServices = [
-    ...(selectedDrawingProject?.services ?? []),
-    ...(selectedDrawingProject?.scope ?? []),
-  ]
-    .map((service) => typeof service === 'string' ? service : service.service)
-    .filter(Boolean);
   const myTasks = tasksMineQ.data?.items ?? tasksMineQ.data?.tasks ?? EMPTY_LIST;
   const myRevisions = revMineQ.data?.items ?? EMPTY_LIST;
   const myEntries = entriesMineQ.data?.items ?? EMPTY_LIST;
@@ -1297,7 +1276,6 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['drawings-recent'] });
       setDrawingProject('');
-      setDrawingService('');
       setDrawingStage('');
       setDrawingNo('');
       setDrawingRev('');
@@ -1467,7 +1445,10 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
               </div>
               <div className="form-row">
                 <label className="form-label">Stage</label>
-                <input className="form-input" value={revStage} onChange={(e) => setRevStage(e.target.value)} />
+                <select className="filter-select" value={revStage} onChange={(e) => setRevStage(e.target.value)}>
+                  <option value="">Select stage</option>
+                  {PROCESS_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+                </select>
               </div>
               <div className="form-row">
                 <label className="form-label">Item · What&apos;s being revised</label>
@@ -1522,13 +1503,13 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
             <form className="field-grid" style={{ marginTop: 16 }} onSubmit={(e) => {
               e.preventDefault();
               setDrawingErr('');
-              if (!drawingProject || !drawingService || !drawingStage || !drawingNo.trim()) {
-                setDrawingErr('Project, service, stage, and drawing number are required.');
+              if (!drawingProject || !drawingStage || !drawingNo.trim()) {
+                setDrawingErr('Project, stage, and drawing number are required.');
                 return;
               }
+              // Service comes from the uploader's own team on the server.
               uploadDrawing.mutate({
                 project: drawingProject,
-                service: drawingService,
                 stage: drawingStage,
                 drawingNo: drawingNo.trim(),
                 title: drawingNo.trim(),
@@ -1538,16 +1519,9 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
             }}>
               <div className="form-row">
                 <label className="form-label">Project</label>
-                <select className="filter-select" value={drawingProject} onChange={(e) => { setDrawingProject(e.target.value); setDrawingService(''); }} required>
+                <select className="filter-select" value={drawingProject} onChange={(e) => setDrawingProject(e.target.value)} required>
                   <option value="">Select project</option>
                   {availableProjects.map((project) => <option key={String(project._id ?? project.id)} value={String(project._id ?? project.id)}>{project.name}</option>)}
-                </select>
-              </div>
-              <div className="form-row">
-                <label className="form-label">Service</label>
-                <select className="filter-select" value={drawingService} onChange={(e) => setDrawingService(e.target.value)} required>
-                  <option value="">Select service</option>
-                  {(selectedDrawingServices.length ? selectedDrawingServices : ['Structural', 'Mechanical', 'Electrical', 'Plumbing', 'Fire', 'BIM']).map((service) => <option key={service} value={service}>{service}</option>)}
                 </select>
               </div>
               <div className="form-row">

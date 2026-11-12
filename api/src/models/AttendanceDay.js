@@ -28,6 +28,8 @@ const attendanceDaySchema = new mongoose.Schema(
     extraHoursDecisionReason: { type: String, trim: true, default: null },
     extraHoursDecidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     extraHoursDecidedAt: { type: Date },
+    // Where the reason was given: at sign-out, or on a work-progress update.
+    extraHoursSource: { type: String, enum: ['sign-out', 'work-update'], default: null },
     decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     decidedAt: { type: Date },
     // Sunday / Holiday logins carry no late-login reason, but the whole session is

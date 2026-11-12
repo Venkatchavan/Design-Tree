@@ -34,12 +34,13 @@ export default function ExtraHoursApprovals() {
   function start(row, status) { setOpen({ id: row._id, status }); setReason(''); setErr(''); }
 
   return (
-    <Panel title="Extra hours approvals" sub={`${pending.length} awaiting a decision · extra hours after 8 hours of login, and Sunday / holiday work`}>
+    <Panel title="Extra hours approvals" sub={`${pending.length} awaiting a decision · extra hours beyond 8 hours (sign-out or work update), and Sunday / holiday work`}>
       <DataTable rows={items} emptyText="No extra-hours requests." columns={[
         { key: 'date', label: 'Date', render: (r) => dateText(r.date) },
         { key: 'who', label: 'Employee', render: (r) => <>{empName(r.employee)}{r.employee?.designation ? <span style={{ color: 'var(--ink-muted)' }}> · {r.employee.designation}</span> : null}</> },
         { key: 'hours', label: 'Extra hours', render: (r) => <>{r.extraHours != null ? `${r.extraHours} h` : '—'}{r.workingDay === false && <span className="load-badge" style={{ marginLeft: 6 }}>Sunday / holiday</span>}</> },
         { key: 'why', label: 'Reason given', render: (r) => r.extraHoursReason || '—' },
+        { key: 'source', label: 'From', render: (r) => (r.extraHoursSource === 'work-update' ? 'Work update' : 'Sign-out') },
         {
           key: 'status', label: 'Decision', render: (r) => {
             if (r.extraHoursStatus === 'pending') {

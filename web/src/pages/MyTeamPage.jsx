@@ -81,12 +81,6 @@ function toneFor(status) {
 function wuDisplay(e) {
   return e?.wuNo ?? e?.refNo ?? '—';
 }
-function drawingAckStatus(d, acked, transmitted) {
-  const id = String(d._id ?? d.id ?? '');
-  if (acked.has(id)) return 'Acknowledged';
-  if (transmitted.has(id)) return 'Received';
-  return 'Pending acknowledgement';
-}
 function empName(e) {
   if (!e) return '—';
   if (typeof e === 'string') return e;
@@ -152,14 +146,6 @@ function revisionSourceOf(name) {
   if (/pmc/i.test(t)) return 'PMC';
   return 'Internal';
 }
-function revisionDisplayStatus(r) {
-  const s = String(r.status ?? '');
-  if (s === 'Cleared') return 'Approved';
-  if (s === 'Resubmitted') return 'Resubmitted, awaiting your action';
-  if (s === 'Revise') return 'Sent back for revision';
-  return 'Awaiting employee update';
-}
-
 function useBootstrapProp(prop) {
   const q = useQuery({ queryKey: ['bootstrap'], queryFn: bootstrapApi, enabled: !prop });
   return prop ?? q.data ?? null;
@@ -383,8 +369,10 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
 
   const entriesQ = useQuery({
     queryKey: ['team-work-entries', selectedKey, scopedProjectId],
-    queryFn: () => workEntriesApi.list({ team: selectedId, project: scopedProjectId }),
-    enabled: !!selectedId,
+    queryFn: () => workEntriesApi.list({ team: selectedId || undefined, project: scopedProjectId }),
+    // A TL's team also comes from the reporting chain, so the list loads
+    // even when no saved Team is selected.
+    enabled: !!selectedId || role === 'team_lead',
     refetchInterval: 15000,
   });
   const entries = entriesQ.data?.items ?? [];
@@ -571,7 +559,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
 
   const [drawingAction, setDrawingAction] = useState(null);
   const drawingStatus = useMutation({
-    mutationFn: ({ id, status, remark }) => drawingsApi.update(id, { status, statusRemark: remark ?? '' }),
+    mutationFn: ({ id, status, remark, awaitingOn }) => drawingsApi.update(id, { status, statusRemark: remark ?? '', ...(awaitingOn ? { awaitingOn } : {}) }),
     onSuccess: () => {
       setDrawingAction(null);
       queryClient.invalidateQueries({ queryKey: ['drawings'] });
@@ -665,6 +653,44 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
     return n > 0 ? `${n} open flag${n === 1 ? '' : 's'}` : 'None';
   }
 
+  // One "Team work items" list, shown on the Overview dashboard and under
+  // Team work monitoring, from the same query, so the two always match.
+  const teamWorkItemsPanel = (
+    <Panel title="Team work items" sub="Every current work update across my team — take action on anything pending">
+      {entriesQ.isLoading ? (
+        <EmptyState text="Loading…" />
+      ) : entriesQ.isError ? (
+        <div className="login-error" role="alert" style={{ display: 'block' }}>{entriesQ.error.message}</div>
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'wu', label: 'WU no.', render: (e) => wuDisplay(e) },
+            { key: 'employee', label: 'Employee', render: (e) => empName(e.employee) },
+            { key: 'project', label: 'Project', render: (e) => projLabel(e.project) },
+            { key: 'stage', label: 'Stage', render: (e) => e.stage ?? '—' },
+            { key: 'deliverable', label: 'Deliverable', render: (e) => e.deliverable ?? e.taskActivity ?? '—' },
+            {
+              key: 'status',
+              label: 'Status',
+              render: (e) => <StatusPill tone={toneFor(e.status)}>{e.status === 'Needs Attention' ? 'Revise' : (e.status ?? '—')}</StatusPill>,
+            },
+            {
+              key: 'actions',
+              label: '',
+              render: (e) => String(e.status ?? '').toLowerCase() === 'pending' ? (
+                <button type="button" className="approve-btn" onClick={() => setDecideEntry(e)}>
+                  Take action
+                </button>
+              ) : '—',
+            },
+          ]}
+          rows={entries}
+          emptyText="No work items for this team."
+        />
+      )}
+    </Panel>
+  );
+
   return (
     <>
       <div className="page-head">
@@ -732,32 +758,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                   />
                 )}
               </Panel>
-              <Panel title="Recent team activity">
-                {entriesQ.isLoading ? (
-                  <EmptyState text="Loading…" />
-                ) : entriesQ.isError ? (
-                  <div className="login-error" role="alert" style={{ display: 'block' }}>
-                    {entriesQ.error.message}
-                  </div>
-                ) : (
-                  <DataTable
-                    columns={[
-                      { key: 'wu', label: 'WU no.', render: (e) => wuDisplay(e) },
-                      { key: 'employee', label: 'Employee', render: (e) => empName(e.employee) },
-                      { key: 'project', label: 'Project', render: (e) => projLabel(e.project) },
-                      { key: 'deliverable', label: 'Deliverable', render: (e) => e.deliverable ?? e.taskActivity ?? '—' },
-                      { key: 'progress', label: '%', render: (e) => e.progressPct != null ? `${e.progressPct}%` : '—' },
-                      {
-                        key: 'status',
-                        label: 'Status',
-                        render: (e) => <StatusPill tone={toneFor(e.status)}>{e.status ?? '—'}</StatusPill>,
-                      },
-                    ]}
-                    rows={[...entries].sort((a, b) => String(b.date ?? b.createdAt ?? '').localeCompare(String(a.date ?? a.createdAt ?? ''))).slice(0, 10)}
-                    emptyText="No team activity yet."
-                  />
-                )}
-              </Panel>
+              {teamWorkItemsPanel}
             </>
           )}
 
@@ -784,33 +785,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
 
           {tab === 'monitoring' && (
             <>
-              <Panel title="Team work items" sub="Every current work update across my team — take action on anything pending">
-                <DataTable
-                  columns={[
-                    { key: 'wu', label: 'WU no.', render: (e) => wuDisplay(e) },
-                    { key: 'employee', label: 'Employee', render: (e) => empName(e.employee) },
-                    { key: 'project', label: 'Project', render: (e) => projLabel(e.project) },
-                    { key: 'stage', label: 'Stage', render: (e) => e.stage ?? '—' },
-                    { key: 'deliverable', label: 'Deliverable', render: (e) => e.deliverable ?? e.taskActivity ?? '—' },
-                    {
-                      key: 'status',
-                      label: 'Status',
-                      render: (e) => <StatusPill tone={toneFor(e.status)}>{e.status === 'Needs Attention' ? 'Revise' : (e.status ?? '—')}</StatusPill>,
-                    },
-                    {
-                      key: 'actions',
-                      label: '',
-                      render: (e) => String(e.status ?? '').toLowerCase() === 'pending' ? (
-                        <button type="button" className="approve-btn" onClick={() => setDecideEntry(e)}>
-                          Take action
-                        </button>
-                      ) : '—',
-                    },
-                  ]}
-                  rows={entries}
-                  emptyText="No work items for this team."
-                />
-              </Panel>
+              {teamWorkItemsPanel}
               <Panel title="Weekly approval" sub={`${weekRange.label} · ${Math.round(weekHoursTotal)} hours · ${showAllWeekly ? weekHours.length : Math.min(5, weekHours.length)} of ${weekHours.length} shown`}>
                 {!canApprove ? (
                   <EmptyState text="Approval actions are available to team leads and directors." />
@@ -956,11 +931,6 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                       { key: 'cleared', label: 'Approved', render: (r) => fmtDate(r.clearedAt) },
                       { key: 'leadNote', label: 'Lead instruction', render: (r) => r.leadNote ?? '—' },
                       {
-                        key: 'status',
-                        label: 'Status',
-                        render: (r) => <StatusPill tone={toneFor(revisionDisplayStatus(r))}>{revisionDisplayStatus(r)}</StatusPill>,
-                      },
-                      {
                         key: 'actions',
                         label: 'Actions',
                         render: (r) => {
@@ -1006,7 +976,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                     label: 'Status',
                     render: (d) => (
                       <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-                        {d.status ? <StatusPill tone={toneFor(d.status)}>{d.status}</StatusPill> : (isTL ? null : '—')}
+                        {d.status ? <StatusPill tone={toneFor(d.status === 'Resubmit' ? 'Awaiting' : d.status)}>{drawingStatusLabel(d)}</StatusPill> : (isTL ? null : '—')}
                         {d.statusRemark && <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{d.statusRemark}</span>}
                         {isTL && (
                           <button type="button" className="approve-btn" aria-label={`Set status of drawing ${d.drawingNo ?? ''}`} onClick={() => setDrawingAction(d)}>
@@ -1016,7 +986,6 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                       </span>
                     ),
                   },
-                  { key: 'ack', label: 'Acknowledgement', render: (d) => <StatusPill tone={toneFor(drawingAckStatus(d, ackedDrawingIds, transmittedDrawingIds))}>{drawingAckStatus(d, ackedDrawingIds, transmittedDrawingIds)}</StatusPill> },
                 ]}
                 rows={teamDrawings}
                 emptyText="No drawings yet."
@@ -1083,7 +1052,14 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
 const TASK_STAGES = ['Preliminary concept', 'Concept', 'Schematic', 'Design development', 'Tender', 'GFC'];
 const TL_DELIVERABLE_STATUSES = ['Planned', 'In Progress', 'Submitted', 'Approved', 'Overdue'];
 const TL_STAGES = ['CD', 'SD', 'DD', 'TD', 'GFC'];
-const DRAWING_STATUSES = ['Approved', 'Revise', 'Resubmit'];
+const DRAWING_STATUSES = ['Approved', 'Revise', 'Awaiting'];
+const AWAITING_TARGETS = ['Client', 'Architect', 'Peer Review', 'STR', 'PHE', 'ELE', 'HVAC', 'F&LS'];
+// "Awaiting · Client"; legacy "Resubmit" rows read as Awaiting.
+function drawingStatusLabel(d) {
+  const s = d?.status === 'Resubmit' ? 'Awaiting' : d?.status;
+  if (!s) return '';
+  return s === 'Awaiting' && d?.awaitingOn ? `Awaiting · ${d.awaitingOn}` : s;
+}
 const TL_SERVICES = ['SMEPF', 'SMEP', 'MEP', 'STR', 'PHE', 'ELE', 'HVAC', 'FIRE', 'BIM', 'GBS', 'Peer Review'];
 const TL_ISSUED_TO = ['Client', 'Architect', 'PMC', 'Contractor', 'Authority', 'Other'];
 const TL_METHODS = ['Portal', 'Email', 'Courier', 'Hand delivery', 'Transmittal'];
@@ -1611,21 +1587,29 @@ const WORK_DECISIONS = [
 
 // Team lead's decision on a drawing, same layout as the work-update dialog.
 function DrawingActionModal({ drawing, onClose, act }) {
-  const [choice, setChoice] = useState(drawing.status ?? 'Approved');
+  const current = drawingStatusLabel(drawing);
+  const [choice, setChoice] = useState(drawing.status === 'Resubmit' ? 'Awaiting' : (drawing.status ?? 'Approved'));
+  const [awaitingOn, setAwaitingOn] = useState(drawing.awaitingOn ?? '');
   const [remark, setRemark] = useState('');
   const revise = choice === 'Revise';
+  const awaiting = choice === 'Awaiting';
   return (
     <Modal title="Action by team lead" onClose={onClose}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          act.mutate({ id: drawing._id ?? drawing.id, status: choice, remark: remark.trim() || undefined });
+          act.mutate({
+            id: drawing._id ?? drawing.id,
+            status: choice,
+            remark: remark.trim() || undefined,
+            awaitingOn: awaiting ? awaitingOn : undefined,
+          });
         }}
       >
         <p style={{ color: 'var(--ink-muted)', margin: '0 0 10px' }}>{drawing.drawingNo ?? '—'}{drawing.rev ? ` · ${drawing.rev}` : ''}</p>
         <div className="panel-body" style={{ background: 'var(--surface-2, rgba(0,0,0,0.04))', borderRadius: 8, marginBottom: 14 }}>
           <div><b>{drawing.title ?? '—'}</b> · {projLabel(drawing.project)}</div>
-          <div>{[drawing.service, drawing.stage, drawing.status ? `Now: ${drawing.status}` : null].filter(Boolean).join(' · ') || '—'}</div>
+          <div>{[drawing.service, drawing.stage, current ? `Now: ${current}` : null].filter(Boolean).join(' · ') || '—'}</div>
         </div>
         <div role="group" aria-label="Decision" style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
           {DRAWING_STATUSES.map((st) => (
@@ -1641,6 +1625,21 @@ function DrawingActionModal({ drawing, onClose, act }) {
             </button>
           ))}
         </div>
+        {awaiting && (
+          <div className="form-row">
+            <label className="form-label" htmlFor="drawing-awaiting-on">Awaiting on *</label>
+            <select
+              id="drawing-awaiting-on"
+              className="filter-select"
+              required
+              value={awaitingOn}
+              onChange={(e) => setAwaitingOn(e.target.value)}
+            >
+              <option value="">Select who it is awaiting</option>
+              {AWAITING_TARGETS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        )}
         {choice !== 'Approved' && (
           <div className="form-row">
             <label className="form-label" htmlFor="drawing-decision-remark">{revise ? 'What needs to be revised *' : 'Remark'}</label>
@@ -1659,7 +1658,7 @@ function DrawingActionModal({ drawing, onClose, act }) {
         {act.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>{act.error.message}</div>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button type="button" className="approve-btn" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn-primary" disabled={act.isPending || (revise && !remark.trim())}>
+          <button type="submit" className="btn-primary" disabled={act.isPending || (revise && !remark.trim()) || (awaiting && !awaitingOn)}>
             {act.isPending ? 'Saving…' : 'Confirm decision'}
           </button>
         </div>

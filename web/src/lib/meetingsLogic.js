@@ -71,6 +71,15 @@ export function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// True once today's meeting has finished (end time, else start time, passed).
+function endedToday(m, dk, tk) {
+  if (!dk || dk !== tk) return false;
+  const t = String(m?.endTime || m?.startTime || '').match(/^(\d{1,2}):(\d{2})/);
+  if (!t) return false;
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes() >= Number(t[1]) * 60 + Number(t[2]);
+}
+
 // Spec §13 derived display status.
 export function displayStatus(m) {
   const s = String(m?.status ?? '').toLowerCase();
@@ -79,11 +88,11 @@ export function displayStatus(m) {
   const dk = dayKey(m?.date);
   const tk = todayKey();
   if (s === 'rescheduled') {
-    if (dk && dk >= tk) return 'Rescheduled';
+    if (dk && dk >= tk && !endedToday(m, dk, tk)) return 'Rescheduled';
     return 'Awaiting update';
   }
   // Scheduled (or legacy states)
-  if (dk && dk < tk) return 'Awaiting update';
+  if (dk && (dk < tk || endedToday(m, dk, tk))) return 'Awaiting update';
   return 'Upcoming';
 }
 
@@ -102,6 +111,18 @@ export function displayTone(s) {
 export function isUpcoming(m) {
   const s = displayStatus(m);
   return s === 'Upcoming' || s === 'Rescheduled';
+}
+
+// One split for every meeting view (left-nav Meetings, My work, project tab):
+// upcoming = still ahead; log = everything else (held, past-awaiting-update,
+// cancelled), newest first.
+export function splitMeetings(list) {
+  const upcoming = [];
+  const log = [];
+  for (const m of list ?? []) (isUpcoming(m) ? upcoming : log).push(m);
+  upcoming.sort((a, b) => String(a?.date ?? '').localeCompare(String(b?.date ?? '')));
+  log.sort((a, b) => String(b?.date ?? '').localeCompare(String(a?.date ?? '')));
+  return { upcoming, log };
 }
 
 export function responseSummary(m) {

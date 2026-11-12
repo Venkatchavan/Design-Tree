@@ -11,6 +11,8 @@ import { discApi, drawingAckApi, gbsApi, peerApi, rfiApi, serviceDashboardApi, s
 import { billingApi } from '../lib/phase3Api.js';
 import { deliverablesApi, drawingsApi, revisionsApi } from '../lib/workApi.js';
 import { summarizeRevisions } from '../lib/revisionSummary.js';
+import { displayStatus, displayTone, splitMeetings } from '../lib/meetingsLogic.js';
+import { manualStage } from '../lib/processManual.js';
 import { meetingsApi } from '../lib/phase4bApi.js';
 import Panel from '../components/Panel.jsx';
 import ProjectDeliverables from '../components/ProjectDeliverables.jsx';
@@ -432,12 +434,9 @@ export default function ProjectDetailPage({ bootstrap }) {
   const allActions = meetings.flatMap((m) =>
     (m.actions ?? []).map((a) => ({ ...a, meetingTitle: m.title, meetingDate: m.date })),
   );
-  const upcomingMeetingsList = [...meetings]
-    .filter((m) => String(m.status ?? '') !== 'Held' && String(m.status ?? '') !== 'Cancelled')
-    .sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')));
-  const heldMeetingsList = [...meetings]
-    .filter((m) => String(m.status ?? '') === 'Held')
-    .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+  // Same split as the left-nav Meetings log: past meetings move to the log
+  // even before the SPOC marks them held.
+  const { upcoming: upcomingMeetingsList, log: meetingLogList } = splitMeetings(meetings);
   const meetingAttendees = (m) => (m.invites ?? [])
     .map((v) => {
       const e = v.employee ?? v;
@@ -460,10 +459,12 @@ export default function ProjectDetailPage({ bootstrap }) {
   const overdueActions = openActions.filter((a) => a.due && Date.parse(a.due) < Date.now()).length;
   const upcomingMeetings = meetings.filter((m) => Date.parse(m.date) >= Date.now() && m.status !== 'Cancelled').length;
   const heldMeetings = meetings.filter((m) => m.status === 'Held').length;
-  const extraStages = [...new Set(revisions.map((r) => r.stage).filter(Boolean))].filter((s) => !STAGE_ORDER.includes(s));
+  // Revisions may carry coded (SD) or differently-cased stage names; map them
+  // onto the process-manual stage so each lands under its own heading.
+  const extraStages = [...new Set(revisions.map((r) => manualStage(r.stage)).filter(Boolean))].filter((s) => !STAGE_ORDER.includes(s));
   const revisionGroups = [...STAGE_ORDER, ...extraStages].map((stage) => ({
     stage,
-    rows: revisions.filter((r) => (r.stage ?? '') === stage),
+    rows: revisions.filter((r) => manualStage(r.stage) === stage),
   }));
   const revisionSummary = summarizeRevisions(revisions, drawings, stages, project);
   const daysOpen = (v) => {
@@ -1040,16 +1041,23 @@ export default function ProjectDetailPage({ bootstrap }) {
                   emptyText="No upcoming meetings."
                 />
               </Panel>
-              <Panel title="Meeting log / MoM" sub="Outcome recorded once a scheduled meeting concludes">
+              <Panel title="Meeting log / MoM" sub="Meetings move here automatically once they are held">
+                {meetingsQ.isError ? (
+                  <p role="alert" style={{ fontSize: 13, color: 'var(--rust, #b42318)' }}>
+                    Could not load meetings: {meetingsQ.error?.message ?? 'unknown error'}
+                  </p>
+                ) : (
                 <DataTable
                   columns={[
                     { key: 'date', label: 'Date', render: (m) => fmtDate(m.date) },
                     { key: 'topic', label: 'Topic', render: (m) => m.title ?? '—' },
+                    { key: 'status', label: 'Status', render: (m) => <StatusPill tone={displayTone(displayStatus(m))}>{displayStatus(m)}</StatusPill> },
                     { key: 'summary', label: 'Summary', render: (m) => meetingSummary(m) },
                   ]}
-                  rows={heldMeetingsList}
-                  emptyText="No meeting outcomes recorded yet."
+                  rows={meetingLogList}
+                  emptyText={meetingsQ.isLoading ? 'Loading meetings…' : 'No meetings in the log yet.'}
                 />
+                )}
               </Panel>
               <Panel title="Action items">
                 <DataTable

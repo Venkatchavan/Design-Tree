@@ -783,7 +783,11 @@ export async function absenceLog(req, res, next) {
       if (req.query.from) filter.date.$gte = new Date(req.query.from);
       if (req.query.to) filter.date.$lte = new Date(req.query.to);
     }
-    await applyMeetingAudience(filter, req.user);
+    // mine=true → only the caller's own absences (employee dashboards).
+    const mine = req.query.mine === 'true';
+    await applyMeetingAudience(filter, req.user, mine);
+    const myEmp = mine ? await myEmployeeId(req.user.id) : null;
+    if (mine && !myEmp) return res.status(200).json({ items: [], total: 0 });
     const meetings = await Meeting.find(filter)
       .populate('attendance.employee', 'firstName lastName empId designation department')
       .populate('project', 'name code')
@@ -795,7 +799,9 @@ export async function absenceLog(req, res, next) {
       for (const a of m.attendance ?? []) {
         if (a.present !== false) continue;
         const emp = a.employee && typeof a.employee === 'object' ? a.employee : null;
-        const service = emp?.department ?? '';
+        if (mine && String(emp?._id ?? a.employee ?? '') !== myEmp) continue;
+        // Directors usually carry no department; group them under "Directors".
+        const service = emp?.department || (/director/i.test(emp?.designation ?? '') ? 'Directors' : '');
         if (serviceFilter && String(service).toLowerCase() !== serviceFilter) continue;
         const empId = emp?._id ? String(emp._id) : '';
         if (memberFilter && empId !== memberFilter) continue;

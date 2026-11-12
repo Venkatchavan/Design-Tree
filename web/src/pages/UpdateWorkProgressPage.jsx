@@ -14,6 +14,7 @@ import {
 } from '../lib/session.js';
 import Panel from '../components/Panel.jsx';
 import { useLoggedHours } from '../lib/loggedHours.js';
+import ExtraHoursReasonField, { EXTRA_HOURS_AT, extraHoursRequired, isSundayKey } from '../components/ExtraHoursReasonField.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill from '../components/StatusPill.jsx';
 import { statusTone } from '../components/StatusPill.jsx';
@@ -81,16 +82,12 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
   const pendingLogout = isPendingLogout();
-  // Day's extra-hours threshold (mirrors EXTRA_HOURS_THRESHOLD in
-  // api/src/config/attendance.js; the server enforces it as well).
-  const EXTRA_HOURS_AT = 8;
   const totalHours =
     (Number(hours) || 0) +
     otherRows.reduce((s, r) => s + (Number(r.hours) || 0), 0);
   // The server also counts hours already logged on this date.
   const loggedToday = useLoggedHours(date);
   const dayTotal = totalHours + loggedToday;
-  const needsExtraReason = dayTotal > EXTRA_HOURS_AT;
 
   const projectsQ = useQuery({
     queryKey: ['active-projects'],
@@ -196,8 +193,10 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
       return null;
     }
     const total = h + otherRows.reduce((s, r) => s + (Number(r.hours) || 0), 0);
-    if (total + loggedToday > EXTRA_HOURS_AT && !extraHoursReason.trim()) {
-      setErr(`A reason is required for extra hours (over ${EXTRA_HOURS_AT}h in a day).`);
+    if (extraHoursRequired(total + loggedToday, date) && !extraHoursReason.trim()) {
+      setErr(isSundayKey(date)
+        ? 'A reason is required for working on a Sunday. Fill in "Reason for extra hours".'
+        : `A reason is required for extra hours (over ${EXTRA_HOURS_AT}h in a day). Fill in "Reason for extra hours".`);
       return null;
     }
     return {
@@ -206,7 +205,7 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
       hours: h,
       stage: selectedTask?.stage || undefined,
       notes: notes || undefined,
-      extraHoursReason: total + loggedToday > EXTRA_HOURS_AT ? extraHoursReason.trim() : undefined,
+      extraHoursReason: extraHoursReason.trim() || undefined,
       category: selectedTask ? 'Assigned Daily Work' : 'Hourly',
       deliverable: selectedTask?.deliverable || undefined,
       taskActivity: taskActivity || undefined,
@@ -353,17 +352,13 @@ function StandardUpdateWorkProgressPage({ bootstrap: bootstrapProp, user }) {
             <label className="form-label">Remarks</label>
             <textarea className="form-input" placeholder="Describe the work completed in this update" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
-          {needsExtraReason && (
-            <div className="form-row">
-              <label className="form-label">Extra hours reason *</label>
-              <textarea
-                className="form-input"
-                value={extraHoursReason}
-                onChange={(e) => setExtraHoursReason(e.target.value)}
-                placeholder={`Required — ${dayTotal.toFixed(1)}h for this day (${loggedToday.toFixed(1)}h already logged) exceeds ${EXTRA_HOURS_AT}h`}
-              />
-            </div>
-          )}
+          <ExtraHoursReasonField
+            value={extraHoursReason}
+            onChange={setExtraHoursReason}
+            dayTotal={dayTotal}
+            loggedToday={loggedToday}
+            dateKey={date}
+          />
           <div className="form-row" style={{ maxWidth: 250 }}>
             <label className="form-label">Date</label>
             <input type="date" className="form-input" value={date} onChange={(e) => setDate(e.target.value)} />

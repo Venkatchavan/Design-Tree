@@ -1,7 +1,8 @@
 import { useSearchParams } from 'react-router-dom';
-import { computeAlerts, isUpcoming, momRecorded, displayStatus } from '../lib/meetingsLogic.js';
+import { computeAlerts, splitMeetings, momRecorded, displayStatus } from '../lib/meetingsLogic.js';
 import { MeetingDetailModal } from '../components/MeetingsCommon.jsx';
 import SpocMeetings from '../components/meetings/SpocMeetings.jsx';
+import MyAbsencesPanel, { useMyAbsences } from '../components/meetings/MyAbsencesPanel.jsx';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { meApi } from '../lib/api.js';
@@ -75,18 +76,14 @@ function EmployeeMeetings() {
   const myEmpId = emp ? String(typeof emp === 'object' ? (emp._id ?? emp.id ?? '') : emp) : '';
 
   const listQ = useQuery({ queryKey: ['meetings', 'mine'], queryFn: () => meetingsApi.list({ mine: true }), refetchInterval: 60000 });
+  const absencesQ = useMyAbsences();
   const meetings = useMemo(() => listQ.data?.items ?? [], [listQ.data]);
 
   const today = dayKey(new Date());
   const myInviteOf = (m) => (m.invites ?? []).find((v) => String(v.employee?._id ?? v.employee ?? '') === String(myEmpId)) ?? null;
-  const upcoming = useMemo(
-    () => meetings.filter(isUpcoming),
-    [meetings],
-  );
-  const past = useMemo(
-    () => meetings.filter((m) => !upcoming.includes(m)),
-    [meetings, upcoming],
-  );
+  const split = useMemo(() => splitMeetings(meetings), [meetings]);
+  const upcoming = split.upcoming;
+  const past = split.log;
   const todayList = useMemo(() => upcoming.filter((m) => dayKey(m.date) === today), [upcoming, today]);
   const upcomingRest = useMemo(() => upcoming.filter((m) => dayKey(m.date) !== today), [upcoming, today]);
   // Held meetings plus scheduled ones whose date has passed.
@@ -248,8 +245,7 @@ function EmployeeMeetings() {
             <KpiCard label="Pending responses" value={listQ.isLoading ? '…' : pendingInvites.length} accent="amber" />
             <KpiCard label="Open action items" value={listQ.isLoading ? '…' : openActions.length} accent="violet" />
             <KpiCard label="Overdue action items" value={listQ.isLoading ? '…' : overdueActions.length} accent="rust" />
-            <KpiCard label="Meetings attended" value={listQ.isLoading ? '…' : attended.length} accent="forest" />
-          </div>
+            <KpiCard label="Meetings attended" value={listQ.isLoading ? '…' : attended.length} accent="forest" />          </div>
           <Panel title="Today's meetings" sub={fmtDayLong(new Date())}>
             {listQ.isLoading ? <EmptyState text="Loading…" /> : todayList.length === 0 ? (
               <EmptyState text="No meetings today." />
@@ -300,6 +296,7 @@ function EmployeeMeetings() {
               />
             )}
           </Panel>
+          <MyAbsencesPanel query={absencesQ} />
           <Panel title="Alerts & reminders">{reminders.length ? <ul>{reminders.map((r,i)=><li key={i}><button type="button" className="approve-btn" onClick={()=>setDetailId(r.meetingId)}>{r.text}</button></li>)}</ul> : <EmptyState text="No meeting reminders." />}</Panel>
           <Panel title="My action items" sub={`${openActions.length} open`}>
             {listQ.isLoading ? <EmptyState text="Loading…" /> : openActions.length === 0 ? (

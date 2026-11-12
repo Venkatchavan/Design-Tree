@@ -7,6 +7,7 @@ export const REVISION_STAGES = [
 ];
 
 const STAGE_ALIASES = new Map([
+  ['preliminary concept', 'Preliminary concept'],
   ['cd', 'Concept'],
   ['concept', 'Concept'],
   ['sd', 'Schematic'],

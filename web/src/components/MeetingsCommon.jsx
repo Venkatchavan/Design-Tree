@@ -454,7 +454,7 @@ export function MeetingDetailModal({ meetingId, onClose, manage = false }) {
           {isHeld && manage && (
             <Panel title="Attendance editor (Held)">
               <AttendanceEditor
-                invites={invites}
+                meeting={meeting}
                 initial={attendance}
                 onChange={setAttendance}
                 onSave={(rows) => saveAttendance.mutate({ attendance: rows })}
@@ -570,9 +570,25 @@ function AttendanceReadout({ meeting }) {
   );
 }
 
-function AttendanceEditor({ invites, initial, onChange, onSave, saving }) {
+// Roster = invitees ∪ participants (Sudden meetings have participants only;
+// directors may be either). Rows are keyed by employee id, never by index.
+function attendanceRoster(meeting) {
+  const byId = new Map();
+  for (const v of [...(meeting?.invites ?? []), ...(meeting?.participants ?? [])]) {
+    const id = idOf(v.employee);
+    if (id && !byId.has(id)) byId.set(id, v.employee);
+  }
+  return byId;
+}
+
+function AttendanceEditor({ meeting, initial, onChange, onSave, saving }) {
   const [rows, setRows] = useState(null);
-  const effective = rows ?? initial ?? invites.map((v) => ({ employee: idOf(v.employee), present: true }));
+  const roster = attendanceRoster(meeting);
+  const saved = new Map((meeting?.attendance ?? []).map((a) => [idOf(a.employee), a]));
+  const effective = rows ?? initial ?? [...roster.keys()].map((id) => {
+    const a = saved.get(id);
+    return a ? { employee: id, present: !!a.present, reason: a.reason ?? '' } : { employee: id, present: true };
+  });
   function setRow(i, patch) {
     const next = effective.map((r, j) => (j === i ? { ...r, ...patch } : r));
     setRows(next);
@@ -586,7 +602,7 @@ function AttendanceEditor({ invites, initial, onChange, onSave, saving }) {
         <tbody>
           {effective.map((r, i) => (
             <tr key={String(r.employee ?? i)}>
-              <td>{empName(invites[i]?.employee)}</td>
+              <td>{empName(roster.get(String(r.employee)) ?? saved.get(String(r.employee))?.employee)}</td>
               <td>
                 <input type="checkbox" checked={!!r.present} onChange={(e) => setRow(i, { present: e.target.checked })} aria-label="Present" />
               </td>

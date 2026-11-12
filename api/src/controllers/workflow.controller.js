@@ -17,6 +17,7 @@ import { Recruitment } from '../models/Recruitment.js';
 import { Revision } from '../models/Revision.js';
 import { Task } from '../models/Task.js';
 import { makeCrud } from '../utils/crud.js';
+import { deriveUserService } from '../utils/deriveUserService.js';
 import {
   deliverableSchema,
   deliverableUpdateSchema,
@@ -475,25 +476,56 @@ const drawingCrud = makeCrud(Drawing, {
     if (req.query.mine === 'true') f.sharedBy = req.user.id;
     return f;
   },
-  decorate: (data, req) => req.method === 'POST'
-    ? { ...data, sharedBy: req.user.id }
-    : data,
+  decorate: async (data, req) => {
+    if (req.method === 'POST') {
+      // Engineers / drafters work in one service: the drawing's service is
+      // their team's, never picked on the form. Others may still send one.
+      const service = req.user?.role === 'engineer_drafter' || !data.service
+        ? await deriveUserService(req.user, data.project)
+        : data.service;
+      return { ...data, ...(service ? { service } : {}), sharedBy: req.user.id };
+    }
+    // Leaving "Awaiting" clears who it was waiting on.
+    if (data.status !== undefined && data.status !== 'Awaiting') return { ...data, $unset: { awaitingOn: 1 } };
+    return data;
+  },
   populate: [{ path: 'project', select: POP_PROJ }],
 });
 
-// Revise / Resubmit / Approved on a drawing is set by the team lead only.
+const DRAWING_LEAD_FIELDS = ['status', 'statusRemark', 'awaitingOn'];
+
+function drawingStatusGuard(req, res) {
+  if (DRAWING_LEAD_FIELDS.some((k) => req.body?.[k] !== undefined) && req.user?.role !== 'team_lead') {
+    res.status(403).json({ message: 'Only the team lead can set a drawing status.' });
+    return false;
+  }
+  if (req.body?.status === 'Awaiting' && !req.body?.awaitingOn) {
+    res.status(400).json({ message: 'Select who the drawing is awaiting.' });
+    return false;
+  }
+  if (req.body?.awaitingOn !== undefined && req.body?.status !== 'Awaiting') {
+    res.status(400).json({ message: 'Awaiting on applies only to the Awaiting status.' });
+    return false;
+  }
+  return true;
+}
+
+// Revise / Awaiting / Approved on a drawing is set by the team lead only.
 export const drawings = {
   ...drawingCrud,
-  create(req, res, next) {
-    if ((req.body?.status !== undefined || req.body?.statusRemark !== undefined) && req.user?.role !== 'team_lead') {
-      return res.status(403).json({ message: 'Only the team lead can set a drawing status.' });
+  async create(req, res, next) {
+    if (!drawingStatusGuard(req, res)) return undefined;
+    if (req.user?.role === 'engineer_drafter' && req.body?.project) {
+      try {
+        if (!await deriveUserService(req.user, req.body.project)) {
+          return res.status(400).json({ message: 'You are not on a team for this project, so the drawing service cannot be set. Ask your team lead to add you.' });
+        }
+      } catch (err) { return next(err); }
     }
     return drawingCrud.create(req, res, next);
   },
   update(req, res, next) {
-    if ((req.body?.status !== undefined || req.body?.statusRemark !== undefined) && req.user?.role !== 'team_lead') {
-      return res.status(403).json({ message: 'Only the team lead can set a drawing status.' });
-    }
+    if (!drawingStatusGuard(req, res)) return undefined;
     return drawingCrud.update(req, res, next);
   },
 };

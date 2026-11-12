@@ -1,5 +1,7 @@
 import { SpocAllocation } from '../models/SpocAllocation.js';
 import { Team } from '../models/Team.js';
+import { User } from '../models/User.js';
+import { Employee } from '../models/Employee.js';
 import { expandServices } from '../config/services.js';
 
 const POP_EMP = 'firstName lastName empId designation department branch experience';
@@ -25,6 +27,38 @@ function committedServices(project) {
     if (s?.service) out.push(s.service);
   }
   return expandServices([...out, ...(project?.services ?? [])]);
+}
+
+const BOARD_DIRECTOR_ROLES = ['founding_director', 'working_director', 'executive_director'];
+const TEAM_DIRECTOR_ROLES = ['associate_director', 'technical_director', 'assoc_technical_director'];
+const norm = (v) => String(v ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+
+/**
+ * Directors who can be invited to (and marked absent from) a project meeting:
+ * every board director (founding / working / executive), plus a technical /
+ * associate director named as the `director` of anyone on the project team.
+ */
+export async function projectDirectors(memberIds = []) {
+  const users = await User.find({ role: { $in: [...BOARD_DIRECTOR_ROLES, ...TEAM_DIRECTOR_ROLES] }, employee: { $ne: null } })
+    .select('role employee name email').lean();
+  if (users.length === 0) return [];
+  const employees = await Employee.find({ _id: { $in: users.map((u) => u.employee) }, status: { $ne: 'Exited' } })
+    .select(POP_EMP + ' email').lean();
+  const byId = new Map(employees.map((e) => [String(e._id), e]));
+  const teamDirectorKeys = new Set();
+  if (memberIds.length) {
+    const members = await Employee.find({ _id: { $in: memberIds } }).select('director').lean();
+    for (const m of members) if (m.director) teamDirectorKeys.add(norm(m.director));
+  }
+  const out = [];
+  for (const u of users) {
+    const e = byId.get(String(u.employee));
+    if (!e) continue;
+    if (BOARD_DIRECTOR_ROLES.includes(u.role)) { out.push(e); continue; }
+    const keys = [e._id, e.empId, e.email, u.name, u.email, [e.firstName, e.lastName].filter(Boolean).join(' ')].map(norm);
+    if (keys.some((k) => k && teamDirectorKeys.has(k))) out.push(e);
+  }
+  return out;
 }
 
 /**
@@ -71,6 +105,9 @@ export async function projectTeamBundle(project) {
   for (const t of teams) {
     const e = t.lead;
     if (e?._id && !seen.has(String(e._id))) seen.set(String(e._id), { employee: e, service: t.service, team: t.name, allocation: 'Team lead' });
+  }
+  for (const d of await projectDirectors([...seen.keys()])) {
+    if (!seen.has(String(d._id))) seen.set(String(d._id), { employee: d, service: 'Directors', team: 'Directors', allocation: 'Director' });
   }
   const members = [...seen.values()];
   const committed = committedServices(project);

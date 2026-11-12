@@ -85,7 +85,11 @@ export function extraHoursFor(doc, at = new Date()) {
 // A pending request follows later sign-outs the same day so the TL approves the
 // real total; a decided one is left as decided.
 export function refreshExtraHours(doc, at = new Date()) {
-  if (doc?.extraHoursStatus === 'pending' && doc.loginAt) doc.extraHours = extraHoursFor(doc, at);
+  // A work-update request carries the logged hours; keep the larger figure.
+  if (doc?.extraHoursStatus === 'pending' && doc.loginAt) {
+    const session = extraHoursFor(doc, at);
+    doc.extraHours = doc.extraHoursSource === 'work-update' ? Math.max(session, doc.extraHours ?? 0) : session;
+  }
 }
 
 // Tell the TL / PTL / directors who must decide it. Best effort, after the doc is saved.
@@ -110,6 +114,7 @@ export function recordExtraHours(doc, reason, userId, at = new Date()) {
   doc.extraHoursReason = reason.trim();
   doc.extraHours = extraHoursFor(doc, at);
   doc.extraHoursStatus = 'pending';
+  doc.extraHoursSource = 'sign-out';
   doc.extraHoursDecisionReason = null;
   doc.extraHoursDecidedBy = undefined;
   doc.extraHoursDecidedAt = undefined;

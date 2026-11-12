@@ -92,14 +92,23 @@ test('revision flow: lead allots, member resubmits, lead approves or sends back 
   assert.ok(notes.some(n => /needs revision/.test(n.title) && n.users.map(String).includes(f.cast.engineer.user) && /beam depth/.test(n.detail)));
 });
 
-test('drawing status Revise / Resubmit / Approved is set by the team lead only', async () => {
+test('drawing status Revise / Awaiting / Approved is set by the team lead only', async () => {
   const d = await call('tl', '/api/work/drawings', 'POST', { project: f.project, drawingNo: 'S-302', title: 'Column layout', rev: 'R01' });
   assert.equal(d.status, 201);
   const id = d.data.item._id;
-  for (const status of ['Revise', 'Resubmit', 'Approved']) {
+  for (const status of ['Revise', 'Approved']) {
     const r = await call('tl', `/api/work/drawings/${id}`, 'PUT', { status });
     assert.equal(r.status, 200); assert.equal(r.data.item.status, status);
   }
+  // Awaiting needs a target; the retired Resubmit is refused.
+  assert.equal((await call('tl', `/api/work/drawings/${id}`, 'PUT', { status: 'Awaiting' })).status, 400);
+  assert.equal((await call('tl', `/api/work/drawings/${id}`, 'PUT', { status: 'Resubmit' })).status, 400);
+  const awaiting = await call('tl', `/api/work/drawings/${id}`, 'PUT', { status: 'Awaiting', awaitingOn: 'Client' });
+  assert.equal(awaiting.status, 200);
+  assert.equal(awaiting.data.item.status, 'Awaiting');
+  assert.equal(awaiting.data.item.awaitingOn, 'Client');
+  const cleared = await call('tl', `/api/work/drawings/${id}`, 'PUT', { status: 'Approved' });
+  assert.equal(cleared.data.item.awaitingOn, undefined);
   const withNote = await call('tl', `/api/work/drawings/${id}`, 'PUT', { status: 'Revise', statusRemark: 'Increase slab thickness' });
   assert.equal(withNote.data.item.statusRemark, 'Increase slab thickness');
   assert.equal((await call('td', `/api/work/drawings/${id}`, 'PUT', { statusRemark: 'x' })).status, 403);

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { DELIVERABLE_STATUSES } from '../models/Deliverable.js';
-import { DRAWING_STATUSES } from '../models/Drawing.js';
+import { AWAITING_TARGETS, DRAWING_STATUSES } from '../models/Drawing.js';
 import { RECRUITMENT_STATUSES } from '../models/Recruitment.js';
 import { REVISION_STATUSES } from '../models/Revision.js';
 import { SPOC_REVISION_STATUSES, SPOC_SERVICES, SPOC_WORK_AREAS } from '../models/SpocEntry.js';
@@ -10,6 +10,17 @@ import { WEEKLY_REPORT_STATUSES } from '../models/WeeklyReport.js';
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
 const strOpt = z.string().trim().optional();
 const dateOpt = z.coerce.date().optional();
+
+// Process-manual stage names; coded (SD) or differently-cased input is stored
+// under the canonical name so revision logs group by stage correctly.
+const PROCESS_STAGES = ['Preliminary concept', 'Concept', 'Schematic', 'Design development', 'Tender', 'GFC'];
+const STAGE_CODES = { CD: 'Concept', SD: 'Schematic', DD: 'Design development', TD: 'Tender', GFC: 'GFC' };
+export function normaliseStage(value) {
+  const s = String(value ?? '').trim();
+  if (!s) return s;
+  return PROCESS_STAGES.find((p) => p.toLowerCase() === s.toLowerCase()) ?? STAGE_CODES[s.toUpperCase()] ?? s;
+}
+const stageOpt = z.string().trim().transform(normaliseStage).optional();
 
 export const taskSchema = z
   .object({
@@ -44,7 +55,7 @@ export const deliverableUpdateSchema = deliverableSchema.partial();
 export const revisionSchema = z
   .object({
     project: objectId,
-    stage: strOpt,
+    stage: stageOpt,
     drawing: strOpt,
     revNo: strOpt,
     assignedTo: objectId.optional(),
@@ -75,6 +86,8 @@ export const drawingSchema = z
     method: strOpt,
     status: z.enum(DRAWING_STATUSES).optional(),
     statusRemark: z.string().trim().max(1000).optional(),
+    // Required with status "Awaiting" (enforced in the drawings controller).
+    awaitingOn: z.enum(AWAITING_TARGETS).optional(),
   })
   .strict();
 export const drawingUpdateSchema = drawingSchema.partial();

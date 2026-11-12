@@ -10,14 +10,12 @@ import {
 } from '../lib/session.js';
 import Panel from '../components/Panel.jsx';
 import { useLoggedHours } from '../lib/loggedHours.js';
+import ExtraHoursReasonField, { EXTRA_HOURS_AT, extraHoursRequired, isSundayKey } from '../components/ExtraHoursReasonField.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Field from '../components/Field.jsx';
 
-// Day's extra-hours threshold (mirrors EXTRA_HOURS_THRESHOLD in
-// api/src/config/attendance.js; the server enforces it as well).
-const EXTRA_HOURS_AT = 8;
 const PTL_LABEL = 'Principal team lead';
 const GENERAL_WORK_LABEL = 'General / other work — no specific daily assignment for this project';
 
@@ -69,7 +67,6 @@ export default function DesignHeadWorkUpdatePage({ bootstrap, user }) {
   // The server also counts hours already logged on this date.
   const loggedToday = useLoggedHours(date);
   const dayTotal = totalHours + loggedToday;
-  const needsExtraReason = dayTotal > EXTRA_HOURS_AT;
 
   const projectsQ = useQuery({
     queryKey: ['active-projects'],
@@ -178,8 +175,10 @@ export default function DesignHeadWorkUpdatePage({ bootstrap, user }) {
       .filter((r) => r.project && Number(r.hours) > 0)
       .map((r) => ({ project: r.project, hours: Number(r.hours) }));
     const total = h + otherHours.reduce((s, r) => s + r.hours, 0);
-    if (total + loggedToday > EXTRA_HOURS_AT && !extraHoursReason.trim()) {
-      setErr(`A reason is required for extra hours (over ${EXTRA_HOURS_AT}h in a day).`);
+    if (extraHoursRequired(total + loggedToday, date) && !extraHoursReason.trim()) {
+      setErr(isSundayKey(date)
+        ? 'A reason is required for working on a Sunday. Fill in "Reason for extra hours".'
+        : `A reason is required for extra hours (over ${EXTRA_HOURS_AT}h in a day). Fill in "Reason for extra hours".`);
       return null;
     }
     return {
@@ -193,7 +192,7 @@ export default function DesignHeadWorkUpdatePage({ bootstrap, user }) {
       drawing: drawing.trim() || undefined,
       notes: notes.trim() || undefined,
       otherHours: otherHours.length > 0 ? otherHours : undefined,
-      extraHoursReason: total + loggedToday > EXTRA_HOURS_AT ? extraHoursReason.trim() : undefined,
+      extraHoursReason: extraHoursReason.trim() || undefined,
     };
   }
 
@@ -378,17 +377,13 @@ export default function DesignHeadWorkUpdatePage({ bootstrap, user }) {
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
-          {needsExtraReason && (
-            <div className="form-row">
-              <label className="form-label">Extra hours reason *</label>
-              <textarea
-                className="form-input"
-                value={extraHoursReason}
-                onChange={(e) => setExtraHoursReason(e.target.value)}
-                placeholder={`Required — ${dayTotal.toFixed(1)}h for this day (${loggedToday.toFixed(1)}h already logged) exceeds ${EXTRA_HOURS_AT}h`}
-              />
-            </div>
-          )}
+          <ExtraHoursReasonField
+            value={extraHoursReason}
+            onChange={setExtraHoursReason}
+            dayTotal={dayTotal}
+            loggedToday={loggedToday}
+            dateKey={date}
+          />
           <div className="form-row" style={{ maxWidth: 250 }}>
             <label className="form-label">Date</label>
             <input

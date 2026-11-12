@@ -477,7 +477,7 @@ function AbsenceLogTab({ onOpen, notify, projectId }) {
       <Panel title="Absence log filters">
         <div className="field-grid">
           <div className="form-row"><label className="form-label">Project</label><select className="filter-select" style={{ width: '100%' }} disabled={!!projectId} value={project} onChange={(e) => setProject(e.target.value)}><option value="">All</option>{projectOptions.map((p) => (<option key={String(p._id ?? p.id)} value={String(p._id ?? p.id)}>{p.code ? `${p.code} - ` : ''}{p.name}</option>))}</select></div>
-          <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}><option value="">All</option><option>Structural</option><option>Mechanical</option><option>Electrical</option><option>Plumbing</option><option>Fire</option><option>MEP Coordination</option></select></div>
+          <div className="form-row"><label className="form-label">Service</label><select className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}><option value="">All</option><option>Structural</option><option>Mechanical</option><option>Electrical</option><option>Plumbing</option><option>Fire</option><option>MEP Coordination</option><option>Directors</option></select></div>
           <div className="form-row"><label className="form-label">Team member</label><EmployeeSelect employees={memberOptions.map(([id,label])=>({...items.find(r=>idOf(r.employee)===id)?.employee,id,label}))} className="filter-select" style={{ width: '100%' }} value={member} onChange={(e) => setMember(e.target.value)}><option value="">All</option>{memberOptions.map(([id, label]) => (<option key={id} value={id}>{label}</option>))}</EmployeeSelect></div>
           <div className="form-row"><label className="form-label">Meeting type</label><select className="filter-select" style={{ width: '100%' }} value={type} onChange={(e) => setType(e.target.value)}><option value="">All</option>{MEETING_TYPES.map((t) => (<option key={t}>{t}</option>))}</select></div>
           <div className="form-row"><label className="form-label">From</label><input className="form-input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
@@ -867,14 +867,22 @@ function AvailabilitySection({ meeting }) {
 
 function AttendanceSection({ meeting, held, onSaved, notify }) {
   const queryClient = useQueryClient();
-  const invites = meeting?.category === 'Sudden' ? (meeting?.participants ?? []) : (meeting?.invites ?? []);
+  // Roster = invitees ∪ participants, so everyone (directors included) can be
+  // marked; saved attendance fills in each person's existing mark.
+  const invites = [...new Map([...(meeting?.invites ?? []), ...(meeting?.participants ?? [])]
+    .filter((v) => idOf(v.employee))
+    .map((v) => [idOf(v.employee), v])).values()];
   const existing = meeting?.attendance ?? [];
   const [rows, setRows] = useState(null);
   const [extraName, setExtraName] = useState('');
   const [extraOrg, setExtraOrg] = useState('');
   const [err, setErr] = useState('');
 
-  const effective = rows ?? (existing.length > 0 ? existing.map((a) => ({ employee: idOf(a.employee), present: a.present, reason: a.reason ?? '' })) : invites.map((v) => ({ employee: idOf(v.employee), present: undefined, reason: '' })));
+  const savedById = new Map(existing.map((a) => [idOf(a.employee), a]));
+  const effective = rows ?? invites.map((v) => {
+    const a = savedById.get(idOf(v.employee));
+    return { employee: idOf(v.employee), present: a?.present, reason: a?.reason ?? '' };
+  });
   const attended = effective.filter((r) => r.present).length;
 
   const save = useMutation({
