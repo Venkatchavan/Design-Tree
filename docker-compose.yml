@@ -115,6 +115,9 @@ services:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
       - "${HTTPS_PUBLIC_PORT:-4433}:4433"
+      # Extra public HTTPS entry: WAN:4443 → host 4443 → the same 4433 server
+      # (Let's Encrypt IP cert). https://<public-ip>:4443 must be in CLIENT_ORIGIN.
+      - "${HTTPS_ALT_PORT:-4443}:4433"
     volumes:
       # TLS certificates are created on the host, never committed.
       # `certs/` holds the bootstrap pair (used until the Let's Encrypt IP
