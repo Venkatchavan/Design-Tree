@@ -370,6 +370,7 @@ export const NAV_BY_ROLE = {
   // only views the travel log.
   receptionist: [
     { view: 'travel-booking' },
+    { view: 'admin-work-update' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
   ],

@@ -5,6 +5,12 @@ import { Bell } from 'lucide-react';
 import { meApi } from '../lib/api.js';
 import { notificationsApi } from '../lib/phase4bApi.js';
 import { subscribeNotifications } from '../lib/realtime.js';
+import {
+  disablePush,
+  enablePush,
+  getPushState,
+  syncPushSubscription,
+} from '../lib/push.js';
 
 // Deep-link map for notification click-through (bell only, 2A).
 function pathForLink(link, role) {
@@ -134,6 +140,67 @@ export default function NotifBell() {
     }
   }
 
+  // ---- Web Push (alerts while the app is closed) ----
+  const [pushState, setPushState] = useState('unsupported');
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushErr, setPushErr] = useState('');
+  useEffect(() => {
+    let live = true;
+    getPushState().then((s) => {
+      if (live) setPushState(s);
+    });
+    // Rebind this device to the current user (shared-browser safety).
+    syncPushSubscription().catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function togglePush() {
+    setPushBusy(true);
+    setPushErr('');
+    try {
+      if (pushState === 'on') await disablePush();
+      else await enablePush();
+    } catch (e) {
+      setPushErr(e?.message ?? 'Could not change push settings.');
+    } finally {
+      setPushState(await getPushState());
+      setPushBusy(false);
+    }
+  }
+
+  // Tapping a push notification: deep-link using the same map as the bell.
+  // Warm app: the service worker posts a message. Cold start: it opens
+  // /?nview=…&nid=…&nref=… which is consumed once the role is known.
+  const openFromPush = (link, id) => {
+    if (id) readOne.mutate(id);
+    const path = pathForLink(link, myRole);
+    if (path) navigate(path);
+  };
+  const openFromPushRef = useRef(openFromPush);
+  useEffect(() => {
+    openFromPushRef.current = openFromPush;
+  });
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return undefined;
+    const onMsg = (e) => {
+      if (e.data?.type === 'push-click') openFromPushRef.current(e.data.link, e.data.id);
+    };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg);
+  }, []);
+  useEffect(() => {
+    if (!myRole) return;
+    const p = new URLSearchParams(window.location.search);
+    const view = p.get('nview');
+    const lid = p.get('nid');
+    const ref = p.get('nref');
+    if (!view && !lid && !ref) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    openFromPushRef.current(view || lid ? { view, id: lid || undefined } : undefined, ref);
+  }, [myRole]);
+
   return (
     <div className="notif-wrap" ref={wrapRef}>
       <button
@@ -197,6 +264,30 @@ export default function NotifBell() {
                   <div className="notif-item-time">{timeAgo(n.at ?? n.createdAt)}</div>
                 </div>
               ))}
+            </div>
+          )}
+          {pushState !== 'unsupported' && (
+            <div className="notif-push">
+              <div className="notif-push-text">
+                {pushState === 'needs-install'
+                  ? 'To get alerts on iPhone/iPad, add DesignTree to your Home Screen (Share → Add to Home Screen) and open it from there.'
+                  : pushState === 'blocked'
+                    ? 'Alerts are blocked. Allow notifications for this site in your browser settings.'
+                    : pushState === 'on'
+                      ? 'Alerts on — you will be notified even when DesignTree is closed.'
+                      : 'Get alerts on this device even when DesignTree is closed.'}
+                {pushErr && <div className="notif-push-err">{pushErr}</div>}
+              </div>
+              {(pushState === 'on' || pushState === 'off') && (
+                <button
+                  type="button"
+                  className="notif-markall"
+                  disabled={pushBusy}
+                  onClick={togglePush}
+                >
+                  {pushBusy ? 'Working…' : pushState === 'on' ? 'Turn off' : 'Turn on'}
+                </button>
+              )}
             </div>
           )}
         </div>

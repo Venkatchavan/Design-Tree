@@ -4127,6 +4127,26 @@ table {
     color: var(--ink-faint);
     margin-top: 4px;
 }
+.notif-push {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--surface-alt);
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    line-height: 1.4;
+}
+.notif-push .notif-markall {
+    flex-shrink: 0;
+    margin: 0;
+}
+.notif-push-err {
+    margin-top: 3px;
+    color: #c0392b;
+}
 .notif-empty {
     padding: 34px 14px;
     text-align: center;

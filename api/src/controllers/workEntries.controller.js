@@ -15,6 +15,11 @@ import { User } from '../models/User.js';
 import { directorTeams } from '../utils/directorTeams.js';
 import { reportingEmployeeIds } from '../utils/reportingEmployees.js';
 
+// Roles that use the simple hours + notes update form (no project picker): the
+// controller falls back to the login email's employee and the Internal /
+// non-billable project for them.
+const SIMPLE_UPDATE_ROLES = ['admin_billing', 'receptionist'];
+
 export async function directorEntryScope(user, team) {
   const scoped = await directorTeams(user);
   if (scoped === null) return null;
@@ -61,7 +66,7 @@ export async function createWorkEntry(req, res, next) {
       return res.status(400).json({ message: 'Invalid work entry data.' });
     }
     let employee = await resolveEmployee(req, parsed.data.employee);
-    if (!employee && req.user?.role === 'admin_billing' && !parsed.data.employee) {
+    if (!employee && SIMPLE_UPDATE_ROLES.includes(req.user?.role) && !parsed.data.employee) {
       // Admins often have no linked employee record: fall back to matching
       // an employee by the login email so the simple admin update form works.
       const me = await User.findById(req.user.id);
@@ -75,7 +80,7 @@ export async function createWorkEntry(req, res, next) {
       });
     }
     let projectId = parsed.data.project;
-    if (!projectId && req.user?.role === 'admin_billing') {
+    if (!projectId && SIMPLE_UPDATE_ROLES.includes(req.user?.role)) {
       // The admin update form carries no project: log against the
       // Internal / non-billable project when one exists.
       const fallback = await Project.findOne({ name: /internal \/ non-billable/i });

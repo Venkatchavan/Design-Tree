@@ -102,5 +102,10 @@ export async function notify({ roles, users, project, link, title, detail, type 
   } catch {
     /* bell record is saved; live push retries on next poll */
   }
+  // Web Push for closed/background apps. Fire-and-forget: never awaited so a
+  // slow push service cannot delay the request, never throws into it.
+  import('../services/push.js')
+    .then((m) => m.sendPushForNotification(doc))
+    .catch(() => {});
   return doc;
 }

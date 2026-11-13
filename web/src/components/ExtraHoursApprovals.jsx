@@ -23,6 +23,8 @@ export default function ExtraHoursApprovals() {
     onError: (e) => setErr(e.message),
   });
   const items = q.data?.items ?? [];
+  // View-only roles (e.g. Founding Director) see the requests but cannot decide.
+  const canDecide = q.data?.canDecide !== false;
   if (q.isLoading || q.isError || !items.length) return null;
   const pending = items.filter((i) => i.extraHoursStatus === 'pending');
 
@@ -34,7 +36,7 @@ export default function ExtraHoursApprovals() {
   function start(row, status) { setOpen({ id: row._id, status }); setReason(''); setErr(''); }
 
   return (
-    <Panel title="Extra hours approvals" sub={`${pending.length} awaiting a decision · extra hours beyond 8 hours (sign-out or work update), and Sunday / holiday work`}>
+    <Panel title="Extra hours approvals" sub={`${pending.length} awaiting a decision${canDecide ? '' : ' (view only)'} · extra hours beyond 8 hours (sign-out or work update), and Sunday / holiday work`}>
       <DataTable rows={items} emptyText="No extra-hours requests." columns={[
         { key: 'date', label: 'Date', render: (r) => dateText(r.date) },
         { key: 'who', label: 'Employee', render: (r) => <>{empName(r.employee)}{r.employee?.designation ? <span style={{ color: 'var(--ink-muted)' }}> · {r.employee.designation}</span> : null}</> },
@@ -44,6 +46,7 @@ export default function ExtraHoursApprovals() {
         {
           key: 'status', label: 'Decision', render: (r) => {
             if (r.extraHoursStatus === 'pending') {
+              if (!canDecide) return <span style={{ color: 'var(--ink-muted)' }}>Awaiting decision · view only</span>;
               if (open?.id === r._id) {
                 return (
                   <div style={{ minWidth: 240 }}>

@@ -98,7 +98,7 @@ export async function notifyExtraHoursRequest(doc) {
     const employee = await Employee.findById(doc.employee).select('firstName lastName').lean();
     const who = [employee?.firstName, employee?.lastName].filter(Boolean).join(' ') || 'A team member';
     await notify({
-      users: await approverUserIdsFor(doc.employee),
+      users: await approverUserIdsFor(doc.employee, { designMgmtHead: true }),
       roles: ['founding_director', 'working_director', 'executive_director'],
       link: { view: 'my-team' },
       title: `${doc.workingDay ? 'Extra hours' : 'Sunday / holiday work'}: ${who}`,
@@ -274,6 +274,9 @@ export async function listAttendance(req, res, next) {
   }
 }
 
+// Roles that can see extra-hours requests but never decide them (view only).
+const EXTRA_HOURS_VIEW_ONLY_ROLES = ['founding_director'];
+
 // Extra-hours requests awaiting (or past) a decision for the caller's team.
 export async function listExtraHours(req, res, next) {
   try {
@@ -286,7 +289,11 @@ export async function listExtraHours(req, res, next) {
       .populate('extraHoursDecidedBy', 'name')
       .sort({ date: -1 })
       .limit(200);
-    return res.status(200).json({ items, total: items.length });
+    return res.status(200).json({
+      items,
+      total: items.length,
+      canDecide: !EXTRA_HOURS_VIEW_ONLY_ROLES.includes(req.user.role),
+    });
   } catch (err) {
     return next(err);
   }
@@ -295,6 +302,9 @@ export async function listExtraHours(req, res, next) {
 // Approve or decline. Both need the approver's reason, which is recorded with who
 // decided and when. Only pending requests inside the caller's scope.
 export async function decideExtraHours(req, res, next) {
+  if (EXTRA_HOURS_VIEW_ONLY_ROLES.includes(req.user.role)) {
+    return res.status(403).json({ message: 'Extra-hours requests are view only for your role.' });
+  }
   const parsed = extraHoursDecisionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: 'Invalid decision.' });
   const reason = parsed.data.reason?.trim() ?? '';

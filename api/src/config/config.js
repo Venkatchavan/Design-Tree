@@ -32,6 +32,14 @@ export const config = {
   // session is still same-origin (SPA + /api share one host), so the
   // host-only Lax cookie needs no change — only CORS/socket need the list.
   clientOrigins: rawOrigins.length ? rawOrigins : ['http://localhost:5173'],
+  // Web Push (VAPID). Push is optional: with either key missing the feature
+  // stays off and the in-app bell keeps working untouched. Generate a pair
+  // once with `npx web-push generate-vapid-keys` and keep it stable —
+  // changing it invalidates every stored browser subscription.
+  vapidPublicKey: (process.env.VAPID_PUBLIC_KEY ?? '').trim(),
+  vapidPrivateKey: (process.env.VAPID_PRIVATE_KEY ?? '').trim(),
+  // Contact the push services can reach: a mailto: or https: URL.
+  vapidSubject: (process.env.VAPID_SUBJECT ?? '').trim() || 'mailto:admin@designtree.local',
   seedName: process.env.SEED_NAME ?? '',
   seedEmail: (process.env.SEED_EMAIL ?? '').toLowerCase().trim(),
   seedPassword: process.env.SEED_PASSWORD ?? '',

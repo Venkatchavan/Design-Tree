@@ -1,5 +1,6 @@
 import { logoutApi } from './api.js';
 import { disconnectSocket } from './realtime.js';
+import { forgetPushOnLogout } from './push.js';
 
 export const PENDING_LOGOUT_KEY = 'datum-pending-logout';
 export const SUPER_ROLES = ['founding_director', 'working_director', 'executive_director'];
@@ -90,6 +91,8 @@ export async function performLogout(queryClient, body) {
     return { ok: false, error: e };
   }
   disconnectSocket();
+  // Don't keep alerting this device for the user who just signed out.
+  void forgetPushOnLogout();
   queryClient.setQueryData(['me'], null);
   queryClient.removeQueries({ queryKey: ['bootstrap'] });
   return { ok: true };

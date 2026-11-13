@@ -26,6 +26,7 @@ import leaveRoutes from './routes/leave.routes.js';
 import marketingRoutes from './routes/marketing.routes.js';
 import meetingsRoutes from './routes/meetings.routes.js';
 import notificationsRoutes from './routes/notifications.routes.js';
+import pushRoutes from './routes/push.routes.js';
 import portalRoutes from './routes/portal.routes.js';
 import reportsRoutes from './routes/reports.routes.js';
 import supportRoutes from './routes/support.routes.js';
@@ -95,6 +96,7 @@ export function createApp() {
   app.use('/api/meetings', meetingsRoutes);
   app.use('/api/portal', portalRoutes);
   app.use('/api/notifications', notificationsRoutes);
+  app.use('/api/push', pushRoutes);
   app.use('/api/announcements', announcementRoutes);
   app.use('/api/reports', reportsRoutes);
   // Document files are served ONLY through auth-checked download routes
