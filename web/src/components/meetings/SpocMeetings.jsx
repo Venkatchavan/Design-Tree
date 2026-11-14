@@ -591,7 +591,8 @@ function ProjectHistoryTab({ meetings, onOpen }) {
 }
 
 // ---------------- Shell ----------------
-export default function SpocMeetings({ projectId, readOnly = false }) {
+// extraTabs: [{ key, label, render }] — extra sub-tabs added after the standard ones.
+export default function SpocMeetings({ projectId, readOnly = false, extraTabs = [] }) {
   const roleQ = useQuery({ queryKey: ['bootstrap'], queryFn: bootstrapApi });
   const canManage = !readOnly && roleQ.data?.role?.key === 'coordinator';
   const [tab, setTab] = useState('dashboard');
@@ -643,6 +644,7 @@ export default function SpocMeetings({ projectId, readOnly = false }) {
           { key: 'actions', label: `Action items${overdueCount > 0 ? ` (${overdueCount} overdue)` : ''}` },
           { key: 'absence', label: 'Absence log' },
           { key: 'history', label: 'Project history' },
+          ...extraTabs.map(({ key, label }) => ({ key, label })),
         ]}
         active={tab}
         onChange={setTab}
@@ -665,6 +667,7 @@ export default function SpocMeetings({ projectId, readOnly = false }) {
           {tab === 'history' && <ProjectHistoryTab meetings={meetings} onOpen={setDetailId} />}
         </>
       )}
+      {extraTabs.map((t) => (tab === t.key ? <div key={t.key}>{t.render()}</div> : null))}
       {showSchedule && (
         <ScheduleMeetingModal
           projectId={projectId}

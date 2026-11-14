@@ -52,12 +52,19 @@ function overdueDays(a) {
 const hasMom = momRecorded;
 const logStatus = displayStatus;
 
-export default function MyMeetingsPage({ viewKey }) {
-  if (viewKey === 'meetings') return <SpocMeetings readOnly />;
+// 13 Nov 2026: TD and AD have a single Meetings page (the project meetings log);
+// their own invitations, log and action items sit in its "My meetings" sub-tab.
+const MY_MEETINGS_SUBTAB_ROLES = ['technical_director', 'associate_director'];
+
+export default function MyMeetingsPage({ viewKey, bootstrap }) {
+  if (viewKey === 'meetings') {
+    const withMine = MY_MEETINGS_SUBTAB_ROLES.includes(bootstrap?.role?.key);
+    return <SpocMeetings readOnly extraTabs={withMine ? [{ key: 'mine', label: 'My meetings', render: () => <EmployeeMeetings embedded /> }] : []} />;
+  }
   return <EmployeeMeetings />;
 }
 
-function EmployeeMeetings() {
+function EmployeeMeetings({ embedded = false }) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState('overview');
   const [params, setParams] = useSearchParams();
@@ -219,10 +226,10 @@ function EmployeeMeetings() {
 
   return (
     <>
-      <div className="page-head">
+      {!embedded && <div className="page-head">
         <div className="page-title">Meetings</div>
         <div className="page-sub">DesignTree · Employee Meeting Dashboard · Meeting invitations and meeting log</div>
-      </div>
+      </div>}
       {listQ.isError && (
         <div className="login-error" role="alert" style={{ display: 'block' }}>{listQ.error.message}</div>
       )}
