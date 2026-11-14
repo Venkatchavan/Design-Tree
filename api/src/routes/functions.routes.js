@@ -26,6 +26,13 @@ import {
   updateComment,
   weeklyReports,
 } from '../controllers/functions.controller.js';
+import {
+  listClientRfis,
+  registerClientRfi,
+  respondClientRfi,
+  rfiLeadOptions,
+  setClientRfiStatus,
+} from '../controllers/clientRfi.controller.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -69,6 +76,13 @@ router.put(
 );
 router.get('/conveyance', requireInternal(), conveyances.list);
 router.post('/conveyance', requireInternal(), conveyances.create);
+// 13 Nov 2026: client RFIs — SPOC registers + assigns a TL, the TL responds
+// (auto-emailed to the raiser), PTL and above read the full log.
+router.get('/rfis/client', requireInternal(), listClientRfis);
+router.get('/rfis/client/leads', requireInternal(), rfiLeadOptions);
+router.post('/rfis/client', requireRole('coordinator'), registerClientRfi);
+router.post('/rfis/client/:id/respond', requireRole('team_lead', 'assoc_technical_director', 'technical_director', 'associate_director'), respondClientRfi);
+router.patch('/rfis/client/:id/status', requireRole('coordinator', 'team_lead', 'assoc_technical_director', 'technical_director', 'associate_director'), setClientRfiStatus);
 router.get('/rfis', requireInternal(), rfis.list);
 router.post('/rfis', requireInternal(), denyRoles('coordinator'), createRfi);
 router.put('/rfis/:id', requireInternal(), denyRoles('coordinator'), rfis.update);

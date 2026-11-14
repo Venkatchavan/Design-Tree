@@ -24,6 +24,8 @@ export function inferRole(row) {
   if (/technical\s+director/i.test(d)) return 'technical_director';
   if (/associate\s+director/i.test(d)) return 'associate_director';
   if (/executive\s+director/i.test(d)) return 'executive_director';
+  // Drafting designations use the Engineer / Drafter dashboard (13 Nov 2026).
+  if (/\bdrafting\b/i.test(d)) return 'engineer_drafter';
   if (/\blead\b/i.test(d)) return 'team_lead';
   if (row.department === 'QS') return 'qs';
   if (row.department === 'QA/QC') return 'qaqc';

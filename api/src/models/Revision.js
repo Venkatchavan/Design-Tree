@@ -27,6 +27,19 @@ const revisionSchema = new mongoose.Schema(
     priority: { type: String, enum: ['Normal', 'High', 'Urgent'], default: 'Normal' },
     notifyEmployees: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }],
     emailLog: [{ type: String, trim: true }],
+    // 13 Nov 2026: service the revision belongs to, and the service heads
+    // (PTL / ATD / TD / AD) plus EDs / Founding Directors notified automatically.
+    service: { type: String, trim: true, index: true },
+    autoNotified: [
+      {
+        name: { type: String, trim: true },
+        email: { type: String, trim: true },
+        label: { type: String, trim: true },
+        service: { type: String, trim: true },
+        emailed: { type: Boolean, default: false },
+        _id: false,
+      },
+    ],
     status: { type: String, enum: REVISION_STATUSES, default: 'Open', index: true },
     resubmittedAt: { type: Date },
     clearedAt: { type: Date },

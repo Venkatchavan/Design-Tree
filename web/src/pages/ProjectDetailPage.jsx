@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { projectsApi, employeesApi, usersApi } from '../lib/api.js';
-import { discApi, drawingAckApi, gbsApi, peerApi, rfiApi, serviceDashboardApi, stageReviewApi, variationApi, visitsApi, weeklyReportApi, workItemApi } from '../lib/functionsApi.js';
+import { discApi, drawingAckApi, gbsApi, peerApi, serviceDashboardApi, stageReviewApi, variationApi, visitsApi, weeklyReportApi, workItemApi } from '../lib/functionsApi.js';
 import { billingApi } from '../lib/phase3Api.js';
 import { deliverablesApi, drawingsApi, revisionsApi } from '../lib/workApi.js';
 import { summarizeRevisions } from '../lib/revisionSummary.js';
@@ -15,6 +15,9 @@ import { displayStatus, displayTone, splitMeetings } from '../lib/meetingsLogic.
 import { manualStage } from '../lib/processManual.js';
 import { meetingsApi } from '../lib/phase4bApi.js';
 import Panel from '../components/Panel.jsx';
+import ClientRfiPanel from '../components/ClientRfiPanel.jsx';
+import DbrWorkflowPanel from '../components/DbrWorkflowPanel.jsx';
+import RevisionNotified from '../components/RevisionNotified.jsx';
 import ProjectDeliverables from '../components/ProjectDeliverables.jsx';
 import Tabs from '../components/Tabs.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -41,40 +44,6 @@ const DOCUMENT_TABS = [
   { key: 'dbr', label: 'DBR (Design Basis Report)' },
 ];
 
-function SpocRfiLog({ projectId }) {
-  const rfisQ = useQuery({
-    queryKey: ['project-rfi-log', projectId],
-    queryFn: () => rfiApi.list({ project: projectId }),
-    enabled: !!projectId,
-  });
-  const rows = rfisQ.data?.items ?? [];
-
-  return (
-    <Panel title="RFI Log" sub="View only · RFIs for this assigned project">
-      {rfisQ.isLoading ? <EmptyState text="Loading RFI log…" /> : rfisQ.isError ? (
-        <div className="login-error" role="alert" style={{ display: 'block' }}>{rfisQ.error.message}</div>
-      ) : (
-        <DataTable
-          columns={[
-            { key: 'rfiNo', label: 'RFI No.', render: (r) => r.rfiNo ?? '—' },
-            { key: 'type', label: 'Type' },
-            { key: 'description', label: 'Description' },
-            { key: 'team', label: 'Team' },
-            { key: 'raisedBy', label: 'Raised by', render: (r) => r.raisedBy?.name ?? r.raisedBy?.email ?? '—' },
-            { key: 'assignedTo', label: 'Assigned to' },
-            { key: 'due', label: 'Due', render: (r) => fmtDate(r.due) },
-            { key: 'clientResponse', label: 'Response', render: (r) => r.clientResponse?.text ?? '—' },
-            { key: 'status', label: 'Status', render: (r) => <StatusPill status={r.status}>{r.status ?? '—'}</StatusPill> },
-            { key: 'createdAt', label: 'Created', render: (r) => fmtDate(r.createdAt) },
-          ]}
-          rows={rows}
-          emptyText="No RFIs have been logged for this project."
-        />
-      )}
-    </Panel>
-  );
-}
-
 function DbrDocumentPanel({ projectId }) {
   const deliverablesQ = useQuery({
     queryKey: ['project-dbr-deliverables', projectId],
@@ -86,7 +55,7 @@ function DbrDocumentPanel({ projectId }) {
   );
 
   return (
-    <Panel title="DBR (Design Basis Report)" sub="DBR deliverable information for this project">
+    <Panel title="DBR deliverables" sub="DBR deliverable information for this project">
       {deliverablesQ.isLoading ? <EmptyState text="Loading DBR information…" /> : deliverablesQ.isError ? (
         <div className="login-error" role="alert" style={{ display: 'block' }}>{deliverablesQ.error.message}</div>
       ) : (
@@ -293,7 +262,9 @@ export default function ProjectDetailPage({ bootstrap }) {
     queryFn: () => projectsApi.list({}),
     enabled: role === 'coordinator',
   });
-  const coordTabs = role === 'coordinator'
+  // 13 Nov 2026: the SPOC registers client RFIs here; PTL and above see the full RFI log.
+  const rfiLogRoles = ['coordinator', 'team_lead', 'assoc_technical_director', 'technical_director', 'associate_director', 'executive_director', 'founding_director', 'working_director', 'design_mgmt_head'];
+  const coordTabs = rfiLogRoles.includes(role)
     ? [...COORD_TABS, { key: 'rfis', label: 'RFI Log' }]
     : COORD_TABS;
 
@@ -505,6 +476,8 @@ export default function ProjectDetailPage({ bootstrap }) {
                 { key: 'date', label: 'Date', render: (r) => fmtDate(r.dateRaised ?? r.createdAt) },
                 { key: 'desc', label: 'Description', render: (r) => r.details ?? '—' },
                 { key: 'reason', label: 'Reason', render: (r) => r.raisedBy ?? '—' },
+                { key: 'service', label: 'Service', render: (r) => r.service || '—' },
+                { key: 'notified', label: 'Auto-notified', render: (r) => <RevisionNotified revision={r} /> },
               ]}
               rows={g.rows}
               emptyText="No revisions logged."
@@ -869,9 +842,19 @@ export default function ProjectDetailPage({ bootstrap }) {
                 { key: 'experience', label: 'Experience', render: r => r.employee?.experience ?? '—' },
               ]} rows={teamQ.data?.members ?? []} emptyText="No team members allocated." /></Panel>}
             </>}
-            {documentsTab === 'dbr' && <DbrDocumentPanel projectId={id} />}
+            {/* 13 Nov 2026: DBR workflow — TL enters / reviews and forwards, the SPOC
+                shares with the client and records feedback, directors see the status. */}
+            {documentsTab === 'dbr' && <>
+              <DbrWorkflowPanel
+                projectId={id}
+                mode={role === 'coordinator' ? 'spoc' : ['team_lead', 'assoc_technical_director'].includes(role) ? 'tl' : 'view'}
+                members={[...new Map((teamQ.data?.members ?? []).map((m) => m.employee).filter((e) => e && typeof e === 'object').map((e) => [idOf(e), e])).values()]}
+                clientEmail={project.contacts?.client?.email ?? ''}
+              />
+              <DbrDocumentPanel projectId={id} />
+            </>}
           </>}
-          {coord === 'rfis' && role === 'coordinator' && <SpocRfiLog projectId={id} />}
+          {coord === 'rfis' && rfiLogRoles.includes(role) && <ClientRfiPanel projectId={id} mode={role === 'coordinator' ? 'spoc' : 'log'} />}
           {coord === 'overview' && (
             <>
               <div className="form-row" style={{ maxWidth: 260, marginBottom: 12 }}>

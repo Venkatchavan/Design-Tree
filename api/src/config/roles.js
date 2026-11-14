@@ -185,21 +185,18 @@ export const NAV_BY_ROLE = {
     { view: 'teams' },
     { view: 'transmittal-log' },
     { view: 'billing-status' },
-    { view: 'my-meetings' },
-    { view: 'meetings', label: 'All meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'my-team' },
   ],
   // 02 Nov 2026: Teams returns for TD, scoped server-side to their departments.
+  // 13 Nov 2026: Meetings / All meetings removed from the TD and AD menus.
   technical_director: [
     { view: 'dashboard', label: 'Dashboard' },
     { view: 'dashboard', label: 'Projects' },
     { view: 'certificates', label: 'Completion Certificates' },
     { view: 'teams' },
     { view: 'transmittal-log' },
-    { view: 'my-meetings' },
-    { view: 'meetings', label: 'All meetings' },
     { view: 'leave-travel' },
     { view: 'employee-support' },
     { view: 'my-team' },

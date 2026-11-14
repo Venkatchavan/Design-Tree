@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { config } from '../config/config.js';
 import { User } from '../models/User.js';
+import { resolveDraftingRole } from '../utils/draftingRole.js';
 import { loginSchema } from '../validation/auth.schema.js';
 import {
   ATTENDANCE_STANDARD_HOURS,
@@ -58,6 +59,13 @@ export async function login(req, res, next) {
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
       return res.status(401).json({ message: INVALID_MSG });
+    }
+
+    // Drafting designations always sign in to the Engineer / Drafter dashboard.
+    const draftingRole = await resolveDraftingRole(user);
+    if (draftingRole && draftingRole !== user.role) {
+      user.role = draftingRole;
+      await User.updateOne({ _id: user._id }, { $set: { role: draftingRole } });
     }
 
     const token = jwt.sign(

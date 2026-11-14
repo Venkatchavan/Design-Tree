@@ -13,8 +13,10 @@ const experienceText = (e) => {
 
 // The TL / ATD's team as saved from the company employee list (Excel import):
 // everyone in their reporting chain, grouped by the person they report to.
-export default function ReportingTeamPanel({ query, self = null }) {
-  const people = query.data?.employees ?? [];
+// `people` (optional) overrides the query rows, e.g. a TL's list narrowed to
+// their own service.
+export default function ReportingTeamPanel({ query, self = null, people: shownPeople = null }) {
+  const people = shownPeople ?? query.data?.employees ?? [];
   if (query.isLoading) return <Panel title="My team (employee list)"><EmptyState text="Loading team…" /></Panel>;
   if (query.isError) return <Panel title="My team (employee list)"><div role="alert">{query.error.message}</div></Panel>;
   const byKey = new Map();

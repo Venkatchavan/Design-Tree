@@ -350,18 +350,62 @@ export async function createRevision(req, res, next) {
       ),
     ];
     const people = await Employee.find({ _id: { $in: employeeIds } }).select('firstName lastName email').lean();
-    const emailLog = people.map(
-      (p) => `Notified ${p.firstName ?? ''} ${p.lastName ?? ''} <${p.email ?? 'no email on file'}> — revision logged (queued, not sent)`.replace(/\s+/g, ' '),
-    );
+    // 13 Nov 2026: service-wise, project-specific heads (PTL / ATD / TD / AD) of
+    // the revision's service, plus every ED and Founding Director.
+    const { expandServiceCodes } = await import('../config/services.js');
+    const { revisionRecipients } = await import('../utils/revisionRecipients.js');
+    const { sendMail, mailLogLine } = await import('../services/mailer.js');
+    let serviceCodes = expandServiceCodes([parsed.data.service].filter(Boolean));
+    if (!serviceCodes.length) serviceCodes = await deriveUserServiceOptions(req.user, parsed.data.project);
+    if (!serviceCodes.length && parsed.data.assignedTo) {
+      const assignee = await Employee.findById(parsed.data.assignedTo).select('department').lean();
+      serviceCodes = expandServiceCodes([assignee?.department].filter(Boolean));
+    }
+    const heads = await revisionRecipients(parsed.data.project, serviceCodes);
+    const { Project } = await import('../models/Project.js');
+    const proj = await Project.findById(parsed.data.project).select('name code jobNumber').lean();
+    const projText = [proj?.jobNumber || proj?.code, proj?.name].filter(Boolean).join(' · ') || 'project';
+    const subject = `Revision logged — ${projText}${serviceCodes.length ? ` (${serviceCodes.join(', ')})` : ''}`;
+    const body = [
+      `A revision has been logged in DT-MIS.`,
+      `Project: ${projText}`,
+      serviceCodes.length ? `Service: ${serviceCodes.join(', ')}` : null,
+      parsed.data.stage ? `Stage: ${parsed.data.stage}` : null,
+      parsed.data.drawing ? `Drawing / deliverable: ${parsed.data.drawing}` : null,
+      parsed.data.revNo ? `Revision no.: ${parsed.data.revNo}` : null,
+      `Raised by: ${parsed.data.raisedBy ?? 'Internal'}`,
+      `Details: ${parsed.data.details}`,
+    ].filter(Boolean).join('\n');
+    const emailLog = [];
+    for (const p of people) {
+      const name = `${p.firstName ?? ''} ${p.lastName ?? ''}`.replace(/\s+/g, ' ').trim();
+      const result = await sendMail({ to: [p.email], subject, text: body });
+      emailLog.push(mailLogLine(result, `${name} — revision logged`));
+    }
+    const notified = new Set(people.map((p) => String(p._id)));
+    const autoNotified = [];
+    for (const h of heads) {
+      const empId = String(h.employee?._id ?? '');
+      const email = h.employee?.email || h.user?.email || '';
+      const name = (h.employee ? `${h.employee.firstName ?? ''} ${h.employee.lastName ?? ''}` : h.user?.name ?? '').replace(/\s+/g, ' ').trim();
+      const service = h.services.join(', ');
+      if (empId && notified.has(empId)) { autoNotified.push({ name, email, label: h.label, service, emailed: false }); continue; }
+      const result = await sendMail({ to: [email], subject, text: body });
+      emailLog.push(mailLogLine(result, `${name} (${h.label}, ${service}) — auto-notified`));
+      autoNotified.push({ name, email, label: h.label, service, emailed: result.sent });
+    }
     const doc = await Revision.create({
       ...parsed.data,
+      service: serviceCodes.join(', ') || undefined,
       notifyEmployees: parsed.data.notifyEmployees ?? [],
       emailLog,
+      autoNotified,
       createdBy: req.user.id,
     });
     try {
       const assignees = await userIdsForEmployees(employeeIds);
-      const recipients = [...new Set(assignees)].filter((u) => u !== String(req.user.id));
+      const headUsers = heads.map((h) => String(h.user?._id ?? '')).filter(Boolean);
+      const recipients = [...new Set([...assignees, ...headUsers])].filter((u) => u !== String(req.user.id));
       await notify({
         roles: ['team_lead'],
         users: recipients,

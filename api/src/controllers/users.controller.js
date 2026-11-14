@@ -3,6 +3,7 @@ import { ROLE_KEYS, roleLabel } from '../config/roles.js';
 import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
 import { directoryPage } from '../utils/directoryPage.js';
+import { draftingRoleFor } from '../utils/draftingRole.js';
 import {
   adminCreateUserSchema,
   adminUpdateUserSchema,
@@ -78,7 +79,7 @@ export async function createUser(req, res, next) {
       name: parsed.data.name,
       email: parsed.data.email,
       passwordHash: await bcrypt.hash(parsed.data.password, 10),
-      role: parsed.data.role,
+      role: draftingRoleFor(parsed.data.role, employee?.designation),
       employee: employee?._id,
     });
     if (employee) {

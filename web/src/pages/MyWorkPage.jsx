@@ -956,6 +956,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState('overview');
+  const [openKpi, setOpenKpi] = useState('');
   const [awaitProject, setAwaitProject] = useState('');
   const [awaitItem, setAwaitItem] = useState('');
   const [awaitingOn, setAwaitingOn] = useState('Client');
@@ -1230,10 +1231,24 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
             {projects.length ? projects.map(p => <div key={idOf(p)} className="kpi-drop-row"><span>{p.name}</span><b>{p.code}</b></div>) : <div className="kpi-drop-row">No projects</div>}
           </KpiCard>;
         })}
-        <KpiCard label="Total updates" value={entriesMineQ.data?.total ?? myEntries.length} accent="blueprint" />
-        <KpiCard label="Approved" value={myEntryStatuses.Approved ?? myEntryStatuses.approved} accent="forest" />
-        <KpiCard label="Needs attention" value={myEntryStatuses['Needs Attention'] ?? myEntryStatuses.needsAttention} accent="rust" />
-        <KpiCard label="Pending review" value={myEntryStatuses.Pending ?? myEntryStatuses.pending} accent="amber" />
+        {/* 13 Nov 2026: the update cards open a dropdown of their work updates,
+            like My Projects / Projects on Hold. */}
+        {[
+          { key: 'updates', label: 'Total updates', value: entriesMineQ.data?.total ?? myEntries.length, accent: 'blueprint', status: null },
+          { key: 'approved', label: 'Approved', value: myEntryStatuses.Approved ?? myEntryStatuses.approved, accent: 'forest', status: 'approved' },
+          { key: 'attention', label: 'Needs attention', value: myEntryStatuses['Needs Attention'] ?? myEntryStatuses.needsAttention, accent: 'rust', status: 'needs attention' },
+          { key: 'pending', label: 'Pending review', value: myEntryStatuses.Pending ?? myEntryStatuses.pending, accent: 'amber', status: 'pending' },
+        ].map(card => {
+          const rows = myEntries.filter(e => !card.status || String(e.status ?? '').toLowerCase() === card.status);
+          return <KpiCard key={card.key} label={card.label} value={card.value ?? 0} accent={card.accent} open={openKpi === card.key} onClick={() => setOpenKpi(current => current === card.key ? '' : card.key)}>
+            {rows.length ? rows.slice(0, 25).map(e => (
+              <div key={idOf(e)} className="kpi-drop-row">
+                <span>{[e.wuNo, e.project?.name, e.stage, e.deliverable ?? e.taskActivity].filter(Boolean).join(' · ') || 'Work update'}</span>
+                <b>{e.date ? String(e.date).slice(0, 10) : (e.status ?? '')}</b>
+              </div>
+            )) : <div className="kpi-drop-row">No updates</div>}
+          </KpiCard>;
+        })}
       </div>
       <Tabs
         tabs={[

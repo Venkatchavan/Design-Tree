@@ -1,7 +1,7 @@
-import { listWorkHours } from '../controllers/workHours.controller.js';
+import { listWorkHours, teamStageHours } from '../controllers/workHours.controller.js';
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { requireInternal, requireView } from '../middlewares/requireRole.js';
+import { requireInternal, requireRole, requireView } from '../middlewares/requireRole.js';
 import { canAccess } from '../config/roles.js';
 import {
   departmentOverview,
@@ -12,6 +12,8 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/work-hours', requireInternal(), listWorkHours);
+// TL and above: stage-wise man-hours per project + login hours (13 Nov 2026).
+router.get('/team-stage-hours', requireRole('team_lead', 'assoc_technical_director', 'technical_director', 'associate_director', 'executive_director', 'founding_director', 'working_director', 'design_mgmt_head'), teamStageHours);
 router.get('/management', requireView('management'), managementOverview);
 // Board-only discipline dashboards (§3.3) — enforced per service for
 // company-wide views. Project-scoped fetches (?project=<id>) back the

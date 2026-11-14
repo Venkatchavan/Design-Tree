@@ -29,6 +29,7 @@ import notificationsRoutes from './routes/notifications.routes.js';
 import pushRoutes from './routes/push.routes.js';
 import portalRoutes from './routes/portal.routes.js';
 import reportsRoutes from './routes/reports.routes.js';
+import dbrRoutes from './routes/dbr.routes.js';
 import supportRoutes from './routes/support.routes.js';
 import registerRoutes from './routes/register.routes.js';
 import salesforceRoutes from './routes/salesforce.routes.js';
@@ -99,6 +100,7 @@ export function createApp() {
   app.use('/api/push', pushRoutes);
   app.use('/api/announcements', announcementRoutes);
   app.use('/api/reports', reportsRoutes);
+  app.use('/api/dbr', dbrRoutes);
   // Document files are served ONLY through auth-checked download routes
   // (certificates, templates, visits, bills, employees, marketing).
   // No public static file serving.

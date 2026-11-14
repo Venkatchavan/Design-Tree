@@ -40,6 +40,14 @@ export const config = {
   vapidPrivateKey: (process.env.VAPID_PRIVATE_KEY ?? '').trim(),
   // Contact the push services can reach: a mailto: or https: URL.
   vapidSubject: (process.env.VAPID_SUBJECT ?? '').trim() || 'mailto:admin@designtree.local',
+  // Outgoing email (optional): RFI responses and revision notifications.
+  // With SMTP_HOST unset, mails are only logged as queued.
+  smtpHost: (process.env.SMTP_HOST ?? '').trim(),
+  smtpPort: Number(process.env.SMTP_PORT ?? 587),
+  smtpSecure: process.env.SMTP_SECURE === 'true',
+  smtpUser: (process.env.SMTP_USER ?? '').trim(),
+  smtpPass: process.env.SMTP_PASS ?? '',
+  mailFrom: (process.env.MAIL_FROM ?? '').trim(),
   seedName: process.env.SEED_NAME ?? '',
   seedEmail: (process.env.SEED_EMAIL ?? '').toLowerCase().trim(),
   seedPassword: process.env.SEED_PASSWORD ?? '',

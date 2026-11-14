@@ -66,6 +66,9 @@ export const revisionSchema = z
     notify: z.boolean().optional(),
     priority: z.enum(['Normal', 'High', 'Urgent']).optional(),
     notifyEmployees: z.array(objectId).optional(),
+    // Service the revision belongs to (STR, ELE, HVAC, PHE, FIRE…); when blank
+    // it is taken from the logging lead's team on the project.
+    service: strOpt,
   })
   .strict();
 export const revisionUpdateSchema = revisionSchema.partial();

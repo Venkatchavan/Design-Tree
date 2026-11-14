@@ -72,3 +72,59 @@ export async function listWorkHours(req,res,next) {
     return res.json({items,total:workCount+spocCount,offset,limit,period:{from:req.query.date??req.query.from??null,to:req.query.date??req.query.to??null,timeZone:'Asia/Kolkata'}});
   }catch(err){next(err);}
 }
+
+// 13 Nov 2026: TL and above see, for the people in their scope, the man-hours
+// spent on each project stage and the login hours from sign-in / sign-out.
+// Same scope as listWorkHours (TL: reporting team; AD / TD / ATD: their teams;
+// leadership: everything they may read). Optional ?from=&to= (YYYY-MM-DD) and ?project=.
+export async function teamStageHours(req,res,next) {
+  try {
+    const { AttendanceDay } = await import('../models/AttendanceDay.js');
+    const filter={};
+    const isLead=req.user.role==='team_lead';
+    const reporting=isLead?await reportingEmployeeIds(req.user):null;
+    if(!(isLead&&reporting)) narrowByProject(filter,'project',await projectScopeIds(req.user));
+    if(isLead&&reporting) (filter.$and??=[]).push({employee:{$in:reporting}});
+    const scope=await directorEntryScope(req.user);
+    if(scope!==null) (filter.$and??=[]).push(scope.length?{$or:scope}:{_id:{$in:[]}});
+    let dates;
+    try {dates=workDateFilter(req.query);if(dates) filter.date=dates;}
+    catch(err){return res.status(400).json({message:err.message});}
+    if(req.query.project) (filter.$and??=[]).push({project:req.query.project});
+    const entries=await WorkEntry.find(filter).select('employee project stage hours date')
+      .populate('employee','firstName lastName empId designation department')
+      .populate('project','name code jobNumber').lean();
+    const stageMap=new Map(), people=new Map();
+    for(const e of entries){
+      if(!e.project) continue;
+      const pid=String(e.project._id), stage=e.stage||'Not recorded', key=pid+'|'+stage;
+      const row=stageMap.get(key)??{key,project:e.project,stage,hours:0,people:new Set(),entries:0};
+      row.hours=addHours(row.hours,e.hours??0);row.entries+=1;
+      if(e.employee) row.people.add(String(e.employee._id));
+      stageMap.set(key,row);
+      if(e.employee){
+        const id=String(e.employee._id);
+        const p=people.get(id)??{employee:e.employee,manHours:0,loginHours:0,days:0};
+        p.manHours=addHours(p.manHours,e.hours??0);people.set(id,p);
+      }
+    }
+    // Login hours: everyone in scope (reporting team for a TL, else people with hours).
+    const ids=new Set([...(reporting??[]).map(String),...people.keys()]);
+    const dayFilter={employee:{$in:[...ids]},loginAt:{$ne:null}};
+    const from=req.query.date||req.query.from, to=req.query.date||req.query.to;
+    if(from||to){dayFilter.date={};if(from) dayFilter.date.$gte=String(from).slice(0,10);if(to) dayFilter.date.$lte=String(to).slice(0,10);}
+    const days=ids.size?await AttendanceDay.find(dayFilter).select('employee loginAt logoutAt').populate('employee','firstName lastName empId designation department').lean():[];
+    for(const d of days){
+      if(!d.employee) continue;
+      const id=String(d.employee._id);
+      const p=people.get(id)??{employee:d.employee,manHours:0,loginHours:0,days:0};
+      const end=d.logoutAt?new Date(d.logoutAt):null;
+      const span=end?Math.max(0,(end-new Date(d.loginAt))/3600000):0;
+      p.loginHours=Math.round((p.loginHours+span)*10)/10;p.days+=1;people.set(id,p);
+    }
+    const stages=[...stageMap.values()].map(r=>({...r,people:r.people.size}))
+      .sort((a,b)=>String(a.project?.name??'').localeCompare(String(b.project?.name??''))||String(a.stage).localeCompare(String(b.stage)));
+    const peopleRows=[...people.values()].sort((a,b)=>b.manHours-a.manHours);
+    return res.json({stages,people:peopleRows,period:{from:from??null,to:to??null}});
+  }catch(err){next(err);}
+}

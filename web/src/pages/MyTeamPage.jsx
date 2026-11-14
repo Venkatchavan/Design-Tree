@@ -37,6 +37,10 @@ import Modal from '../components/Modal.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import ReportingTeamPanel from '../components/ReportingTeamPanel.jsx';
+import TeamStageHoursPanel from '../components/TeamStageHoursPanel.jsx';
+import RevisionNotified from '../components/RevisionNotified.jsx';
+import ClientRfiPanel from '../components/ClientRfiPanel.jsx';
+import { serviceNames } from '../lib/services.js';
 import { useReportingTeam } from '../lib/reportingTeam.js';
 import { departmentLabel } from '../lib/services.js';
 import { PROCESS_STAGES, manualStage, stageDeliverables } from '../lib/processManual.js';
@@ -286,14 +290,18 @@ function ProposeCoordinatorPanel() {
 
 // Extra-hours approvals sit under every My Team view; they render only when
 // someone in the caller's reporting chain has logged extra hours.
+// 13 Nov 2026: Extra hours approvals no longer repeat under every My Team tab.
+// Pages with tabs show it under Team work monitoring only; the single-view
+// pages (design team, AD / TD) keep it at the end.
 export default function MyTeamPage(props) {
-  return <><MyTeamBody {...props}/>{!props.projectId && !props.projectWorkspace && <ExtraHoursApprovals/>}</>;
+  return <MyTeamBody {...props}/>;
 }
 
 function MyTeamBody(props) {
-  if (props.bootstrap?.capabilities?.designTeam) return <DesignTeamPage />;
+  const standalone = !props.projectId && !props.projectWorkspace;
+  if (props.bootstrap?.capabilities?.designTeam) return <><DesignTeamPage />{standalone && <ExtraHoursApprovals/>}</>;
   const role=props.bootstrap?.role?.key;
-  if (['associate_director','technical_director'].includes(role)) return <DirectorTeamsPage/>;
+  if (['associate_director','technical_director'].includes(role)) return <><DirectorTeamsPage/>{standalone && <TeamStageHoursPanel/>}{standalone && <ExtraHoursApprovals/>}</>;
   // ATDs, the ED and department heads also get their saved reporting team (only
   // rendered when that chain has people). 06 Nov 2026: PTL / TL / Sr. TL no longer
   // get the Project team log here; it repeated the Assign Work team list.
@@ -362,7 +370,17 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
   // 02 Nov 2026: TLs / Sr TLs / ATDs also see the team saved for them from the
   // company employee list (reporting links), not only project allocations.
   const reportingTeamQ = useReportingTeam(['team_lead', 'assoc_technical_director'].includes(role) && !projectWorkspace);
-  const reportingPeople = reportingTeamQ.data?.employees ?? [];
+  // 13 Nov 2026: a TL's saved reporting chain can reach people of another service
+  // (e.g. F&LS under a Structure TL); a TL sees only their own service's people.
+  const reportingPeople = useMemo(() => {
+    const all = reportingTeamQ.data?.employees ?? [];
+    const mine = role === 'team_lead' ? serviceNames([selfEmployee?.department]) : [];
+    if (!mine.length) return all;
+    return all.filter((e) => {
+      const theirs = serviceNames([e.department]);
+      return !theirs.length || theirs.some((svc) => mine.includes(svc));
+    });
+  }, [reportingTeamQ.data, role, selfEmployee?.department]);
   const teamMemberCount = new Set([
     ...members.map((m) => idOf(m.employee ?? m)),
     ...reportingPeople.map((e) => idOf(e)),
@@ -440,7 +458,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
   const teamRfis = useMemo(() => {
     const all = rfisQ.data?.items ?? [];
     if (teamProjectIds.size === 0) return [];
-    return all.filter((r) => teamProjectIds.has(String(r.project?._id ?? r.project ?? '')));
+    return all.filter((r) => r.kind !== 'client' && teamProjectIds.has(String(r.project?._id ?? r.project ?? '')));
   }, [rfisQ.data, teamProjectIds]);
   const meetingsQ = useQuery({ queryKey: ['meetings-team'], queryFn: () => meetingsApi.list({}) });
   const teamMeetings = useMemo(() => {
@@ -485,9 +503,12 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       const key = typeof emp === 'object' && emp ? String(emp._id ?? emp.id ?? empName(emp)) : String(emp ?? '—');
       const label = typeof emp === 'object' && emp ? empName(emp) : String(emp ?? '—');
       const roleLabel = typeof emp === 'object' && emp ? (emp.designation ?? emp.role ?? '—') : '—';
-      const cur = map.get(key) ?? { id: key, name: label, role: roleLabel, hours: 0, count: 0 };
+      const cur = map.get(key) ?? { id: key, name: label, role: roleLabel, hours: 0, count: 0, statuses: [], pendingIds: [] };
       cur.hours += Number(e.hours ?? 0);
       cur.count += 1;
+      const st = String(e.status ?? 'Pending').toLowerCase();
+      cur.statuses.push(st);
+      if (st === 'pending') cur.pendingIds.push(e._id);
       map.set(key, cur);
     }
     return [...map.values()].sort((a, b) => b.hours - a.hours);
@@ -610,6 +631,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       { key: 'monitoring', label: 'Team work monitoring' },
       { key: 'assign', label: 'Assign work' },
       { key: 'awaiting', label: 'Awaiting response' },
+      { key: 'client-rfis', label: 'Client RFIs' },
       { key: 'deliverables', label: 'List of deliverables' },
       { key: 'revisions', label: 'Revision log' },
       { key: 'revision-entry', label: 'Revision entry' },
@@ -636,6 +658,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       { key: 'assign', label: 'Assign work' },
       { key: 'deliverables', label: 'Deliverables' },
       { key: 'awaiting', label: 'Awaiting response' },
+      { key: 'client-rfis', label: 'Client RFIs' },
       { key: 'revision', label: 'Revision' },
       { key: 'drawings', label: 'Drawing register' },
       { key: 'recruitment', label: 'Recruitment requests' },
@@ -733,7 +756,9 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
       {tab === 'people' && isATD && <DirectorTeamsPage />}
       {tab==='revision'&&<Tabs tabs={[{key:'entry',label:'Revision entry'},{key:'log',label:'Revision log'}]} active={revisionTab} onChange={setRevisionTab}/>}
-      {(!isATD || selectedTeam) && <CoordinationPanel projectId={scopedProjectId} service={selectedTeam?.service}/>}
+      {/* 13 Nov 2026: coordination items belong to the Overview tab only. */}
+      {tab === 'overview' && (!isATD || selectedTeam) && <CoordinationPanel projectId={scopedProjectId} service={selectedTeam?.service}/>}
+      {tab === 'client-rfis' && <ClientRfiPanel mode="lead" />}
       {tab === 'completion' && projectWorkspace && <StageRequestPanel projectId={projectId} />}
       {tab === 'meetings' && <SpocMeetings projectId={projectId} readOnly />}
       <>
@@ -766,11 +791,13 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
 
           {tab === 'team' && (
             <>
-              {['team_lead', 'assoc_technical_director'].includes(role) && !projectWorkspace && <ReportingTeamPanel query={reportingTeamQ} self={selfEmployee} />}
+              {['team_lead', 'assoc_technical_director'].includes(role) && !projectWorkspace && <ReportingTeamPanel query={reportingTeamQ} self={selfEmployee} people={reportingPeople} />}
               {([...new Map(teams.flatMap(t=>(t.projects??[]).map(p=>[idOf(p),p]))).values()]).map(p=>{
                 const unique=projectMembers(teams, p, true);
                 return <Panel key={idOf(p)} title={p.name||p.code||'Project'} sub="Project team"><DataTable columns={[{key:'name',label:'Team member',render:memberName},{key:'service',label:'Service'},{key:'designation',label:'Designation',render:m=>memberEmp(m)?.designation||'—'},{key:'experience',label:'Experience',render:m=>expText(memberEmp(m))}]} rows={unique} emptyText="No confirmed members yet."/></Panel>;
               })}
+              {/* 13 Nov 2026: stage-wise man-hours and login hours for TL and above. */}
+              <TeamStageHoursPanel project={projectId} />
               <Panel title="Team efficiency this week" sub="Hours spent in each stage of project design">
                 <DataTable
                   columns={[
@@ -788,6 +815,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
           {tab === 'monitoring' && (
             <>
               {teamWorkItemsPanel}
+              {!projectId && !projectWorkspace && <ExtraHoursApprovals/>}
               <Panel title="Weekly approval" sub={`${weekRange.label} · ${Math.round(weekHoursTotal)} hours · ${showAllWeekly ? weekHours.length : Math.min(5, weekHours.length)} of ${weekHours.length} shown`}>
                 {!canApprove ? (
                   <EmptyState text="Approval actions are available to team leads and directors." />
@@ -803,24 +831,21 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                         {
                           key: 'status',
                           label: 'Status',
+                          // 13 Nov 2026: the week is Approved only once the TL has approved
+                          // every update of that week; never shown approved by default.
                           render: (r) => {
-                            const pending = entries.filter((e) => {
-                              const emp = e.employee;
-                              const key = typeof emp === 'object' && emp ? String(emp._id ?? emp.id ?? '') : String(emp ?? '');
-                              return key === r.id && String(e.status ?? '').toLowerCase() === 'pending';
-                            });
-                            return pending.length > 0 ? <StatusPill tone="amber">Pending</StatusPill> : <StatusPill tone="forest">Approved</StatusPill>;
+                            const st = r.statuses ?? [];
+                            if (st.includes('pending')) return <StatusPill tone="amber">Pending TL approval</StatusPill>;
+                            if (st.some((x) => x === 'needs attention' || x === 'revise')) return <StatusPill tone="rust">Revise</StatusPill>;
+                            if (st.length && st.every((x) => x === 'approved')) return <StatusPill tone="forest">Approved</StatusPill>;
+                            return <StatusPill tone="amber">Pending TL approval</StatusPill>;
                           },
                         },
                         {
                           key: 'approve',
                           label: '',
                           render: (r) => {
-                            const ids = entries.filter((e) => {
-                              const emp = e.employee;
-                              const key = typeof emp === 'object' && emp ? String(emp._id ?? emp.id ?? '') : String(emp ?? '');
-                              return key === r.id && String(e.status ?? '').toLowerCase() === 'pending';
-                            }).map((e) => e._id);
+                            const ids = r.pendingIds ?? [];
                             return ids.length > 0 ? (
                               <button
                                 type="button"
@@ -932,6 +957,9 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                       { key: 'resubmitted', label: 'Resubmitted', render: (r) => fmtDate(r.resubmittedAt) },
                       { key: 'cleared', label: 'Approved', render: (r) => fmtDate(r.clearedAt) },
                       { key: 'leadNote', label: 'Lead instruction', render: (r) => r.leadNote ?? '—' },
+                      { key: 'service', label: 'Service', render: (r) => r.service || '—' },
+                      // 13 Nov 2026: who was notified automatically (service PTL / ATD / TD / AD, EDs, Founding Directors).
+                      { key: 'notified', label: 'Auto-notified', render: (r) => <RevisionNotified revision={r} /> },
                       {
                         key: 'actions',
                         label: 'Actions',
@@ -2035,6 +2063,8 @@ function DeliverableAddPanel({ teamProjects, members }) {
 }
 
 const REVISION_RAISED_BY = ['Internal', 'Client', 'Architect', 'PMC'];
+const REVISION_SERVICES = ['STR', 'ELE', 'HVAC', 'PHE', 'FIRE', 'BIM', 'GBS'];
+
 
 function RevisionEntryPanel({ teamProjects, members: teamMembers = [], canCreate }) {
   const queryClient = useQueryClient();
@@ -2046,6 +2076,8 @@ function RevisionEntryPanel({ teamProjects, members: teamMembers = [], canCreate
   const [resubmissionDue, setResubmissionDue] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
   const [raisedBy, setRaisedBy] = useState('Internal');
+  const [service, setService] = useState('');
+  const [otherDrawing, setOtherDrawing] = useState(false);
   const priority = 'Normal';
   // The people a revision can be allotted to are the project's team (same list as Assign Task).
   const rosterQ = useQuery({
@@ -2099,6 +2131,14 @@ function RevisionEntryPanel({ teamProjects, members: teamMembers = [], canCreate
             setErr('Select the team member this revision is assigned to.');
             return;
           }
+          if (!stage) {
+            setErr('Select the stage.');
+            return;
+          }
+          if (!drawing.trim()) {
+            setErr('Select the drawing / deliverable being revised.');
+            return;
+          }
           if (!details.trim()) {
             setErr('Details are required.');
             return;
@@ -2106,6 +2146,7 @@ function RevisionEntryPanel({ teamProjects, members: teamMembers = [], canCreate
           create.mutate({
             project,
             raisedBy,
+            service: service || undefined,
             stage: stage || undefined,
             drawing: drawing || undefined,
             revNo: revNo || undefined,
@@ -2129,13 +2170,41 @@ function RevisionEntryPanel({ teamProjects, members: teamMembers = [], canCreate
               ))}
             </select>
           </div>
+          {/* 13 Nov 2026: stage and deliverable dropdowns from the process manual. */}
           <div className="form-row">
-            <label className="form-label">Stage *</label>
-            <input className="form-input" value={stage} onChange={(e) => setStage(e.target.value)} />
+            <label className="form-label" htmlFor="rev-stage">Stage *</label>
+            <select id="rev-stage" className="filter-select" style={{ width: '100%' }} value={stage} onChange={(e) => { setStage(e.target.value); setDrawing(''); setOtherDrawing(false); }}>
+              <option value="">Select stage</option>
+              {PROCESS_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
           <div className="form-row">
-            <label className="form-label">Drawing / deliverable *</label>
-            <input className="form-input" value={drawing} onChange={(e) => setDrawing(e.target.value)} placeholder="Select or type the item being revised" />
+            <label className="form-label" htmlFor="rev-drawing">Drawing / deliverable *</label>
+            <select
+              id="rev-drawing"
+              className="filter-select"
+              style={{ width: '100%' }}
+              value={otherDrawing ? OTHER_DELIVERABLE : drawing}
+              disabled={!stage}
+              onChange={(e) => {
+                if (e.target.value === OTHER_DELIVERABLE) { setOtherDrawing(true); setDrawing(''); }
+                else { setOtherDrawing(false); setDrawing(e.target.value); }
+              }}
+            >
+              <option value="">{stage ? 'Select deliverable' : 'Select a stage first'}</option>
+              {stageDeliverables(stage).map((d) => <option key={d} value={d}>{d}</option>)}
+              <option value={OTHER_DELIVERABLE}>Other (type it)</option>
+            </select>
+            {otherDrawing && (
+              <input className="form-input" style={{ marginTop: 6 }} value={drawing} onChange={(e) => setDrawing(e.target.value)} placeholder="Type the drawing / deliverable being revised" aria-label="Other drawing or deliverable" />
+            )}
+          </div>
+          <div className="form-row">
+            <label className="form-label" htmlFor="rev-service">Service</label>
+            <select id="rev-service" className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}>
+              <option value="">My team's service</option>
+              {REVISION_SERVICES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
           <div className="form-row">
             <label className="form-label">Revision no.</label>
@@ -2185,15 +2254,13 @@ function RevisionEntryPanel({ teamProjects, members: teamMembers = [], canCreate
       </form>
       {emailLog && (
         <div style={{ marginTop: 16 }}>
-          <div className="section-label">Email log (queued, not sent)</div>
+          <div className="section-label">Notification log</div>
           {emailLog.length === 0 ? (
-            <EmptyState text="No email lines returned — queued, not sent." />
+            <EmptyState text="No one was notified." />
           ) : (
             <ul style={{ fontSize: 13, paddingLeft: 18 }}>
               {emailLog.map((line, i) => (
-                <li key={i}>
-                  {typeof line === 'string' ? line : JSON.stringify(line)} — queued, not sent
-                </li>
+                <li key={i}>{typeof line === 'string' ? line : JSON.stringify(line)}</li>
               ))}
             </ul>
           )}

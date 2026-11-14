@@ -62,6 +62,16 @@ try {
   console.error('ID backfill skipped:', err?.message ?? err);
 }
 
+// Drafting designations (TL Drafting, Sr. TL Drafting …) use the Engineer / Drafter
+// dashboard: move any existing Team Lead logins across (idempotent).
+try {
+  const { syncDraftingRoles } = await import('./src/utils/draftingRole.js');
+  const moved = await syncDraftingRoles();
+  if (moved) console.log(`Drafting role sync: ${moved} login(s) moved to Engineer / Drafter.`);
+} catch (err) {
+  console.error('Drafting role sync skipped:', err?.message ?? err);
+}
+
 const app = createApp();
 // Plain http server (TLS terminates at nginx in production) doubling as
 // the socket.io transport for live bell pushes (see src/realtime/io.js).

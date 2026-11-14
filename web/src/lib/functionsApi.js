@@ -130,6 +130,12 @@ export const variationApi = {
 };
 
 export const rfiApi = {
+  // 13 Nov 2026: client RFIs (SPOC registers → TL responds → auto email).
+  clientList: (params = {}) => request(`/api/functions/rfis/client${toQuery(params)}`),
+  clientLeads: (project) => request(`/api/functions/rfis/client/leads${toQuery({ project })}`),
+  clientRegister: (body) => request('/api/functions/rfis/client', { method: 'POST', body: JSON.stringify(body) }),
+  clientRespond: (id, response) => request(`/api/functions/rfis/client/${id}/respond`, { method: 'POST', body: JSON.stringify({ response }) }),
+  clientStatus: (id, status, note) => request(`/api/functions/rfis/client/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, ...(note ? { note } : {}) }) }),
   list: (params = {}) => request(`/api/functions/rfis${toQuery(params)}`),
   create: (body) =>
     request('/api/functions/rfis', {

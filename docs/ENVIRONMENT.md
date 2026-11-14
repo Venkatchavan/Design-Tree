@@ -23,6 +23,7 @@ Copy `.env.example` to `.env` and fill every `REPLACE_WITH_…` value.
 | `COOKIE_NAME` | no | `token` | `token` | Must match across deploys or all sessions invalidate |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | no | — | from `npx web-push generate-vapid-keys` | Enables Web Push (alerts when the app is closed) alongside the bell; off if either is unset. Generate once and keep stable — changing the pair drops every subscribed device. Needs HTTPS in browsers |
 | `VAPID_SUBJECT` | no | `mailto:admin@designtree.local` | `mailto:it@yourfirm.com` | Contact URL (`mailto:` or `https:`) sent to the push services; set a real address in production |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` | no | — / `587` / `false` | your mail server | Sends RFI responses and revision notifications by email; with `SMTP_HOST` unset mails are only logged as queued |
 | `MONGO_ROOT_USER` / `MONGO_ROOT_PASSWORD` | yes | — | `dtadmin` / strong pw | Mongo + api + express all derive from these; password with `@ : / ? # [ ]` must be URL-encoded — safest is letters/digits/`_`-`-` |
 | `HOST_MONGO_DIR` | no (unused) | — | *(unset)* | Legacy bind path; compose now uses the named volume `mongo-data` (live data is in `designtree_mongo-data`). Leave unset — setting it has no effect |
 | `HOST_UPLOADS_DIR` | yes | — | `D:/designtree-uploads` | Uploads bind mount; forward slashes in compose; folder must exist and be Docker-shared |
