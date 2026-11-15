@@ -145,6 +145,8 @@ const projectSchema = new mongoose.Schema(
       activatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       activatedAt: { type: Date },
       spoc: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+      // Activated on purpose without a SPOC (projects that do not need one).
+      noSpoc: { type: Boolean, default: false },
     },
     // Team finalisation: Design Management Head confirms the discipline
     // teams (SPOC/PTL/TL/designers/engineers/drafting-BIM/QAQC/peer/QS)

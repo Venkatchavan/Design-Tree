@@ -6,19 +6,22 @@ import { Announcement } from '../models/Announcement.js';
 import { AnnouncementRecipient } from '../models/AnnouncementRecipient.js';
 import { Notification } from '../models/Notification.js';
 import { emitNotification } from '../realtime/io.js';
-import { ANNOUNCEMENT_READERS, ANNOUNCEMENT_SENDERS } from '../config/announcements.js';
+import { ANNOUNCEMENT_READERS, ANNOUNCEMENT_SENDERS, ANNOUNCEMENT_SERVICES } from '../config/announcements.js';
 
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
-export async function announcementAudience() {
+// `audience` is { type: 'all-branches' } (default) or { type: 'service', service: <key> }.
+export async function announcementAudience(audience = { type: 'all-branches' }) {
+  const service = audience.type === 'service' ? ANNOUNCEMENT_SERVICES.find(s => s.key === audience.service) : null;
+  if (audience.type === 'service' && !service) throw new Error('Unknown service or department.');
   const [branches, users] = await Promise.all([
     Branch.find({ isActive: true }).sort({ key: 1 }).lean(),
     User.find({ isActive: true, role: { $in: ANNOUNCEMENT_READERS } })
-      .select('name employee role').populate('employee', 'branch status').sort({ _id: 1 }).lean(),
+      .select('name employee role').populate('employee', 'branch status department').sort({ _id: 1 }).lean(),
   ]);
   const byName = new Map(branches.map(b => [b.key, b]));
   const warnings = [];
-  const recipients = users.filter(u => u.employee?.status !== 'Exited').map(u => {
+  const recipients = users.filter(u => u.employee?.status !== 'Exited' && (!service || service.match(u))).map(u => {
     const raw = u.employee?.branch?.trim() ?? '';
     const branch = byName.get(raw.toLowerCase());
     const central = !u.employee && ANNOUNCEMENT_SENDERS.includes(u.role);

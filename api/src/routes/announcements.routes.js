@@ -5,15 +5,22 @@ import { User } from '../models/User.js';
 import { Announcement } from '../models/Announcement.js';
 import { AnnouncementRecipient } from '../models/AnnouncementRecipient.js';
 import { Notification } from '../models/Notification.js';
-import { ANNOUNCEMENT_READERS, ANNOUNCEMENT_SENDERS } from '../config/announcements.js';
+import { ANNOUNCEMENT_READERS, ANNOUNCEMENT_SENDERS, ANNOUNCEMENT_SERVICES, announcementServiceOptions } from '../config/announcements.js';
 import { announcementAudience, digest, publishAnnouncement } from '../services/announcements.js';
 
 const router = Router();
+// Everyone (all branches) or one service / department.
+const audienceSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('all-branches') }).strict(),
+  z.object({ type: z.literal('service'), service: z.enum(ANNOUNCEMENT_SERVICES.map(s => s.key)) }).strict(),
+]).default({ type: 'all-branches' });
 const createSchema = z.object({
   title: z.string().trim().min(1).max(180), body: z.string().trim().min(1).max(10000),
   requireAcknowledgment: z.boolean().default(false), requestId: z.string().uuid(),
   audienceToken: z.string().regex(/^[a-f0-9]{64}$/),
+  audience: audienceSchema,
 }).strict();
+const previewSchema = z.object({ audience: audienceSchema }).strict();
 const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 router.use(requireAuth);
 // The current account takes precedence over stale role claims in a session.
@@ -42,27 +49,30 @@ async function access(req, res) {
   if (!doc || (!receipt && String(doc.author) !== String(req.announcementUser._id))) { res.status(404).json({ message: 'Announcement not found.' }); return null; }
   return { doc, receipt };
 }
-router.get('/capabilities', wrap(async (req, res) => res.json({ canSend: ANNOUNCEMENT_SENDERS.includes(req.announcementUser.role) })));
-router.post('/preview', sender, wrap(async (_req, res) => {
-  const a = await announcementAudience();
+router.get('/capabilities', wrap(async (req, res) => res.json({ canSend: ANNOUNCEMENT_SENDERS.includes(req.announcementUser.role), services: announcementServiceOptions() })));
+router.post('/preview', sender, wrap(async (req, res) => {
+  const parsedAudience = previewSchema.safeParse(req.body ?? {});
+  if (!parsedAudience.success) return res.status(400).json({ message: 'Choose All branches or a valid service / department.' });
+  const a = await announcementAudience(parsedAudience.data.audience);
   res.json({ recipientCount: a.recipients.length, branches: a.summary, warnings: a.warnings, audienceToken: a.token });
 }));
 router.post('/', sender, wrap(async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: 'Enter a title and message, then preview the audience before sending.' });
   const data = parsed.data;
-  const hash = digest([data.title, data.body, data.requireAcknowledgment]);
+  const hash = digest([data.title, data.body, data.requireAcknowledgment, data.audience]);
   await Promise.all([Announcement.init(), AnnouncementRecipient.init(), Notification.init()]);
   let doc = await Announcement.findOne({ author: req.announcementUser._id, requestId: data.requestId });
   if (doc && doc.contentHash !== hash) return res.status(409).json({ message: 'This send request already has different content. Start a new message.' });
   if (!doc) {
-    const a = await announcementAudience();
+    const a = await announcementAudience(data.audience);
     if (!a.recipients.length || a.recipients.length > 20000) return res.status(400).json({ message: 'The audience must contain between 1 and 20000 staff accounts.' });
     if (a.token !== data.audienceToken) return res.status(409).json({ message: 'The audience changed. Preview it again before sending.' });
     try {
       doc = await Announcement.create({ author: req.announcementUser._id, authorName: req.announcementUser.name,
         requestId: data.requestId, contentHash: hash, title: data.title, body: data.body,
-        requireAcknowledgment: data.requireAcknowledgment, recipients: a.recipients,
+        requireAcknowledgment: data.requireAcknowledgment, audience: data.audience.type,
+        audienceService: data.audience.type === 'service' ? data.audience.service : undefined, recipients: a.recipients,
         recipientCount: a.recipients.length, branchSummary: a.summary });
     } catch (e) {
       if (e.code !== 11000) throw e;

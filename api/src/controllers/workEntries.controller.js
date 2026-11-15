@@ -3,6 +3,8 @@ import { nextNumber } from '../models/Counter.js';
 import { Employee } from '../models/Employee.js';
 import { Project } from '../models/Project.js';
 import { Team } from '../models/Team.js';
+import { Task } from '../models/Task.js';
+import { expandServices } from '../config/services.js';
 import { WORK_ENTRY_STATUSES, WorkEntry } from '../models/WorkEntry.js';
 import { EXTRA_HOURS_THRESHOLD, isAttendanceExemptRole, istDayKey } from '../config/attendance.js';
 import { AttendanceDay } from '../models/AttendanceDay.js';
@@ -27,6 +29,29 @@ export async function directorEntryScope(user, team) {
     project: { $in: row.projects.map(p => p._id) },
     employee: { $in: [row.lead?._id, ...row.members.map(m => m.employee?._id)].filter(Boolean) },
   }));
+}
+
+// People a Team Lead can see beyond the saved reporting chain and the Teams they
+// lead: everyone allocated to the same service on the projects they lead (the
+// people Assign work offers them) and anyone they assigned a task to. Their daily
+// work submissions belong in the TL's Team work monitoring too.
+async function leadProjectTeamIds(user, employeeId) {
+  const ids = new Set();
+  if (employeeId) {
+    const led = await Team.find({ lead: employeeId, active: { $ne: false } }).select('service projects').lean();
+    for (const ledTeam of led) {
+      const services = new Set(expandServices([ledTeam.service]));
+      const peers = await Team.find({ active: { $ne: false }, projects: { $in: ledTeam.projects ?? [] } }).select('service lead members.employee').lean();
+      for (const peer of peers) {
+        if (!expandServices([peer.service]).some((service) => services.has(service))) continue;
+        if (peer.lead) ids.add(String(peer.lead));
+        for (const member of peer.members ?? []) if (member.employee) ids.add(String(member.employee));
+      }
+    }
+  }
+  const tasks = await Task.find({ createdBy: user.id }).select('members').lean();
+  for (const task of tasks) for (const member of task.members ?? []) ids.add(String(member));
+  return ids;
 }
 
 // A work-update extra-hours reason goes to the same approval queue as the
@@ -190,6 +215,7 @@ export async function listWorkEntries(req, res, next) {
         : own ? await Team.find({ lead: me.employee, active: { $ne: false } }).lean() : [];
       if (team && teams.length === 0) return res.status(404).json({ message: 'Team not found.' });
       for (const t of teams) for (const m of t.members ?? []) ids.add(String(m.employee));
+      for (const id of await leadProjectTeamIds(req.user, me?.employee)) ids.add(id);
       ids.delete(own);
       leadTeam = [...ids];
     } else {
@@ -240,7 +266,8 @@ async function isLeadTeamMember(user, employeeId) {
   const me = await User.findById(user.id).select('employee').lean();
   if (!me?.employee || String(me.employee) === String(employeeId)) return false;
   if ((await reportingEmployeeIds(user)).includes(String(employeeId))) return true;
-  return !!await Team.exists({ lead: me.employee, active: { $ne: false }, 'members.employee': employeeId });
+  if (await Team.exists({ lead: me.employee, active: { $ne: false }, 'members.employee': employeeId })) return true;
+  return (await leadProjectTeamIds(user, me.employee)).has(String(employeeId));
 }
 
 export async function decideWorkEntry(req, res, next) {

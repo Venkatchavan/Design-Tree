@@ -324,6 +324,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
   const [selId, setSelId] = useState('');
   const [allocOpen, setAllocOpen] = useState(false);
   const [decideEntry, setDecideEntry] = useState(null);
+  const [openKpi, setOpenKpi] = useState('');
 
   const meQ = useQuery({ queryKey: ['me'], queryFn: meApi });
   const me = meQ.data?.user ?? meQ.data ?? null;
@@ -716,6 +717,23 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
     </Panel>
   );
 
+  // Each KPI card opens a dropdown listing what its number counts.
+  const teamMemberRows = [...new Map([
+    ...members.map((m) => [memberId(m), { id: memberId(m), text: memberName(m), tag: memberEmp(m)?.designation ?? '' }]),
+    ...reportingPeople.map((e) => [idOf(e), { id: idOf(e), text: empName(e), tag: e.designation ?? '' }]),
+  ].filter(([key]) => key)).values()];
+  const kpiCards = [
+    { key: 'projects', label: 'Active projects', value: activeProjects.length, accent: 'blueprint', empty: 'No active projects',
+      rows: activeProjects.map((p) => ({ id: idOf(p), text: projLabel(p), tag: p.code ?? p.jobNumber ?? '' })) },
+    { key: 'members', label: 'Team members', value: teamMemberCount, accent: 'forest', empty: 'No team members', rows: teamMemberRows },
+    { key: 'pending', label: 'Pending review', value: pendingEntries.length, accent: 'amber', empty: 'Nothing pending review',
+      rows: pendingEntries.map((e) => ({ id: idOf(e), text: `${wuDisplay(e)} · ${empName(e.employee)}`, tag: projLabel(e.project) })) },
+    { key: 'rfis', label: 'Awaiting response', value: openRfis.length, accent: 'rust', empty: 'No open RFIs',
+      rows: openRfis.map((r) => ({ id: idOf(r), text: [r.type, r.description].filter(Boolean).join(' · ') || 'RFI', tag: projLabel(r.project) })) },
+    { key: 'revisions', label: 'Open revisions', value: openRevisionCount, accent: 'violet', empty: 'No open revisions',
+      rows: openRevisions.map((r) => ({ id: idOf(r), text: r.drawing ?? r.details ?? 'Revision', tag: projLabel(r.project) })) },
+  ];
+
   return (
     <>
       <div className="page-head">
@@ -747,11 +765,20 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
         </div>
       )}
       <div className="kpi-grid cols-5">
-        <KpiCard label="Active projects" value={activeProjects.length} accent="blueprint" />
-        <KpiCard label="Team members" value={teamMemberCount} accent="forest" />
-        <KpiCard label="Pending review" value={pendingEntries.length} accent="amber" />
-        <KpiCard label="Awaiting response" value={openRfis.length} accent="rust" />
-        <KpiCard label="Open revisions" value={openRevisionCount} accent="violet" />
+        {kpiCards.map((card) => (
+          <KpiCard key={card.key} label={card.label} value={card.value} accent={card.accent} open={openKpi === card.key} onClick={() => setOpenKpi((current) => (current === card.key ? '' : card.key))}>
+            {card.rows.length ? (
+              <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                {card.rows.map((row, i) => (
+                  <div key={`${row.id}-${i}`} className="kpi-drop-row">
+                    <span>{row.text}</span>
+                    {row.tag ? <b>{row.tag}</b> : null}
+                  </div>
+                ))}
+              </div>
+            ) : <div className="kpi-drop-row">{card.empty}</div>}
+          </KpiCard>
+        ))}
       </div>
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
       {tab === 'people' && isATD && <DirectorTeamsPage />}

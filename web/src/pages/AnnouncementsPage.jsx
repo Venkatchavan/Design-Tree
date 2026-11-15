@@ -10,27 +10,41 @@ const post = (path, body = {}) => request('/api/announcements' + path, { method:
 const date = value => value ? new Date(value).toLocaleString() : '—';
 function ErrorText({ error }) { return error ? <p role="alert" className="announcement-error">{error.message}</p> : null; }
 
-function Compose({ onSent }) {
+function Compose({ onSent, services = [] }) {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [ack, setAck] = useState(false);
   const [audience, setAudience] = useState(null);
   const [confirmed, setConfirmed] = useState(false);
+  // Everyone (all branches) or one service / department.
+  const [target, setTarget] = useState('all-branches');
+  const [service, setService] = useState('');
+  const audienceBody = target === 'service' ? { type: 'service', service } : { type: 'all-branches' };
+  const audienceLabel = target === 'service' ? (services.find(s => s.key === service)?.label ?? 'the selected service / department') : 'All branches';
   const requestId = useRef(crypto.randomUUID());
-  const preview = useMutation({ mutationFn: () => post('/preview'), onSuccess: result => { setAudience(result); setConfirmed(false); } });
+  const preview = useMutation({ mutationFn: () => post('/preview', { audience: audienceBody }), onSuccess: result => { setAudience(result); setConfirmed(false); } });
   const send = useMutation({
-    mutationFn: () => post('', { title, body, requireAcknowledgment: ack, audienceToken: audience.audienceToken, requestId: requestId.current }),
+    mutationFn: () => post('', { title, body, requireAcknowledgment: ack, audience: audienceBody, audienceToken: audience.audienceToken, requestId: requestId.current }),
     onSuccess: result => onSent(result.item.id),
     onError: error => { if (error.status === 409) { setAudience(null); setConfirmed(false); } },
   });
   const editing = () => { requestId.current = crypto.randomUUID(); setConfirmed(false); send.reset(); };
-  return <Panel title="Send an announcement" sub="Send one saved message to internal staff across all branches.">
+  const changeAudience = (nextTarget, nextService) => { editing(); setTarget(nextTarget); setService(nextService); setAudience(null); preview.reset(); };
+  return <Panel title="Send an announcement" sub="Send one saved message to internal staff across all branches, or to one service / department.">
     <form onSubmit={e => { e.preventDefault(); if (confirmed && audience) send.mutate(); }} className="announcement-form">
       <label>Title<input className="form-input" required maxLength={180} value={title} onChange={e => { editing(); setTitle(e.target.value); }} /></label>
       <label>Message<textarea className="form-input" required maxLength={10000} rows={7} value={body} onChange={e => { editing(); setBody(e.target.value); }} /></label>
       <label className="announcement-check"><input type="checkbox" checked={ack} onChange={e => { editing(); setAck(e.target.checked); }} />Ask each recipient to acknowledge this notice</label>
-      <p><strong>Audience: All branches.</strong> Client, Architect, technical superuser, inactive accounts, and exited employees are excluded.</p>
-      <button type="button" className="approve-btn" disabled={preview.isPending || send.isPending} onClick={() => preview.mutate()}>{preview.isPending ? 'Preparing preview…' : 'Preview audience'}</button>
+      <label>Send to<select className="filter-select" aria-label="Send to" value={target} onChange={e => changeAudience(e.target.value, '')}>
+        <option value="all-branches">All branches</option>
+        <option value="service">Service / Department-wise</option>
+      </select></label>
+      {target === 'service' && <label>Service / Department<select className="filter-select" aria-label="Service or department" value={service} onChange={e => changeAudience('service', e.target.value)}>
+        <option value="">Select…</option>
+        {services.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+      </select></label>}
+      <p><strong>Audience: {audienceLabel}.</strong> Client, Architect, technical superuser, inactive accounts, and exited employees are excluded.</p>
+      <button type="button" className="approve-btn" disabled={preview.isPending || send.isPending || (target === 'service' && !service)} onClick={() => preview.mutate()}>{preview.isPending ? 'Preparing preview…' : 'Preview audience'}</button>
       <ErrorText error={preview.error} />
       {audience && <section aria-label="Audience preview">
         <h3>{audience.recipientCount} staff accounts</h3>
@@ -40,7 +54,7 @@ function Compose({ onSent }) {
         <label className="announcement-check"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />I reviewed the message and recipient counts.</label>
       </section>}
       <ErrorText error={send.error} />
-      <div><button type="submit" className="btn-primary" disabled={!audience || !confirmed || !title.trim() || !body.trim() || send.isPending}>{send.isPending ? 'Sending…' : 'Send to all branches'}</button></div>
+      <div><button type="submit" className="btn-primary" disabled={!audience || !confirmed || !title.trim() || !body.trim() || send.isPending}>{send.isPending ? 'Sending…' : target === 'service' ? `Send to ${audienceLabel}` : 'Send to all branches'}</button></div>
       <p className="page-sub">Staff who are offline can read the saved notice after they reconnect. A bell alert does not confirm that they read it.</p>
     </form>
   </Panel>;
@@ -100,7 +114,7 @@ export default function AnnouncementsPage() {
       {canSend && <button type="button" className="btn-primary" onClick={() => setCompose(v => !v)}>{compose ? 'Close message form' : 'New announcement'}</button>}
     </div>
     <ErrorText error={caps.error || unread.error} />
-    {compose && canSend && <Compose onSent={newId => { setCompose(false); qc.invalidateQueries({ queryKey: ['announcements'] }); navigate('/announcements/' + newId); }} />}
+    {compose && canSend && <Compose services={caps.data?.services ?? []} onSent={newId => { setCompose(false); qc.invalidateQueries({ queryKey: ['announcements'] }); navigate('/announcements/' + newId); }} />}
     <Panel title="Message history">
       <div className="announcement-tabs" aria-label="Announcement folders">{['inbox', 'unread', ...(canSend ? ['sent'] : [])].map(f => <button key={f} type="button" className={f === folder ? 'btn-primary' : 'approve-btn'} aria-pressed={f === folder} onClick={() => { setFolder(f); setPage(1); }}>{f[0].toUpperCase() + f.slice(1)}</button>)}</div>
       {list.isPending && <p>Loading messages…</p>}<ErrorText error={list.error} />

@@ -29,7 +29,7 @@ export default function EmployeeSelect({employees=[],getValue=employeeId,childre
  // The rendered options remain the authority too: metadata cannot add an option.
  return <EmployeeFilter employees={employees} selectedIds={selected} getId={getValue} label={label} disabled={props.disabled} fixedService={fixedService}>{shown=>{
    const allowed=new Set(shown.map(e=>String(getValue(e))));
-   const visible=options.filter(option=>{ const value=String(option?.props?.value??option?.props?.children??''); return option?.type!=='option'||!value||allowed.has(value)||selected.map(String).includes(value); });
+   const visible=options.filter(option=>{ const value=String(option?.props?.value??option?.props?.children??''); return option?.type!=='option'||!value||option?.props?.['data-always']||allowed.has(value)||selected.map(String).includes(value); });
    const values=new Set(options.filter(o=>o?.type==='option').map(o=>String(o.props.value??o.props.children)));
    return <select {...props}>{visible}{selected.filter(v=>v&&!values.has(String(v))).map(v=><option key={'saved:'+v} value={v} disabled>{employeeName(employees.find(e=>String(getValue(e))===String(v)))||`Saved selection (${v})`}</option>)}</select>;
  }}</EmployeeFilter>;

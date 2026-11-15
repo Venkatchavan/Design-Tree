@@ -236,6 +236,9 @@ function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
   );
 }
 
+// Dropdown value for "No SPOC" (projects that do not need a coordinator).
+const NO_SPOC = '__no_spoc__';
+
 export default function ProjectDetailPage({ bootstrap }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -244,6 +247,7 @@ export default function ProjectDetailPage({ bootstrap }) {
   const [detailsOpen,setDetailsOpen]=useState(false);
   const [locOpen, setLocOpen] = useState(false);
   const [spocId, setSpocId] = useState('');
+  const [changingSpoc, setChangingSpoc] = useState(false);
   const [top, setTop] = useState('coordinator');
   const [coord, setCoord] = useState('overview');
   const [documentsTab, setDocumentsTab] = useState('directory');
@@ -277,7 +281,7 @@ export default function ProjectDetailPage({ bootstrap }) {
   const spocOptions = useQuery({
     queryKey: ['eligible-spocs'],
     queryFn: employeesApi.spocOptions,
-    enabled: (isAdmin || isTD) && q.data?.project?.activation?.status !== 'Activated',
+    enabled: (isAdmin || isTD) && (q.data?.project?.activation?.status !== 'Activated' || changingSpoc),
     retry: false,
     refetchInterval: 10000,
   });
@@ -304,7 +308,9 @@ export default function ProjectDetailPage({ bootstrap }) {
       queryClient.invalidateQueries({ queryKey: ['project', id] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['projects-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['project-team', id] });
       setSpocId('');
+      setChangingSpoc(false);
     },
   });
 
@@ -365,8 +371,9 @@ export default function ProjectDetailPage({ bootstrap }) {
   const assignedSpocLabel = [...new Set(allocatedSpocs)].join(', ')
     || activationSpoc
     || (teamQ.isLoading || (project.activation?.spoc && employees.isLoading) ? 'Loading…' : 'Not allocated');
+  const currentSpocKey = project.activation?.noSpoc ? NO_SPOC : idOf(project.activation?.spoc);
   const pid = String(id);
-  const ofProject = (items) => (items ?? []).filter((r) => idOf(r.project) === pid);
+  const ofProject =(items) => (items ?? []).filter((r) => idOf(r.project) === pid);
   const stages = ofProject(stagesQ.data?.items);
   const filteredStages = stages.filter((stage) => {
     if (!stageStatusFilter) return true;
@@ -758,12 +765,13 @@ export default function ProjectDetailPage({ bootstrap }) {
       ) : (
         <>
       <Panel title="Open this project for a team">
-        {(isAdmin || isTD) && project.activation?.status !== 'Activated' ? (
+        {(isAdmin || isTD) && (project.activation?.status !== 'Activated' || changingSpoc) ? (
           <>
             <div className="form-row" style={{ maxWidth: 360 }}>
               <label className="form-label" htmlFor="pd-spoc">SPOC (coordinator)</label>
               <EmployeeSelect employees={(spocOptions.data?.items ?? [])} fixedService="Coordinators" id="pd-spoc" className="filter-select" value={spocId} onChange={(e) => setSpocId(e.target.value)} disabled={spocOptions.isLoading || spocOptions.isError}>
                 <option value="">Select…</option>
+                <option value={NO_SPOC} data-always="true">No SPOC (not required for this project)</option>
                 {(spocOptions.data?.items ?? []).map((e) => (
                   <option key={e._id} value={e._id}>
                     {e.name} ({e.empId ?? '—'})
@@ -779,17 +787,28 @@ export default function ProjectDetailPage({ bootstrap }) {
             {activate.isError && (
               <div className="login-error" role="alert" style={{ display: 'block' }}>{activate.error.message}</div>
             )}
-            <button type="button" className="btn-primary" disabled={activate.isPending || spocOptions.isLoading || spocOptions.isError || !(spocOptions.data?.items ?? []).some(employee => employee._id === spocId)} onClick={() => activate.mutate({ coordinator: spocId })}>
-              {activate.isPending ? 'Activating…' : 'Activate project'}
+            <button type="button" className="btn-primary" disabled={activate.isPending || spocOptions.isLoading || spocOptions.isError || spocId === currentSpocKey || !(spocId === NO_SPOC || (spocOptions.data?.items ?? []).some(employee => employee._id === spocId))} onClick={() => activate.mutate(spocId === NO_SPOC ? { noSpoc: true } : { coordinator: spocId })}>
+              {activate.isPending ? 'Saving…' : changingSpoc ? 'Save SPOC' : 'Assign SPOC'}
             </button>
+            {changingSpoc && <button type="button" className="approve-btn" style={{ marginLeft: 8 }} disabled={activate.isPending} onClick={() => { setChangingSpoc(false); setSpocId(''); }}>Cancel</button>}
             <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
-              Activation assigns the SPOC and opens the SPOC workspace.
+              Assigning the SPOC activates the project and opens the SPOC workspace. Choose No SPOC if this project does not need one.
             </p>
           </>
         ) : project.activation?.status === 'Activated' ? (
-          <p style={{ fontSize: 13.5 }}>
-            Activated{project.activation?.activatedAt ? ` on ${fmtDate(project.activation.activatedAt)}` : ''}.
-          </p>
+          <>
+            <p style={{ fontSize: 13.5 }}>
+              Activated{project.activation?.activatedAt ? ` on ${fmtDate(project.activation.activatedAt)}` : ''}.
+            </p>
+            <p style={{ fontSize: 13.5 }}>
+              <strong>SPOC:</strong> {project.activation?.noSpoc ? 'No SPOC (not required for this project)' : assignedSpocLabel}
+            </p>
+            {(isAdmin || isTD) && (
+              <button type="button" className="approve-btn" onClick={() => { setSpocId(currentSpocKey); setChangingSpoc(true); }}>
+                Change SPOC
+              </button>
+            )}
+          </>
         ) : (
           <p style={{ fontSize: 13.5, color: 'var(--ink-muted)' }}>Team opening is managed by Admin.</p>
         )}

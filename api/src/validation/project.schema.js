@@ -196,6 +196,8 @@ const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
 export const activateProjectSchema = z
   .object({
     coordinator: objectId.optional(),
+    // "No SPOC": the project is activated without a coordinator.
+    noSpoc: z.boolean().optional(),
     services: z.array(z.string().trim()).optional(),
   })
   .strict();

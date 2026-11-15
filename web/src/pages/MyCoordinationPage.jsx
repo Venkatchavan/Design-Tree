@@ -431,9 +431,33 @@ function InhouseTeamPanel({ projects, myAllocs, employees, loading }) {
   const [service, setService] = useState('');
   const choices = [...new Set(projects.flatMap(p => serviceRows(p).flatMap(r => serviceNames([r.service]))))].sort();
   const shownProjects = projects.filter(p => !service || serviceRows(p).some(r => serviceNames([r.service]).includes(service)));
+  // Downloads the directory exactly as listed (current service filter applied).
+  async function downloadExcel() {
+    const XLSX = await import('xlsx');
+    const rows = shownProjects.flatMap((p) => {
+      const coord = coordinatorFor(projectIdOf(p), myAllocs, employees);
+      return serviceRows(p)
+        .filter(r => !service || serviceNames([r.service]).includes(service))
+        .map(r => ({
+          Project: p.name ?? p.code ?? '',
+          'Job number': p.jobNumber ?? '',
+          Service: r.service,
+          'Team member': r.name || 'Not allocated',
+          'Role / responsibility': r.role || '',
+          'Coordinator / SPOC': coord ? empName(coord) : '',
+        }));
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Project Directory');
+    const label = shownProjects.length === 1 ? (shownProjects[0].code ?? shownProjects[0].jobNumber ?? '') : '';
+    XLSX.writeFile(wb, `project-directory${label ? `-${String(label).replace(/[^\w.-]+/g, '_')}` : ''}.xlsx`);
+  }
   return (
     <Panel title="In-house project team — all services" sub="Service-wise, with role and coordinator details. Live from team allocation.">
-      <label className="form-label">Directory service<select className="filter-select" aria-label="Directory service" value={service} onChange={e => setService(e.target.value)}><option value="">All services</option>{choices.map(s => <option key={s}>{s}</option>)}</select></label>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <label className="form-label">Directory service<select className="filter-select" aria-label="Directory service" value={service} onChange={e => setService(e.target.value)}><option value="">All services</option>{choices.map(s => <option key={s}>{s}</option>)}</select></label>
+        <button type="button" className="approve-btn" disabled={loading || shownProjects.length === 0} onClick={downloadExcel}>Download Excel</button>
+      </div>
       {loading ? (
         <EmptyState text="Loading…" />
       ) : shownProjects.length === 0 ? (

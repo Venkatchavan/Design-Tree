@@ -751,10 +751,21 @@ export async function activateProject(req, res, next) {
     if (!project) return res.status(404).json({ message: 'Project not found.' });
 
     let allocation = null;
-    const coordinatorId = parsed.data.coordinator ?? project.activation?.spoc?.toString();
-    const options = await eligibleSpocs();
-    if (!coordinatorId || !options.items.some(employee => employee._id === String(coordinatorId))) {
-      return res.status(400).json({ message: 'Select an active SPOC whose login is linked to an eligible employee. Ask HR to review a missing name or employee link.' });
+    const noSpoc = parsed.data.noSpoc === true;
+    const wasActivated = project.activation?.status === 'Activated';
+    const previousSpocId = project.activation?.spoc?.toString();
+    // "No SPOC" is for projects that do not need a coordinator; it needs no coordinator at all.
+    const coordinatorId = noSpoc ? undefined : (parsed.data.coordinator ?? previousSpocId);
+    if (!noSpoc) {
+      const options = await eligibleSpocs();
+      if (!coordinatorId || !options.items.some(employee => employee._id === String(coordinatorId))) {
+        return res.status(400).json({ message: 'Select an active SPOC whose login is linked to an eligible employee. Ask HR to review a missing name or employee link.' });
+      }
+    }
+    // Changing the SPOC (or choosing No SPOC) releases the previously assigned one.
+    if (wasActivated && previousSpocId && previousSpocId !== coordinatorId) {
+      const { SpocAllocation } = await import('../models/SpocAllocation.js');
+      await SpocAllocation.deleteMany({ project: project._id, coordinator: previousSpocId });
     }
     if (coordinatorId) {
       const coordinator = await Employee.findById(coordinatorId);
@@ -775,13 +786,15 @@ export async function activateProject(req, res, next) {
       );
     }
 
-    project.status = 'Active';
+    const priorActivation = project.activation?.toObject?.() ?? project.activation ?? {};
+    if (!wasActivated) project.status = 'Active';
     project.activation = {
-      ...(project.activation?.toObject?.() ?? project.activation ?? {}),
+      ...priorActivation,
       status: 'Activated',
-      activatedBy: req.user.id,
-      activatedAt: new Date(),
-      spoc: coordinatorId ?? project.activation?.spoc,
+      activatedBy: wasActivated ? priorActivation.activatedBy : req.user.id,
+      activatedAt: wasActivated ? priorActivation.activatedAt : new Date(),
+      spoc: coordinatorId ?? undefined,
+      noSpoc,
     };
     await project.save();
 
@@ -790,15 +803,26 @@ export async function activateProject(req, res, next) {
       const users = coordinatorId
         ? await userIdsForEmployees([coordinatorId])
         : [];
-      await notify({
-        roles: ['design_mgmt_head', 'coordinator'],
-        users,
-        project: project._id,
-        link: { view: 'my-coordination', id: project._id.toString() },
-        title: `Project activated: ${project.name} (${project.code})`,
-        detail: 'SPOC workspace is live.',
-        type: 'project-activated',
-      });
+      if (!wasActivated) {
+        await notify({
+          roles: ['design_mgmt_head', 'coordinator'],
+          users,
+          project: project._id,
+          link: { view: 'my-coordination', id: project._id.toString() },
+          title: `Project activated: ${project.name} (${project.code})`,
+          detail: 'SPOC workspace is live.',
+          type: 'project-activated',
+        });
+      } else if (coordinatorId && coordinatorId !== previousSpocId) {
+        await notify({
+          users,
+          project: project._id,
+          link: { view: 'my-coordination', id: project._id.toString() },
+          title: `SPOC assigned: ${project.name} (${project.code})`,
+          detail: 'You are now the SPOC for this project.',
+          type: 'project-activated',
+        });
+      }
     } catch {
       /* best-effort */
     }
