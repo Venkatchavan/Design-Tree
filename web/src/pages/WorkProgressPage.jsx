@@ -5,7 +5,7 @@ import WorkReportStatus from '../components/work/WorkReportStatus.jsx';
 import WorkProgressLog from '../components/work/WorkProgressLog.jsx';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { bootstrapApi, teamsApi } from '../lib/api.js';
+import { attendanceApi, bootstrapApi, teamsApi } from '../lib/api.js';
 import { holidaysApi } from '../lib/phase4bApi.js';
 import Panel from '../components/Panel.jsx';
 import Tabs from '../components/Tabs.jsx';
@@ -74,6 +74,11 @@ function fmtShortHoliday(v) {
   const mon = d.toLocaleString('en-GB', { month: 'short', timeZone: 'Asia/Kolkata' });
   return `${day}-${mon}-${String(Number(businessDate(d).slice(0,4))).slice(2)}`;
 }
+function fmtTimeIST(v) {
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+}
 function useBootstrapProp(prop) {
   const q = useQuery({ queryKey: ['bootstrap'], queryFn: bootstrapApi, enabled: !prop });
   return prop ?? q.data ?? null;
@@ -113,8 +118,44 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
   const loggedIds = useMemo(() => new Set(entries.map(empKey)), [entries]);
   const notUpdatedCount = teamEmployees.filter((e) => !loggedIds.has(String(e._id ?? e.id ?? ''))).length;
 
+  // Sign-ins for the selected day. The API scopes a TL to their own team.
+  const isLead = (bootstrap?.role?.key ?? '') === 'team_lead';
+  const signInsQ = useQuery({
+    queryKey: ['work-progress-signins', date],
+    queryFn: () => attendanceApi.list({ date }),
+    enabled: isLead,
+    refetchInterval: 10000,
+    retry: false,
+  });
+  const signIns = useMemo(
+    () => (signInsQ.data?.items ?? []).filter((d) => d.loginAt && d.employee),
+    [signInsQ.data],
+  );
+  const hoursByEmp = useMemo(() => {
+    const m = new Map();
+    for (const e of entries) m.set(empKey(e), addHours(m.get(empKey(e)) ?? 0, e.hours));
+    return m;
+  }, [entries]);
+  const signInRows = useMemo(
+    () => signIns.map((d) => {
+      const id = String(d.employee._id ?? d.employee.id ?? d.employee);
+      return {
+        key: String(d._id ?? id),
+        employee: d.employee,
+        loginAt: d.loginAt,
+        logoutAt: d.logoutAt,
+        logged: hoursByEmp.get(id) ?? 0,
+      };
+    }).sort((a, b) => new Date(a.loginAt) - new Date(b.loginAt)),
+    [signIns, hoursByEmp],
+  );
+
   const totalHours = entries.reduce((s, e) => addHours(s,e.hours), 0);
-  const empIds = useMemo(() => new Set(entries.map(empKey)), [entries]);
+  const empIds = useMemo(() => {
+    const s = new Set(entries.map(empKey));
+    for (const r of signInRows) s.add(String(r.employee._id ?? r.employee.id ?? r.employee));
+    return s;
+  }, [entries, signInRows]);
   const departments = useMemo(() => {
     const s = new Set();
     for (const e of entries) s.add(deptOf(e));
@@ -251,9 +292,31 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
         </div>
         <div className="kpi-grid cols-3">
           <KpiCard label={`Total hours logged (${date}, IST)`} value={entriesQ.isLoading || entriesQ.isError ? '—' : hoursText(totalHours)} accent="blueprint" />
-          <KpiCard label="Employees logged in" value={entriesQ.isLoading ? '…' : empIds.size} accent="forest" />
+          <KpiCard label="Employees logged in" value={entriesQ.isLoading || signInsQ.isLoading ? '…' : empIds.size} accent="forest" />
           <KpiCard label="Not yet updated" value={teamQ.isLoading ? '…' : teamQ.isError ? '—' : notUpdatedCount} accent="rust" />
         </div>
+        {isLead && (
+          <Panel title={`Logged in - ${date} (IST)`} sub="Team members who have signed in on this date">
+            {signInsQ.isLoading ? (
+              <EmptyState text="Loading…" />
+            ) : signInsQ.isError ? (
+              <div className="login-error" role="alert" style={{ display: 'block' }}>{signInsQ.error.message}</div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: 'employee', label: 'Employee', render: (r) => empName(r.employee) },
+                  { key: 'role', label: 'Role', render: (r) => r.employee.designation ?? '—' },
+                  { key: 'department', label: 'Department', render: (r) => departmentLabel(r.employee.department) ?? '—' },
+                  { key: 'loginAt', label: 'Signed in', render: (r) => fmtTimeIST(r.loginAt) },
+                  { key: 'logoutAt', label: 'Signed out', render: (r) => (r.logoutAt ? fmtTimeIST(r.logoutAt) : 'Still in') },
+                  { key: 'logged', label: 'Work logged', render: (r) => (r.logged > 0 ? hoursText(r.logged) : 'Not yet') },
+                ]}
+                rows={signInRows}
+                emptyText="No one in your team has signed in on this date."
+              />
+            )}
+          </Panel>
+        )}
         <Panel title={`Activity by department - ${date} (IST)`} sub="Admin and HR entries are administrative work, not billable project hours">
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
             <select className="filter-select" value={fDept} onChange={(e) => setFDept(e.target.value)}>
