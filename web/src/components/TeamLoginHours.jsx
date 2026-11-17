@@ -34,7 +34,7 @@ export default function TeamLoginHours() {
       ) : (
         <DataTable
           columns={[
-            { key: 'employee', label: 'Employee', render: (r) => (r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—') },
+            { key: 'employee', label: 'Employee', render: (r) => (r.employee ? [r.employee.firstName, r.employee.lastName].filter(Boolean).join(' ') || '—' : '—') },
             { key: 'date', label: 'Date', render: (r) => r.date ?? '—' },
             { key: 'loginAt', label: 'Sign-in', render: (r) => fmtTime(r.loginAt) },
             { key: 'logoutAt', label: 'Sign-out', render: (r) => fmtTime(r.logoutAt) },
