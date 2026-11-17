@@ -84,6 +84,9 @@ export function manualStage(stage) {
   return LEGACY_STAGE[s.toUpperCase()] ?? s;
 }
 
-export function stageDeliverables(stage) {
+// The standard items above are the Structural ones; a Mechanical, Electrical,
+// Plumbing or Fire deliverable is named with "Other (specify)".
+export function stageDeliverables(stage, service = '') {
+  if (service && service !== 'STR') return [];
   return STAGE_DELIVERABLES[manualStage(stage)] ?? [];
 }

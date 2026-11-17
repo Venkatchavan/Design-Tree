@@ -15,6 +15,11 @@ import { DesignTeamClosure } from '../models/DesignTeamClosure.js';
 import { Team } from '../models/Team.js';
 import { designTeamScope, DESIGN_POLICY, DESIGN_STATUS, id, workingDays, loadPoints, projectCounts, band, dayOf, designStatus } from '../utils/designTeam.js';
 import { istDayKey, istDayRangeUtc } from '../config/attendance.js';
+import { serviceAssignOptions, ASSIGN_OPTIONS, PEER_REVIEW } from '../utils/serviceAssignOptions.js';
+import { syncProjectLeadTeams } from './projects.controller.js';
+import { notify, userIdsForEmployees } from '../models/Notification.js';
+// principalTeamLeads rows saved from the Design Management Head assignment dialog.
+const DMH_NOMINATION = 'Design Management Head';
 const oid = z.string().regex(/^[a-f\d]{24}$/i),
   fail = (status, message) => Object.assign(new Error(message), {
     status
@@ -68,7 +73,7 @@ async function scopedProjects(req) {
     origin: {
       $ne: 'marketing'
     }
-  }).select('name jobNumber code clientName contacts related services scope currentStage status coordinationStatus hold complexity expectedCompletion activation __v updatedAt').lean();
+  }).select('name jobNumber code clientName contacts related services scope currentStage status coordinationStatus hold complexity expectedCompletion activation principalTeamLeads __v updatedAt').lean();
   return rows.map(p => ({
     ...p,
     currentSpoc: currentSpoc(p, map),
@@ -427,13 +432,82 @@ export async function addRemark(req, res, next) {
     next(e);
   }
 }
+// GET /design-team/assign-options: the people listed for MEPF, STR and Peer
+// Review (SMEPF lists the SPOCs already returned with the dashboard).
+export async function assignOptions(req, res, next) {
+  try {
+    if (!req.designScope.head) throw fail(403, 'Only the authorised Design Management head may assign projects.');
+    return res.json(await serviceAssignOptions());
+  } catch (e) {
+    next(e);
+  }
+}
+
+// MEPF / STR / Peer Review: the selected person is saved as the project's
+// lead for that service, which creates the service team and shows the project
+// on their side. A row this dialog saved before for the service is replaced.
+async function assignServiceLead(req, res, b) {
+  const p = await projectGuard(req, req.params.id, true);
+  const options = await serviceAssignOptions();
+  if (!b.person || !options[b.option].some(e => e._id === b.person)) throw fail(400, 'Select a person listed for this service.');
+  const project = await Project.findById(p._id);
+  const rows = (project.principalTeamLeads ?? []).map(r => r.toObject ? r.toObject() : r);
+  const ownRow = r => r.service === b.option && r.nominatedBy === DMH_NOMINATION;
+  const previous = rows.filter(ownRow).map(r => id(r.employee));
+  if (previous.includes(b.person)) throw fail(409, 'This person is already assigned for this service.');
+  if (previous.length && !b.reason) throw fail(400, 'A reason is required for reassignment.');
+  const chosen = options[b.option].find(e => e._id === b.person);
+  project.principalTeamLeads = [...rows.filter(r => !ownRow(r)), {
+    service: b.option,
+    employee: b.person,
+    name: [chosen.firstName, chosen.lastName].filter(Boolean).join(' ') || chosen.empId,
+    role: b.option === PEER_REVIEW ? 'Peer Reviewer' : 'Team Lead',
+    nominatedBy: DMH_NOMINATION,
+    approvalStatus: 'Approved'
+  }];
+  await project.save();
+  await syncProjectLeadTeams(project);
+  await event(req, previous.length ? 'Service reassigned' : 'Service assigned', p._id, [], {
+    service: b.option,
+    reason: b.reason ?? '',
+    previous: previous[0] ?? null,
+    updated: b.person
+  });
+  try {
+    const users = await userIdsForEmployees([b.person]);
+    await notify({
+      users,
+      project: p._id,
+      link: { view: 'my-team', id: id(p._id) },
+      title: `Project assigned: ${p.name} (${p.code || p.jobNumber || ''})`,
+      detail: b.option === PEER_REVIEW ? 'You are the Peer Reviewer for this project.' : `You are assigned for ${b.option} services on this project.`,
+      type: 'project-activated'
+    });
+  } catch {
+    /* best-effort */
+  }
+  return res.json({
+    project,
+    message: previous.length ? 'Project reassigned.' : 'Project assigned.'
+  });
+}
 export async function assignProject(req, res, next) {
   try {
+    const option = req.body?.option ?? 'SMEPF';
+    if (option !== 'SMEPF') {
+      const s = parse(z.object({
+        option: z.enum(ASSIGN_OPTIONS.filter(o => o !== 'SMEPF')),
+        person: oid,
+        reason: z.string().trim().max(4000).optional()
+      }).strict(), req.body);
+      return await assignServiceLead(req, res, s);
+    }
+    const { option: _smepf, ...smepf } = req.body ?? {};
     const b = parse(z.object({
       spoc: oid,
       expectedSpoc: oid.nullable(),
       reason: z.string().trim().max(4000).optional()
-    }).strict(), req.body);
+    }).strict(), smepf);
     spocGuard(req, b.spoc);
     const p = await projectGuard(req, req.params.id, true);
     if (p.allocationAmbiguous) throw fail(409, 'Existing approved allocations are ambiguous. Reconcile them before assigning.');

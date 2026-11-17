@@ -45,7 +45,9 @@ import { serviceNames } from '../lib/services.js';
 import { useReportingTeam } from '../lib/reportingTeam.js';
 import { departmentLabel } from '../lib/services.js';
 import { PROCESS_STAGES, manualStage, stageDeliverables } from '../lib/processManual.js';
+import { DESIGN_SERVICE_CODES, SERVICE_CODE_LABELS, expandServiceCodes } from '../lib/serviceCodes.js';
 import ProjectDeliverables from '../components/ProjectDeliverables.jsx';
+import { TeamServiceHandover } from '../components/ServiceHandoverPanel.jsx';
 import { DRAWING_SUBMITTED, drawingStatusLabel, drawingSubmissionLabel } from '../lib/drawingStatus.js';
 
 const TL_CHAIN = new Set(['team_lead', 'assoc_technical_director', 'technical_director']);
@@ -788,6 +790,8 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       {tab==='revision'&&<Tabs tabs={[{key:'entry',label:'Revision entry'},{key:'log',label:'Revision log'}]} active={revisionTab} onChange={setRevisionTab}/>}
       {/* 13 Nov 2026: coordination items belong to the Overview tab only. */}
       {tab === 'overview' && (!isATD || selectedTeam) && <CoordinationPanel projectId={scopedProjectId} service={selectedTeam?.service}/>}
+      {/* 17 Nov 2026: handovers the SPOC sent to this team's service. */}
+      {tab === 'overview' && (isTL || isATD) && <TeamServiceHandover projectId={scopedProjectId} />}
       {tab === 'client-rfis' && <ClientRfiPanel mode="lead" />}
       {tab === 'completion' && projectWorkspace && <StageRequestPanel projectId={projectId} />}
       {tab === 'meetings' && <SpocMeetings projectId={projectId} readOnly />}
@@ -1122,12 +1126,12 @@ function dateInput(v) {
   return v ? String(v).slice(0, 10) : '';
 }
 
-function blankDeliverable() {
-  return { _id: '', deliverable: '', stage: '', plannedDate: '', dueDate: '', revisedDate: '', revisedReason: '', status: 'Planned', _custom: false };
+function blankDeliverable(service = '') {
+  return { _id: '', deliverable: '', service, stage: '', plannedDate: '', dueDate: '', revisedDate: '', revisedReason: '', status: 'Planned', _custom: false };
 }
 
 const OTHER_DELIVERABLE = '__other';
-const rowSnapshot = (r) => JSON.stringify([r.deliverable.trim(), r.stage, r.plannedDate, r.dueDate, r.revisedDate, r.revisedReason.trim(), r.status]);
+const rowSnapshot = (r) => JSON.stringify([r.deliverable.trim(), r.service, r.stage, r.plannedDate, r.dueDate, r.revisedDate, r.revisedReason.trim(), r.status]);
 
 function DeliverableListPanel({ teamProjects }) {
   const queryClient = useQueryClient();
@@ -1135,7 +1139,12 @@ function DeliverableListPanel({ teamProjects }) {
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState('');
   const [standardStage, setStandardStage] = useState('');
+  // 17 Nov 2026: each service (S, M, E, P, F) keeps its own stage-wise list.
+  const [serviceFilter, setServiceFilter] = useState('');
   const activeProject = projectId || String(teamProjects[0]?._id ?? teamProjects[0]?.id ?? '');
+  const activeProjectRow = teamProjects.find((p) => String(p._id ?? p.id) === activeProject);
+  const projectCodes = expandServiceCodes(activeProjectRow?.services ?? []).filter((code) => DESIGN_SERVICE_CODES.includes(code));
+  const serviceOptions = [...new Set([...(projectCodes.length ? projectCodes : DESIGN_SERVICE_CODES), ...rows.map((r) => r.service).filter(Boolean)])];
   const listQ = useQuery({
     queryKey: ['tl-deliverables', activeProject],
     queryFn: () => deliverablesApi.list({ project: activeProject }),
@@ -1147,6 +1156,7 @@ function DeliverableListPanel({ teamProjects }) {
       const row = {
         _id: String(d._id ?? ''),
         deliverable: d.deliverable ?? '',
+        service: d.service ?? '',
         stage: manualStage(d.stage),
         plannedDate: dateInput(d.plannedDate),
         dueDate: dateInput(d.dueDate),
@@ -1154,7 +1164,7 @@ function DeliverableListPanel({ teamProjects }) {
         revisedReason: d.revisedReason ?? '',
         status: d.status ?? 'Planned',
       };
-      return { ...row, _custom: !!row.deliverable && !stageDeliverables(row.stage).includes(row.deliverable), _snap: rowSnapshot(row) };
+      return { ...row, _custom: !!row.deliverable && !stageDeliverables(row.stage, row.service).includes(row.deliverable), _snap: rowSnapshot(row) };
     }));
   }, [listQ.data, activeProject]);
 
@@ -1167,6 +1177,8 @@ function DeliverableListPanel({ teamProjects }) {
   const save = useMutation({
     meta: { success: 'List saved.' },
     mutationFn: async (list) => {
+      // Rows saved before services were tracked can stay as they are until edited.
+      if (list.some((r) => !r.service && !(r._id && r._snap === rowSnapshot(r)))) throw new Error('Choose a service for every deliverable.');
       if (list.some((r) => !r.stage)) throw new Error('Choose a stage for every deliverable.');
       if (list.some((r) => !r.deliverable.trim())) throw new Error('Every row needs a deliverable name.');
       if (list.some((r) => r.revisedDate && !r.revisedReason.trim())) throw new Error('Give a reason for every revised date.');
@@ -1175,6 +1187,7 @@ function DeliverableListPanel({ teamProjects }) {
         const body = {
           project: activeProject,
           deliverable: r.deliverable.trim(),
+          service: r.service || undefined,
           stage: r.stage || undefined,
           plannedDate: r.plannedDate || undefined,
           dueDate: r.dueDate || undefined,
@@ -1195,10 +1208,10 @@ function DeliverableListPanel({ teamProjects }) {
   function addStandard() {
     if (!standardStage) return;
     setRows((prev) => {
-      const have = new Set(prev.filter((r) => r.stage === standardStage).map((r) => r.deliverable.trim().toLowerCase()));
-      const add = stageDeliverables(standardStage)
+      const have = new Set(prev.filter((r) => r.stage === standardStage && r.service === serviceFilter).map((r) => r.deliverable.trim().toLowerCase()));
+      const add = stageDeliverables(standardStage, serviceFilter)
         .filter((name) => !have.has(name.toLowerCase()))
-        .map((name) => ({ ...blankDeliverable(), stage: standardStage, deliverable: name }));
+        .map((name) => ({ ...blankDeliverable(serviceFilter), stage: standardStage, deliverable: name }));
       return [...prev, ...add];
     });
   }
@@ -1214,6 +1227,14 @@ function DeliverableListPanel({ teamProjects }) {
           ))}
         </select>
       </div>
+      <div className="form-row" style={{ maxWidth: 360 }}>
+        <label className="form-label" htmlFor="tl-deliverable-service">Service</label>
+        <select id="tl-deliverable-service" className="filter-select" style={{ width: '100%' }} value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)}>
+          <option value="">All services</option>
+          {serviceOptions.map((code) => <option key={code} value={code}>{SERVICE_CODE_LABELS[code] ?? code}</option>)}
+        </select>
+      </div>
+      {serviceFilter && stageDeliverables(PROCESS_STAGES[PROCESS_STAGES.length - 1], serviceFilter).length > 0 && (
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
         <select aria-label="Stage to add standard deliverables for" className="filter-select" value={standardStage} onChange={(e) => setStandardStage(e.target.value)}>
           <option value="">Add the process-manual deliverables for…</option>
@@ -1221,20 +1242,28 @@ function DeliverableListPanel({ teamProjects }) {
         </select>
         <button type="button" className="approve-btn" disabled={!standardStage} onClick={addStandard}>Add standard deliverables</button>
       </div>
+      )}
       <div style={{ overflowX: 'auto', marginTop: 12 }}>
         <table className="data">
           <thead>
             <tr>
-              <th>Stage</th><th>Deliverable</th><th>Planned date</th><th>Due date</th><th>Revised date</th><th>Reason for revised date</th><th>Status</th>
+              <th>Service</th><th>Stage</th><th>Deliverable</th><th>Planned date</th><th>Due date</th><th>Revised date</th><th>Reason for revised date</th><th>Status</th>
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
-              <tr><td colSpan={7}>No deliverables for this project yet.</td></tr>
+            {!rows.some((r) => !serviceFilter || r.service === serviceFilter) ? (
+              <tr><td colSpan={8}>No deliverables for this {serviceFilter ? 'service' : 'project'} yet.</td></tr>
             ) : rows.map((r, i) => {
-              const options = stageDeliverables(r.stage);
+              if (serviceFilter && r.service !== serviceFilter) return null;
+              const options = stageDeliverables(r.stage, r.service);
               return (
               <tr key={r._id || `new-${i}`}>
+                <td>
+                  <select aria-label="Service" className="filter-select" value={r.service} onChange={(e) => patchRow(i, { service: e.target.value, ...(r._custom ? {} : { deliverable: '' }) })}>
+                    <option value="">Select service</option>
+                    {[...new Set([...serviceOptions, r.service].filter(Boolean))].map((code) => <option key={code} value={code}>{SERVICE_CODE_LABELS[code] ?? code}</option>)}
+                  </select>
+                </td>
                 <td>
                   <select aria-label="Stage" className="filter-select" value={r.stage} onChange={(e) => patchRow(i, { stage: e.target.value, ...(r._custom ? {} : { deliverable: '' }) })}>
                     <option value="">Select stage</option>
@@ -1285,7 +1314,7 @@ function DeliverableListPanel({ teamProjects }) {
       </div>
       {err && <div className="login-error" role="alert" style={{ display: 'block', marginTop: 10 }}>{err}</div>}
       <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-        <button type="button" className="approve-btn" onClick={() => setRows((prev) => [...prev, blankDeliverable()])}>+ Add deliverable</button>
+        <button type="button" className="approve-btn" onClick={() => setRows((prev) => [...prev, blankDeliverable(serviceFilter)])}>+ Add deliverable</button>
         <button type="button" className="btn-primary" disabled={save.isPending || !activeProject} onClick={() => save.mutate(rows)}>
           {save.isPending ? 'Saving…' : 'Save list'}
         </button>

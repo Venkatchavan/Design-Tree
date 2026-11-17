@@ -11,7 +11,12 @@ const BUNDLES = {
   smepf: ['STR', 'HVAC', 'ELE', 'PHE', 'FIRE'],
   smep: ['STR', 'HVAC', 'ELE', 'PHE'],
   mep: ['HVAC', 'ELE', 'PHE'],
+  mepf: ['HVAC', 'ELE', 'PHE', 'FIRE'],
 };
+
+// Design services that each keep their own stage-wise deliverables and trackers.
+export const DESIGN_SERVICE_CODES = ['STR', 'HVAC', 'ELE', 'PHE', 'FIRE'];
+export const SERVICE_CODE_LABELS = { STR: 'Structural (S)', HVAC: 'Mechanical (M)', ELE: 'Electrical (E)', PHE: 'Plumbing (P)', FIRE: 'Fire (F)' };
 
 export function expandServiceCodes(values = []) {
   return [...new Set(values.flatMap((v) => String(v ?? '').split(/\s*\+\s*/).flatMap((part) => {

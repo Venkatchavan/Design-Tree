@@ -73,7 +73,7 @@ const dates = {
   startDate: '2026-08-01',
   plannedCompletion: '2026-08-14'
 };
-for (const role of ['td', 'atd']) test(`${role} Electrical-only ownership cannot plan or approve an MEP tracker, including a component-labelled request`, async () => {
+for (const role of ['td', 'atd']) test(`${role} Electrical-only ownership plans only the Electrical tracker, never the MEP bundle or another service`, async () => {
   const p = await fixture('PARTIAL-' + role);
   const {
     ServiceDashboard
@@ -91,12 +91,28 @@ for (const role of ['td', 'atd']) test(`${role} Electrical-only ownership cannot
     role: f.cast[role].role
   });
   assert.deepEqual([...new Set(owned.filter(t => t.projects.some(x => String(x._id) === String(p._id))).map(t => t.service))], ['Electrical']);
-  for (const service of ['MEP', 'ELE']) assert.equal((await call(role, {
+  // 17 Nov 2026: an MEP project has one tracker per service; there is no
+  // whole-bundle tracker, and another service's tracker stays out of reach.
+  for (const service of ['MEP', 'HVAC', 'PHE']) assert.equal((await call(role, {
     ...identity(p),
     service,
     planDates: true,
     ...dates
   })).status, 403, service + ' planning');
+  const own = await fixture('OWN-ELE-' + role);
+  await ServiceDashboard.create({
+    project: own._id,
+    service: 'ELE',
+    technicalDirector: f.cast[role].employee
+  });
+  const planned = await call(role, {
+    ...identity(own),
+    service: 'ELE',
+    planDates: true,
+    ...dates
+  });
+  assert.equal(planned.status, 200, JSON.stringify(planned.data));
+  assert.equal(planned.data.item.service, 'Electrical');
   const row = await f.models.StageStatus.create({
     project: p._id,
     service: 'MEP',
@@ -152,7 +168,7 @@ test('partial PTL and SPOC service allocations do not authorize whole-bundle mut
   assert.equal(read.status, 200);
   assert.equal(read.data.items.find(r => r.stage === 'CD').permissions.confirm, false);
 });
-test('union of all assigned component services authorizes PTL planning, SPOC final approval', async () => {
+test('each assigned component service is planned, requested and approved on its own tracker', async () => {
   const p = await fixture('FULL-COMPONENT-UNION');
   const {
     ServiceDashboard
@@ -176,31 +192,37 @@ test('union of all assigned component services authorizes PTL planning, SPOC fin
       services: ['ELE', 'HVAC', 'PHE']
     }
   });
-  let r = await call('tl', {
-    ...identity(p),
-    planDates: true,
-    ...dates
-  });
-  assert.equal(r.status, 200, JSON.stringify(r.data));
-  let row = r.data.item;
-  r = await call('tl', {
-    ...identity(p),
-    expectedVersion: row.__v,
-    requestCompletion: true,
-    actualCompletion: '2026-08-14'
-  });
-  assert.equal(r.status, 200, JSON.stringify(r.data));
-  row = r.data.item;
-  r = await call('spoc', {
-    ...identity(p),
-    expectedVersion: row.__v,
-    confirmCompletion: true
-  });
-  assert.equal(r.status, 200, JSON.stringify(r.data));
-  assert.equal(r.data.item.billingReadiness, 'Ready for billing');
-  assert.equal(r.data.item.approvalSequenceVerified, true);
+  for (const service of ['ELE', 'HVAC', 'PHE']) {
+    let r = await call('tl', {
+      ...identity(p),
+      service,
+      planDates: true,
+      ...dates
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    let row = r.data.item;
+    r = await call('tl', {
+      ...identity(p),
+      service,
+      expectedVersion: row.__v,
+      requestCompletion: true,
+      actualCompletion: '2026-08-14'
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    row = r.data.item;
+    r = await call('spoc', {
+      ...identity(p),
+      service,
+      expectedVersion: row.__v,
+      confirmCompletion: true
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.item.billingReadiness, 'Ready for billing');
+    assert.equal(r.data.item.approvalSequenceVerified, true);
+  }
+  assert.equal(await f.models.StageStatus.countDocuments({ project: p._id, stage: 'CD' }), 3);
 });
-test('normal approved SMEPF allocation synchronizes a composite team and authorizes full-bundle TD/ATD workflow', async () => {
+test('normal approved SMEPF allocation synchronizes a composite team and authorizes the per-service TD/ATD workflow', async () => {
   const p = await f.models.Project.create({
     name: 'Synced SMEPF authority',
     code: 'SYNCED-SMEPF',
@@ -231,16 +253,16 @@ test('normal approved SMEPF allocation synchronizes a composite team and authori
   assert.equal(synced.service, 'Structural + Mechanical + Electrical + Plumbing + Fire');
   let r = await call('td', {
     ...identity(p),
-    service: 'SMEPF',
+    service: 'Structural',
     planDates: true,
     ...dates
   });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   let row = r.data.item;
-  assert.equal(row.service, 'SMEPF');
+  assert.equal(row.service, 'Structural');
   r = await call('tl', {
     ...identity(p),
-    service: synced.service,
+    service: 'STR',
     expectedVersion: row.__v,
     requestCompletion: true,
     actualCompletion: '2026-08-14'
@@ -249,7 +271,7 @@ test('normal approved SMEPF allocation synchronizes a composite team and authori
   row = r.data.item;
   r = await call('spoc', {
     ...identity(p),
-    service: 'SMEPF',
+    service: 'Structural',
     expectedVersion: row.__v,
     confirmCompletion: true
   });

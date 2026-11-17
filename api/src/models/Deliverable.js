@@ -19,6 +19,9 @@ const deliverableSchema = new mongoose.Schema(
     },
     deliverable: { type: String, required: true, trim: true },
     specify: { type: String, trim: true },
+    // Service the deliverable belongs to (STR, HVAC, ELE, PHE, FIRE), so each
+    // MEPF service keeps its own stage-wise deliverable list.
+    service: { type: String, trim: true, index: true },
     stage: { type: String, trim: true },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
     plannedDate: { type: Date },
@@ -45,6 +48,7 @@ const deliverableLogSchema = new mongoose.Schema(
       index: true,
     },
     action: { type: String, trim: true },
+    service: { type: String, trim: true },
     stage: { type: String, trim: true },
     deliverable: { type: String, trim: true },
     details: { type: String, trim: true },

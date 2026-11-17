@@ -41,6 +41,7 @@ export const deliverableSchema = z
     project: objectId,
     deliverable: z.string().trim().min(1),
     specify: strOpt,
+    service: strOpt,
     stage: strOpt,
     assignedTo: objectId.optional(),
     plannedDate: dateOpt,

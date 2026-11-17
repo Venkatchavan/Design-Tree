@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { deliverablesApi } from '../lib/workApi.js';
 import { manualStage } from '../lib/processManual.js';
+import { DESIGN_SERVICE_CODES, SERVICE_CODE_LABELS } from '../lib/serviceCodes.js';
 import Panel from './Panel.jsx';
 import DataTable from './DataTable.jsx';
 import EmptyState from './EmptyState.jsx';
@@ -40,10 +41,16 @@ export default function ProjectDeliverables({ projects = [], showList = true }) 
     enabled: !!projectId,
     refetchInterval: 15000,
   });
-  const rows = (listQ.data?.items ?? [])
-    .filter((d) => idOf(d.project) === projectId)
-    .sort((a, b) => String(manualStage(a.stage)).localeCompare(String(manualStage(b.stage))));
-  const log = logQ.data?.items ?? [];
+  const [service, setService] = useState('');
+  const projectRows = (listQ.data?.items ?? []).filter((d) => idOf(d.project) === projectId);
+  // 17 Nov 2026: deliverables are shown service-wise (S, M, E, P, F).
+  const services = [...new Set([...projectRows, ...(logQ.data?.items ?? [])].map((d) => d.service).filter(Boolean))]
+    .sort((a, b) => DESIGN_SERVICE_CODES.indexOf(a) - DESIGN_SERVICE_CODES.indexOf(b));
+  const ofService = (d) => !service || d.service === service;
+  const rows = projectRows
+    .filter(ofService)
+    .sort((a, b) => String(a.service ?? '').localeCompare(String(b.service ?? '')) || String(manualStage(a.stage)).localeCompare(String(manualStage(b.stage))));
+  const log = (logQ.data?.items ?? []).filter(ofService);
 
   if (options.length === 0) {
     return <Panel title="Deliverables"><EmptyState text="No projects to show deliverables for." /></Panel>;
@@ -59,6 +66,15 @@ export default function ProjectDeliverables({ projects = [], showList = true }) 
           </select>
         </div>
       )}
+      {services.length > 0 && (
+        <div className="form-row" style={{ maxWidth: 360 }}>
+          <label className="form-label" htmlFor="deliverables-service">Service</label>
+          <select id="deliverables-service" className="filter-select" style={{ width: '100%' }} value={service} onChange={(e) => setService(e.target.value)}>
+            <option value="">All services</option>
+            {services.map((code) => <option key={code} value={code}>{SERVICE_CODE_LABELS[code] ?? code}</option>)}
+          </select>
+        </div>
+      )}
       {showList && (
         <Panel title="List of deliverables" sub="Maintained by the Team Lead — the same list for everyone working on this project">
           {listQ.isLoading ? <EmptyState text="Loading deliverables…" /> : listQ.isError ? (
@@ -66,6 +82,7 @@ export default function ProjectDeliverables({ projects = [], showList = true }) 
           ) : (
             <DataTable
               columns={[
+                { key: 'service', label: 'Service', render: (d) => SERVICE_CODE_LABELS[d.service] ?? d.service ?? '—' },
                 { key: 'stage', label: 'Stage', render: (d) => manualStage(d.stage) || '—' },
                 { key: 'deliverable', label: 'Deliverable', render: (d) => d.deliverable ?? d.specify ?? '—' },
                 { key: 'planned', label: 'Planned date', render: (d) => day(d.plannedDate) },
@@ -93,6 +110,7 @@ export default function ProjectDeliverables({ projects = [], showList = true }) 
               },
               { key: 'project', label: 'Project', render: (l) => projectName(l.project) },
               { key: 'action', label: 'Action', render: (l) => l.action ?? '—' },
+              { key: 'service', label: 'Service', render: (l) => SERVICE_CODE_LABELS[l.service] ?? l.service ?? '—' },
               { key: 'stage', label: 'Stage', render: (l) => manualStage(l.stage) || '—' },
               { key: 'deliverable', label: 'Deliverable', render: (l) => l.deliverable ?? '—' },
               { key: 'due', label: 'Due date', render: (l) => day(l.dueDate) },

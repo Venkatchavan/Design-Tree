@@ -139,6 +139,7 @@ async function logDeliverable(project, action, payload, by) {
   await DeliverableLog.create({
     project,
     action,
+    service: payload.service,
     stage: payload.stage,
     deliverable: payload.deliverable ?? payload.specify,
     details: payload.details,
@@ -158,6 +159,7 @@ const deliverableCrud = makeCrud(Deliverable, {
     const f = {};
     if (req.query.project) f.project = req.query.project;
     if (req.query.status) f.status = req.query.status;
+    if (typeof req.query.service === 'string' && req.query.service) f.service = req.query.service;
     return f;
   },
   populate: [
@@ -167,7 +169,7 @@ const deliverableCrud = makeCrud(Deliverable, {
   ],
 });
 
-const DELIVERABLE_TRACKED = ['deliverable', 'stage', 'assignedTo', 'plannedDate', 'dueDate', 'revisedDate', 'revisedReason', 'status'];
+const DELIVERABLE_TRACKED = ['deliverable', 'service', 'stage', 'assignedTo', 'plannedDate', 'dueDate', 'revisedDate', 'revisedReason', 'status'];
 const TRACKED_LABEL = { assignedTo: 'assignee', revisedDate: 'revised date', revisedReason: 'reason' };
 const dayOf = (v) => (v ? new Date(v).toISOString().slice(0, 10) : '');
 const trackedValue = (doc, key) => {
@@ -218,6 +220,7 @@ export const deliverables = {
           doc.project,
           dateRevised ? 'Revised' : 'Changed',
           {
+            service: doc.service,
             stage: doc.stage,
             deliverable: doc.deliverable,
             details: changes.join('; '),

@@ -333,6 +333,16 @@ function WorkflowStep({
     });
   }}><h4>{step.n}. {step.label}</h4><p>{step.owner} · Last changed {dateText(step.date)} {stale && <strong className="dm-danger">No update for over 30 days</strong>}</p><label>Status<select aria-label={'Step ' + step.n + ' status'} value={status} disabled={!canEdit || pending} onChange={e => setStatus(e.target.value)}>{['Not Started', 'In Progress', 'Completed', ...(step.status === 'Blocked' ? ['Blocked'] : [])].map(s => <option key={s}>{s}</option>)}</select></label><label>Input and remarks<textarea aria-label={'Step ' + step.n + ' remarks'} value={remarks} disabled={!canEdit || pending} onChange={e => setRemarks(e.target.value)} maxLength={4000} /></label>{canEdit && <button type="submit" disabled={pending || status === 'Blocked'}>Save step {step.n}</button>}</form>;
 }
+// 17 Nov 2026: the Design Management Head assigns a project through four options.
+// SMEPF lists the Design Coordinators (SPOCs); MEPF and STR list the TLs, PTLs and
+// ATDs of that service; Peer Review lists the Peer Review staff.
+const ASSIGN_OPTIONS = [
+  { value: 'SMEPF', label: 'SMEPF Services' },
+  { value: 'MEPF', label: 'MEPF Services' },
+  { value: 'STR', label: 'STR Services' },
+  { value: 'Peer Review', label: 'Peer Review' },
+];
+const DMH_NOMINATION = 'Design Management Head';
 function AssignDialog({
   target,
   onClose,
@@ -344,14 +354,30 @@ function AssignDialog({
     [spoc, setSpoc] = useState(target.spoc || ''),
     [reason, setReason] = useState(''),
     [search, setSearch] = useState(''),
-    [review, setReview] = useState(false);
+    [review, setReview] = useState(false),
+    [option, setOption] = useState('SMEPF'),
+    [person, setPerson] = useState('');
+  const serviceOption = option !== 'SMEPF';
+  const serviceOptions = useQuery({
+    queryKey: ['design-team-assign-options'],
+    queryFn: () => api('/assign-options'),
+    enabled: serviceOption
+  });
+  const candidates = serviceOption ? serviceOptions.data?.[option] ?? [] : [];
+  const currentLeads = serviceOption ? (project?.principalTeamLeads ?? []).filter(r => r.service === option && r.nominatedBy === DMH_NOMINATION) : [];
+  const currentLeadIds = currentLeads.map(r => id(r.employee));
+  const optionLabel = ASSIGN_OPTIONS.find(o => o.value === option)?.label ?? option;
   const projectInfo = useQuery({
     queryKey: ['design-team-project', id(project)],
     queryFn: () => api('/projects/' + id(project)),
     enabled: !!project
   });
   const mutation = useMutation({
-    mutationFn: () => api('/projects/' + id(project) + '/assign', 'POST', {
+    mutationFn: () => api('/projects/' + id(project) + '/assign', 'POST', serviceOption ? {
+      option,
+      person,
+      ...(reason ? { reason } : {})
+    } : {
       spoc,
       expectedSpoc: project.currentSpoc ?? null,
       reason
@@ -374,14 +400,19 @@ function AssignDialog({
   const suggested = [...options].filter(s => s.match && s.after <= data.policy.capacity && id(s.employee) !== project?.currentSpoc).sort((a, b) => a.load - b.load || name(a.employee).localeCompare(name(b.employee)))[0];
   const selected = options.find(s => id(s.employee) === spoc),
     current = data.spocs.find(s => id(s.employee) === project?.currentSpoc);
-  return <Dialog title="Assign or reassign project" onClose={onClose}><ErrorBox error={mutation.error} />{review ? <><h3>Review assignment</h3><p>{projectName(project)}</p><p>{name(current?.employee)} → {name(selected?.employee)}</p><p>Load {num(selected?.load)} → {num(selected?.after)} / {data.policy.capacity} pts</p><p>Reason: {reason || 'First assignment; no reason entered'}</p><p>Admin activation and billing approvals retain their existing workflow.</p><button disabled={mutation.isPending} onClick={() => setReview(false)}>Back</button><button disabled={mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? 'Saving…' : project.currentSpoc ? 'Confirm reassignment' : 'Confirm assignment'}</button></> : <form onSubmit={e => {
+  return <Dialog title="Assign or reassign project" onClose={onClose}><ErrorBox error={mutation.error} />{review ? <><h3>Review assignment</h3><p>{projectName(project)}</p><p>{optionLabel}</p>{serviceOption ? <p>{currentLeads.map(r => r.name).join(', ') || 'Not assigned'} → {name(candidates.find(e => id(e) === person))}</p> : <><p>{name(current?.employee)} → {name(selected?.employee)}</p><p>Load {num(selected?.load)} → {num(selected?.after)} / {data.policy.capacity} pts</p></>}<p>Reason: {reason || 'First assignment; no reason entered'}</p><p>Admin activation and billing approvals retain their existing workflow.</p><button disabled={mutation.isPending} onClick={() => setReview(false)}>Back</button><button disabled={mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? 'Saving…' : (serviceOption ? currentLeads.length : project.currentSpoc) ? 'Confirm reassignment' : 'Confirm assignment'}</button></> : <form onSubmit={e => {
       e.preventDefault();
       setReview(true);
     }}><label>Search projects<input value={search} onChange={e => setSearch(e.target.value)} /></label><label>Project<select required aria-label="Allocation project" value={project ? id(project) : ''} onChange={e => {
           setProject(data.projects.find(p => id(p) === e.target.value));
+          setPerson('');
           setSpoc(target.spoc || '');
           setReason('');
-        }}><option value="">Choose an authorised project</option>{projects.map(p => <option key={id(p)} value={id(p)}>{projectName(p)} · {name(data.spocs.find(s => id(s.employee) === p.currentSpoc)?.employee)}{!p.currentSpoc ? ' (no SPOC)' : ''}</option>)}</select></label>{project && <Panel title="Project details"><p>{projectName(project)} · {project.clientName || project.contacts?.client?.name || 'Client not in records'}</p><p>Architect: {project.contacts?.architect?.name || 'Not in records'} · PMC: {project.contacts?.pmc?.name || 'Not in records'}</p><p>Project Director: {project.related?.projectDirector || 'Not in records'} · Services {serviceNames(project.services).join(', ') || 'Not in records'}</p><p>Stage {project.currentStage || 'Not in records'} · Status {statusOf(project)} · Target {dateText(project.expectedCompletion)} · Complexity {project.complexity || 'Not in records (2 pts)'}</p><p>Assigned service teams: {(projectInfo.data?.teams ?? []).map(t => t.name + ' (' + t.service + ')').join(', ') || 'Not in records'}</p><div className="dm-stages">{['CD', 'SD', 'DD', 'TD', 'GFC'].map(stage => <span key={stage} className={stage === project.currentStage ? 'current' : ''}>{stage}</span>)}</div><p>Current SPOC: {current ? name(current.employee) : project.currentSpoc ? 'Outside your reporting line' : 'No SPOC'}{current ? ` · ${num(current.load)} pts` : ''}</p></Panel>}<div><label htmlFor="assign-spoc">Choose SPOC</label><EmployeeSelect id="assign-spoc" employees={options.map(s=>s.employee)} required aria-label="New SPOC" value={spoc} onChange={e => setSpoc(e.target.value)}><option value="">Choose a SPOC in your reporting line</option>{options.map(s => <option key={id(s.employee)} value={id(s.employee)} disabled={id(s.employee) === project?.currentSpoc}>{name(s.employee)} · {departmentLabel(s.employee.department) || 'Service not in records'} · Active {s.counts.Active}, delayed {s.counts.Delayed} · {num(s.load)} → {num(s.after)} pts{id(s.employee) === project?.currentSpoc ? ' · Current SPOC' : id(s.employee) === id(suggested?.employee) ? ' · Suggested' : ''}{s.match ? ' · Service match' : ''}{s.after > data.policy.capacity ? ' · Over capacity' : ''}</option>)}</EmployeeSelect></div><label>Reason {project?.currentSpoc ? '(required for reassignment)' : '(optional for first assignment)'}<textarea value={reason} onChange={e => setReason(e.target.value)} required={!!project?.currentSpoc} maxLength={4000} /></label><button type="submit" disabled={!project || !spoc || spoc === project.currentSpoc}>Review assignment</button></form>}</Dialog>;
+        }}><option value="">Choose an authorised project</option>{projects.map(p => <option key={id(p)} value={id(p)}>{projectName(p)} · {name(data.spocs.find(s => id(s.employee) === p.currentSpoc)?.employee)}{!p.currentSpoc ? ' (no SPOC)' : ''}</option>)}</select></label>{project && <Panel title="Project details"><p>{projectName(project)} · {project.clientName || project.contacts?.client?.name || 'Client not in records'}</p><p>Architect: {project.contacts?.architect?.name || 'Not in records'} · PMC: {project.contacts?.pmc?.name || 'Not in records'}</p><p>Project Director: {project.related?.projectDirector || 'Not in records'} · Services {serviceNames(project.services).join(', ') || 'Not in records'}</p><p>Stage {project.currentStage || 'Not in records'} · Status {statusOf(project)} · Target {dateText(project.expectedCompletion)} · Complexity {project.complexity || 'Not in records (2 pts)'}</p><p>Assigned service teams: {(projectInfo.data?.teams ?? []).map(t => t.name + ' (' + t.service + ')').join(', ') || 'Not in records'}</p><div className="dm-stages">{['CD', 'SD', 'DD', 'TD', 'GFC'].map(stage => <span key={stage} className={stage === project.currentStage ? 'current' : ''}>{stage}</span>)}</div><p>Current SPOC: {current ? name(current.employee) : project.currentSpoc ? 'Outside your reporting line' : 'No SPOC'}{current ? ` · ${num(current.load)} pts` : ''}</p></Panel>}<label>Assign for<select aria-label="Assignment option" value={option} onChange={e => {
+          setOption(e.target.value);
+          setPerson('');
+          setReason('');
+        }}>{ASSIGN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></label>{serviceOption ? <div><label htmlFor="assign-person">{option === 'Peer Review' ? 'Choose Peer Reviewer' : 'Choose TL / PTL / ATD'}</label><EmployeeSelect id="assign-person" employees={candidates} required aria-label={option === 'Peer Review' ? 'Peer Reviewer' : 'Team Lead, PTL or ATD'} value={person} disabled={serviceOptions.isLoading || serviceOptions.isError} onChange={e => setPerson(e.target.value)}><option value="">{serviceOptions.isLoading ? 'Loading…' : 'Choose a person'}</option>{candidates.map(e => <option key={id(e)} value={id(e)} disabled={currentLeadIds.includes(id(e))}>{name(e)} · {e.designation || 'Designation not in records'} · {departmentLabel(e.department) || 'Department not in records'}{currentLeadIds.includes(id(e)) ? ' · Currently assigned' : ''}</option>)}</EmployeeSelect><ErrorBox error={serviceOptions.error} retry={() => serviceOptions.refetch()} />{!serviceOptions.isLoading && !serviceOptions.isError && candidates.length === 0 && <p>{option === 'Peer Review' ? 'No Peer Review staff are available. Ask HR to set the Peer Review role or department on the employee record.' : 'No TLs, PTLs or ATDs of this service are available. Ask HR to check the department and designation on the employee record.'}</p>}{project && <p>Currently assigned: {currentLeads.map(r => r.name).join(', ') || 'Not assigned'}</p>}</div> : <div><label htmlFor="assign-spoc">Choose SPOC</label><EmployeeSelect id="assign-spoc" employees={options.map(s=>s.employee)} required aria-label="New SPOC" value={spoc} onChange={e => setSpoc(e.target.value)}><option value="">Choose a SPOC in your reporting line</option>{options.map(s => <option key={id(s.employee)} value={id(s.employee)} disabled={id(s.employee) === project?.currentSpoc}>{name(s.employee)} · {departmentLabel(s.employee.department) || 'Service not in records'} · Active {s.counts.Active}, delayed {s.counts.Delayed} · {num(s.load)} → {num(s.after)} pts{id(s.employee) === project?.currentSpoc ? ' · Current SPOC' : id(s.employee) === id(suggested?.employee) ? ' · Suggested' : ''}{s.match ? ' · Service match' : ''}{s.after > data.policy.capacity ? ' · Over capacity' : ''}</option>)}</EmployeeSelect></div>}<label>Reason {(serviceOption ? currentLeads.length : project?.currentSpoc) ? '(required for reassignment)' : '(optional for first assignment)'}<textarea value={reason} onChange={e => setReason(e.target.value)} required={!!(serviceOption ? currentLeads.length : project?.currentSpoc)} maxLength={4000} /></label><button type="submit" disabled={!project || (serviceOption ? !person || currentLeadIds.includes(person) : !spoc || spoc === project.currentSpoc)}>Review assignment</button></form>}</Dialog>;
 }
 export default function DesignTeamPage() {
   const qc = useQueryClient(),

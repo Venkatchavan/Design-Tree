@@ -70,11 +70,15 @@ function servicesFor(project, rows) {
     if (map.has(serviceKey(service))) continue;
     const components = expandServices([service]);
     const covered = [...map.values()].flatMap(s => expandServices([s]));
-    // A legacy component tracker keeps its identity; expose only the rest of
-    // its bundle, never a second bundle tracker covering the same component.
-    if (components.some(s => covered.includes(s))) {
-      for (const component of components.filter(s => !covered.includes(s))) map.set(serviceKey(component), component);
-    } else map.set(serviceKey(service), service);
+    // 17 Nov 2026: each service of a bundle (MEP / MEPF / SMEPF) has its own
+    // stage tracker. A tracker already saved under a bundle keeps its identity;
+    // only the services it does not cover are added.
+    // A single service keeps its saved label.
+    if (components.length === 1) {
+      if (!covered.includes(components[0])) map.set(serviceKey(service), service);
+      continue;
+    }
+    for (const component of components.filter(s => !covered.includes(s))) map.set(serviceKey(component), component);
   }
   return [...map.values()];
 }

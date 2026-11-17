@@ -72,7 +72,7 @@ async function call(role, body, method = 'POST', path = '/api/billing/stages') {
 }
 const payload = (extra = {}) => ({
   project: f.project,
-  service: 'SMEPF',
+  service: 'Structural',
   stage: 'CD',
   expectedVersion: 0,
   ...extra
@@ -281,6 +281,7 @@ test('legacy approved/billed dates stay unknown, edits and alternate billing byp
     billingReadiness: 'Billed'
   });
   assert.equal((await call('dmh', payload({
+    service: 'SMEPF',
     approveCompletion: true
   }), 'PUT', '/api/billing/stages/' + row._id)).status, 409);
   const read = await call('td', undefined, 'GET', '/api/billing/stage-timeline?project=' + f.project);
@@ -454,7 +455,7 @@ test('same service alias requests cannot create duplicate trackers and final GFC
     priorActual = actual;
   }
   const result = await call('td', undefined, 'GET', '/api/billing/stage-timeline?project=' + f.project);
-  const summary = result.data.summaries.find(s => s.service === 'SMEPF');
+  const summary = result.data.summaries.find(s => s.service === 'Structural');
   assert.equal(summary.completed, 5);
   assert.equal(summary.onTime, 5);
   assert.equal(summary.netVariance, 0);
@@ -473,20 +474,27 @@ test('legacy tracker without approval defaults remains plannable and exposes cur
   const result = await call('tl', undefined, 'GET', '/api/billing/stage-timeline?project=' + f.project);
   assert.equal(result.data.items.find(r => r.stage === 'CD').permissions.request, true);
 });
-test('a fresh project bundle and component-labelled request resolve one tracker instead of parallel timelines', async () => {
+test('a fresh project bundle tracks each service separately and aliases resolve to the same service tracker', async () => {
   await reset();
-  let row = await plan({
+  // 17 Nov 2026: an SMEPF project has one tracker per service (S, M, E, P, F).
+  const row = await plan({
     service: 'STR'
   });
-  assert.equal(row.service, 'SMEPF');
+  assert.equal(row.service, 'Structural');
   const r = await call('tl', payload({
     planDates: true,
     startDate: '2026-08-01',
     plannedCompletion: '2026-08-15',
     expectedVersion: 0,
-    reason: 'Stale bundle form'
+    reason: 'Stale alias form'
   }));
   assert.equal(r.status, 409);
+  assert.equal((await call('tl', payload({
+    service: 'SMEPF',
+    planDates: true,
+    startDate: '2026-08-01',
+    plannedCompletion: '2026-08-14'
+  }))).status, 403);
   assert.equal(await f.models.StageStatus.countDocuments({
     project: f.project,
     stage: 'CD'
@@ -497,7 +505,7 @@ test('next-stage target retains a legacy saved baseline so the popup requests a 
   let row = await plan();
   await f.models.StageStatus.create({
     project: f.project,
-    service: 'SMEPF',
+    service: 'Structural',
     stage: 'SD',
     startDate: '2026-08-19',
     plannedCompletion: '2026-09-01',

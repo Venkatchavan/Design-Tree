@@ -52,7 +52,7 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function syncProjectLeadTeams(project) {
+export async function syncProjectLeadTeams(project) {
   const groups = new Map();
   const unresolvedServices = new Set((project.principalTeamLeads ?? [])
     .filter(row => !row.employee && row.approvalStatus !== 'Proposed' && (row.name || row.names?.length))

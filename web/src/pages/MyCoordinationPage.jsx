@@ -10,6 +10,7 @@ import { SUPER_ROLES } from '../lib/session.js';
 import Panel from '../components/Panel.jsx';
 import KpiCard from '../components/KpiCard.jsx';
 import Tabs from '../components/Tabs.jsx';
+import { SpocServiceHandover } from '../components/ServiceHandoverPanel.jsx';
 import DataTable from '../components/DataTable.jsx';
 import StatusPill, { statusTone } from '../components/StatusPill.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -940,10 +941,12 @@ export default function MyCoordinationPage({ bootstrap, user }) {
         tabs={[
           { key: 'daily', label: 'Daily work update' },
           { key: 'other', label: 'Other projects' },
+          { key: 'handover', label: 'Service handover' },
         ]}
         active={tab}
         onChange={setTab}
       />
+      {tab === 'handover' && <SpocServiceHandover canSend={roleKey === 'coordinator'} />}
       {tab === 'daily' && <Suspense fallback={<p>Loading daily work…</p>}><SpocDailyWork myAllocs={myAllocs} activeProjects={activeProjects} canWrite={['coordinator', 'design_mgmt_head'].includes(roleKey)} /></Suspense>}
       {tab === 'other' && <OtherProjectsTab myAllocs={myAllocs} activeProjects={activeProjects} activeLoading={activeQ.isLoading} />}
     </>

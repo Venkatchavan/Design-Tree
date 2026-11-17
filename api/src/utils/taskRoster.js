@@ -19,6 +19,12 @@ async function reportingTeam(user) {
   return [...reporting].filter(member => member !== own).map(member => byId.get(member)).filter(Boolean);
 }
 
+// Service group of a reporting-team member, from their saved department
+// (e.g. HVAC -> Mechanical, F&LS -> Fire), so MEPF people stay service-wise.
+function departmentService(employee) {
+  return expandServices([employee?.department]).join(' + ') || employee?.department || '';
+}
+
 // Called after project visibility is checked. Use this for both options and writes.
 export async function taskRoster(user, project) {
   const scoped = await directorTeams(user);
@@ -27,6 +33,11 @@ export async function taskRoster(user, project) {
     : await Team.find({ projects: project, active: { $ne: false } })
       .populate('members.employee', FIELDS).populate('lead', FIELDS).lean();
   let own = [];
+  // 17 Nov 2026: ATDs list everyone under them as well, grouped by each
+  // person's department service, like TLs / PTLs.
+  if (user.role === 'assoc_technical_director') {
+    own = (await reportingTeam(user)).map(employee => ({ employee, service: departmentService(employee), isLead: false }));
+  }
   if (user.role === 'team_lead') {
     const me = await User.findById(user.id).select('employee').lean();
     // A project can contain several disciplines. Derive the TL's service
@@ -39,7 +50,7 @@ export async function taskRoster(user, project) {
       .filter(service => services.has(service)).map(service => ({ ...team, service })));
     // Everyone under the TL is listed too, so the TL never has to search for their own people.
     const label = [...new Set(ledTeams.map(team => team.service).filter(Boolean))].join(' + ') || 'My team';
-    own = (await reportingTeam(user)).map(employee => ({ employee, service: label, isLead: false }));
+    own = (await reportingTeam(user)).map(employee => ({ employee, service: departmentService(employee) || label, isLead: false }));
   }
   const allocated = teams.flatMap(team => [
     ...(team.members ?? []).map(m => ({ employee: m.employee, service: team.service, isLead: false })),
