@@ -14,6 +14,7 @@ export const adminCreateUserSchema = z
 
 export const adminUpdateUserSchema = z
   .object({
+    email: z.string().trim().toLowerCase().email().optional(),
     role: z.string().trim().min(1).optional(),
     isActive: z.boolean().optional(),
     password: z.string().min(8).optional(),

@@ -145,6 +145,11 @@ export async function updateUser(req, res, next) {
       if (EXTERNAL_PORTAL_ROLES.includes(existing.role) || EXTERNAL_PORTAL_ROLES.includes(parsed.data.role)) return res.status(403).json({message:'External access is managed by Admin.'});
     }
     const patch = {};
+    if (parsed.data.email) {
+      const clash = await User.findOne({ email: parsed.data.email, _id: { $ne: req.params.id } }).select('_id');
+      if (clash) return res.status(409).json({ message: 'A login with this email already exists.' });
+      patch.email = parsed.data.email;
+    }
     if (parsed.data.role) patch.role = parsed.data.role;
     if (parsed.data.isActive !== undefined)
       patch.isActive = parsed.data.isActive;

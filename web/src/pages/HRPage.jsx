@@ -668,7 +668,7 @@ function DirectorHolidaysTab() {
   );
 }
 
-function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
+function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport, lockLoginRole }) {
   const queryClient = useQueryClient();
   const [f, setF] = useState(initial ?? { ...EMP_BLANK });
   const [err, setErr] = useState('');
@@ -689,10 +689,18 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
   const save = useMutation({
-    mutationFn: (body) => {
+    mutationFn: async (body) => {
       if (!body._id) return employeesApi.create(body);
-      const { _id, ...payload } = body;
-      return employeesApi.update(_id, payload);
+      const { _id, loginUpdate, ...payload } = body;
+      const updated = await employeesApi.update(_id, payload);
+      if (loginUpdate) {
+        try {
+          await usersApi.update(loginUpdate.id, loginUpdate.patch);
+        } catch (loginErr) {
+          throw new Error(`Employee details saved, but the login was not updated: ${loginErr.message}`);
+        }
+      }
+      return updated;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
@@ -820,6 +828,16 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
     if (isCreate && canLogin && (f.loginEmail || f.loginPassword || f.loginRole)) {
       body.login = { email: f.loginEmail || undefined, password: f.loginPassword || undefined, role: f.loginRole || undefined };
     }
+    // Edit: update the already-linked login (email / role / password) — only
+    // fields that changed; a blank password keeps the current one.
+    if (!isCreate && canLogin && f.loginId) {
+      const patch = {};
+      const newEmail = String(f.loginEmail ?? '').trim().toLowerCase();
+      if (newEmail && newEmail !== String(initial?.loginEmail ?? '').toLowerCase()) patch.email = newEmail;
+      if (f.loginRole && f.loginRole !== initial?.loginRole) patch.role = f.loginRole;
+      if (f.loginPassword) patch.password = f.loginPassword;
+      if (Object.keys(patch).length > 0) body.loginUpdate = { id: f.loginId, patch };
+    }
     save.mutate(body);
   }
 
@@ -925,15 +943,15 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport }) {
       </div>
       <div className="form-row"><label className="form-label">Remarks</label><textarea className="form-input" value={f.remarks ?? ''} onChange={(e) => set('remarks', e.target.value)} /></div>
 
-      {canLogin && isCreate && (
+      {canLogin && (isCreate || f.loginId) && (
         <>
           <div className="section-label">Login (restricted)</div>
           <div className="field-grid">
             <div className="form-row"><label className="form-label" htmlFor="hr-loginEmail">Login email {isCreate ? '*' : ''}</label>{I('loginEmail', { type: 'email', required: isCreate })}</div>
-            <div className="form-row"><label className="form-label" htmlFor="hr-loginPassword">Password {isCreate ? '*' : ''}</label>{I('loginPassword', { type: 'password', required: isCreate, minLength: 8 })}</div>
+            <div className="form-row"><label className="form-label" htmlFor="hr-loginPassword">{isCreate ? 'Password *' : 'New password'}</label>{I('loginPassword', { type: 'password', required: isCreate, minLength: 8, autoComplete: 'new-password', placeholder: isCreate ? undefined : 'Leave blank to keep current' })}</div>
             <div className="form-row">
               <label className="form-label" htmlFor="hr-loginRole">Role {isCreate ? '*' : ''}</label>
-              <select id="hr-loginRole" className="filter-select" style={{ width: '100%' }} value={f.loginRole ?? ''} onChange={(e) => set('loginRole', e.target.value)} required={isCreate}>
+              <select id="hr-loginRole" className="filter-select" style={{ width: '100%' }} value={f.loginRole ?? ''} onChange={(e) => set('loginRole', e.target.value)} required={isCreate} disabled={!isCreate && !!lockLoginRole} title={!isCreate && lockLoginRole ? 'You cannot change your own role.' : undefined}>
                 <option value="">Select role</option>
                 {(bootstrap?.roles ?? []).filter(r => bootstrap?.role?.key !== 'hr' || !['client','architect'].includes(r.key)).map((r) => (
                   <option key={r.key ?? r.value ?? r} value={r.key ?? r.value ?? r}>
@@ -1181,7 +1199,21 @@ function ManageTab({ bootstrap }) {
             bootstrap={bootstrap}
             heading="Edit all sections"
             hideImport
-            initial={empToForm(profile.data?.employee ?? {})}
+            lockLoginRole={(() => {
+              const emp = profile.data?.employee ?? {};
+              const login = emp.user ?? null;
+              const lid = login?._id ?? login?.id ?? (typeof login === 'string' ? login : null);
+              return !!((me?.id && lid && String(me.id) === String(lid)) ||
+                (me?.employee && (emp._id ?? emp.id) && String(me.employee) === String(emp._id ?? emp.id)));
+            })()}
+            initial={(() => {
+              const emp = profile.data?.employee ?? {};
+              const login = emp.user && typeof emp.user === 'object' ? emp.user : null;
+              return {
+                ...empToForm(emp),
+                ...(login ? { loginId: login._id ?? login.id, loginEmail: login.email ?? '', loginRole: login.role ?? '' } : {}),
+              };
+            })()}
             onDone={() => {
               setEditOpen(false);
               queryClient.invalidateQueries({ queryKey: ['employees'] });
