@@ -264,6 +264,17 @@ export async function listAttendance(req, res, next) {
         if (req.query.to) filter.date.$lte = String(req.query.to).slice(0, 10);
       }
     }
+    // Team Leads / PTLs only see the login hours of people on their own team
+    // (same reporting chain + led / PTL teams used for extra-hours approvals).
+    if (req.user?.role === 'team_lead') {
+      const scope = await approverScope(req.user);
+      const allowed = new Set((scope.ids ?? []).map(String));
+      if (req.query.employee) {
+        if (!allowed.has(String(req.query.employee))) return res.status(200).json({ items: [], total: 0 });
+      } else {
+        filter.employee = { $in: [...allowed] };
+      }
+    }
     const items = await AttendanceDay.find(filter)
       .populate('employee', 'firstName lastName empId designation department branch')
       .sort({ date: -1 })

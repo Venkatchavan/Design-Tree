@@ -87,6 +87,10 @@ export default function BillingPage({ bootstrap }) {
     e.preventDefault();
     addClaim.mutate({ ...claim, amount: Number(claim.amount) });
   }
+  function editQuote(r) {
+    setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality });
+    setTimeout(() => document.getElementById('quote-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
+  }
   function updateQuote(e) {
     e.preventDefault();
     quoteMut.mutate({ id: quote.project, body: { quotedFee: Number(quote.quotedFee), quotedHospitality: quote.hospitality } });
@@ -191,7 +195,7 @@ export default function BillingPage({ bootstrap }) {
       ))}
 
       {tab === 'quotes' && (isDirector ? <>
-        {canWrite && <Panel title="Set / update quoted fee"><form onSubmit={updateQuote} className="field-grid">
+        {canWrite && <Panel title="Set / update quoted fee"><form id="quote-form" onSubmit={updateQuote} className="field-grid">
           <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={quote.project} onChange={(e) => setQuote({ ...quote, project: e.target.value })}><option value="">Select project</option>{quoteRows.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}</select></div>
           <div className="form-row"><label className="form-label">Quoted fee (₹) *</label><input required type="number" min="0" className="form-input" value={quote.quotedFee} onChange={(e) => setQuote({ ...quote, quotedFee: e.target.value })} /></div>
           <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={quote.hospitality} onChange={(e) => setQuote({ ...quote, hospitality: e.target.checked })} /> Hospitality arranged by client</label>
@@ -202,7 +206,7 @@ export default function BillingPage({ bootstrap }) {
           { key: 'scope', label: 'Scope of work', render: (r) => r.scope?.map((s) => `${s.service}: ${s.scope || '—'}`).join(' · ') || '—' },
           { key: 'quotedFee', label: 'Quoted fee', render: (r) => money(r.quotedFee ?? r.scopedTotal) },
           { key: 'hospitality', label: 'Hospitality', render: (r) => r.hospitality ? 'Client-arranged' : '—' },
-          { key: 'edit', label: '', render: (r) => canWrite ? <button type="button" className="approve-btn" onClick={() => setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality })}>Edit</button> : null },
+          { key: 'edit', label: '', render: (r) => canWrite ? <button type="button" className="approve-btn" onClick={() => editQuote(r)}>Edit</button> : null },
         ]} rows={quoteRows} emptyText="Create a project first to see quoted fees." /></Panel>
       </> : <>
         <Panel title="Project quoted fee" sub="The contracted fee per project — read automatically by Finance's Project Cost & Performance tracker, so it only needs to be set here"><DataTable columns={[
@@ -210,9 +214,9 @@ export default function BillingPage({ bootstrap }) {
           { key: 'scope', label: 'Scope of work', render: (r) => r.scope?.map((s) => `${s.service}: ${s.scope || '—'}`).join(' · ') || '—' },
           { key: 'quotedFee', label: 'Quoted fee', render: (r) => money(r.quotedFee ?? r.scopedTotal) },
           { key: 'hospitality', label: 'Hospitality (client-arr.)', render: (r) => r.hospitality ? 'Client-arranged' : '—' },
-          { key: 'edit', label: '', render: (r) => canWrite ? <button type="button" className="approve-btn" onClick={() => setQuote({ project: r.id, quotedFee: r.quotedFee ?? r.scopedTotal ?? '', hospitality: !!r.hospitality })}>Edit</button> : null },
+          { key: 'edit', label: '', render: (r) => canWrite ? <button type="button" className="approve-btn" onClick={() => editQuote(r)}>Edit</button> : null },
         ]} rows={quoteRows} emptyText="Create a project first to see quoted fees." /></Panel>
-        <Panel title="Set / update quoted fee"><form onSubmit={updateQuote} className="field-grid">
+        <Panel title="Set / update quoted fee"><form id="quote-form" onSubmit={updateQuote} className="field-grid">
           <div className="form-row"><label className="form-label">Project *</label><select required className="filter-select" style={{ width: '100%' }} value={quote.project} onChange={(e) => setQuote({ ...quote, project: e.target.value })}><option value="">--Select project--</option>{quoteRows.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}</select></div>
           <div className="form-row"><label className="form-label">Quoted fee (₹) *</label><input required type="number" min="0" className="form-input" value={quote.quotedFee} onChange={(e) => setQuote({ ...quote, quotedFee: e.target.value })} /></div>
           <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={quote.hospitality} onChange={(e) => setQuote({ ...quote, hospitality: e.target.checked })} /> Hospitality arranged by client</label>

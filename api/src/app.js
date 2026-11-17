@@ -33,6 +33,7 @@ import dbrRoutes from './routes/dbr.routes.js';
 import supportRoutes from './routes/support.routes.js';
 import registerRoutes from './routes/register.routes.js';
 import salesforceRoutes from './routes/salesforce.routes.js';
+import salesforcePushRoutes from './routes/salesforcePush.routes.js';
 import metaRoutes from './routes/meta.routes.js';
 import projectsRoutes from './routes/projects.routes.js';
 import functionsRoutes from './routes/functions.routes.js';
@@ -56,7 +57,15 @@ export function createApp() {
     }),
   );
   app.use(withRequestContext);
-  app.use(express.json());
+  app.use(
+    express.json({
+      // The Salesforce push is authenticated by an HMAC over the exact bytes
+      // received, so keep them for that one route.
+      verify: (req, _res, buf) => {
+        if (req.originalUrl.startsWith('/api/integrations/salesforce/push')) req.rawBody = buf;
+      },
+    }),
+  );
   app.use(cookieParser());
 
   app.get('/api/health', (_req, res) => {
@@ -67,6 +76,7 @@ export function createApp() {
   app.use('/api/meta', metaRoutes);
   app.use('/api/branches', branchesRoutes);
   app.use('/api/projects', projectsRoutes);
+  app.use('/api/integrations/salesforce/push', salesforcePushRoutes);
   app.use('/api/integrations/salesforce', salesforceRoutes);
   app.use('/api/coordination-items', coordinationRoutes);
   app.use('/api/employees', employeesRoutes);

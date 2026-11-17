@@ -23,6 +23,7 @@ import {
 } from '../validation/project.schema.js';
 import { requireActiveBranch } from '../utils/branches.js';
 import { projectScopeIds } from '../utils/projectScope.js';
+import { allocationOptions } from '../utils/allocationOptions.js';
 
 async function projectVisible(user, id) {
   const ids = await projectScopeIds(user);
@@ -171,7 +172,7 @@ export async function nextJobNumber(_req, res, next) {
   }
 }
 
-async function generateProjectCode() {
+export async function generateProjectCode() {
   const year = new Date().getFullYear();
   const existing = await Project.find({ code: new RegExp(`^PRJ-${year}-\\d+$`) }).select('code').lean();
   const seq = await nextSequence(`project-code-${year}`, existing.map((p) => p.code));
@@ -751,7 +752,8 @@ export async function activateProject(req, res, next) {
     if (!project) return res.status(404).json({ message: 'Project not found.' });
 
     let allocation = null;
-    const noSpoc = parsed.data.noSpoc === true;
+    const teamLeadId = parsed.data.teamLead;
+    const noSpoc = parsed.data.noSpoc === true || !!teamLeadId;
     const wasActivated = project.activation?.status === 'Activated';
     const previousSpocId = project.activation?.spoc?.toString();
     // "No SPOC" is for projects that do not need a coordinator; it needs no coordinator at all.
@@ -760,6 +762,12 @@ export async function activateProject(req, res, next) {
       const options = await eligibleSpocs();
       if (!coordinatorId || !options.items.some(employee => employee._id === String(coordinatorId))) {
         return res.status(400).json({ message: 'Select an active SPOC whose login is linked to an eligible employee. Ask HR to review a missing name or employee link.' });
+      }
+    }
+    if (teamLeadId) {
+      const options = await allocationOptions();
+      if (!options.teamLeads.some((lead) => String(lead._id) === String(teamLeadId))) {
+        return res.status(400).json({ message: 'Select an active Team Lead for this service.' });
       }
     }
     // Changing the SPOC (or choosing No SPOC) releases the previously assigned one.
@@ -787,6 +795,29 @@ export async function activateProject(req, res, next) {
     }
 
     const priorActivation = project.activation?.toObject?.() ?? project.activation ?? {};
+    // Single-service project: the selected Team Lead becomes the project's Team
+    // Lead for that service (replacing the one this panel set before), which
+    // creates the service team and shows the project on the Team Lead's side.
+    const priorLeadId = priorActivation.teamLead ? String(priorActivation.teamLead) : '';
+    const sameService = (a, b) => expandServices([a]).join('+') === expandServices([b]).join('+');
+    if (teamLeadId || priorLeadId) {
+      const lead = teamLeadId ? await Employee.findById(teamLeadId) : null;
+      if (teamLeadId && !lead) return res.status(400).json({ message: 'Team Lead not found.' });
+      const rows = (project.principalTeamLeads ?? [])
+        .map((row) => (row.toObject ? row.toObject() : row))
+        .filter((row) => !(priorLeadId && String(row.employee ?? '') === priorLeadId && sameService(row.service, priorActivation.service))
+          && !(teamLeadId && String(row.employee ?? '') === String(teamLeadId) && sameService(row.service, parsed.data.service)));
+      if (lead) {
+        rows.push({
+          service: parsed.data.service,
+          employee: lead._id,
+          name: [lead.firstName, lead.lastName].filter(Boolean).join(' ') || lead.empId,
+          role: 'Team Lead',
+          approvalStatus: 'Approved',
+        });
+      }
+      project.principalTeamLeads = rows;
+    }
     if (!wasActivated) project.status = 'Active';
     project.activation = {
       ...priorActivation,
@@ -795,15 +826,32 @@ export async function activateProject(req, res, next) {
       activatedAt: wasActivated ? priorActivation.activatedAt : new Date(),
       spoc: coordinatorId ?? undefined,
       noSpoc,
+      service: teamLeadId ? parsed.data.service : undefined,
+      teamLead: teamLeadId ?? undefined,
     };
     await project.save();
+    if (teamLeadId || priorLeadId) await syncProjectLeadTeams(project);
 
     try {
       const { notify, userIdsForEmployees } = await import('../models/Notification.js');
       const users = coordinatorId
         ? await userIdsForEmployees([coordinatorId])
         : [];
-      if (!wasActivated) {
+      if (teamLeadId) {
+        // Single-service project: tell the Team Lead (and the Design Management
+        // Head on first activation); there is no coordinator to notify.
+        const leadUsers = await userIdsForEmployees([teamLeadId]);
+        const serviceLabel = expandServices([parsed.data.service]).join(' + ') || parsed.data.service;
+        await notify({
+          ...(!wasActivated ? { roles: ['design_mgmt_head'] } : {}),
+          users: leadUsers,
+          project: project._id,
+          link: { view: 'my-team', id: project._id.toString() },
+          title: `Project allocated: ${project.name} (${project.code})`,
+          detail: `You are the Team Lead for ${serviceLabel}.`,
+          type: 'project-activated',
+        });
+      } else if (!wasActivated) {
         await notify({
           roles: ['design_mgmt_head', 'coordinator'],
           users,

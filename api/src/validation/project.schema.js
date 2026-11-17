@@ -199,8 +199,12 @@ export const activateProjectSchema = z
     // "No SPOC": the project is activated without a coordinator.
     noSpoc: z.boolean().optional(),
     services: z.array(z.string().trim()).optional(),
+    // Single-service project: the service and its Team Lead (no coordinator).
+    service: z.enum(['STR', 'HVAC', 'ELE', 'PHE', 'FIRE', 'Peer Review']).optional(),
+    teamLead: objectId.optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => !v.teamLead || !!v.service, { message: 'Select the service for the Team Lead.' });
 
 // PUT /api/projects/:id/team-confirmation — DMH confirms discipline teams
 // and optionally shares the details back to Admin.

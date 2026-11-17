@@ -45,3 +45,6 @@ coverage/
 
 # Ad-hoc `nginx -T` dumps from servers (stale snapshots; may hold client infra details)
 nginx-active-config.txt
+
+# Documents that contain secrets are never committed
+docs/*_CONFIDENTIAL.docx

@@ -1,6 +1,7 @@
 import EmployeeSelect, { EmployeeFilter } from '../components/EmployeeSelect.jsx';
 import DirectorTeamsPage from './DirectorTeamsPage.jsx';
 import ExtraHoursApprovals from '../components/ExtraHoursApprovals.jsx';
+import TeamLoginHours from '../components/TeamLoginHours.jsx';
 import DesignTeamPage from './DesignTeamPage.jsx';
 import { projectMembers } from '../lib/projectRoster.js';
 import { CoordinationPanel } from '../components/ProjectUpdates.jsx';
@@ -663,6 +664,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       { key: 'revision', label: 'Revision' },
       { key: 'drawings', label: 'Drawing register' },
       { key: 'recruitment', label: 'Recruitment requests' },
+      ...(isTL ? [{ key: 'login-hours', label: 'Login hours' }] : []),
       ...(isATD ? [{ key: 'people', label: 'People' }] : []),
     ]) : workspaceTabs;
   // The Team Lead keeps the list of deliverables (with its log) under Assign work.
@@ -782,6 +784,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       </div>
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
       {tab === 'people' && isATD && <DirectorTeamsPage />}
+      {tab === 'login-hours' && isTL && <TeamLoginHours />}
       {tab==='revision'&&<Tabs tabs={[{key:'entry',label:'Revision entry'},{key:'log',label:'Revision log'}]} active={revisionTab} onChange={setRevisionTab}/>}
       {/* 13 Nov 2026: coordination items belong to the Overview tab only. */}
       {tab === 'overview' && (!isATD || selectedTeam) && <CoordinationPanel projectId={scopedProjectId} service={selectedTeam?.service}/>}

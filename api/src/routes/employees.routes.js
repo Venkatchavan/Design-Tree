@@ -20,8 +20,9 @@ const router = Router();
 router.use(requireAuth);
 router.get('/', requireInternal(), listEmployees);
 router.get('/filters', requireInternal(), employeeFilters);
-// Same roles that may save project team allocations (projects.routes.js team-leads).
-router.get('/allocation-options', requireRole('coordinator', 'design_mgmt_head', 'technical_director'), listAllocationOptions);
+// Same roles that may save project team allocations (projects.routes.js team-leads),
+// plus Admin, who picks the Team Lead when opening a single-service project.
+router.get('/allocation-options', requireRole('coordinator', 'design_mgmt_head', 'technical_director', 'admin_billing'), listAllocationOptions);
 router.get('/spoc-options', requireRole('admin_billing', 'technical_director', 'hr'), listSpocOptions);
 router.get('/:id', requireInternal(), getEmployee);
 router.post('/', requireUserAdmin(), createEmployee);

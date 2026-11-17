@@ -147,6 +147,9 @@ const projectSchema = new mongoose.Schema(
       spoc: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
       // Activated on purpose without a SPOC (projects that do not need one).
       noSpoc: { type: Boolean, default: false },
+      // Single-service projects: the service and its Team Lead (no coordinator).
+      service: { type: String, trim: true },
+      teamLead: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
     },
     // Team finalisation: Design Management Head confirms the discipline
     // teams (SPOC/PTL/TL/designers/engineers/drafting-BIM/QAQC/peer/QS)
@@ -223,6 +226,9 @@ const projectSchema = new mongoose.Schema(
     salesforceLastModifiedAt: { type: Date },
     salesforceSyncedAt: { type: Date },
     salesforceInstanceUrl: { type: String, trim: true },
+    // Things the last Salesforce push could not resolve (unknown branch or
+    // service, missing Job Number). Shown to Admin when reviewing the project.
+    salesforceWarnings: [{ type: String, trim: true }],
   },
   { timestamps: true },
 );

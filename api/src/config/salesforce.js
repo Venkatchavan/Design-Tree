@@ -24,7 +24,13 @@ export function salesforceSettings() {
     ? requestedObject
     : 'Project__c';
 
+  // Shared secret Salesforce uses to sign pushes to DT-MIS. Independent of the
+  // OAuth client above: a server can receive pushes without calling Salesforce.
+  const pushSecret = text(process.env.SF_PUSH_SECRET);
+
   return {
+    pushSecret,
+    pushConfigured: pushSecret.length >= 32,
     configured: Boolean(clientId && clientSecret),
     loginUrl: baseUrl(process.env.SF_LOGIN_URL, 'https://login.salesforce.com'),
     clientId,

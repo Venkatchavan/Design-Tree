@@ -5,7 +5,9 @@ import { employeeId, employeeName, employeeRecord, employeeServices, filterEmplo
 // people or changes a selection when a filter changes.
 // `fixedService` replaces the service/department filter with one fixed label
 // (e.g. every SPOC candidate is a coordinator, whatever department HR saved).
-export function EmployeeFilter({employees=[],selectedIds=[],getId=employeeId,label='Employee',children,disabled=false,fixedService=''}) {
+// `serviceChoices` ([{value,label}]) + `serviceValue` / `onServiceChange` turn that
+// slot into a service selector controlled by the caller.
+export function EmployeeFilter({employees=[],selectedIds=[],getId=employeeId,label='Employee',children,disabled=false,fixedService='',serviceChoices=null,serviceValue='',onServiceChange=()=>{}}) {
  const [search,setSearch]=useState(''),[branch,setBranch]=useState(''),[service,setService]=useState('');const uid=useId();
  const branches=[...new Set(employees.map(e=>employeeRecord(e)?.branch||'Not recorded'))].sort();
  const services=[...new Set(employees.flatMap(e=>employeeServices(e).length?employeeServices(e):['Not recorded']))].sort();
@@ -14,7 +16,9 @@ export function EmployeeFilter({employees=[],selectedIds=[],getId=employeeId,lab
   <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6}}>
    <input id={uid+'-search'} className="form-input" aria-label={`${label} search`} placeholder="Search name or employee ID" value={search} disabled={disabled} onChange={e=>setSearch(e.target.value)} style={{flex:'1 1 150px',minWidth:0}} />
    <select className="filter-select" aria-label={`${label} branch`} value={branch} disabled={disabled} onChange={e=>setBranch(e.target.value)} style={{flex:'1 1 110px',minWidth:0}}><option value="">All branches</option>{branches.map(b=><option key={b}>{b}</option>)}</select>
-   {fixedService
+   {serviceChoices
+    ? <select className="filter-select" aria-label={`${label} service`} value={serviceValue} disabled={disabled} onChange={e=>onServiceChange(e.target.value)} style={{flex:'1 1 130px',minWidth:0}}>{serviceChoices.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select>
+    : fixedService
     ? <select className="filter-select" aria-label={`${label} service`} value="" disabled={disabled} onChange={()=>{}} style={{flex:'1 1 130px',minWidth:0}}><option value="">{fixedService}</option></select>
     : <select className="filter-select" aria-label={`${label} service`} value={service} disabled={disabled} onChange={e=>setService(e.target.value)} style={{flex:'1 1 130px',minWidth:0}}><option value="">All services / departments</option>{services.map(s=><option key={s}>{s}</option>)}</select>}
   </div>
@@ -23,11 +27,11 @@ export function EmployeeFilter({employees=[],selectedIds=[],getId=employeeId,lab
  </div>;
 }
 
-export default function EmployeeSelect({employees=[],getValue=employeeId,children,fixedService='',...props}) {
+export default function EmployeeSelect({employees=[],getValue=employeeId,children,fixedService='',serviceChoices=null,serviceValue='',onServiceChange,...props}) {
  const options=Children.toArray(children);const selected=Array.isArray(props.value)?props.value:[props.value];
  const label=props['aria-label']||'Employee';
  // The rendered options remain the authority too: metadata cannot add an option.
- return <EmployeeFilter employees={employees} selectedIds={selected} getId={getValue} label={label} disabled={props.disabled} fixedService={fixedService}>{shown=>{
+ return <EmployeeFilter employees={employees} selectedIds={selected} getId={getValue} label={label} disabled={props.disabled} fixedService={fixedService} serviceChoices={serviceChoices} serviceValue={serviceValue} onServiceChange={onServiceChange}>{shown=>{
    const allowed=new Set(shown.map(e=>String(getValue(e))));
    const visible=options.filter(option=>{ const value=String(option?.props?.value??option?.props?.children??''); return option?.type!=='option'||!value||option?.props?.['data-always']||allowed.has(value)||selected.map(String).includes(value); });
    const values=new Set(options.filter(o=>o?.type==='option').map(o=>String(o.props.value??o.props.children)));

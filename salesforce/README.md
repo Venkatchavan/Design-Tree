@@ -205,3 +205,49 @@ being imported twice; a duplicate returns `409` with the existing project.
 Then run the token + SOQL check from the setup notes. `project-describe.json` is
 safe to share — it is schema only, no records and no credentials. The consumer
 secret and access tokens are not.
+
+## Receiving pushes from Salesforce
+
+Salesforce pushes a project to DT-MIS when it is created or changed. This is
+separate from the read-only import above: nothing here calls Salesforce.
+
+`POST /api/integrations/salesforce/push` — no login; every request is signed.
+
+| Header | Value |
+|---|---|
+| `Content-Type` | `application/json` |
+| `X-DT-Timestamp` | Unix time in seconds when the request was made |
+| `X-DT-Signature` | `sha256=` + hex `HMAC-SHA256(secret, timestamp + "." + raw body)` |
+
+The secret is `SF_PUSH_SECRET` (32+ random bytes, hex). Requests more than five
+minutes old are refused. A bad, missing or stale signature returns `401`.
+
+Body: `{ "status": "success", "data": [ { "Id": "...", "Name": "...", ... } ] }`
+(up to 200 records; a single object in `data` is also accepted). Keys are
+trimmed and matched without `__c`, so `Job_Number` and `Job_Numbers__c` both work.
+
+Response: `200 { "status": "success", "data": [ { "Id", "result", "projectCode", "warnings" } ] }`.
+`result` is `created`, `updated`, `skipped` (a newer version is already stored)
+or `flagged` (Job Number missing on a project already synced). If any record is
+refused the response is `422` with `status: "error"` and a `code` per record
+(`NOT_ELIGIBLE`, `INVALID_ID`, `MISSING_NAME`, `INVALID_DATE`, `CODE_CONFLICT`).
+Salesforce should tick Synced only on `200`; resending the same record is safe.
+
+Behaviour:
+
+- Only records with a Job Number are stored. `Used_For__c` is not used.
+- Match is on the Salesforce `Id`. A record with an older `LastModifiedDate` than
+  the stored one is acknowledged and ignored.
+- New projects start with activation **Pending** and no creator; Admin reviews
+  them. The Design Management Head and Directors are notified.
+- On update Salesforce overwrites name, job number, entity, client, state,
+  project type, used-for, location, directors and (when it matches) branch.
+  Services, contacts, team leads, stages and fees stay under DT-MIS control.
+- An unknown branch or service never rejects the push: it is left blank and
+  listed in `salesforceWarnings` on the project.
+
+Generate a secret and put it in the server's `.env`:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```

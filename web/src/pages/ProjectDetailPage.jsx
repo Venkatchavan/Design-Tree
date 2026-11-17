@@ -238,6 +238,27 @@ function PortalAccessPanel({ projectId, initialIds, isAdmin }) {
 
 // Dropdown value for "No SPOC" (projects that do not need a coordinator).
 const NO_SPOC = '__no_spoc__';
+// Services the Design Management Head can open a project for. SMEPF goes through
+// the Coordinator (SPOC); any single service goes straight to that service's Team Lead.
+const SMEPF = 'SMEPF';
+const ALLOCATION_SERVICES = [
+  { value: 'STR', label: 'STR' },
+  { value: 'HVAC', label: 'Mechanical (M)' },
+  { value: 'ELE', label: 'Electrical (E)' },
+  { value: 'PHE', label: 'Plumbing (P)' },
+  { value: 'FIRE', label: 'Fire (F)' },
+  { value: 'Peer Review', label: 'Peer Review' },
+  { value: SMEPF, label: 'SMEPF' },
+];
+const SERVICE_PATTERNS = {
+  STR: /\bstr\b|struct/i,
+  HVAC: /\bhvac\b|mechanic/i,
+  ELE: /\bele\b|electric/i,
+  PHE: /\bphe\b|plumb/i,
+  FIRE: /\bfire\b|f&ls/i,
+  'Peer Review': /peer/i,
+};
+const allocationServiceLabel = (value) => ALLOCATION_SERVICES.find((s) => s.value === value)?.label ?? value;
 
 export default function ProjectDetailPage({ bootstrap }) {
   const { id } = useParams();
@@ -247,6 +268,8 @@ export default function ProjectDetailPage({ bootstrap }) {
   const [detailsOpen,setDetailsOpen]=useState(false);
   const [locOpen, setLocOpen] = useState(false);
   const [spocId, setSpocId] = useState('');
+  const [allocService, setAllocService] = useState(SMEPF);
+  const [teamLeadId, setTeamLeadId] = useState('');
   const [changingSpoc, setChangingSpoc] = useState(false);
   const [top, setTop] = useState('coordinator');
   const [coord, setCoord] = useState('overview');
@@ -285,6 +308,13 @@ export default function ProjectDetailPage({ bootstrap }) {
     retry: false,
     refetchInterval: 10000,
   });
+  const singleService = allocService !== SMEPF;
+  const teamLeadOptions = useQuery({
+    queryKey: ['allocation-options'],
+    queryFn: employeesApi.allocationOptions,
+    enabled: (isAdmin || isTD) && singleService && (q.data?.project?.activation?.status !== 'Activated' || changingSpoc),
+    retry: false,
+  });
   const stagesQ = useQuery({ queryKey: ['project-stages', id], queryFn: () => billingApi.stages({ project: id }), enabled: !!id, retry: false, refetchInterval: role === 'coordinator' ? 10_000 : false });
   const drawingsQ = useQuery({ queryKey: ['project-drawings', id], queryFn: () => drawingsApi.list({ project: id }), enabled: !!id, retry: false });
   const revisionsQ = useQuery({ queryKey: ['project-revisions', id], queryFn: () => revisionsApi.list({ project: id }), enabled: !!id, retry: false });
@@ -310,6 +340,8 @@ export default function ProjectDetailPage({ bootstrap }) {
       queryClient.invalidateQueries({ queryKey: ['projects-stats'] });
       queryClient.invalidateQueries({ queryKey: ['project-team', id] });
       setSpocId('');
+      setTeamLeadId('');
+      setAllocService(SMEPF);
       setChangingSpoc(false);
     },
   });
@@ -372,6 +404,13 @@ export default function ProjectDetailPage({ bootstrap }) {
     || activationSpoc
     || (teamQ.isLoading || (project.activation?.spoc && employees.isLoading) ? 'Loading…' : 'Not allocated');
   const currentSpocKey = project.activation?.noSpoc ? NO_SPOC : idOf(project.activation?.spoc);
+  const activationTeamLead = idOf(project.activation?.teamLead);
+  const allTeamLeads = teamLeadOptions.data?.teamLeads ?? [];
+  // Team Leads of the selected service; if none carry that service on their
+  // record, every Team Lead is offered so the allocation is never blocked.
+  const serviceTeamLeads = allTeamLeads.filter((t) => SERVICE_PATTERNS[allocService]?.test(`${t.department ?? ''} ${t.designation ?? ''}`));
+  const teamLeadCandidates = serviceTeamLeads.length ? serviceTeamLeads : allTeamLeads;
+  const teamLeadName = (t) => [t.firstName, t.lastName].filter(Boolean).join(' ') || t.empId;
   const pid = String(id);
   const ofProject =(items) => (items ?? []).filter((r) => idOf(r.project) === pid);
   const stages = ofProject(stagesQ.data?.items);
@@ -768,31 +807,66 @@ export default function ProjectDetailPage({ bootstrap }) {
         {(isAdmin || isTD) && (project.activation?.status !== 'Activated' || changingSpoc) ? (
           <>
             <div className="form-row" style={{ maxWidth: 360 }}>
-              <label className="form-label" htmlFor="pd-spoc">SPOC (coordinator)</label>
-              <EmployeeSelect employees={(spocOptions.data?.items ?? [])} fixedService="Coordinators" id="pd-spoc" className="filter-select" value={spocId} onChange={(e) => setSpocId(e.target.value)} disabled={spocOptions.isLoading || spocOptions.isError}>
+              <label className="form-label" htmlFor="pd-spoc">{singleService ? 'Team Lead' : 'SPOC (coordinator)'}</label>
+              <EmployeeSelect
+                employees={singleService ? teamLeadCandidates : (spocOptions.data?.items ?? [])}
+                serviceChoices={ALLOCATION_SERVICES}
+                serviceValue={allocService}
+                onServiceChange={(value) => { setAllocService(value); setSpocId(''); setTeamLeadId(''); }}
+                id="pd-spoc"
+                className="filter-select"
+                value={singleService ? teamLeadId : spocId}
+                onChange={(e) => (singleService ? setTeamLeadId(e.target.value) : setSpocId(e.target.value))}
+                disabled={singleService ? (teamLeadOptions.isLoading || teamLeadOptions.isError) : (spocOptions.isLoading || spocOptions.isError)}
+              >
                 <option value="">Select…</option>
-                <option value={NO_SPOC} data-always="true">No SPOC (not required for this project)</option>
-                {(spocOptions.data?.items ?? []).map((e) => (
-                  <option key={e._id} value={e._id}>
-                    {e.name} ({e.empId ?? '—'})
-                  </option>
-                ))}
+                {!singleService && <option value={NO_SPOC} data-always="true">No SPOC (not required for this project)</option>}
+                {singleService
+                  ? teamLeadCandidates.map((t) => (
+                    <option key={t._id} value={t._id}>
+                      {teamLeadName(t)} ({t.empId ?? '—'})
+                    </option>
+                  ))
+                  : (spocOptions.data?.items ?? []).map((e) => (
+                    <option key={e._id} value={e._id}>
+                      {e.name} ({e.empId ?? '—'})
+                    </option>
+                  ))}
               </EmployeeSelect>
+              {singleService ? (
+                <>
+                  {teamLeadOptions.isLoading && <p>Loading Team Leads…</p>}
+                  {teamLeadOptions.isError && <div role="alert">{teamLeadOptions.error.message} <button type="button" onClick={() => teamLeadOptions.refetch()}>Retry Team Lead list</button></div>}
+                  {!teamLeadOptions.isLoading && !teamLeadOptions.isError && !teamLeadCandidates.length && <p>No Team Leads are available.</p>}
+                  <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>A single-service project goes straight to that service's Team Lead. No coordinator is needed.</p>
+                </>
+              ) : (
+                <>
               {spocOptions.isLoading && <p>Loading SPOCs…</p>}
               {spocOptions.isError && <div role="alert">{spocOptions.error.message} <button type="button" onClick={() => spocOptions.refetch()}>Retry SPOC list</button></div>}
               {!spocOptions.isLoading && !spocOptions.isError && !spocOptions.data?.items?.length && <p>No eligible SPOCs are available. Ask HR to check the SPOC role, active login and employee link.</p>}
               <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>Only active SPOC logins linked to eligible employee records appear. Other employee roles are excluded.</p>
-              {!!spocOptions.data?.unavailable?.length && <details><summary>SPOC logins needing HR review ({spocOptions.data.unavailable.length})</summary><ul>{spocOptions.data.unavailable.map((item, index) => <li key={index}>{item.name}: {item.reason}</li>)}</ul></details>}
+                </>
+              )}
+              {!singleService && !!spocOptions.data?.unavailable?.length && <details><summary>SPOC logins needing HR review ({spocOptions.data.unavailable.length})</summary><ul>{spocOptions.data.unavailable.map((item, index) => <li key={index}>{item.name}: {item.reason}</li>)}</ul></details>}
             </div>
             {activate.isError && (
               <div className="login-error" role="alert" style={{ display: 'block' }}>{activate.error.message}</div>
             )}
-            <button type="button" className="btn-primary" disabled={activate.isPending || spocOptions.isLoading || spocOptions.isError || spocId === currentSpocKey || !(spocId === NO_SPOC || (spocOptions.data?.items ?? []).some(employee => employee._id === spocId))} onClick={() => activate.mutate(spocId === NO_SPOC ? { noSpoc: true } : { coordinator: spocId })}>
-              {activate.isPending ? 'Saving…' : changingSpoc ? 'Save SPOC' : 'Assign SPOC'}
-            </button>
-            {changingSpoc && <button type="button" className="approve-btn" style={{ marginLeft: 8 }} disabled={activate.isPending} onClick={() => { setChangingSpoc(false); setSpocId(''); }}>Cancel</button>}
+            {singleService ? (
+              <button type="button" className="btn-primary" disabled={activate.isPending || teamLeadOptions.isLoading || teamLeadOptions.isError || (teamLeadId === activationTeamLead && allocService === project.activation?.service) || !teamLeadCandidates.some((t) => String(t._id) === teamLeadId)} onClick={() => activate.mutate({ service: allocService, teamLead: teamLeadId })}>
+                {activate.isPending ? 'Saving…' : changingSpoc ? 'Save Team Lead' : 'Assign Team Lead'}
+              </button>
+            ) : (
+              <button type="button" className="btn-primary" disabled={activate.isPending || spocOptions.isLoading || spocOptions.isError || spocId === currentSpocKey || !(spocId === NO_SPOC || (spocOptions.data?.items ?? []).some(employee => employee._id === spocId))} onClick={() => activate.mutate(spocId === NO_SPOC ? { noSpoc: true } : { coordinator: spocId })}>
+                {activate.isPending ? 'Saving…' : changingSpoc ? 'Save SPOC' : 'Assign SPOC'}
+              </button>
+            )}
+            {changingSpoc && <button type="button" className="approve-btn" style={{ marginLeft: 8 }} disabled={activate.isPending} onClick={() => { setChangingSpoc(false); setSpocId(''); setTeamLeadId(''); setAllocService(SMEPF); }}>Cancel</button>}
             <p style={{ fontSize: 12.5, color: 'var(--ink-muted)' }}>
-              Assigning the SPOC activates the project and opens the SPOC workspace. Choose No SPOC if this project does not need one.
+              {singleService
+                ? 'Assigning the Team Lead activates the project for that service and notifies the Team Lead.'
+                : 'Assigning the SPOC activates the project and opens the SPOC workspace. Choose No SPOC if this project does not need one.'}
             </p>
           </>
         ) : project.activation?.status === 'Activated' ? (
@@ -800,12 +874,23 @@ export default function ProjectDetailPage({ bootstrap }) {
             <p style={{ fontSize: 13.5 }}>
               Activated{project.activation?.activatedAt ? ` on ${fmtDate(project.activation.activatedAt)}` : ''}.
             </p>
-            <p style={{ fontSize: 13.5 }}>
-              <strong>SPOC:</strong> {project.activation?.noSpoc ? 'No SPOC (not required for this project)' : assignedSpocLabel}
-            </p>
+            {activationTeamLead ? (
+              <>
+                <p style={{ fontSize: 13.5 }}><strong>Service:</strong> {allocationServiceLabel(project.activation?.service)}</p>
+                <p style={{ fontSize: 13.5 }}><strong>Team Lead:</strong> {employeeLabel(project.activation?.teamLead) || 'Loading…'}</p>
+              </>
+            ) : (
+              <p style={{ fontSize: 13.5 }}>
+                <strong>SPOC:</strong> {project.activation?.noSpoc ? 'No SPOC (not required for this project)' : assignedSpocLabel}
+              </p>
+            )}
             {(isAdmin || isTD) && (
-              <button type="button" className="approve-btn" onClick={() => { setSpocId(currentSpocKey); setChangingSpoc(true); }}>
-                Change SPOC
+              <button type="button" className="approve-btn" onClick={() => {
+                if (activationTeamLead) { setAllocService(project.activation?.service || SMEPF); setTeamLeadId(activationTeamLead); setSpocId(''); }
+                else { setAllocService(SMEPF); setSpocId(currentSpocKey); setTeamLeadId(''); }
+                setChangingSpoc(true);
+              }}>
+                {activationTeamLead ? 'Change Team Lead' : 'Change SPOC'}
               </button>
             )}
           </>
