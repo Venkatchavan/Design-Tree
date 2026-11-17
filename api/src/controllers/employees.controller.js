@@ -184,7 +184,8 @@ export async function createEmployee(req, res, next) {
 
 export async function updateEmployee(req, res, next) {
   try {
-    const parsed = employeeUpdateSchema.safeParse(req.body);
+    const { login, ...body } = req.body ?? {};
+    const parsed = employeeUpdateSchema.safeParse(body);
     if (!parsed.success) {
       return res.status(400).json({ message: 'Invalid employee data.', errors: parsed.error.issues });
     }
@@ -195,6 +196,33 @@ export async function updateEmployee(req, res, next) {
         return res.status(err.status ?? 400).json({ message: err.message });
       }
     }
+
+    // Optional: attach a login to an employee that was created without one.
+    let loginData = null;
+    if (login != null) {
+      const existing = await Employee.findById(req.params.id).select('user');
+      if (!existing) return res.status(404).json({ message: 'Employee not found.' });
+      if (existing.user) {
+        return res.status(409).json({ message: 'This employee already has a login linked.' });
+      }
+      const loginParsed = employeeLoginSchema.safeParse(login);
+      if (!loginParsed.success) {
+        return res.status(400).json({ message: 'Invalid login data.', errors: loginParsed.error.issues });
+      }
+      if (!ROLE_KEYS.includes(loginParsed.data.role)) {
+        return res.status(400).json({ message: 'Unknown role.' });
+      }
+      if (['client', 'architect'].includes(loginParsed.data.role)) {
+        return res.status(400).json({
+          message: 'External roles don’t get employee records — create them under HR → External access.',
+        });
+      }
+      if (await User.findOne({ email: loginParsed.data.email })) {
+        return res.status(409).json({ message: 'A login with this email already exists.' });
+      }
+      loginData = loginParsed.data;
+    }
+
     const employee = await Employee.findByIdAndUpdate(
       req.params.id,
       parsed.data,
@@ -202,6 +230,30 @@ export async function updateEmployee(req, res, next) {
     ).populate('user', 'email role isActive');
     if (!employee)
       return res.status(404).json({ message: 'Employee not found.' });
+
+    if (loginData) {
+      try {
+        const name = `${employee.firstName ?? ''} ${employee.lastName ?? ''}`.trim() || loginData.email;
+        const user = await User.create({
+          name,
+          email: loginData.email,
+          passwordHash: await bcrypt.hash(loginData.password, 10),
+          role: loginData.role,
+          employee: employee._id,
+        });
+        employee.user = user._id;
+        await employee.save();
+      } catch (err) {
+        if (err?.code === 11000) {
+          return res.status(409).json({
+            message: 'Employee details saved, but a login with this email already exists.',
+          });
+        }
+        throw err;
+      }
+      const withLogin = await Employee.findById(employee._id).populate('user', 'email role isActive');
+      return res.status(200).json({ employee: withLogin });
+    }
     return res.status(200).json({ employee });
   } catch (err) {
     if (err?.code === 11000) {

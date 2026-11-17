@@ -828,6 +828,14 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport, lockLog
     if (isCreate && canLogin && (f.loginEmail || f.loginPassword || f.loginRole)) {
       body.login = { email: f.loginEmail || undefined, password: f.loginPassword || undefined, role: f.loginRole || undefined };
     }
+    // Edit, employee has no login yet: provision one (all three fields needed).
+    if (!isCreate && canLogin && !f.loginId && (f.loginEmail || f.loginPassword || f.loginRole)) {
+      if (!String(f.loginEmail ?? '').trim() || !f.loginPassword || !f.loginRole) {
+        setErr('To add a login, enter the login email, password and role.');
+        return;
+      }
+      body.login = { email: f.loginEmail, password: f.loginPassword, role: f.loginRole };
+    }
     // Edit: update the already-linked login (email / role / password) — only
     // fields that changed; a blank password keeps the current one.
     if (!isCreate && canLogin && f.loginId) {
@@ -943,9 +951,9 @@ function EmployeeForm({ bootstrap, initial, onDone, heading, hideImport, lockLog
       </div>
       <div className="form-row"><label className="form-label">Remarks</label><textarea className="form-input" value={f.remarks ?? ''} onChange={(e) => set('remarks', e.target.value)} /></div>
 
-      {canLogin && (isCreate || f.loginId) && (
+      {canLogin && (
         <>
-          <div className="section-label">Login (restricted)</div>
+          <div className="section-label">{!isCreate && !f.loginId ? 'Add login (optional — no login linked yet)' : 'Login (restricted)'}</div>
           <div className="field-grid">
             <div className="form-row"><label className="form-label" htmlFor="hr-loginEmail">Login email {isCreate ? '*' : ''}</label>{I('loginEmail', { type: 'email', required: isCreate })}</div>
             <div className="form-row"><label className="form-label" htmlFor="hr-loginPassword">{isCreate ? 'Password *' : 'New password'}</label>{I('loginPassword', { type: 'password', required: isCreate, minLength: 8, autoComplete: 'new-password', placeholder: isCreate ? undefined : 'Leave blank to keep current' })}</div>
@@ -1172,7 +1180,12 @@ function ManageTab({ bootstrap }) {
                   <EmployeeDocuments empId={emp._id ?? emp.id} docs={emp.documents ?? []} />
                   <div className="section-label" style={{ marginTop: 12 }}>Linked login</div>
                   {!login ? (
-                    <EmptyState text="No login linked to this employee." />
+                    <>
+                      <EmptyState text="No login linked to this employee." />
+                      {LOGIN_ROLES.has(bootstrap?.role?.key) && (
+                        <button type="button" className="approve-btn" onClick={() => setEditOpen(true)}>Add login</button>
+                      )}
+                    </>
                   ) : (
                     <div className="field-grid">
                       <Field label="Email" value={login.email} />
