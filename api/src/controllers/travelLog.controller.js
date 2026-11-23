@@ -2,17 +2,27 @@ import {TravelRequest} from '../models/TravelRequest.js';
 import {TravelBooking} from '../models/TravelBooking.js';
 import {directoryPage} from '../utils/directoryPage.js';
 
+const paise=v=>{const n=Number(v);return Number.isFinite(n)&&n>0?Math.round(n*100):0;};
+// What a booking cost, in rupees. Bookings store fare and hotel amounts, not
+// estExpense/actualExpense, so the log derives one figure from them.
+// Cancelled: only the money that was not refunded. Otherwise: fare + hotel
+// (while a hotel is booked) + extra charges + reschedule fees.
+export function bookingSpend(b={}){
+  if(b.status==='Cancelled')return (b.cancellation?.notRefundedMinor??0)/100;
+  return (paise(b.transportFare)+(b.hotel?paise(b.hotelAmount):0)+paise(b.extraCharges)+(b.costs?.feesMinor??0))/100;
+}
+
 // Reporting only: requests and bookings remain distinct source records.
 export async function travelLog(req,res,next) {
   try {
     const {page,limit,skip}=directoryPage(req.query);
     const populate=[{path:'employee',select:'firstName middleName lastName empId branch'},{path:'project',select:'name jobNumber'}];
-    const fields='employee project purpose reason fromCity toCity departureDate returnDate status createdAt actualExpense estExpense';
+    const fields='employee project purpose reason fromCity toCity departureDate returnDate status createdAt actualExpense estExpense transportFare hotelAmount hotel extraCharges costs cancellation';
     const models=[['Request',TravelRequest],['Booking',TravelBooking]];
     const results=await Promise.all(models.map(async([source,Model])=>{
       // Each source needs only its first skip+limit rows for the combined page.
       const [rows,total]=await Promise.all([Model.find({}).select(fields).sort({departureDate:-1,_id:-1}).limit(skip+limit).populate(populate).lean(),Model.countDocuments({})]);
-      return {total,items:rows.map(r=>({id:source+':'+r._id,source,employee:r.employee,project:r.project,purpose:r.purpose||r.reason,fromCity:r.fromCity,toCity:r.toCity,departureDate:r.departureDate,returnDate:r.returnDate,status:r.status,actualExpense:r.actualExpense,estExpense:r.estExpense}))};
+      return {total,items:rows.map(r=>({id:source+':'+r._id,source,employee:r.employee,project:r.project,purpose:r.purpose||r.reason,fromCity:r.fromCity,toCity:r.toCity,departureDate:r.departureDate,returnDate:r.returnDate,status:r.status,...(source==='Booking'?{actualExpense:bookingSpend(r),estExpense:bookingSpend(r)}:{actualExpense:r.actualExpense,estExpense:r.estExpense})}))};
     }));
     const total=results.reduce((n,r)=>n+r.total,0);
     const items=results.flatMap(r=>r.items).sort((a,b)=>(Date.parse(b.departureDate)||0)-(Date.parse(a.departureDate)||0)||b.id.localeCompare(a.id)).slice(skip,skip+limit);

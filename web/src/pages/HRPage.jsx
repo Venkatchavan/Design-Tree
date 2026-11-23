@@ -1,6 +1,7 @@
 import EmployeeSelect from '../components/EmployeeSelect.jsx';
 import { serviceNames, departmentLabel } from '../lib/services.js';
 import TravelBookingLog from './TravelBookingLog.jsx';
+import { upcoming as upcomingBooking } from '../lib/travelBooking.js';
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -422,6 +423,13 @@ function DirectorOverviewTab() {
 const LoginHoursReport = lazy(() => import('../components/work/LoginHoursReport.jsx'));
 function DirectorLoginHoursTab() { return <Suspense fallback={<p>Loading work report...</p>}><LoginHoursReport /></Suspense>; }
 
+const TRAVEL_PERIODS = [
+  { value: 'month', label: 'This month' },
+  { value: 'quarter', label: 'This quarter' },
+  { value: 'year', label: 'This year' },
+  { value: 'all', label: 'All time' },
+];
+
 function quarterBounds(todayStr) {
   const [y, m] = todayStr.split('-').map(Number);
   const qStartMonth = Math.floor((m - 1) / 3) * 3;
@@ -466,14 +474,28 @@ function purposeBucket(purpose) {
 
 function DirectorTravelLogTab({ showBookings = true }) {
   const q = useQuery({ queryKey: ['hr-travel-log'], queryFn: () => travelApi.log({}), refetchInterval: 10000 });
+  const [period, setPeriod] = useState('quarter');
   const today = new Date().toISOString().slice(0, 10);
   const { startYm: qStartYm, endYm: qEndYm } = quarterBounds(today);
+  const [startYm, endYm] = {
+    month: [today.slice(0, 7), today.slice(0, 7)],
+    quarter: [qStartYm, qEndYm],
+    year: [`${today.slice(0, 4)}-01`, `${today.slice(0, 4)}-12`],
+    all: ['', '9999-12'],
+  }[period];
+  const periodLabel = TRAVEL_PERIODS.find((p) => p.value === period).label.toLowerCase();
   const items = q.data?.items ?? [];
   const quarterTrips = items.filter((r) => {
     const ym = String(r.departureDate ?? '').slice(0, 7);
-    return ym >= qStartYm && ym <= qEndYm;
+    return period === 'all' || (ym >= startYm && ym <= endYm);
   });
-  const upcoming = items.filter((r) => r.status === 'Approved' && String(r.returnDate ?? r.departureDate ?? '') >= today);
+  // Bookings use the same rule as the bookings list (not cancelled, departs
+  // after today); requests count once approved.
+  const upcoming = items.filter((r) =>
+    r.source === 'Booking'
+      ? upcomingBooking(r)
+      : r.status === 'Approved' && String(r.returnDate ?? r.departureDate ?? '') >= today,
+  );
   const spendQtr = quarterTrips.reduce((s, r) => s + spendOf(r), 0);
   const avgCost = quarterTrips.length > 0 ? spendQtr / quarterTrips.length : 0;
   const purposeCounts = (() => {
@@ -503,10 +525,16 @@ function DirectorTravelLogTab({ showBookings = true }) {
   })();
   return (
     <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <label htmlFor="hr-travel-period" className="form-label" style={{ margin: 0 }}>Period</label>
+        <select id="hr-travel-period" className="filter-select" value={period} onChange={(e) => setPeriod(e.target.value)}>
+          {TRAVEL_PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </select>
+      </div>
       <div className="kpi-grid cols-4">
-        <KpiCard label="Records this quarter" value={quarterTrips.length} accent="blueprint" />
+        <KpiCard label={`Records ${periodLabel}`} value={quarterTrips.length} accent="blueprint" />
         <KpiCard label="Upcoming" value={upcoming.length} accent="teal" />
-        <KpiCard label="Travel spend (qtr)" value={fmtSpend(spendQtr)} accent="copper" />
+        <KpiCard label={`Travel spend (${periodLabel})`} value={fmtSpend(spendQtr)} accent="copper" />
         <KpiCard label="Avg. cost / trip" value={fmtSpend(avgCost)} accent="violet" />
       </div>
       {showBookings && <TravelBookingLog readOnly embedded />}
@@ -524,6 +552,7 @@ function DirectorTravelLogTab({ showBookings = true }) {
               { key: 'location', label: 'Location', render: (r) => [r.project?.name ?? r.project, r.toCity].filter(Boolean).join(', ') || '—' },
               { key: 'departureDate', label: 'Travel date', render: (r) => fmtTripDate(r.departureDate) },
               { key: 'returnDate', label: 'Return date', render: (r) => fmtTripDate(r.returnDate) },
+              { key: 'amount', label: 'Amount', render: (r) => (spendOf(r) > 0 ? `₹${spendOf(r).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—') },
               { key: 'status', label: 'Status', render: (r) => <StatusPill status={tripStatus(r, today)}>{tripStatus(r, today)}</StatusPill> },
             ]}
             rows={items}
@@ -532,7 +561,7 @@ function DirectorTravelLogTab({ showBookings = true }) {
         )}
       </Panel>
       <div className="two-col">
-        <Panel title="By purpose, this quarter">
+        <Panel title={`By purpose, ${periodLabel}`}>
           {q.isLoading ? (
             <EmptyState text="Loading…" />
           ) : (
@@ -543,7 +572,7 @@ function DirectorTravelLogTab({ showBookings = true }) {
             </table>
           )}
         </Panel>
-        <Panel title="Top travelers, this quarter">
+        <Panel title={`Top travelers, ${periodLabel}`}>
           {q.isLoading ? (
             <EmptyState text="Loading…" />
           ) : (
@@ -555,7 +584,7 @@ function DirectorTravelLogTab({ showBookings = true }) {
                 { key: 'spend', label: 'Total spend', render: (r) => fmtSpend(r.spend) },
               ]}
               rows={topTravelers}
-              emptyText="No trips this quarter."
+              emptyText={`No trips ${periodLabel}.`}
             />
           )}
         </Panel>
