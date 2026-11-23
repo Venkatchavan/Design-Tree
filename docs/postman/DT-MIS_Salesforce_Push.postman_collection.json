@@ -1,0 +1,302 @@
+{
+  "info": {
+    "name": "DT-MIS Salesforce project push",
+    "description": "# DT-MIS project push\n\nRequests for testing the endpoint that receives projects from Salesforce.\n\n## Set up\n1. Open the collection, then the Variables tab.\n2. Paste the secret key from the DT-MIS endpoint document into the **push_secret** current value. Leave base_url as it is unless DT-MIS tells you otherwise.\n3. Run the requests in order, or use Run collection. Each request signs itself, so there is nothing else to configure.\n\n## How signing works\nThe collection pre-request script computes HMAC-SHA256 over the timestamp, a full stop and the exact body, and sends it in X-DT-Timestamp and X-DT-Signature. The same steps apply in Apex; see section 3 of the endpoint document.\n\n## Test data\nEvery sample project is named \"TEST - Postman sample project, please ignore\". Requests 1 and 2 create or update those projects in DT-MIS, so tell DT-MIS before running them against the live server.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Signs the request: HMAC-SHA256(secret, timestamp + '.' + body), as described in the DT-MIS push document.",
+          "const secret = (pm.collectionVariables.get('push_secret') || '').trim();",
+          "if (!secret) {",
+          "  throw new Error('Set the push_secret collection variable first (Collection > Variables).');",
+          "}",
+          "const ts = Math.floor(Date.now() / 1000).toString();",
+          "// Salesforce date format, for example 2026-11-11T11:33:42.000+0000",
+          "pm.collectionVariables.set('last_modified', new Date().toISOString().replace('Z', '+0000'));",
+          "const body = pm.variables.replaceIn(pm.request.body.raw);",
+          "const cjs = require('crypto-js');",
+          "const signature = cjs.HmacSHA256(ts + '.' + body, secret).toString(cjs.enc.Hex);",
+          "pm.request.headers.upsert({ key: 'X-DT-Timestamp', value: ts });",
+          "pm.request.headers.upsert({ key: 'X-DT-Signature', value: 'sha256=' + signature });"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://103.169.236.122",
+      "type": "string"
+    },
+    {
+      "key": "push_secret",
+      "value": "",
+      "type": "secret"
+    },
+    {
+      "key": "last_modified",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Push one project",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0Zxx0000TEST00001\",\n      \"Name\": \"TEST - Postman sample project, please ignore\",\n      \"Project_Code__c\": \"PRJ-00001\",\n      \"Job_Numbers__c\": \"TS-2526-001\",\n      \"Entity_Name__c\": \"Example Developers Private Limited\",\n      \"Customer_Group__c\": \"Example Group\",\n      \"Branch_Name__c\": \"DT-Telangana\",\n      \"State__c\": \"TS\",\n      \"Location__c\": \"Hyderabad\",\n      \"Pin_Code\": \"500081\",\n      \"Service_Names__c\": \"STR, PHE, ELE\",\n      \"Project_Director__c\": \"Example Name\",\n      \"LastModifiedDate\": \"{{last_modified}}\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/integrations/salesforce/push",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "integrations",
+            "salesforce",
+            "push"
+          ]
+        },
+        "description": "A valid push with one eligible project (it has a Job Number). Expect 200 and result created, or updated if you send it again. Safe to run repeatedly."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('status is success', () => pm.expect(json.status).to.eql('success'));",
+              "pm.test('record saved', () => pm.expect(['created', 'updated', 'skipped']).to.include(json.data[0].result));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Push several projects",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0Zxx0000TEST00003\",\n      \"Name\": \"TEST - Postman sample project, please ignore\",\n      \"Project_Code__c\": \"PRJ-00003\",\n      \"Job_Numbers__c\": \"TS-2526-003\",\n      \"Entity_Name__c\": \"Example Developers Private Limited\",\n      \"Customer_Group__c\": \"Example Group\",\n      \"Branch_Name__c\": \"DT-Telangana\",\n      \"State__c\": \"TS\",\n      \"Location__c\": \"Hyderabad\",\n      \"Pin_Code\": \"500081\",\n      \"Service_Names__c\": \"STR, PHE, ELE\",\n      \"Project_Director__c\": \"Example Name\",\n      \"LastModifiedDate\": \"{{last_modified}}\"\n    },\n    {\n      \"Id\": \"a0Zxx0000TEST00004\",\n      \"Name\": \"TEST - Postman sample project, please ignore\",\n      \"Project_Code__c\": \"PRJ-00004\",\n      \"Job_Numbers__c\": \"TS-2526-004\",\n      \"Entity_Name__c\": \"Example Developers Private Limited\",\n      \"Customer_Group__c\": \"Example Group\",\n      \"Branch_Name__c\": \"DT-Telangana\",\n      \"State__c\": \"TS\",\n      \"Location__c\": \"Hyderabad\",\n      \"Pin_Code\": \"500081\",\n      \"Service_Names__c\": \"STR, PHE, ELE\",\n      \"Project_Director__c\": \"Example Name\",\n      \"LastModifiedDate\": \"{{last_modified}}\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/integrations/salesforce/push",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "integrations",
+            "salesforce",
+            "push"
+          ]
+        },
+        "description": "Up to 200 records can go in one request. Expect 200 and one result per record."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('two results', () => pm.expect(json.data.length).to.eql(2));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Refused: no Job Number",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0Zxx0000TEST00002\",\n      \"Name\": \"TEST - Postman sample project, please ignore\",\n      \"Project_Code__c\": \"PRJ-00002\",\n      \"Job_Numbers__c\": \"\",\n      \"Entity_Name__c\": \"Example Developers Private Limited\",\n      \"Customer_Group__c\": \"Example Group\",\n      \"Branch_Name__c\": \"DT-Telangana\",\n      \"State__c\": \"TS\",\n      \"Location__c\": \"Hyderabad\",\n      \"Pin_Code\": \"500081\",\n      \"Service_Names__c\": \"STR, PHE, ELE\",\n      \"Project_Director__c\": \"Example Name\",\n      \"LastModifiedDate\": \"{{last_modified}}\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/integrations/salesforce/push",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "integrations",
+            "salesforce",
+            "push"
+          ]
+        },
+        "description": "A project without a Job Number is not eligible. Expect 422 with code NOT_ELIGIBLE for that record. Salesforce must not mark it Synced."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 422', () => pm.response.to.have.status(422));",
+              "const json = pm.response.json();",
+              "pm.test('status is error', () => pm.expect(json.status).to.eql('error'));",
+              "pm.test('record refused as NOT_ELIGIBLE', () => pm.expect(json.data[0].code).to.eql('NOT_ELIGIBLE'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Refused: wrong signature",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0Zxx0000TEST00001\",\n      \"Name\": \"TEST - Postman sample project, please ignore\",\n      \"Project_Code__c\": \"PRJ-00001\",\n      \"Job_Numbers__c\": \"TS-2526-001\",\n      \"Entity_Name__c\": \"Example Developers Private Limited\",\n      \"Customer_Group__c\": \"Example Group\",\n      \"Branch_Name__c\": \"DT-Telangana\",\n      \"State__c\": \"TS\",\n      \"Location__c\": \"Hyderabad\",\n      \"Pin_Code\": \"500081\",\n      \"Service_Names__c\": \"STR, PHE, ELE\",\n      \"Project_Director__c\": \"Example Name\",\n      \"LastModifiedDate\": \"{{last_modified}}\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/integrations/salesforce/push",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "integrations",
+            "salesforce",
+            "push"
+          ]
+        },
+        "description": "The signature is replaced with a wrong value. Expect 401 UNAUTHORIZED."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.request.headers.upsert({ key: 'X-DT-Signature', value: 'sha256=' + '0'.repeat(64) });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401', () => pm.response.to.have.status(401));",
+              "pm.test('code UNAUTHORIZED', () => pm.expect(pm.response.json().code).to.eql('UNAUTHORIZED'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Refused: no signature",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0Zxx0000TEST00001\",\n      \"Name\": \"TEST - Postman sample project, please ignore\",\n      \"Project_Code__c\": \"PRJ-00001\",\n      \"Job_Numbers__c\": \"TS-2526-001\",\n      \"Entity_Name__c\": \"Example Developers Private Limited\",\n      \"Customer_Group__c\": \"Example Group\",\n      \"Branch_Name__c\": \"DT-Telangana\",\n      \"State__c\": \"TS\",\n      \"Location__c\": \"Hyderabad\",\n      \"Pin_Code\": \"500081\",\n      \"Service_Names__c\": \"STR, PHE, ELE\",\n      \"Project_Director__c\": \"Example Name\",\n      \"LastModifiedDate\": \"{{last_modified}}\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/integrations/salesforce/push",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "integrations",
+            "salesforce",
+            "push"
+          ]
+        },
+        "description": "The signature and timestamp headers are removed. Expect 401 UNAUTHORIZED."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.request.headers.remove('X-DT-Signature');",
+              "pm.request.headers.remove('X-DT-Timestamp');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
