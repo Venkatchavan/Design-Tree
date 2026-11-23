@@ -13,6 +13,23 @@ import {
 } from './travelBookingUtils.js';
 import './travelBooking.css';
 import { hasStayCosts, hasKnownAmount, minor } from '../lib/travelBooking.js';
+// Saved rupee amount in paise, or null when it was not entered or is unreadable.
+function amountMinor(value) {
+  if (!hasKnownAmount(value)) return null;
+  try {
+    return minor(value);
+  } catch {
+    return null;
+  }
+}
+// Fare + hotel (only while a hotel is booked) + extra charges, in paise.
+function bookingTotalMinor(b) {
+  return (
+    (amountMinor(b.transportFare) ?? 0) +
+    (b.hotel ? (amountMinor(b.hotelAmount) ?? 0) : 0) +
+    (b.extraCharges > 0 ? Math.round(b.extraCharges * 100) : 0)
+  );
+}
 function FeeLine({ label, cost, cancel = false }) {
   if (!cost) return null;
   return (
@@ -204,11 +221,9 @@ export default function TravelBookingLog({
                   </span>
                   <strong>{employeeName(b)}</strong>
                 </div>
-                <p>
-                  {b.department ||
-                    b.employee?.department ||
-                    'Department not added'}
-                </p>
+                {(b.department || b.employee?.department) && (
+                  <p>{b.department || b.employee?.department}</p>
+                )}
               </div>
               <div>
                 <small>Trip</small>
@@ -219,6 +234,9 @@ export default function TravelBookingLog({
                   {b.preferredSeat && ` · ${b.preferredSeat}`}
                 </strong>
                 <p>{dateRange(b)}</p>
+                {amountMinor(b.transportFare) != null && (
+                  <p>Fare {money(amountMinor(b.transportFare))}</p>
+                )}
                 {!b.departureDate && (
                   <span className="travel-warning">Start date missing</span>
                 )}
@@ -247,6 +265,9 @@ export default function TravelBookingLog({
                       : 'Stay dates not added'}
                   </p>
                 )}
+                {b.hotel && amountMinor(b.hotelAmount) != null && (
+                  <p>Hotel {money(amountMinor(b.hotelAmount))}</p>
+                )}
               </div>
               <div>
                 <small>Purpose</small>
@@ -254,6 +275,11 @@ export default function TravelBookingLog({
                 {b.project?.name && <p>Project: {b.project.name}</p>}
                 {b.extraCharges > 0 && (
                   <p>Extra charges {money(Math.round(b.extraCharges * 100))}</p>
+                )}
+                {bookingTotalMinor(b) > 0 && (
+                  <p>
+                    <strong>Total {money(bookingTotalMinor(b))}</strong>
+                  </p>
                 )}
               </div>
               <div>

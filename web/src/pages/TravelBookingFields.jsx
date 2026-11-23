@@ -70,38 +70,31 @@ export function TravelDetails({
       {isNew && (
         <section className="travel-form-section">
           <h2>Employee</h2>
-          <div className="travel-form-grid">
-            <Field label="Employee *">
-              <EmployeeSelect employees={employees}
-                className="form-input"
-                value={form.employee}
-                required
-                onChange={(e) => {
-                  set('employee', e.target.value);
-                  set(
-                    'department',
-                    employees.find((x) => x._id === e.target.value)
-                      ?.department || '',
-                  );
-                }}
-              >
-                <option value="">Select employee…</option>
-                {employees.map((e) => (
-                  <option key={e._id} value={e._id}>
-                    {[e.firstName, e.lastName].filter(Boolean).join(' ')}
-                    {e.empId ? ` (${e.empId})` : ''}
-                  </option>
-                ))}
-              </EmployeeSelect>
-            </Field>
-            <Field label="Department">
-              <input
-                className="form-input"
-                value={form.department || ''}
-                readOnly
-              />
-            </Field>
-          </div>
+          {/* The picker's own service/department filter already covers the
+              department, so it is not repeated as a separate field. */}
+          <Field label="Employee *">
+            <EmployeeSelect employees={employees}
+              className="form-input"
+              value={form.employee}
+              required
+              onChange={(e) => {
+                set('employee', e.target.value);
+                set(
+                  'department',
+                  employees.find((x) => x._id === e.target.value)
+                    ?.department || '',
+                );
+              }}
+            >
+              <option value="">Select employee…</option>
+              {employees.map((e) => (
+                <option key={e._id} value={e._id}>
+                  {[e.firstName, e.lastName].filter(Boolean).join(' ')}
+                  {e.empId ? ` (${e.empId})` : ''}
+                </option>
+              ))}
+            </EmployeeSelect>
+          </Field>
         </section>
       )}
       {!isNew && !isReschedule && (
