@@ -1,0 +1,718 @@
+{
+  "info": {
+    "name": "DT-MIS Salesforce Push API",
+    "description": "POST /api/integrations/salesforce/push. No login: every request is HMAC-signed. Set the variables baseUrl and pushSecret (collection Variables tab), then run the collection. The collection pre-request script adds X-DT-Timestamp and X-DT-Signature automatically. Sample data is synthetic; run against a test environment.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://103.169.236.122:4443",
+      "type": "string"
+    },
+    {
+      "key": "pushSecret",
+      "value": "",
+      "type": "secret"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Signs every request: X-DT-Signature = sha256=hex(HMAC-SHA256(secret, timestamp + '.' + rawBody))",
+          "const secret = pm.collectionVariables.get('pushSecret');",
+          "if (!secret) { throw new Error('Set the collection variable pushSecret first.'); }",
+          "const mode = pm.request.headers.get('X-Test-Case'); // negative-test switch, removed before sending",
+          "pm.request.headers.remove('X-Test-Case');",
+          "const raw = (pm.request.body && pm.request.body.raw) ? pm.request.body.raw : '';",
+          "const body = pm.variables.replaceIn(raw); // signed text must equal what is sent",
+          "let ts = Math.floor(Date.now() / 1000);",
+          "if (mode === 'stale') ts -= 3600;",
+          "const key = (mode === 'bad-signature') ? secret + 'x' : secret;",
+          "const sig = CryptoJS.HmacSHA256(ts + '.' + body, key).toString(CryptoJS.enc.Hex);",
+          "if (mode !== 'no-signature') {",
+          "  pm.request.headers.upsert({ key: 'X-DT-Timestamp', value: String(ts) });",
+          "  pm.request.headers.upsert({ key: 'X-DT-Signature', value: 'sha256=' + sig });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Valid payloads (expect 200)",
+      "item": [
+        {
+          "name": "Create one project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0B5g00000AbCdEFGH\",\n      \"Name\": \"Sample Residential Tower\",\n      \"Project_Code__c\": \"PRJ-90001\",\n      \"Job_Numbers__c\": \"JN-TEST-0001\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"Bangalore\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Structure, PHE\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"2026-11-11T11:33:42.000+0000\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "Valid record with a Job Number. First push creates the project; a repeat is an update."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('result is created or updated', () => pm.expect(['created','updated']).to.include(pm.response.json().data[0].result));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create two projects in one request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0B5g00000AbCdEFGH\",\n      \"Name\": \"Sample Residential Tower\",\n      \"Project_Code__c\": \"PRJ-90001\",\n      \"Job_Numbers__c\": \"JN-TEST-0001\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"Bangalore\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Structure, PHE\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"2026-11-11T11:33:42.000+0000\"\n    },\n    {\n      \"Id\": \"a0B5g00000AbCdEFGI\",\n      \"Name\": \"Sample Commercial Block\",\n      \"Project_Code__c\": \"PRJ-90002\",\n      \"Job_Numbers__c\": \"JN-TEST-0002\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"Bangalore\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Structure, PHE\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"2026-11-11T11:33:42.000+0000\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "Up to 200 records per request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('two results', () => pm.expect(pm.response.json().data.length).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update the same record (retry is safe)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0B5g00000AbCdEFGH\",\n      \"Name\": \"Sample Residential Tower - Phase 2\",\n      \"Project_Code__c\": \"PRJ-90001\",\n      \"Job_Numbers__c\": \"JN-TEST-0001\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"Bangalore\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Structure, PHE\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"2026-11-12T09:00:00.000+0000\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "Same Id, newer LastModifiedDate and a changed name."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('result is updated', () => pm.expect(pm.response.json().data[0].result).to.eql('updated'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Older LastModifiedDate is skipped",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0B5g00000AbCdEFGH\",\n      \"Name\": \"Sample Residential Tower\",\n      \"Project_Code__c\": \"PRJ-90001\",\n      \"Job_Numbers__c\": \"JN-TEST-0001\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"Bangalore\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Structure, PHE\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"2026-01-01T00:00:00.000+0000\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "A version older than the stored one is acknowledged and ignored."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('result is skipped', () => pm.expect(pm.response.json().data[0].result).to.eql('skipped'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Keys with spaces / Job_Number spelling",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \" Id \": \"a0B5g00000AbCdEFGJ\",\n      \"Name \": \"Key Variant Project\",\n      \"Job_Number\": \"JN-TEST-0003\",\n      \" Branch_Name \": \"Bangalore\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "Keys are trimmed and matched without __c, so these still map."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown branch / service is saved blank, not rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0B5g00000AbCdEFGK\",\n      \"Name\": \"Unknown Branch Project\",\n      \"Project_Code__c\": \"PRJ-90004\",\n      \"Job_Numbers__c\": \"JN-TEST-0004\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"DT-Unknown\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Architecture\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"2026-11-11T11:33:42.000+0000\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "Returns 200 with a warning; Admin reviews it in DT-MIS."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('warnings returned', () => pm.expect(pm.response.json().data[0].warnings.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Rejected records (expect 422)",
+      "item": [
+        {
+          "name": "No Job Number",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0B5g00000AbCdEFGL\",\n      \"Name\": \"Sample Residential Tower\",\n      \"Project_Code__c\": \"PRJ-90001\",\n      \"Job_Numbers__c\": \"\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"Bangalore\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Structure, PHE\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"2026-11-11T11:33:42.000+0000\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "Only projects with a Job Number are synchronised."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('NOT_ELIGIBLE', () => pm.expect(pm.response.json().data[0].code).to.eql('NOT_ELIGIBLE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid Salesforce Id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"bad-id\",\n      \"Name\": \"Sample Residential Tower\",\n      \"Project_Code__c\": \"PRJ-90001\",\n      \"Job_Numbers__c\": \"JN-TEST-0001\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"Bangalore\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Structure, PHE\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"2026-11-11T11:33:42.000+0000\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "Id must be 15 or 18 alphanumeric characters."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('INVALID_ID', () => pm.expect(pm.response.json().data[0].code).to.eql('INVALID_ID'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing project name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0B5g00000AbCdEFGH\",\n      \"Name\": \"\",\n      \"Project_Code__c\": \"PRJ-90001\",\n      \"Job_Numbers__c\": \"JN-TEST-0001\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"Bangalore\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Structure, PHE\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"2026-11-11T11:33:42.000+0000\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "Name is required."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('MISSING_NAME', () => pm.expect(pm.response.json().data[0].code).to.eql('MISSING_NAME'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid LastModifiedDate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0B5g00000AbCdEFGH\",\n      \"Name\": \"Sample Residential Tower\",\n      \"Project_Code__c\": \"PRJ-90001\",\n      \"Job_Numbers__c\": \"JN-TEST-0001\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"Bangalore\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Structure, PHE\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"not-a-date\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "Date must be parseable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('INVALID_DATE', () => pm.expect(pm.response.json().data[0].code).to.eql('INVALID_DATE'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Request errors",
+      "item": [
+        {
+          "name": "Empty data array (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "At least one record is required."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('NO_RECORDS', () => pm.expect(pm.response.json().code).to.eql('NO_RECORDS'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Authentication (expect 401)",
+      "item": [
+        {
+          "name": "Wrong signature",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Test-Case",
+                "value": "bad-signature"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0B5g00000AbCdEFGH\",\n      \"Name\": \"Sample Residential Tower\",\n      \"Project_Code__c\": \"PRJ-90001\",\n      \"Job_Numbers__c\": \"JN-TEST-0001\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"Bangalore\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Structure, PHE\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"2026-11-11T11:33:42.000+0000\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "Signed with a different secret."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stale timestamp (1 hour old)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Test-Case",
+                "value": "stale"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0B5g00000AbCdEFGH\",\n      \"Name\": \"Sample Residential Tower\",\n      \"Project_Code__c\": \"PRJ-90001\",\n      \"Job_Numbers__c\": \"JN-TEST-0001\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"Bangalore\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Structure, PHE\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"2026-11-11T11:33:42.000+0000\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "Requests older than 5 minutes are refused."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing signature headers",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Test-Case",
+                "value": "no-signature"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"Id\": \"a0B5g00000AbCdEFGH\",\n      \"Name\": \"Sample Residential Tower\",\n      \"Project_Code__c\": \"PRJ-90001\",\n      \"Job_Numbers__c\": \"JN-TEST-0001\",\n      \"Entity_Name__c\": \"Sample Developers Pvt Ltd\",\n      \"Customer_Group__c\": \"Sample Group\",\n      \"State__c\": \"Karnataka\",\n      \"Project_Type__c\": \"Residential\",\n      \"Branch_Name__c\": \"Bangalore\",\n      \"Location__c\": \"Bengaluru\",\n      \"Service_Names__c\": \"Structure, PHE\",\n      \"Project_Director__c\": \"Sample Director\",\n      \"LastModifiedDate\": \"2026-11-11T11:33:42.000+0000\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/integrations/salesforce/push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "integrations",
+                "salesforce",
+                "push"
+              ]
+            },
+            "description": "No X-DT-Signature / X-DT-Timestamp sent."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

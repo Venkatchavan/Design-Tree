@@ -33,6 +33,7 @@ Copy `.env.example` to `.env` and fill every `REPLACE_WITH_…` value.
 | `SF_CLIENT_ID` / `SF_CLIENT_SECRET` | no | — | External Client App key/secret | Read-only Admin/Billing project import; keep server-side only and never expose to the browser |
 | `SF_API_VERSION` | no | `68.0` | `68.0` | Must be supported by the org; too-old versions return `NOT_FOUND` for `Project__c` |
 | `SF_PROJECT_OBJECT` | no | `Project__c` | `Project__c` | Salesforce object the connector reads; must be an API-name-safe identifier |
+| `SF_PUSH_SECRET` | no | — | 64-char hex (32 random bytes) | HMAC-SHA256 secret for inbound `POST /api/integrations/salesforce/push`. Must be 32+ chars or the endpoint answers `503 NOT_CONFIGURED`. Same value goes in Salesforce and in the Postman `pushSecret` variable. Restart the api container after changing it |
 | `ME_CONFIG_BASICAUTH_USERNAME` / `_PASSWORD` | yes | — | FD-only creds | mongo-express login screen; only reachable on host loopback via the `dbadmin` profile |
 
 ## Notes
