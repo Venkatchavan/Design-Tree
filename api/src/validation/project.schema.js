@@ -33,6 +33,7 @@ export const projectSchema = z.object({
   branch: z.string().trim().optional(),
   usedFor: z.string().trim().optional(),
   services: z.array(z.enum([...PROJECT_SERVICES, 'Structural', 'Mechanical', 'Electrical', 'Plumbing', 'Fire', 'MEP Coordination', 'Peer review'])).optional(),
+  otherServices: z.string().trim().max(200).optional(),
   source: z.string().trim().optional(),
   entityName: z.string().trim().optional(),
   location: z

@@ -38,6 +38,8 @@ const BLANK = {
   projectType: '',
   branch: '',
   services: [],
+  otherChecked: false,
+  otherServices: '',
   entityName: '',
   location: { label: '', address1: '', address2: '', city: '', state: '', zip: '' },
   scopeText: '',
@@ -270,6 +272,7 @@ export default function NewProjectPage({ bootstrap }) {
       projectType: form.projectType || undefined,
       branch: form.branch || undefined,
       services: form.services ?? [],
+      otherServices: form.otherChecked && form.otherServices.trim() ? form.otherServices.trim() : undefined,
       entityName: form.entityName.trim() || undefined,
       jobNumber: jobNumberMode === 'automatic' ? undefined : form.jobNumber.trim() || undefined,
       location: form.location.label.trim()
@@ -518,7 +521,14 @@ export default function NewProjectPage({ bootstrap }) {
                     {(SERVICE_LABELS[s] ?? s).toUpperCase()}
                   </label>
                 ))}
+                <label className="form-label" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input type="checkbox" checked={form.otherChecked} onChange={(e) => set('otherChecked', e.target.checked)} />
+                  OTHERS
+                </label>
               </div>
+              {form.otherChecked && (
+                <input className="form-input" style={{ marginTop: 8 }} maxLength={200} placeholder="Enter other services" aria-label="Other services" value={form.otherServices} onChange={(e) => set('otherServices', e.target.value)} />
+              )}
             </div>
           </div>
         </Panel>

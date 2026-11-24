@@ -57,6 +57,8 @@ const projectSchema = new mongoose.Schema(
     branch: { type: String, trim: true, index: true },
     usedFor: { type: String, trim: true },
     services: [{ type: String, trim: true }],
+    // Free-text services not in the checkbox list ("Others").
+    otherServices: { type: String, trim: true },
     source: { type: String, trim: true },
     entityName: { type: String, trim: true },
     location: {

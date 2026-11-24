@@ -713,7 +713,7 @@ export default function ProjectDetailPage({ bootstrap }) {
           <Field label="Work order date" value={fmtDate(project.workOrderDate)} />
           <Field label="Start date" value={fmtDate(project.startDate)} />
           <Field label="Contract completion" value={fmtDate(project.expectedCompletion)} />
-          <Field label="Scope of work" value={(project.services ?? []).join(', ') || scope.map((s) => s.scope).filter(Boolean).join('; ')} />
+          <Field label="Scope of work" value={[...(project.services ?? []), project.otherServices].filter(Boolean).join(', ') || scope.map((s) => s.scope).filter(Boolean).join('; ')} />
           <Field label="Work order value" value={totalFee ? `₹${totalFee.toLocaleString('en-IN')}` : null} />
           <Field label="Work order document" value={project.workOrderDocument} />
         </div>
