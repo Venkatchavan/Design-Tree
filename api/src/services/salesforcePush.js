@@ -275,6 +275,11 @@ export async function upsertPushedProject(raw, { branches } = {}) {
     }
     const update = salesforceOwnedUpdate(prefill, { hasBranch: Boolean(prefill.branch) });
     existing.set(update);
+    // Services stay DT-MIS owned; Salesforce only fills them while still empty.
+    if (!existing.services?.length && !existing.otherServices) {
+      existing.services = prefill.services;
+      existing.otherServices = prefill.otherServices || undefined;
+    }
     existing.jobNumber = prefill.jobNumber;
     existing.salesforceProjectCode = text(record.Project_Code__c);
     if (sentAt) existing.salesforceLastModifiedAt = sentAt;
@@ -299,6 +304,7 @@ export async function upsertPushedProject(raw, { branches } = {}) {
       branch: prefill.branch,
       location: prefill.location,
       services: prefill.services,
+      otherServices: prefill.otherServices || undefined,
       contacts: prefill.contacts,
       related: prefill.related,
       // No user is involved in a push: Admin reviews and activates it.

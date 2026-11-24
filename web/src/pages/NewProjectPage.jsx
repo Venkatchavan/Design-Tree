@@ -156,6 +156,8 @@ export default function NewProjectPage({ bootstrap }) {
       projectType: p.projectType ?? '',
       branch: p.branch ?? '',
       services: p.services ?? [],
+      otherChecked: Boolean(p.otherServices),
+      otherServices: p.otherServices ?? '',
       location: { ...BLANK.location, ...(p.location ?? {}) },
       contacts: { ...f.contacts, client: p.contacts?.client ?? null },
       related: {
@@ -187,6 +189,8 @@ export default function NewProjectPage({ bootstrap }) {
       projectType: blank.projectType,
       branch: blank.branch,
       services: blank.services,
+      otherChecked: blank.otherChecked,
+      otherServices: blank.otherServices,
       location: blank.location,
       contacts: { ...f.contacts, client: null },
       related: { ...f.related, ...blank.related },

@@ -81,6 +81,10 @@ const SERVICE_ALIASES = new Map([
   ['peer review', 'Peer Review'],
   ['peerreview', 'Peer Review'],
   ['peer', 'Peer Review'],
+  ['structure services', 'STR'],
+  ['structural services', 'STR'],
+  ['mep services', 'MEP'],
+  ['electrical engineering', 'ELE'],
 ]);
 
 export class SalesforceError extends Error {
@@ -139,22 +143,29 @@ export function mapServices(value) {
 
   const services = [];
   const unknown = [];
+  const add = (code) => { if (!services.includes(code)) services.push(code); };
   for (const part of parts) {
-    const key = part.toLowerCase().replace(/\s+/g, ' ');
+    // Salesforce sends "<service> (<work order / phase>)"; the bracket part is
+    // not the service, e.g. "BIM (phase 3)" or "MEP Services (Lake View)".
+    const base = part.replace(/\s*\([^)]*\)\s*$/, '').trim() || part;
+    const key = base.toLowerCase().replace(/\s+/g, ' ');
     const mapped = SERVICE_ALIASES.get(key);
-    if (!mapped) {
-      unknown.push(part);
-    } else if (!services.includes(mapped)) {
-      services.push(mapped);
-    }
+    const pieces = key.split(/\s*&\s*/).map((p) => SERVICE_ALIASES.get(p));
+    if (mapped) add(mapped);
+    else if (pieces.length > 1 && pieces.every(Boolean)) pieces.forEach(add);
+    else if (!unknown.some((u) => u.toLowerCase() === key)) unknown.push(base);
   }
+  // Services outside the checkbox list are kept as "Others" free text.
   return { services, unknown };
 }
+
+const branchKey = (value) => text(value).toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export function resolveBranch(value, branches = []) {
   const raw = text(value);
   if (!raw) return { branch: '', unmatched: '' };
-  const match = branches.find((name) => text(name).toLowerCase() === raw.toLowerCase());
+  // "DT-Tamil nadu" matches "DT-Tamil Nadu"; spacing and case are ignored.
+  const match = branches.find((name) => branchKey(name) === branchKey(raw));
   return match ? { branch: match, unmatched: '' } : { branch: '', unmatched: raw };
 }
 
@@ -211,12 +222,6 @@ export function normalizeProject(
           : `Branch "${unmatched}" is not an active DesignTree branch. Choose one before saving.`,
     });
   }
-  for (const value of unknownServices) {
-    warnings.push({
-      field: 'services',
-      message: `Service "${value}" is not a DesignTree service and was left out.`,
-    });
-  }
 
   const prefill = {
     name,
@@ -238,6 +243,7 @@ export function normalizeProject(
       zip: '',
     },
     services,
+    otherServices: unknownServices.join(', ').slice(0, 200),
     ...(contactName || customerGroup
       ? {
           contacts: {
