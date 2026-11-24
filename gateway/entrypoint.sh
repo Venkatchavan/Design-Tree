@@ -6,7 +6,10 @@
 # automatically (short-lived IP certs are renewed every ~3 days).
 set -eu
 
-LE_DIR="/etc/letsencrypt/live/${PUBLIC_IP:?PUBLIC_IP is required}"
+# With PUBLIC_DOMAIN set (e.g. mis.designtreeconsultants.com) the public
+# certificate is the domain one, verified by DNS; otherwise the IP one.
+CERT_NAME="${PUBLIC_DOMAIN:-${PUBLIC_IP:?PUBLIC_IP is required}}"
+LE_DIR="/etc/letsencrypt/live/$CERT_NAME"
 BOOT_CERT="/etc/nginx/bootstrap/server.crt"
 BOOT_KEY="/etc/nginx/bootstrap/server.key"
 TEMPLATE="/etc/nginx/designtree/nginx.conf.template"

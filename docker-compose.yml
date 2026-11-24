@@ -161,6 +161,10 @@ services:
         source: ./scripts/certbot-entrypoint.sh
         target: /opt/designtree/certbot-entrypoint.sh
         read_only: true
+      - type: bind
+        source: ./scripts/certbot-dns-hook.sh
+        target: /opt/designtree/certbot-dns-hook.sh
+        read_only: true
     entrypoint: ["/bin/sh", "/opt/designtree/certbot-entrypoint.sh"]
     depends_on:
       gateway:
