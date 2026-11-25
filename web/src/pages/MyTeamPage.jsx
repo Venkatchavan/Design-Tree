@@ -308,7 +308,10 @@ function MyTeamBody(props) {
   // ATDs, the ED and department heads also get their saved reporting team (only
   // rendered when that chain has people). 06 Nov 2026: PTL / TL / Sr. TL no longer
   // get the Project team log here; it repeated the Assign Work team list.
-  return <><WorkingTeamPage {...props}/>{!props.projectId && !props.projectWorkspace && role!=='team_lead' && <DirectorTeamsPage embedded/>}</>;
+  // 25 Nov 2026: nor do ATDs — the log and Projects panels repeated under Assign
+  // work (List of deliverables, Assign task, Work assigned by me) and the My team
+  // overview. ATDs keep the full log on their People tab.
+  return <><WorkingTeamPage {...props}/>{!props.projectId && !props.projectWorkspace && !['team_lead', 'assoc_technical_director'].includes(role) && <DirectorTeamsPage embedded/>}</>;
 }
 
 function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace = false }) {
