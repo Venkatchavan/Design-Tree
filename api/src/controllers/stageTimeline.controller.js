@@ -5,6 +5,8 @@ import { Employee } from '../models/Employee.js';
 import { Team } from '../models/Team.js';
 import { SpocAllocation } from '../models/SpocAllocation.js';
 import { notify, userIdsForEmployees } from '../models/Notification.js';
+import { sendMail, mailLogLine } from '../services/mailer.js';
+import { STAGE_FINAL_APPROVER_EMAILS } from '../config/stageApproval.js';
 import { canReadProject } from '../utils/projectScope.js';
 import { expandServices } from '../config/services.js';
 import { directorTeams } from '../utils/directorTeams.js';
@@ -55,10 +57,10 @@ async function assignments(user, project, service) {
     plan: ptl || director,
     request: ptl,
     confirm: spoc,
-    // 07 Nov 2026: the assigned SPOC gives the final approval once the PTL has marked
-    // the stage complete (the 'confirm' permission). Only rows already SPOC Confirmed
-    // under the earlier 3-step flow are left for the Design Management Head.
-    approve: user.role === 'design_mgmt_head',
+    // 25 Nov 2026: PTL completes → assigned SPOC approves → the Design Management
+    // Head (Santosh Kumar V R) gives the final approval, which makes the stage
+    // Ready for billing and emails the billing department.
+    approve: user.role === 'design_mgmt_head' || STAGE_FINAL_APPROVER_EMAILS.includes(String(user.email ?? (await User.findById(user.id).select('email').lean())?.email ?? '').trim().toLowerCase()),
     teams,
     allocations
   };
@@ -219,6 +221,34 @@ async function stageNotification(user, project, service, doc, access, action) {
     type: 'stage-approval'
   });
 }
+// 25 Nov 2026: the final approval is intimated to the billing department
+// (every active Billing login) by email. With SMTP not configured the mail is
+// recorded as queued in the stage history and the in-app notice still goes out.
+async function billingEmail(project, service, doc, user) {
+  const [billing, approver] = await Promise.all([
+    User.find({ role: 'admin_billing', isActive: { $ne: false } }).select('email').lean(),
+    User.findById(user.id).select('name email').lean(),
+  ]);
+  const what = `${project.name} · ${service} ${doc.stage} ready for billing`;
+  const result = await sendMail({
+    to: billing.map(u => u.email),
+    cc: approver?.email ? [approver.email] : [],
+    subject: `Ready for billing: ${project.jobNumber ? project.jobNumber + ' · ' : ''}${project.name} — ${service} ${doc.stage}`,
+    text: [
+      'Dear Billing team,',
+      '',
+      `The ${doc.stage} stage of ${service} for ${project.name}${project.jobNumber ? ` (${project.jobNumber})` : ''} has received the Design Management Head's final approval. Please proceed with billing.`,
+      '',
+      `Actual completion: ${day(doc.actualCompletion) || '—'}`,
+      `Approved by: ${approver?.name || 'Design Management Head'}`,
+      '',
+      'This is an automated message from DesignTree MIS.',
+    ].join('\n'),
+  });
+  const line = mailLogLine(result, what);
+  await StageStatus.updateOne({ _id: doc._id }, { $push: { history: { by: user.id, at: new Date(), action: line } } });
+  return { sent: result.sent, to: result.to, error: result.error };
+}
 export async function upsertStage(req, res, next) {
   const parsed = stageStatusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({
@@ -242,7 +272,7 @@ export async function upsertStage(req, res, next) {
     });
     const access = await assignments(req.user, project, service);
     if (!access.plan && !access.confirm && !access.approve) return res.status(403).json({
-      message: 'Only the assigned PTL, SPOC or authorized TD/ATD can act.'
+      message: 'Only the assigned PTL, SPOC, Design Management Head or authorized TD/ATD can act.'
     });
     const serviceRows = rows.filter(r => sameService(r.service, service));
     const old = serviceRows.find(r => r.stage === data.stage),
@@ -370,31 +400,25 @@ export async function upsertStage(req, res, next) {
           if (from !== 'PTL Requested') return res.status(409).json({
             message: 'A PTL submission is required first.'
           });
-          if (!old.startDate || !old.plannedCompletion) return res.status(400).json({
-            message: 'Set the stage dates before approving this legacy submission.'
-          });
-          // The SPOC's approval completes the stage. 'TD Approved' stays as the stored
-          // "fully approved" value because billing and the stage chain read it.
+          // 25 Nov 2026: the SPOC approves the PTL's submission as it stands — the
+          // dates belong to the Sr TL / TL / PTL / ATD, so none are asked for here.
+          // The stage then waits for the Design Management Head's final approval.
           patch = {
             ...patch,
-            confirmationStatus: 'TD Approved',
-            approvalSequenceVerified: true,
+            confirmationStatus: 'SPOC Confirmed',
             spocConfirmedBy: req.user.id,
             spocConfirmedAt: new Date(),
             spocRemark: data.spocRemark,
-            currentStatus: 'Completed',
-            billingReadiness: 'Ready for billing'
+            currentStatus: 'Pending Design Management Head approval',
+            billingReadiness: 'Pending'
           };
           action = 'SPOC approved completion';
         } else {
           if (!access.approve) return res.status(403).json({
-            message: 'Only the assigned SPOC approves a completed stage.'
+            message: 'Only the Design Management Head gives the final approval.'
           });
           if (from !== 'SPOC Confirmed') return res.status(409).json({
-            message: 'Only stages the SPOC confirmed under the earlier flow can be approved here.'
-          });
-          if (!old.startDate || !old.plannedCompletion) return res.status(400).json({
-            message: 'Set the stage dates before approving this legacy submission.'
+            message: 'The SPOC must approve the stage before the final approval.'
           });
           patch = {
             ...patch,
@@ -406,7 +430,7 @@ export async function upsertStage(req, res, next) {
             currentStatus: 'Completed',
             billingReadiness: 'Ready for billing'
           };
-          action = 'Design Management Head approved completion';
+          action = 'Design Management Head final approval — ready for billing';
         }
       }
     }
@@ -462,10 +486,20 @@ export async function upsertStage(req, res, next) {
     try {
       await stageNotification(req.user, project, service, doc, access, action);
     } catch {/* A saved action survives notification transport failure. */}
-    const nextStage = doc.confirmationStatus === 'TD Approved' && data.stage !== 'GFC' ? targetFor(service, [...serviceRows.filter(r => r.stage !== data.stage), doc], STAGES[STAGES.indexOf(data.stage) + 1]) : null;
+    let billingMail = null;
+    if (data.approveCompletion && doc.confirmationStatus === 'TD Approved') {
+      try {
+        billingMail = await billingEmail(project, service, doc, req.user);
+      } catch {/* The approval stands even if mail fails. */}
+    }
+    const target = doc.confirmationStatus === 'TD Approved' && data.stage !== 'GFC' ? targetFor(service, [...serviceRows.filter(r => r.stage !== data.stage), doc], STAGES[STAGES.indexOf(data.stage) + 1]) : null;
+    // Only someone who may plan dates (PTL / TD / ATD) is prompted to plan the next
+    // stage (canPlan); the SPOC and the Design Management Head are never asked for dates.
+    const nextStage = target ? { ...target, canPlan: !!access.plan } : null;
     return res.json({
       item: doc,
-      nextStage
+      nextStage,
+      ...(billingMail ? { billingMail } : {})
     });
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({

@@ -217,6 +217,16 @@ test('each assigned component service is planned, requested and approved on its 
       confirmCompletion: true
     });
     assert.equal(r.status, 200, JSON.stringify(r.data));
+    // 25 Nov 2026: SPOC approval waits for the Design Management Head.
+    assert.equal(r.data.item.confirmationStatus, 'SPOC Confirmed');
+    assert.equal(r.data.item.billingReadiness, 'Pending');
+    r = await call('dmh', {
+      ...identity(p),
+      service,
+      expectedVersion: r.data.item.__v,
+      approveCompletion: true
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
     assert.equal(r.data.item.billingReadiness, 'Ready for billing');
     assert.equal(r.data.item.approvalSequenceVerified, true);
   }
@@ -276,6 +286,14 @@ test('normal approved SMEPF allocation synchronizes a composite team and authori
     confirmCompletion: true
   });
   assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.item.billingReadiness, 'Pending');
+  r = await call('dmh', {
+    ...identity(p),
+    service: 'Structural',
+    expectedVersion: r.data.item.__v,
+    approveCompletion: true
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.equal(r.data.item.billingReadiness, 'Ready for billing');
   assert.equal((await f.models.Team.findById(synced._id).lean()).service, synced.service);
   assert.equal(await f.models.StageStatus.countDocuments({
@@ -331,9 +349,16 @@ test('saved activated SPOC retains explicit project-wide authority and other-pro
     actualCompletion: '2026-08-14',
     confirmationStatus: 'PTL Requested'
   });
-  const r = await call('spoc', {
+  const spocR = await call('spoc', {
     ...identity(p),
     confirmCompletion: true
+  });
+  assert.equal(spocR.status, 200, JSON.stringify(spocR.data));
+  assert.equal(spocR.data.item.confirmationStatus, 'SPOC Confirmed');
+  const r = await call('dmh', {
+    ...identity(p),
+    expectedVersion: spocR.data.item.__v,
+    approveCompletion: true
   });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.equal(r.data.item.confirmationStatus, 'TD Approved');

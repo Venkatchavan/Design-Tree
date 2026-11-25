@@ -31,11 +31,12 @@ function Approval({
   onProgress,
   busy
 }) {
+  // 25 Nov 2026: PTL → SPOC → Design Management Head (final approval for billing).
   const n = Math.max(['None', 'PTL Requested', 'SPOC Confirmed', 'TD Approved'].indexOf(row.confirmationStatus), 0);
-  const status = row.confirmationStatus === 'PTL Requested' ? 'PTL Completed' : !row.confirmationStatus || row.confirmationStatus === 'None' ? (row.progressStatus || 'Not started') : row.confirmationStatus === 'TD Approved' ? 'SPOC Approved' : row.confirmationStatus;
+  const status = row.confirmationStatus === 'PTL Requested' ? 'PTL Completed · awaiting SPOC' : !row.confirmationStatus || row.confirmationStatus === 'None' ? (row.progressStatus || 'Not started') : row.confirmationStatus === 'SPOC Confirmed' ? 'SPOC Approved · awaiting DMH' : row.confirmationStatus === 'TD Approved' ? 'DMH Approved' : row.confirmationStatus;
   // One compact line of steps (never wraps per step), with the status underneath.
   return <div className="stage-approval">
-    <span className="stage-approval-steps" role="img" aria-label={`${Math.min(n, 2)} of 2 approvals: ${status}`}>{['PTL', 'SPOC'].map((label, i) => <span key={label} className={`stage-approval-step${n > i ? ' is-done' : ''}`}>
+    <span className="stage-approval-steps" role="img" aria-label={`${n} of 3 approvals: ${status}`}>{['PTL', 'SPOC', 'DMH'].map((label, i) => <span key={label} className={`stage-approval-step${n > i ? ' is-done' : ''}`}>
       {i > 0 && <span className="stage-approval-link" aria-hidden="true" />}
       <span className="stage-approval-dot" aria-hidden="true" />{label}
     </span>)}</span>
@@ -63,7 +64,8 @@ export default function StageTimelinePanel({
       for (const key of ['stage-approvals', 'project-stages', 'billing-status-stages', 'billing-stages', 'notifications']) qc.invalidateQueries({
         queryKey: [key]
       });
-      if (result.nextStage) {
+      // Only a PTL / TD / ATD who can set dates is asked to plan the next stage.
+      if (result.nextStage?.canPlan) {
         const target = result.nextStage;
         setDialog({
           mode: 'plan',
@@ -144,7 +146,8 @@ export default function StageTimelinePanel({
     act(row, 'progressStatus', value);
   }
   function action(row) {
-    if (row.confirmationStatus === 'TD Approved' || row.billingReadiness === 'Billed') return '—';
+    // A fully approved stage shows as Completed (it used to show a bare dash).
+    if (row.confirmationStatus === 'TD Approved' || row.billingReadiness === 'Billed') return <span style={{ color: COLORS.green, fontWeight: 600 }}>Completed{row.billingReadiness === 'Billed' ? ' · Billed' : ''}</span>;
     if (!row.isCurrent) return <span>Awaiting {row.currentStage}</span>;
     const p = row.permissions;
     if (!row.startDate || !row.plannedCompletion) return p.plan ? <button type="button" className="approve-btn" onClick={() => openPlan(row)}>Set dates</button> : <span>Dates not set</span>;
@@ -158,11 +161,13 @@ export default function StageTimelinePanel({
       });
     }}>Mark complete</button>;
     if (p.confirm) return <button type="button" className="btn-primary" disabled={save.isPending} onClick={() => act(row, 'confirmCompletion')}>SPOC approve</button>;
-    if (p.approve) return <button type="button" className="btn-primary" disabled={save.isPending} onClick={() => act(row, 'approveCompletion')}>DMH approve (earlier flow)</button>;
+    if (p.approve) return <button type="button" className="btn-primary" disabled={save.isPending} onClick={() => act(row, 'approveCompletion')}>Final approval (DMH)</button>;
+    if (row.confirmationStatus === 'PTL Requested') return <span>Awaiting SPOC approval</span>;
+    if (row.confirmationStatus === 'SPOC Confirmed') return <span>Awaiting DMH final approval</span>;
     return '—';
   }
   const duration = dialog?.mode === 'plan' ? calendarDays(dialog.plannedCompletion, dialog.startDate) : null;
-  return <Panel title="Stage completion approvals" sub="PTL sets the stage Started / In progress / Completed → assigned SPOC approves. Dates and variance use calendar days.">
+  return <Panel title="Stage completion approvals" sub="PTL sets the stage Started / In progress / Completed → assigned SPOC approves → Design Management Head gives the final approval, and Billing is emailed. Dates and variance use calendar days.">
     {list.isLoading && <p role="status">Loading stage timeline…</p>}
     {list.isError && <p role="alert">{list.error.message}</p>}
     {save.isError && !dialog && <p role="alert">{save.error.message}</p>}

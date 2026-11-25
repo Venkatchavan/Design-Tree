@@ -101,6 +101,18 @@ async function action(role, row, extra) {
   assert.equal(r.status, 200, JSON.stringify(r.data));
   return r.data;
 }
+// 25 Nov 2026: PTL submission → SPOC approval → Design Management Head final approval.
+async function finalApprove(row) {
+  const spoc = await action('spoc', row, {
+    confirmCompletion: true
+  });
+  assert.equal(spoc.item.confirmationStatus, 'SPOC Confirmed');
+  assert.equal(spoc.item.billingReadiness, 'Pending');
+  assert.equal(spoc.nextStage, null);
+  return action('dmh', spoc.item, {
+    approveCompletion: true
+  });
+}
 test('strict TD chain rejects direct completion and unplanned PTL submission', async () => {
   await reset();
   assert.equal((await call('dmh', payload({
@@ -190,9 +202,7 @@ test('PTL date captures once, assigned SPOC confirms then TD approves and return
     approveCompletion: true,
     expectedVersion: row.__v
   }))).status, 409);
-  const result = await action('spoc', row, {
-    confirmCompletion: true
-  });
+  const result = await finalApprove(row);
   assert.equal(result.item.billingReadiness, 'Ready for billing');
   assert.equal(result.nextStage.stage, 'SD');
   assert.equal(result.nextStage.defaultStartDate, '2026-08-19');
@@ -214,7 +224,11 @@ test('PTL date captures once, assigned SPOC confirms then TD approves and return
   for (const n of notes) assert.equal(n.link.view, 'stage-timeline');
   assert(notes.some(n => n.title.includes('PTL') && n.users.map(String).includes(f.cast.spoc.user) && n.detail.includes('+4')));
   assert(notes.some(n => n.title.includes('SPOC') && n.users.map(String).includes(f.cast.td.user)));
-  assert(notes.some(n => n.title.includes('approved') && n.roles.includes('admin_billing')));
+  assert(notes.some(n => n.title.includes('final approval') && n.roles.includes('admin_billing')));
+  // The final approval is intimated to Billing by email (queued when SMTP is not set).
+  assert(result.billingMail && result.billingMail.to.length > 0);
+  const saved = await f.models.StageStatus.findById(result.item._id).lean();
+  assert(saved.history.some(h => /^Email (sent|queued)/.test(h.action) && h.action.includes('ready for billing')));
 });
 test('service alias resolves existing identity; sequencing is per service; nonassigned PTLs/SPOCs fail', async () => {
   await reset();
@@ -354,9 +368,7 @@ test('legacy rows without a version can plan atomically without inventing unknow
   const row = await plan();
   assert.equal(row.__v, 1);
   assert.equal(row.actualCompletion, undefined);
-  const done = await action('spoc', row, {
-    confirmCompletion: true
-  });
+  const done = await finalApprove(row);
   const billed = await call('admin', {
     project: f.project,
     service: 'SMEPF',
@@ -448,9 +460,7 @@ test('same service alias requests cannot create duplicate trackers and final GFC
       requestCompletion: true,
       actualCompletion: actual
     })).item;
-    const done = await action('spoc', row, {
-      confirmCompletion: true
-    });
+    const done = await finalApprove(row);
     assert.equal(done.nextStage === null, stage === 'GFC');
     priorActual = actual;
   }
@@ -516,9 +526,7 @@ test('next-stage target retains a legacy saved baseline so the popup requests a 
     requestCompletion: true,
     actualCompletion: '2026-08-18'
   })).item;
-  const done = await action('spoc', row, {
-    confirmCompletion: true
-  });
+  const done = await finalApprove(row);
   assert.equal(done.nextStage.startDate.slice(0, 10), '2026-08-19');
   assert.equal(done.nextStage.baselineCompletion.slice(0, 10), '2026-08-30');
   assert.equal(done.nextStage.plannedCompletion.slice(0, 10), '2026-09-01');
