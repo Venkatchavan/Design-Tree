@@ -51,6 +51,7 @@ export default function DtPeerReview() {
   const free = (meta.data?.projects ?? []).filter((p) => !packages.some((x) => id(x.item.project) === id(p)));
   const canAllot = !!meta.data?.access?.allot;
   const canEdit = !!current?.canWrite;
+  const canApprove = !!current?.canApprove;
 
   return (
     <div className="dtpr">
@@ -80,7 +81,7 @@ export default function DtPeerReview() {
       {list.isLoading ? <EmptyState text="Loading peer review packages…" /> : !current ? (
         <EmptyState text={canAllot ? 'Allot a Structural project to the review team above.' : 'No project has been allotted for DT Peer Review yet.'} />
       ) : (
-        <Package key={selected} data={current} meta={meta.data ?? {}} canEdit={canEdit && !current.summary.released} canAllot={canAllot && !current.summary.released} busy={mutate.isPending} run={(path, body, method) => run(`${B}/${selected}${path}`, body, method)} />
+        <Package key={selected} data={current} meta={meta.data ?? {}} canEdit={canEdit && !current.summary.released} canApprove={canApprove && !current.summary.released} canAllot={canAllot && !current.summary.released} busy={mutate.isPending} run={(path, body, method) => run(`${B}/${selected}${path}`, body, method)} />
       )}
     </div>
   );
@@ -120,7 +121,7 @@ function TeamPicker({ employees, value, onChange }) {
   );
 }
 
-function Package({ data, meta, canEdit, canAllot, busy, run }) {
+function Package({ data, meta, canEdit, canApprove, canAllot, busy, run }) {
   const { item, summary: s } = data;
   const [editing, setEditing] = useState(false);
   const [allotting, setAllotting] = useState(false);
@@ -144,7 +145,7 @@ function Package({ data, meta, canEdit, canAllot, busy, run }) {
         <div className={`dtpr-status ${s.released ? 'released' : s.blocked ? 'blocked' : 'ready'}`}>
           <b>{s.status}</b>
           {s.released ? <span>Released by {stampText(s.released)}</span> : s.blockers.length > 0 && <ul>{s.blockers.map((b) => <li key={b}>{b}</li>)}</ul>}
-          {canEdit && !s.blocked && !s.released && <button type="button" className="btn-primary" disabled={busy} onClick={() => run('/release')}>Mark Released for Issue</button>}
+          {canApprove && !s.blocked && !s.released && <button type="button" className="btn-primary" disabled={busy} onClick={() => run('/release')}>Mark Released for Issue</button>}
         </div>
         <div className="kpi-grid cols-3">
           <KpiCard label="Master checklist" value={`${s.checklist.pct}%`} accent="blueprint" />
@@ -194,7 +195,7 @@ function Package({ data, meta, canEdit, canAllot, busy, run }) {
           <tbody>{(item.approvals ?? []).map((a) => (
             <tr key={id(a)}>
               <td>{a.deliverable}</td>
-              <td>{canEdit ? (
+              <td>{canApprove ? (
                 <select className="filter-select" aria-label={`${a.deliverable} status`} value={a.status} disabled={busy} onChange={(e) => run(`/approvals/${id(a)}`, { status: e.target.value }, 'PATCH')}>
                   {(meta.approvalStatus ?? []).map((v) => <option key={v}>{v}</option>)}
                 </select>
@@ -203,7 +204,7 @@ function Package({ data, meta, canEdit, canAllot, busy, run }) {
             </tr>
           ))}</tbody>
         </table></div>
-        <p className="dtpr-note">The package stays blocked while any review comment is open. Only the allotted review team can mark it Released for Issue.</p>
+        <p className="dtpr-note">The package stays blocked while any review comment is open. Approvals and Released for Issue are by Sandeep N or Arpitha, based on the review team's findings.</p>
       </Panel>
 
       <Panel title="5. Comments log" sub={`${s.comments.total} comments · ${s.comments.open} open (${s.comments.awaitingConsultant} awaiting consultant response, ${s.comments.awaitingDt} awaiting DesignTree review) · ${s.comments.closed} closed`}>

@@ -36,12 +36,20 @@ export async function dtPrAccess(user) {
   const allot = DT_PR_ALLOTTER_EMAILS.includes(email);
   const head = user.role === 'peer_review_head';
   const viewer = user.role === 'founding_director' || DT_PR_VIEWER_EMAILS.includes(email);
-  const reviewer = !!employee && !!(await DtPeerReview.exists({ reviewTeam: employee }));
+  // 25 Nov 2026: the three designated reviewers always have the module (nav +
+  // dashboard), even before Admin allots them a package.
+  const designated = !!employee && !!(await Employee.exists({ _id: employee, empId: { $in: DT_PR_REVIEWER_EMP_IDS } }));
+  const reviewer = designated || (!!employee && !!(await DtPeerReview.exists({ reviewTeam: employee })));
   return { employee, allot, head, viewer, reviewer, read: allot || head || viewer || reviewer };
 }
 const onTeam = (a, doc) => !!a.employee && (doc.reviewTeam ?? []).some((e) => id(e) === a.employee);
 const canWritePkg = (a, doc) => a.head || onTeam(a, doc);
 const canReadPkg = (a, doc) => a.allot || a.head || a.viewer || onTeam(a, doc);
+// 25 Nov 2026: Sandeep N and Arpitha (Admin allotters) hold the approval
+// authority — deliverable approvals and Released for Issue — based on the
+// reviews the allotted team records.
+const canApprovePkg = (a) => a.allot || a.head;
+const pkgFlags = (a, doc) => ({ canWrite: canWritePkg(a, doc) && !doc.released?.at, canApprove: canApprovePkg(a) && !doc.released?.at });
 const denied = () => fail(403, 'You do not have access to the DT Peer Review log.');
 
 export function commentState(c, now = Date.now()) {
@@ -130,7 +138,7 @@ async function loadPackage(req, { write = false } = {}) {
 async function respond(req, res, doc, status = 200) {
   const full = await DtPeerReview.findById(doc._id).populate(POP).lean();
   const a = await dtPrAccess(req.user);
-  return res.status(status).json({ item: full, summary: summarize(full), canWrite: canWritePkg(a, full) && !full.released?.at });
+  return res.status(status).json({ item: full, summary: summarize(full), ...pkgFlags(a, full) });
 }
 // The review team can only be chosen from the people Admin may allot.
 async function reviewTeamFrom(ids) {
@@ -164,7 +172,7 @@ export const list = handle(async (req, res) => {
   if (!a.read) throw denied();
   const all = await DtPeerReview.find({}).populate(POP).sort({ updatedAt: -1 }).lean();
   const items = all.filter((item) => canReadPkg(a, item));
-  res.json({ items: items.map((item) => ({ item, summary: summarize(item), canWrite: canWritePkg(a, item) && !item.released?.at })) });
+  res.json({ items: items.map((item) => ({ item, summary: summarize(item), ...pkgFlags(a, item) })) });
 });
 
 export const get = handle(async (req, res) => respond(req, res, await loadPackage(req)));
@@ -238,8 +246,15 @@ export const updateChecklistItem = handle(async (req, res) => {
   return respond(req, res, doc);
 });
 
+async function loadForApproval(req) {
+  const doc = await loadPackage(req);
+  if (!canApprovePkg(await dtPrAccess(req.user))) throw fail(403, 'Only Sandeep N or Arpitha (approval authority) can approve or release the package.');
+  if (doc.released?.at) throw fail(409, 'This package is Released for Issue and is now read-only.');
+  return doc;
+}
+
 export const updateApproval = handle(async (req, res) => {
-  const doc = await loadPackage(req, { write: true });
+  const doc = await loadForApproval(req);
   const row = doc.approvals.id(req.params.itemId);
   if (!row) throw fail(404, 'Deliverable not found.');
   if (!DT_PR_APPROVAL_STATUS.includes(req.body?.status)) throw fail(400, 'Choose a valid status.');
@@ -299,7 +314,7 @@ export const signOffStage = handle(async (req, res) => {
 });
 
 export const release = handle(async (req, res) => {
-  const doc = await loadPackage(req, { write: true });
+  const doc = await loadForApproval(req);
   const a = await actor(req);
   const sum = summarize(doc.toObject());
   if (sum.blockers.length) throw fail(409, `Package is blocked: ${sum.blockers.join('; ')}.`);

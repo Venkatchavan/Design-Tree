@@ -84,9 +84,27 @@ export function manualStage(stage) {
   return LEGACY_STAGE[s.toUpperCase()] ?? s;
 }
 
-// The standard items above are the Structural ones; a Mechanical, Electrical,
-// Plumbing or Fire deliverable is named with "Other (specify)".
+// Standard deliverables per service code, then per stage. Only the Structural
+// set has been supplied so far; add HVAC / ELE / PHE / FIRE lists here from the
+// process manual. Until a service has its own list, its dropdown offers only
+// "Other (specify)" — another service's items are never shown.
+export const SERVICE_STAGE_DELIVERABLES = {
+  STR: STAGE_DELIVERABLES,
+};
+
+const SERVICE_ALIASES = {
+  str: 'STR', structure: 'STR', structural: 'STR', structures: 'STR',
+  hvac: 'HVAC', mechanical: 'HVAC', ele: 'ELE', elec: 'ELE', electrical: 'ELE',
+  phe: 'PHE', plumbing: 'PHE', fire: 'FIRE', 'f&ls': 'FIRE', 'fire & life safety': 'FIRE',
+};
+const serviceCode = (s) => SERVICE_ALIASES[String(s ?? '').trim().toLowerCase()] ?? String(s ?? '').trim().toUpperCase();
+
+// `service` may be one code / label, or a list of them (e.g. the services of the
+// people a task is assigned to). With no service given, the Structural set is
+// used (legacy callers). Several services share only items common to all.
 export function stageDeliverables(stage, service = '') {
-  if (service && service !== 'STR') return [];
-  return STAGE_DELIVERABLES[manualStage(stage)] ?? [];
+  const codes = [...new Set((Array.isArray(service) ? service : [service]).filter(Boolean).map(serviceCode))];
+  const listFor = (code) => SERVICE_STAGE_DELIVERABLES[code]?.[manualStage(stage)] ?? [];
+  if (codes.length === 0) return listFor('STR');
+  return codes.map(listFor).reduce((common, list) => common.filter((d) => list.includes(d)));
 }

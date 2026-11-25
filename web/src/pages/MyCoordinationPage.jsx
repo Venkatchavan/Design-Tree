@@ -354,16 +354,7 @@ const TEAM_SERVICES = [
   { key: 'BIM', role: 'Federated model and clash detection' },
 ];
 
-const APPROVAL_OPTIONS = [
-  { value: 'Approved', label: 'Approved' },
-  { value: 'Proposed', label: 'Pending' },
-];
-
 function projectIdOf(p) { return String(p?._id ?? p?.id ?? ''); }
-
-function approvalLabel(value) {
-  return APPROVAL_OPTIONS.find((o) => o.value === value)?.label ?? (value || '—');
-}
 
 function teamEntries(project) {
   return (project?.principalTeamLeads ?? []).flatMap((t) => {
@@ -416,35 +407,55 @@ function serviceRows(project) {
   for (const s of TEAM_SERVICES) {
     const members = entries.filter((e) => e.service === s.key);
     if (members.length === 0) {
-      rows.push({ key: `${s.key}-open`, service: s.key, name: '', role: s.role });
+      rows.push({ key: `${s.key}-open`, service: s.key, name: '' });
     } else {
-      members.forEach((m, i) => rows.push({ key: `${s.key}-${i}`, service: s.key, name: m.name, role: m.role || s.role }));
+      members.forEach((m, i) => rows.push({ ...m, key: `${s.key}-${i}`, service: s.key }));
     }
   }
   const known = new Set(TEAM_SERVICES.map((s) => s.key));
   entries
     .filter((e) => !known.has(e.service))
-    .forEach((m, i) => rows.push({ key: `other-${i}`, service: m.service || '—', name: m.name, role: m.role }));
+    .forEach((m, i) => rows.push({ ...m, key: `other-${i}`, service: m.service || '—' }));
   return rows;
 }
 
-function InhouseTeamPanel({ projects, myAllocs, employees, loading }) {
-  const [service, setService] = useState('');
-  const choices = [...new Set(projects.flatMap(p => serviceRows(p).flatMap(r => serviceNames([r.service]))))].sort();
-  const shownProjects = projects.filter(p => !service || serviceRows(p).some(r => serviceNames([r.service]).includes(service)));
+// 25 Nov 2026: the directory shows each person's own Designation and
+// Experience from their employee record — no generic "Principal team lead"
+// responsibility text.
+function memberRecord(r, employees) {
+  if (!r?.name && !r?.employee) return null;
+  return employeeOf(r.employee, employees) ?? employeeByName(employees, r.name);
+}
+function designationText(r, employees) {
+  if (!r?.name) return '—';
+  return memberRecord(r, employees)?.designation || '—';
+}
+function experienceText(r, employees) {
+  if (!r?.name) return '—';
+  const t = String(memberRecord(r, employees)?.experience ?? '').trim();
+  if (!t) return '—';
+  return /^\d+(\.\d+)?$/.test(t) ? `${t} yrs` : t;
+}
+const matchesService = (service) => (r) => !service || serviceNames([r.service]).includes(service);
+
+// Service filter + Excel download over the project directory.
+function DirectoryControls({ projects, rowsOf, service, setService, myAllocs, employees, loading }) {
+  const choices = [...new Set(projects.flatMap(p => rowsOf(p).flatMap(r => serviceNames([r.service]))))].sort();
+  const shownProjects = projects.filter(p => rowsOf(p).some(matchesService(service)));
   // Downloads the directory exactly as listed (current service filter applied).
   async function downloadExcel() {
     const XLSX = await import('xlsx');
     const rows = shownProjects.flatMap((p) => {
       const coord = coordinatorFor(projectIdOf(p), myAllocs, employees);
-      return serviceRows(p)
-        .filter(r => !service || serviceNames([r.service]).includes(service))
+      return rowsOf(p)
+        .filter(matchesService(service))
         .map(r => ({
           Project: p.name ?? p.code ?? '',
           'Job number': p.jobNumber ?? '',
           Service: r.service,
           'Team member': r.name || 'Not allocated',
-          'Role / responsibility': r.role || '',
+          Designation: designationText(r, employees).replace('—', ''),
+          Experience: experienceText(r, employees).replace('—', ''),
           'Coordinator / SPOC': coord ? empName(coord) : '',
         }));
     });
@@ -454,11 +465,19 @@ function InhouseTeamPanel({ projects, myAllocs, employees, loading }) {
     XLSX.writeFile(wb, `project-directory${label ? `-${String(label).replace(/[^\w.-]+/g, '_')}` : ''}.xlsx`);
   }
   return (
-    <Panel title="In-house project team — all services" sub="Service-wise, with role and coordinator details. Live from team allocation.">
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <label className="form-label">Directory service<select className="filter-select" aria-label="Directory service" value={service} onChange={e => setService(e.target.value)}><option value="">All services</option>{choices.map(s => <option key={s}>{s}</option>)}</select></label>
-        <button type="button" className="approve-btn" disabled={loading || shownProjects.length === 0} onClick={downloadExcel}>Download Excel</button>
-      </div>
+    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      <label className="form-label">Directory service<select className="filter-select" aria-label="Directory service" value={service} onChange={e => setService(e.target.value)}><option value="">All services</option>{choices.map(s => <option key={s}>{s}</option>)}</select></label>
+      <button type="button" className="approve-btn" disabled={loading || shownProjects.length === 0} onClick={downloadExcel}>Download Excel</button>
+    </div>
+  );
+}
+
+function InhouseTeamPanel({ projects, myAllocs, employees, loading }) {
+  const [service, setService] = useState('');
+  const shownProjects = projects.filter(p => serviceRows(p).some(matchesService(service)));
+  return (
+    <Panel title="In-house project team — all services" sub="Service-wise, with designation and coordinator details. Live from team allocation.">
+      <DirectoryControls projects={projects} rowsOf={serviceRows} service={service} setService={setService} myAllocs={myAllocs} employees={employees} loading={loading} />
       {loading ? (
         <EmptyState text="Loading…" />
       ) : shownProjects.length === 0 ? (
@@ -473,10 +492,11 @@ function InhouseTeamPanel({ projects, myAllocs, employees, loading }) {
                 columns={[
                   { key: 'service', label: 'Service' },
                   { key: 'name', label: 'Team member', render: (r) => r.name || 'Not allocated' },
-                  { key: 'role', label: 'Role / responsibility', render: (r) => r.role || '—' },
+                  { key: 'designation', label: 'Designation', render: (r) => designationText(r, employees) },
+                  { key: 'experience', label: 'Experience', render: (r) => experienceText(r, employees) },
                   { key: 'coord', label: 'Coordinator / SPOC', render: () => (coord ? empName(coord) : '—') },
                 ]}
-                rows={serviceRows(p).filter(r => !service || serviceNames([r.service]).includes(service))}
+                rows={serviceRows(p).filter(matchesService(service))}
                 emptyText="No services."
               />
             </div>
@@ -490,8 +510,11 @@ function InhouseTeamPanel({ projects, myAllocs, employees, loading }) {
 const dirName = (e) => `${e?.firstName ?? ''} ${e?.lastName ?? ''}`.trim() || e?.empId || '';
 const idOfEmp = (e) => String(e?._id ?? e?.id ?? '');
 
-export function TeamAllocationPanel({ projects, employees }) {
+export function TeamAllocationPanel({ projects, employees, myAllocs = [] }) {
   const queryClient = useQueryClient();
+  // Rows ticked in the allocation list; Edit / Remove next to Record allocation act on them.
+  const [selected, setSelected] = useState([]);
+  const [dirService, setDirService] = useState('');
   const [project, setProject] = useState('');
   const [service, setService] = useState('');
   const [editing,setEditing]=useState(null);
@@ -548,27 +571,49 @@ export function TeamAllocationPanel({ projects, employees }) {
     setErr(''); setOk('');
   }
 
+  const sameRow = (a, b) => a.service === b.service && (b.employee ? a.employee === b.employee : a.name === b.name);
   const remove = useMutation({
-    mutationFn: async ({ project: projectId, row }) => {
-      const detail = await projectsApi.get(projectId);
-      const current = teamEntries(detail?.project ?? detail ?? {});
-      const next = current.filter((r) => !(r.service === row.service && (row.employee ? r.employee === row.employee : r.name === row.name)));
-      return projectsApi.saveTeamLeads(projectId, { principalTeamLeads: toTeamPayload(next) });
+    mutationFn: async (picks) => {
+      const byProject = new Map();
+      for (const { project: pid, row } of picks) byProject.set(pid, [...(byProject.get(pid) ?? []), row]);
+      for (const [pid, rows] of byProject) {
+        const detail = await projectsApi.get(pid);
+        const current = teamEntries(detail?.project ?? detail ?? {});
+        const next = current.filter((r) => !rows.some((row) => sameRow(r, row)));
+        await projectsApi.saveTeamLeads(pid, { principalTeamLeads: toTeamPayload(next) });
+      }
+      return { removed: picks.length, projects: [...byProject.keys()] };
     },
-    onSuccess: (_d, { project: projectId }) => {
+    onSuccess: (data) => {
       for (const key of ['projects','teams','my-teams','teams-allocation-projects']) queryClient.invalidateQueries({queryKey:[key]});
-      queryClient.invalidateQueries({ queryKey: ['project-team', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      for (const pid of data.projects) {
+        queryClient.invalidateQueries({ queryKey: ['project-team', pid] });
+        queryClient.invalidateQueries({ queryKey: ['project', pid] });
+      }
       resetForm();
+      setSelected([]);
       setErr('');
-      setOk('Team allocation removed.');
+      setOk(`${data.removed} team allocation${data.removed === 1 ? '' : 's'} removed.`);
     },
     onError: (e) => { setErr(e.message); setOk(''); },
   });
 
-  function removeAllocation(p, r) {
-    if (!window.confirm(`Remove ${r.name || 'this member'} from ${r.service || 'this service'}?`)) return;
-    remove.mutate({ project: projectIdOf(p), row: r });
+  const selKey = (p, r) => `${projectIdOf(p)}|${r.service}|${r.employee || r.name}`;
+  const isSelected = (p, r) => selected.some((x) => x.key === selKey(p, r));
+  function toggleSelected(p, r) {
+    const key = selKey(p, r);
+    setSelected((prev) => (prev.some((x) => x.key === key) ? prev.filter((x) => x.key !== key) : [...prev, { key, project: p, row: r }]));
+  }
+  function editSelected() {
+    if (selected.length !== 1) { setErr('Tick one allocation in the list below to edit it.'); setOk(''); return; }
+    startEdit(selected[0].project, selected[0].row);
+    setSelected([]);
+  }
+  function removeSelected() {
+    if (selected.length === 0) { setErr('Tick the allocations to remove in the list below.'); setOk(''); return; }
+    const names = selected.map((x) => `${x.row.name || 'member'} (${x.row.service || '—'})`).join(', ');
+    if (!window.confirm(`Remove ${selected.length === 1 ? 'this allocation' : `these ${selected.length} allocations`}: ${names}?`)) return;
+    remove.mutate(selected.map((x) => ({ project: projectIdOf(x.project), row: x.row })));
   }
 
   function toggleMember(value) {
@@ -706,12 +751,6 @@ export function TeamAllocationPanel({ projects, employees }) {
               }}</EmployeeFilter>
             </div>
           )}
-          <div className="form-row">
-            <label className="form-label">Approval status</label>
-            <select className="filter-select" style={{ width: '100%' }} value={status} onChange={(e) => setStatus(e.target.value)}>
-              {APPROVAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
         </div>
         {optsQ.isError && <div className="login-error" role="alert" style={{ display: 'block' }}>Could not load directors and team leads: {optsQ.error.message}</div>}
         {err && <div className="login-error" role="alert" style={{ display: 'block' }}>{err}</div>}
@@ -720,26 +759,29 @@ export function TeamAllocationPanel({ projects, employees }) {
           {save.isPending ? 'Saving…' : editing ? 'Save allocation changes' : `Record allocation${members.length ? ` (${members.length})` : ''}`}
         </button>
         {editing&&<button type="button" className="approve-btn" onClick={resetForm}>Cancel edit</button>}
+        {!editing && <button type="button" className="approve-btn" disabled={selected.length !== 1} title="Tick one allocation in the list below" onClick={editSelected}>Edit</button>}
+        {!editing && <button type="button" className="approve-btn" disabled={selected.length === 0 || remove.isPending} title="Tick allocations in the list below" onClick={removeSelected}>{remove.isPending ? 'Removing…' : `Remove${selected.length > 1 ? ` (${selected.length})` : ''}`}</button>}
         <button type="button" className="approve-btn" disabled={!project || refreshAllocation.isPending} onClick={() => refreshAllocation.mutate()}>Refresh saved team allocations</button>
       </form>
+      <div style={{ marginTop: 16 }}>
+        <DirectoryControls projects={withTeam} rowsOf={teamEntries} service={dirService} setService={setDirService} myAllocs={myAllocs} employees={pool} loading={false} />
+      </div>
       {withTeam.length === 0 ? (
         <EmptyState text="No team allocations recorded yet." />
       ) : (
-        withTeam.map((p) => (
+        withTeam.filter((p) => teamEntries(p).some(matchesService(dirService))).map((p) => (
           <div key={projectIdOf(p)} style={{ marginBottom: 16 }}>
             <div className="section-label">{p.name ?? p.code ?? '—'}</div>
             <DataTable
               columns={[
-                { key: 'edit', label: 'Action', render:r=><>
-                  <button type="button" className="approve-btn" onClick={()=>startEdit(p,r)}>Edit allocation</button>
-                  <button type="button" className="approve-btn" disabled={remove.isPending} onClick={()=>removeAllocation(p,r)}>Remove</button>
-                </> },
+                { key: 'pick', label: '', render: (r) => <input type="checkbox" aria-label={`Select ${r.name || 'allocation'} (${r.service})`} checked={isSelected(p, r)} onChange={() => toggleSelected(p, r)} /> },
                 { key: 'service', label: 'Service' },
                 { key: 'nominatedBy', label: 'Nominated by', render: (r) => r.nominatedBy || '—' },
                 { key: 'name', label: 'Team member' },
-                { key: 'approvalStatus', label: 'Approval status', render: (r) => <StatusPill status={approvalLabel(r.approvalStatus)} /> },
+                { key: 'designation', label: 'Designation', render: (r) => designationText(r, pool) },
+                { key: 'experience', label: 'Experience', render: (r) => experienceText(r, pool) },
               ]}
-              rows={teamEntries(p)}
+              rows={teamEntries(p).filter(matchesService(dirService))}
               emptyText="No team allocations."
             />
           </div>
@@ -767,8 +809,11 @@ export function DirectoryTab({ myAllocs, activeProjects, activeLoading, canEdit 
 
   return (
     <>
-      {canEdit && <TeamAllocationPanel projects={projects} employees={employees} />}
-      <InhouseTeamPanel projects={projects} myAllocs={myAllocs} employees={employees} loading={activeLoading} />
+      {/* 25 Nov 2026: a SPOC's allocation list already is the service-wise directory
+          (filter + Excel), so the separate In-house team panel is not repeated. */}
+      {canEdit
+        ? <TeamAllocationPanel projects={projects} employees={employees} myAllocs={myAllocs} />
+        : <InhouseTeamPanel projects={projects} myAllocs={myAllocs} employees={employees} loading={activeLoading} />}
 
     </>
   );

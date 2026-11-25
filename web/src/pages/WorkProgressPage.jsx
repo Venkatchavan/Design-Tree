@@ -149,6 +149,15 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
     }).sort((a, b) => new Date(a.loginAt) - new Date(b.loginAt)),
     [signIns, hoursByEmp],
   );
+  // 25 Nov 2026: for a TL, "Not yet updated" follows attendance — team members
+  // who signed in on the date but have not logged any work yet. Counting the
+  // whole team (absentees and people on leave included) never moved.
+  const signedInNotUpdated = useMemo(
+    () => new Set(signInRows
+      .map((r) => String(r.employee._id ?? r.employee.id ?? r.employee))
+      .filter((eid) => !loggedIds.has(eid))).size,
+    [signInRows, loggedIds],
+  );
 
   const totalHours = entries.reduce((s, e) => addHours(s,e.hours), 0);
   const empIds = useMemo(() => {
@@ -293,7 +302,13 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
         <div className="kpi-grid cols-3">
           <KpiCard label={`Total hours logged (${date}, IST)`} value={entriesQ.isLoading || entriesQ.isError ? '—' : hoursText(totalHours)} accent="blueprint" />
           <KpiCard label="Employees logged in" value={entriesQ.isLoading || signInsQ.isLoading ? '…' : empIds.size} accent="forest" />
-          <KpiCard label="Not yet updated" value={teamQ.isLoading ? '…' : teamQ.isError ? '—' : notUpdatedCount} accent="rust" />
+          <KpiCard
+            label="Not yet updated"
+            value={isLead
+              ? (entriesQ.isLoading || signInsQ.isLoading ? '…' : signInsQ.isError ? '—' : signedInNotUpdated)
+              : (teamQ.isLoading ? '…' : teamQ.isError ? '—' : notUpdatedCount)}
+            accent="rust"
+          />
         </div>
         {isLead && (
           <Panel title={`Logged in - ${date} (IST)`} sub="Team members who have signed in on this date">

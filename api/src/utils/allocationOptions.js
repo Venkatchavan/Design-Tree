@@ -6,7 +6,7 @@ import { employeeOwnership } from './directorTeams.js';
 const LEAD_ROLES = ['team_lead', 'assoc_technical_director'];
 const LEAD_DESIGNATION = /\bteam\s*lead\b|^\s*lead\s*-|\bassociate\s+technical\s+director\b/i;
 const id = (value) => String(value?._id ?? value ?? '');
-const FIELDS = ['_id', 'firstName', 'middleName', 'lastName', 'empId', 'designation', 'department', 'branch', 'status'];
+const FIELDS = ['_id', 'firstName', 'middleName', 'lastName', 'empId', 'designation', 'experience', 'department', 'branch', 'status'];
 const publicEmployee = (e, role) => ({ ...Object.fromEntries(FIELDS.filter((k) => e[k] !== undefined).map((k) => [k, e[k]])), ...(role ? { role } : {}) });
 
 // Team allocation pickers: directors come from login roles; team leads from
@@ -15,7 +15,7 @@ const publicEmployee = (e, role) => ({ ...Object.fromEntries(FIELDS.filter((k) =
 export async function allocationOptions() {
   const [employees, users] = await Promise.all([
     Employee.find({ status: { $ne: 'Exited' } })
-      .select('firstName middleName lastName empId email designation department branch status director reportingManager teamViewOf headOfDepartments')
+      .select('firstName middleName lastName empId email designation experience department branch status director reportingManager teamViewOf headOfDepartments')
       .sort({ firstName: 1, _id: 1 }).lean(),
     User.find({ employee: { $ne: null }, isActive: { $ne: false } }).select('name email employee role').lean(),
   ]);

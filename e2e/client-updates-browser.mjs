@@ -195,10 +195,9 @@ try {
       await expect(
         alloc.getByText('Role / responsibility', { exact: true }),
       ).toHaveCount(0);
-      await alloc
-        .getByRole('button', { name: 'Edit allocation', exact: true })
-        .last()
-        .click();
+      // 25 Nov 2026: tick a row, then Edit next to Record allocation.
+      await alloc.getByRole('checkbox', { name: /^Select / }).last().check();
+      await alloc.getByRole('button', { name: 'Edit', exact: true }).click();
       await alloc.locator('select').nth(2).selectOption('Test td Workflow');
       await alloc
         .getByRole('button', { name: 'Save allocation changes', exact: true })

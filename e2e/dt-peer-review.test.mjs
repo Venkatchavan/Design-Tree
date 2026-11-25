@@ -65,11 +65,17 @@ test('log is read only for Founding Director and Srinivasa Rao; no other directo
     assert.equal((await call(role, `${B}/${pkg._id}/team`, 'PUT', { reviewTeam: [f.cast.peer.employee] })).status, 403, role);
   }
   // Working / Executive / Technical / Assoc. Technical directors and everyone else: refused.
-  for (const role of ['wd', 'ed', 'td', 'associate', 'tl', 'outsider', 'qs', 'engineer']) {
+  for (const role of ['wd', 'ed', 'td', 'associate', 'tl', 'outsider', 'engineer']) {
     assert.equal((await call(role, B)).status, 403, role);
     assert.equal((await call(role, `${B}/meta`)).status, 403, role);
     assert.equal((await call(role, `${B}/${pkg._id}`)).status, 404, role);
   }
+  // 25 Nov 2026: a designated reviewer has the module (nav) before being
+  // allotted, but sees only the packages allotted to them.
+  assert.equal((await call('qs', B)).data.items.length, 0);
+  assert.equal((await call('qs', `${B}/meta`)).status, 200);
+  assert.equal((await call('qs', `${B}/${pkg._id}`)).status, 404);
+  assert.equal((await call('qs', '/api/meta/bootstrap')).data.nav.some(n => n.view === 'dt-peer-review'), true);
   const boot = await call('md', '/api/meta/bootstrap');
   assert.equal(boot.data.capabilities.dtPeerReview.read, true);
   assert.equal((await call('wd', '/api/meta/bootstrap')).data.capabilities.dtPeerReview.read, false);
@@ -78,7 +84,7 @@ test('log is read only for Founding Director and Srinivasa Rao; no other directo
 });
 
 test('Admin can change the allotted team; only the allotted team works the package', async () => {
-  assert.equal((await call('qs', B)).status, 403);
+  assert.equal((await call('qs', B)).data.items.length, 0);
   assert.equal((await call('qs', `${B}/${pkg._id}/checklist`, 'POST', { stage: 'S1', item: 'x' })).status, 404);
   let r = await call('finance', `${B}/${pkg._id}/team`, 'PUT', { reviewTeam: [f.cast.peer.employee, f.cast.qs.employee] });
   assert.equal(r.status, 200); assert.equal(r.data.item.reviewTeam.length, 2);
@@ -87,7 +93,7 @@ test('Admin can change the allotted team; only the allotted team works the packa
   assert.equal((await call('peer', `${B}/${pkg._id}/team`, 'PUT', { reviewTeam: [f.cast.peer.employee] })).status, 403);
   r = await call('finance', `${B}/${pkg._id}/team`, 'PUT', { reviewTeam: [f.cast.peer.employee] });
   assert.equal(r.status, 200);
-  assert.equal((await call('qs', B)).status, 403);
+  assert.equal((await call('qs', B)).data.items.length, 0);
   assert.equal((await call('finance', `${B}/${pkg._id}/comments`, 'POST', { stage: 'S1', comment: 'admin cannot write' })).status, 403);
 });
 
@@ -124,16 +130,21 @@ test('stage sign-off needs closed items and no open comments', async () => {
   assert.equal((await call('peer', `${B}/${pkg._id}/checklist/${s1._id}`, 'PATCH', { status: 'Not Started' })).status, 409);
 });
 
-test('the allotted team approves deliverables and releases an unblocked package; it is then read only', async () => {
+test('Sandeep N / Arpitha approve deliverables and release an unblocked package; it is then read only', async () => {
   let doc = (await call('peer', `${B}/${pkg._id}`)).data.item;
   assert.equal((await call('md', `${B}/${pkg._id}/approvals/${doc.approvals[0]._id}`, 'PATCH', { status: 'Approved' })).status, 403);
-  assert.equal((await call('peer', `${B}/${pkg._id}/approvals/${doc.approvals[0]._id}`, 'PATCH', { status: 'Submitted' })).status, 200);
-  assert.equal((await call('peer', `${B}/${pkg._id}/release`, 'POST')).status, 409);
+  // 25 Nov 2026: the review team reviews; approval authority is the allotters'.
+  assert.equal((await call('peer', `${B}/${pkg._id}/approvals/${doc.approvals[0]._id}`, 'PATCH', { status: 'Submitted' })).status, 403);
+  assert.equal((await call('peer', `${B}`)).data.items[0].canApprove, false);
+  assert.equal((await call('finance', `${B}`)).data.items[0].canApprove, true);
+  assert.equal((await call('finance', `${B}/${pkg._id}/approvals/${doc.approvals[0]._id}`, 'PATCH', { status: 'Submitted' })).status, 200);
+  assert.equal((await call('finance', `${B}/${pkg._id}/release`, 'POST')).status, 409);
   for (const i of doc.checklist.filter(i => i.stage !== 'S1')) await call('peer', `${B}/${pkg._id}/checklist/${i._id}`, 'PATCH', { status: 'N.A.' });
   for (const s of ['S2', 'S3', 'S4', 'S5', 'S6', 'S7']) assert.equal((await call('peer', `${B}/${pkg._id}/stages/${s}/sign-off`, 'POST')).status, 200);
-  for (const a of doc.approvals) assert.equal((await call('peer', `${B}/${pkg._id}/approvals/${a._id}`, 'PATCH', { status: 'Approved' })).status, 200);
+  for (const a of doc.approvals) assert.equal((await call('finance', `${B}/${pkg._id}/approvals/${a._id}`, 'PATCH', { status: 'Approved' })).status, 200);
   assert.equal((await call('md', `${B}/${pkg._id}/release`, 'POST')).status, 403);
-  const r = await call('peer', `${B}/${pkg._id}/release`, 'POST');
+  assert.equal((await call('peer', `${B}/${pkg._id}/release`, 'POST')).status, 403);
+  const r = await call('finance', `${B}/${pkg._id}/release`, 'POST');
   assert.equal(r.status, 200); assert.equal(r.data.summary.status, 'Released for issue');
   assert.equal((await call('peer', `${B}/${pkg._id}/comments`, 'POST', { stage: 'S2', comment: 'late' })).status, 409);
   assert.equal((await call('finance', `${B}/${pkg._id}/team`, 'PUT', { reviewTeam: [f.cast.peer.employee, f.cast.qs.employee] })).status, 409);

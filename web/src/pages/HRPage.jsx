@@ -538,7 +538,7 @@ function DirectorTravelLogTab({ showBookings = true }) {
         <KpiCard label="Avg. cost / trip" value={fmtSpend(avgCost)} accent="violet" />
       </div>
       {showBookings && <TravelBookingLog readOnly embedded />}
-      <Panel title="Saved travel requests and booking summary" sub="Sources remain separate. Detailed booking history and fees appear above.">
+      <Panel>
         {q.isLoading ? (
           <EmptyState text="Loading…" />
         ) : q.isError ? (
@@ -547,7 +547,7 @@ function DirectorTravelLogTab({ showBookings = true }) {
           <DataTable
             columns={[
               { key: 'source', label: 'Source' },
-              { key: 'employee', label: 'Employee', render: (r) => r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : '—' },
+              { key: 'employee', label: 'Employee', render: (r) => (r.employee ? [r.employee.firstName, r.employee.lastName].filter(Boolean).join(' ') : '') || '—' },
               { key: 'purpose', label: 'Purpose', render: (r) => r.purpose ?? '—' },
               { key: 'location', label: 'Location', render: (r) => [r.project?.name ?? r.project, r.toCity].filter(Boolean).join(', ') || '—' },
               { key: 'departureDate', label: 'Travel date', render: (r) => fmtTripDate(r.departureDate) },

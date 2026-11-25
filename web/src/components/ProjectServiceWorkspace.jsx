@@ -42,6 +42,14 @@ export function empName(e) {
   return [e.firstName, e.lastName].filter(Boolean).join(' ') || e.empId || e.email || '—';
 }
 
+// The person's own designation from their employee record (never a generic role text).
+function designationFor(ref, name, employees) {
+  if (ref && typeof ref === 'object' && ref.designation) return ref.designation;
+  const rid = ref ? String(ref._id ?? ref.id ?? ref) : '';
+  const emp = (employees ?? []).find((e) => (rid && String(e._id ?? e.id) === rid) || (name && empName(e) === name));
+  return emp?.designation || '—';
+}
+
 function delayText(days) {
   const n = Number(days ?? 0);
   return n > 0 ? `${n} day(s) late` : 'On time';
@@ -207,7 +215,7 @@ function ServiceMeetingsPanel({ service, meetings }) {
   );
 }
 
-function ServiceDirectoryPanel({ service, project, teamBundle }) {
+function ServiceDirectoryPanel({ service, project, teamBundle, employees = [] }) {
   const codes = service.codes ?? [];
   const contacts = (project?.contacts ?? {});
   const asObj = (v) => (v && typeof v === 'object' ? v : {});
@@ -224,11 +232,11 @@ function ServiceDirectoryPanel({ service, project, teamBundle }) {
     .flatMap((t) => {
       const names = (t.names ?? []).filter(Boolean);
       const list = names.length > 0 ? names : [t.name ?? ''];
-      return list.filter(Boolean).map((name) => ({ service: t.service ?? service.label, name, role: t.role ?? 'Principal team lead' }));
+      return list.filter(Boolean).map((name) => ({ service: t.service ?? service.label, name, role: designationFor(t.employee, name, employees) }));
     });
   const members = (teamBundle?.members ?? [])
     .filter((m) => codes.includes(String(m.service ?? '')))
-    .map((m) => ({ service: m.service ?? service.label, name: empName(m.employee), role: m.employee?.designation ?? m.role ?? 'Team member' }));
+    .map((m) => ({ service: m.service ?? service.label, name: empName(m.employee), role: m.employee?.designation ?? designationFor(m.employee, empName(m.employee), employees) }));
   return (
     <Panel title={`Project directory — ${service.label}`} sub="Contacts and service team for this project">
       <div className="section-label">Key contacts</div>
@@ -247,7 +255,7 @@ function ServiceDirectoryPanel({ service, project, teamBundle }) {
         columns={[
           { key: 'service', label: 'Service' },
           { key: 'name', label: 'Team member', render: (r) => r.name || 'Not allocated' },
-          { key: 'role', label: 'Role / responsibility', render: (r) => r.role || '—' },
+          { key: 'role', label: 'Designation', render: (r) => r.role || '—' },
         ]}
         rows={[...leads, ...members]}
         emptyText={`No team allocated for ${service.label} yet.`}
@@ -326,7 +334,7 @@ export default function ProjectServiceWorkspace({
           readOnly={leadershipReadOnly}
         />
         <ServiceMeetingsPanel service={service} meetings={meetings} />
-        <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} />
+        <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} employees={employees} />
       </>
     );
   }
@@ -356,7 +364,7 @@ export default function ProjectServiceWorkspace({
           readOnly={leadershipReadOnly}
         />
         <ServiceMeetingsPanel service={service} meetings={meetings} />
-        <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} />
+        <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} employees={employees} />
       </>
     );
   }
@@ -401,7 +409,7 @@ export default function ProjectServiceWorkspace({
         <StagePanel svcStages={svcStages} />
         <DrawingsPanel rows={svcDrawings} emptyText="No drawings submitted for this service yet." />
         <ServiceMeetingsPanel service={service} meetings={meetings} />
-        <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} />
+        <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} employees={employees} />
       </>
     );
   }
@@ -433,7 +441,7 @@ export default function ProjectServiceWorkspace({
           readOnly={leadershipReadOnly}
         />
         <ServiceMeetingsPanel service={service} meetings={meetings} />
-        <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} />
+        <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} employees={employees} />
       </>
     );
   }
@@ -456,7 +464,7 @@ export default function ProjectServiceWorkspace({
           <ServiceMeetingsPanel service={service} meetings={meetings} />
         )}
         {role !== 'technical_director' && (
-          <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} />
+          <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} employees={employees} />
         )}
       </>
     );
@@ -489,7 +497,7 @@ export default function ProjectServiceWorkspace({
           readOnly={leadershipReadOnly}
         />
         <ServiceMeetingsPanel service={service} meetings={meetings} />
-        <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} />
+        <ServiceDirectoryPanel service={service} project={project} teamBundle={teamBundle} employees={employees} />
       </>
     );
   }
