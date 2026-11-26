@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import {
   DtPeerReview, DT_PR_STAGES, DT_PR_CHECKLIST, DT_PR_DELIVERABLES, DT_PR_ITEM_STATUS,
-  DT_PR_APPROVAL_STATUS, DT_PR_RESPONSE_TARGET_DAYS,
+  DT_PR_APPROVAL_STATUS, DT_PR_RESPONSE_TARGET_DAYS, DT_PR_SEVERITY, DT_PR_CATEGORIES, DT_PR_ELEMENTS, DT_PR_RISK,
 } from '../models/DtPeerReview.js';
 import { DT_PR_ALLOTTER_EMAILS, DT_PR_VIEWER_EMAILS, DT_PR_REVIEWER_EMP_IDS } from '../config/dtPeerReviewAccess.js';
 import { Project } from '../models/Project.js';
@@ -153,6 +153,21 @@ const handle = (fn) => async (req, res, next) => {
 };
 const text = (v, max = 4000) => String(v ?? '').trim().slice(0, max);
 const date = (v) => { if (!v) return null; const d = new Date(v); if (Number.isNaN(d.getTime())) throw fail(400, 'Enter a valid date.'); return d; };
+// One of the allowed values, or '' to clear it.
+const oneOf = (v, allowed, label) => {
+  const s = text(v, 100);
+  if (s && !allowed.includes(s)) throw fail(400, `Choose a valid ${label}.`);
+  return s;
+};
+// Severity, category, review item and element of a comment (all optional).
+function classification(body = {}) {
+  const out = {};
+  if ('severity' in body) out.severity = oneOf(body.severity, DT_PR_SEVERITY, 'severity');
+  if ('category' in body) out.category = oneOf(body.category, Object.keys(DT_PR_CATEGORIES), 'category');
+  if ('reviewItem' in body) out.reviewItem = text(body.reviewItem, 200);
+  if ('element' in body) out.element = oneOf(body.element, DT_PR_ELEMENTS, 'structural element');
+  return out;
+}
 
 export const meta = handle(async (req, res) => {
   const a = await dtPrAccess(req.user);
@@ -163,7 +178,8 @@ export const meta = handle(async (req, res) => {
   res.json({
     stages: DT_PR_STAGES, deliverables: DT_PR_DELIVERABLES, itemStatus: DT_PR_ITEM_STATUS,
     approvalStatus: DT_PR_APPROVAL_STATUS, responseTargetDays: DT_PR_RESPONSE_TARGET_DAYS,
-    projects, employees, access: { allot: a.allot },
+    severity: DT_PR_SEVERITY, categories: DT_PR_CATEGORIES, elements: DT_PR_ELEMENTS, risk: DT_PR_RISK,
+    projects, employees, access: { allot: a.allot, head: a.head, viewer: a.viewer, reviewer: a.reviewer },
   });
 });
 
@@ -212,9 +228,20 @@ export const setTeam = handle(async (req, res) => {
   return respond(req, res, doc);
 });
 
+// Package details are kept by the review team; the risk rating (likelihood x
+// impact) is a management call, set by Admin or the Peer Review Head.
 export const updateHeader = handle(async (req, res) => {
-  const doc = await loadPackage(req, { write: true });
-  for (const k of ['location', 'client', 'principalConsultant', 'deliverableStage']) if (k in (req.body ?? {})) doc[k] = text(req.body[k], 200);
+  const body = req.body ?? {};
+  const details = ['location', 'client', 'principalConsultant', 'deliverableStage', 'projectType'].filter((k) => k in body);
+  const risk = ['likelihood', 'impact'].filter((k) => k in body);
+  const doc = await loadPackage(req, { write: details.length > 0 });
+  if (risk.length) {
+    const a = await dtPrAccess(req.user);
+    if (!(a.head || a.allot)) throw fail(403, 'Only Admin or the Peer Review Head can set the risk rating.');
+    if (doc.released?.at) throw fail(409, 'This package is Released for Issue and is now read-only.');
+  }
+  for (const k of details) doc[k] = text(body[k], 200);
+  for (const k of risk) doc[k] = oneOf(body[k], DT_PR_RISK, k);
   await doc.save();
   return respond(req, res, doc);
 });
@@ -272,8 +299,32 @@ export const addComment = handle(async (req, res) => {
   if (doc.stages.find((s) => s.code === stage)?.signedOff?.at) throw fail(409, 'That stage is signed off.');
   doc.comments.push({
     stage, document: text(req.body.document, 200), topic: text(req.body.topic, 200), detail: text(req.body.detail, 200),
+    ...classification(req.body),
     rounds: [{ commentDate: date(req.body.commentDate) ?? new Date(), comment }],
   });
+  await doc.save();
+  return respond(req, res, doc, 201);
+});
+
+// Severity / category / review item / element of an existing comment.
+export const classifyComment = handle(async (req, res) => {
+  const doc = await loadPackage(req, { write: true });
+  const c = doc.comments.id(req.params.commentId);
+  if (!c) throw fail(404, 'Comment not found.');
+  Object.assign(c, classification(req.body));
+  await doc.save();
+  return respond(req, res, doc);
+});
+
+// Daily review log: hours spent and documents checked by a review team member.
+export const addActivity = handle(async (req, res) => {
+  const doc = await loadPackage(req, { write: true });
+  const hours = Number(req.body?.hours ?? 0), docsChecked = Number(req.body?.docsChecked ?? 0);
+  if (!Number.isFinite(hours) || hours < 0 || hours > 24) throw fail(400, 'Hours must be between 0 and 24.');
+  if (!Number.isInteger(docsChecked) || docsChecked < 0) throw fail(400, 'Documents checked must be a whole number.');
+  if (!hours && !docsChecked) throw fail(400, 'Enter the hours spent or documents checked.');
+  const a = await actor(req);
+  doc.activity.push({ date: date(req.body?.date) ?? new Date(), hours, docsChecked, note: text(req.body?.note, 500), by: a.employee, byName: a.name });
   await doc.save();
   return respond(req, res, doc, 201);
 });

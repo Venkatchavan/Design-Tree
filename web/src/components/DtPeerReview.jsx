@@ -5,6 +5,10 @@ import Panel from './Panel.jsx';
 import KpiCard from './KpiCard.jsx';
 import StatusPill from './StatusPill.jsx';
 import EmptyState from './EmptyState.jsx';
+import Tabs from './Tabs.jsx';
+import DtPeerReviewOverview from './DtPeerReviewOverview.jsx';
+import { exportComments } from '../lib/dtPeerReviewExport.js';
+import { allComments, riskBand } from '../lib/dtPeerReviewStats.js';
 import './DtPeerReview.css';
 
 // DT Peer Review (3 Nov 2026): the DesignTree Structural Peer Review dashboard,
@@ -32,6 +36,7 @@ export default function DtPeerReview() {
   const list = useQuery({ queryKey: ['dt-peer-review', 'list'], queryFn: () => request(B) });
   const packages = useMemo(() => list.data?.items ?? [], [list.data]);
   const [picked, setSelected] = useState('');
+  const [tab, setTab] = useState('overview');
   const [err, setErr] = useState('');
   // Default to the most recently updated package until one is picked.
   const current = packages.find((p) => id(p.item) === picked) ?? packages[0];
@@ -49,7 +54,13 @@ export default function DtPeerReview() {
   const run = (path, body, method) => mutate.mutate({ path, body, method });
 
   const free = (meta.data?.projects ?? []).filter((p) => !packages.some((x) => id(x.item.project) === id(p)));
-  const canAllot = !!meta.data?.access?.allot;
+  const access = meta.data?.access ?? {};
+  const canAllot = !!access.allot;
+  // Each login sees the overview it needs: directors and the Peer Review Head the
+  // full management view, Admin the allotment view, the review team its own work.
+  const mode = access.viewer || access.head ? 'management' : access.allot ? 'allotment' : 'reviewer';
+  const overviewLabel = { management: 'Management overview', allotment: 'Allotment overview', reviewer: 'My review work' }[mode];
+  const canRate = !!(access.head || access.allot);
   const canEdit = !!current?.canWrite;
   const canApprove = !!current?.canApprove;
 
@@ -60,9 +71,19 @@ export default function DtPeerReview() {
           <h1 className="page-title">DT Peer Review</h1>
           <div className="page-sub">Structural (STR) peer review — package status, review stages, approvals, comments and master checklist</div>
         </div>
-        {current && <button type="button" className="btn sm" onClick={() => window.print()}>Print report</button>}
+        {current && tab === 'report' && <button type="button" className="btn sm" onClick={() => window.print()}>Print report</button>}
       </div>
 
+      <Tabs tabs={[{ key: 'overview', label: overviewLabel }, { key: 'report', label: 'Project report' }]} active={tab} onChange={setTab} label="DT Peer Review view" />
+
+      {tab === 'overview' ? (
+        list.isLoading ? <EmptyState text="Loading peer review packages…" /> : (
+          <>
+            {(list.error || meta.error) && <div className="login-error" role="alert" style={{ display: 'block' }}>{(list.error || meta.error).message}</div>}
+            <DtPeerReviewOverview mode={mode} packages={packages} meta={meta.data ?? {}} onOpen={(pkgId) => { setSelected(pkgId); setTab('report'); }} />
+          </>
+        )
+      ) : (<>
       <Panel>
         <div className="dtpr-pick">
           <label className="form-label" htmlFor="dtpr-project">Project</label>
@@ -81,8 +102,9 @@ export default function DtPeerReview() {
       {list.isLoading ? <EmptyState text="Loading peer review packages…" /> : !current ? (
         <EmptyState text={canAllot ? 'Allot a Structural project to the review team above.' : 'No project has been allotted for DT Peer Review yet.'} />
       ) : (
-        <Package key={selected} data={current} meta={meta.data ?? {}} canEdit={canEdit && !current.summary.released} canApprove={canApprove && !current.summary.released} canAllot={canAllot && !current.summary.released} busy={mutate.isPending} run={(path, body, method) => run(`${B}/${selected}${path}`, body, method)} />
+        <Package key={selected} data={current} meta={meta.data ?? {}} canEdit={canEdit && !current.summary.released} canApprove={canApprove && !current.summary.released} canAllot={canAllot && !current.summary.released} canRate={canRate && !current.summary.released} busy={mutate.isPending} run={(path, body, method) => run(`${B}/${selected}${path}`, body, method)} />
       )}
+      </>)}
     </div>
   );
 }
@@ -121,7 +143,7 @@ function TeamPicker({ employees, value, onChange }) {
   );
 }
 
-function Package({ data, meta, canEdit, canApprove, canAllot, busy, run }) {
+function Package({ data, meta, canEdit, canApprove, canAllot, canRate, busy, run }) {
   const { item, summary: s } = data;
   const [editing, setEditing] = useState(false);
   const [allotting, setAllotting] = useState(false);
@@ -129,14 +151,14 @@ function Package({ data, meta, canEdit, canApprove, canAllot, busy, run }) {
   return (
     <>
       <Panel title={item.project?.name ?? 'Project'} sub={`${item.deliverableStage || '—'} · Peer Review applies to Structural (STR) services only`}>
-        {editing ? <HeaderForm item={item} busy={busy} onSave={(body) => { run('', body, 'PATCH'); setEditing(false); }} onCancel={() => setEditing(false)} /> : (
+        {editing ? <HeaderForm item={item} risk={meta.risk ?? []} details={canEdit} rating={canRate} busy={busy} onSave={(body) => { run('', body, 'PATCH'); setEditing(false); }} onCancel={() => setEditing(false)} /> : (
           <>
             <dl className="dtpr-info">
-              {[['Project', item.project?.name], ['Location', item.location], ['Client', item.client], ['Principal Consultant', item.principalConsultant], ['Service', 'Structural (STR)'], ['Deliverable stage', item.deliverableStage], ['Peer review', 'DesignTree Service Consultants Pvt. Ltd.']].map(([k, v]) => (
+              {[['Project', item.project?.name], ['Location', item.location], ['Client', item.client], ['Principal Consultant', item.principalConsultant], ['Service', 'Structural (STR)'], ['Deliverable stage', item.deliverableStage], ['Peer review', 'DesignTree Service Consultants Pvt. Ltd.'], ['Project type', item.projectType], ['Risk rating', riskBand(item.likelihood, item.impact) ? `${riskBand(item.likelihood, item.impact)} (likelihood ${item.likelihood}, impact ${item.impact})` : '']].map(([k, v]) => (
                 <div key={k}><dt>{k}</dt><dd>{v || '—'}</dd></div>
               ))}
             </dl>
-            {canEdit && <button type="button" className="btn sm" onClick={() => setEditing(true)}>Edit details</button>}
+            {(canEdit || canRate) && <button type="button" className="btn sm" onClick={() => setEditing(true)}>{canEdit ? 'Edit details' : 'Set risk rating'}</button>}
           </>
         )}
       </Panel>
@@ -208,12 +230,13 @@ function Package({ data, meta, canEdit, canApprove, canAllot, busy, run }) {
       </Panel>
 
       <Panel title="5. Comments log" sub={`${s.comments.total} comments · ${s.comments.open} open (${s.comments.awaitingConsultant} awaiting consultant response, ${s.comments.awaitingDt} awaiting DesignTree review) · ${s.comments.closed} closed`}>
-        {canEdit && <NewComment stages={stages} busy={busy} onAdd={(body) => run('/comments', body)} />}
+        {canEdit && <NewComment stages={stages} meta={meta} busy={busy} onAdd={(body) => run('/comments', body)} />}
+        {(item.comments ?? []).length > 0 && <button type="button" className="btn sm" onClick={() => exportComments(allComments([data]), `DT-Peer-Review-${item.project?.jobNumber || item.project?.code || 'project'}-comments`)}>Export to Excel</button>}
         {(item.comments ?? []).length === 0 ? <EmptyState text="No review comments raised yet." /> : (
           <div className="dtpr-scroll">
             <table className="data dtpr-comments">
-              <thead><tr><th>#</th><th>Stage</th><th>Document</th><th>Topic</th><th>Page / Detail</th><th>Round</th><th>Comment date</th><th>DT Comment / Question</th><th>Response date</th><th>Response to Comment / Question</th></tr></thead>
-              <tbody>{item.comments.map((c, n) => <CommentRows key={id(c)} n={n + 1} c={c} state={s.commentStates[id(c)]} canEdit={canEdit} busy={busy} run={run} />)}</tbody>
+              <thead><tr><th>#</th><th>Stage</th><th>Document</th><th>Topic</th><th>Page / Detail</th><th>Classification</th><th>Round</th><th>Comment date</th><th>DT Comment / Question</th><th>Response date</th><th>Response to Comment / Question</th></tr></thead>
+              <tbody>{item.comments.map((c, n) => <CommentRows key={id(c)} n={n + 1} c={c} meta={meta} state={s.commentStates[id(c)]} canEdit={canEdit} busy={busy} run={run} />)}</tbody>
             </table>
           </div>
         )}
@@ -242,11 +265,71 @@ function Package({ data, meta, canEdit, canApprove, canAllot, busy, run }) {
           </table>
         </div>
       </Panel>
+
+      {(canEdit || (item.activity ?? []).length > 0) && (
+        <Panel title="7. Daily review log" sub="Hours spent and documents checked by the review team">
+          {canEdit && <ActivityForm busy={busy} onAdd={(body) => run('/activity', body)} />}
+          <div className="dtpr-scroll">
+            <table className="data"><thead><tr><th>Date</th><th>Reviewer</th><th>Hours</th><th>Docs checked</th><th>Note</th></tr></thead>
+              <tbody>{(item.activity ?? []).length === 0 ? <tr><td colSpan={5}>No entries yet.</td></tr> : [...item.activity].sort((a, b) => new Date(b.date) - new Date(a.date)).map((a) => (
+                <tr key={id(a)}><td>{dmy(a.date)}</td><td>{a.byName || '—'}</td><td>{a.hours}</td><td>{a.docsChecked}</td><td>{a.note}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
     </>
   );
 }
 
-function CommentRows({ n, c, state, canEdit, busy, run }) {
+function ActivityForm({ busy, onAdd }) {
+  const blank = { date: '', hours: '', docsChecked: '', note: '' };
+  const [f, setF] = useState(blank);
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  return (
+    <form className="dtpr-form" onSubmit={(e) => { e.preventDefault(); onAdd({ date: f.date || undefined, hours: Number(f.hours || 0), docsChecked: Number(f.docsChecked || 0), note: f.note }); setF(blank); }}>
+      <input type="date" className="form-input" aria-label="Date" value={f.date} onChange={set('date')} />
+      <input type="number" min="0" max="24" step="0.5" className="form-input" placeholder="Hours" value={f.hours} onChange={set('hours')} />
+      <input type="number" min="0" step="1" className="form-input" placeholder="Docs checked" value={f.docsChecked} onChange={set('docsChecked')} />
+      <input className="form-input dtpr-grow" placeholder="Note (optional)" value={f.note} onChange={set('note')} />
+      <button type="submit" className="btn sm primary" disabled={busy || (!Number(f.hours) && !Number(f.docsChecked))}>Log activity</button>
+    </form>
+  );
+}
+
+const SEV_TONE = { Critical: 'rust', Major: 'amber', Moderate: 'teal', Minor: 'blueprint' };
+
+// Severity / category / review item / element of one comment; the review team edits it inline.
+function Classification({ c, meta, canEdit, busy, onSave }) {
+  const items = meta.categories?.[c.category] ?? [];
+  if (!canEdit) {
+    return (
+      <>
+        {c.severity ? <StatusPill tone={SEV_TONE[c.severity]}>{c.severity}</StatusPill> : <span className="dtpr-stamp">Not classified</span>}
+        {[c.category, c.reviewItem, c.element].filter(Boolean).length > 0 && <div className="dtpr-stamp">{[c.category, c.reviewItem, c.element].filter(Boolean).join(' · ')}</div>}
+      </>
+    );
+  }
+  const save = (k) => (e) => onSave(k === 'category' ? { category: e.target.value, reviewItem: '' } : { [k]: e.target.value });
+  return (
+    <div className="dtpr-classify">
+      <select className="filter-select" aria-label="Severity" value={c.severity ?? ''} disabled={busy} onChange={save('severity')}>
+        <option value="">Severity</option>{(meta.severity ?? []).map((v) => <option key={v}>{v}</option>)}
+      </select>
+      <select className="filter-select" aria-label="Category" value={c.category ?? ''} disabled={busy} onChange={save('category')}>
+        <option value="">Category</option>{Object.keys(meta.categories ?? {}).map((v) => <option key={v}>{v}</option>)}
+      </select>
+      <select className="filter-select" aria-label="Review item" value={c.reviewItem ?? ''} disabled={busy || !c.category} onChange={save('reviewItem')}>
+        <option value="">Review item</option>{items.map((v) => <option key={v}>{v}</option>)}
+      </select>
+      <select className="filter-select" aria-label="Structural element" value={c.element ?? ''} disabled={busy} onChange={save('element')}>
+        <option value="">Element</option>{(meta.elements ?? []).map((v) => <option key={v}>{v}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function CommentRows({ n, c, meta, state, canEdit, busy, run }) {
   const rounds = c.rounds ?? [];
   const last = rounds[rounds.length - 1];
   const open = state?.open;
@@ -255,7 +338,7 @@ function CommentRows({ n, c, state, canEdit, busy, run }) {
     const awaited = !r.response && i === rounds.length - 1 && r.verdict !== 'Closed';
     return (
       <tr key={id(r) || i} className={i ? 'dtpr-round' : undefined}>
-        {i === 0 && <><td rowSpan={rounds.length + (canEdit && open ? 1 : 0)}><b>{n}</b><div className="dtpr-stamp">{state?.label}{state?.overdue ? ' · overdue' : ''}</div></td><td rowSpan={rounds.length + (canEdit && open ? 1 : 0)}>{c.stage}</td><td rowSpan={rounds.length + (canEdit && open ? 1 : 0)}>{c.document}</td><td rowSpan={rounds.length + (canEdit && open ? 1 : 0)}>{c.topic}</td><td rowSpan={rounds.length + (canEdit && open ? 1 : 0)}>{c.detail}</td></>}
+        {i === 0 && <><td rowSpan={rounds.length + (canEdit && open ? 1 : 0)}><b>{n}</b><div className="dtpr-stamp">{state?.label}{state?.overdue ? ' · overdue' : ''}</div></td><td rowSpan={rounds.length + (canEdit && open ? 1 : 0)}>{c.stage}</td><td rowSpan={rounds.length + (canEdit && open ? 1 : 0)}>{c.document}</td><td rowSpan={rounds.length + (canEdit && open ? 1 : 0)}>{c.topic}</td><td rowSpan={rounds.length + (canEdit && open ? 1 : 0)}>{c.detail}</td><td rowSpan={rounds.length + (canEdit && open ? 1 : 0)}><Classification c={c} meta={meta} canEdit={canEdit} busy={busy} onSave={(body) => run(`/comments/${id(c)}`, body, 'PATCH')} /></td></>}
         <td>R{i + 1}</td><td>{dmy(r.commentDate)}</td>
         <td className={`dtpr-dt${r.verdict === 'Closed' ? ' closed' : ''}`}>{dtText}</td>
         <td>{dmy(r.responseDate)}</td>
@@ -295,16 +378,28 @@ function RoundForm({ needsResponse, busy, onSubmit }) {
   );
 }
 
-function NewComment({ stages, busy, onAdd }) {
-  const blank = { stage: stages[0]?.code ?? 'S1', document: '', topic: '', detail: '', comment: '', commentDate: '' };
+function NewComment({ stages, meta, busy, onAdd }) {
+  const blank = { stage: stages[0]?.code ?? 'S1', document: '', topic: '', detail: '', comment: '', commentDate: '', severity: '', category: '', reviewItem: '', element: '' };
   const [f, setF] = useState(blank);
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value, ...(k === 'category' ? { reviewItem: '' } : {}) });
   return (
     <form className="dtpr-form" onSubmit={(e) => { e.preventDefault(); onAdd({ ...f, commentDate: f.commentDate || undefined }); setF(blank); }}>
       <select className="filter-select" aria-label="Comment stage" value={f.stage} onChange={set('stage')}>{stages.map((s) => <option key={s.code} value={s.code}>{s.code} · {s.name}</option>)}</select>
       <input className="form-input" placeholder="Document" value={f.document} onChange={set('document')} />
       <input className="form-input" placeholder="Topic" value={f.topic} onChange={set('topic')} />
       <input className="form-input" placeholder="Page / Detail" value={f.detail} onChange={set('detail')} />
+      <select className="filter-select" aria-label="Severity" value={f.severity} onChange={set('severity')}>
+        <option value="">Severity</option>{(meta.severity ?? []).map((v) => <option key={v}>{v}</option>)}
+      </select>
+      <select className="filter-select" aria-label="Category" value={f.category} onChange={set('category')}>
+        <option value="">Category</option>{Object.keys(meta.categories ?? {}).map((v) => <option key={v}>{v}</option>)}
+      </select>
+      <select className="filter-select" aria-label="Review item" value={f.reviewItem} disabled={!f.category} onChange={set('reviewItem')}>
+        <option value="">Review item</option>{(meta.categories?.[f.category] ?? []).map((v) => <option key={v}>{v}</option>)}
+      </select>
+      <select className="filter-select" aria-label="Structural element" value={f.element} onChange={set('element')}>
+        <option value="">Element</option>{(meta.elements ?? []).map((v) => <option key={v}>{v}</option>)}
+      </select>
       <input className="form-input dtpr-grow" placeholder="DT Comment / Question" value={f.comment} onChange={set('comment')} required />
       <input type="date" className="form-input" aria-label="Comment date" value={f.commentDate} onChange={set('commentDate')} />
       <button type="submit" className="btn sm primary" disabled={busy}>Raise comment</button>
@@ -340,16 +435,24 @@ function TeamForm({ employees, current, busy, onSave, onCancel }) {
   );
 }
 
-function HeaderForm({ item, busy, onSave, onCancel }) {
-  const [f, setF] = useState({
-    location: item.location ?? '', client: item.client ?? '', principalConsultant: item.principalConsultant ?? '', deliverableStage: item.deliverableStage ?? '',
-  });
+// The review team edits the package details; Admin / the Peer Review Head set
+// the risk rating. Each login sees and sends only the fields it may change.
+const DETAIL_FIELDS = [['location', 'Location'], ['client', 'Client'], ['principalConsultant', 'Principal Consultant'], ['deliverableStage', 'Deliverable stage'], ['projectType', 'Project type (e.g. Residential Tower, Podium)']];
+const RISK_FIELDS = [['likelihood', 'Risk likelihood'], ['impact', 'Risk impact']];
+function HeaderForm({ item, risk, details, rating, busy, onSave, onCancel }) {
+  const fields = [...(details ? DETAIL_FIELDS : []), ...(rating ? RISK_FIELDS : [])].map(([k]) => k);
+  const [f, setF] = useState(Object.fromEntries(fields.map((k) => [k, item[k] ?? ''])));
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSave(f); }}>
       <div className="field-grid">
-        {[['location', 'Location'], ['client', 'Client'], ['principalConsultant', 'Principal Consultant'], ['deliverableStage', 'Deliverable stage']].map(([k, label]) => (
+        {details && DETAIL_FIELDS.map(([k, label]) => (
           <div className="form-row" key={k}><label className="form-label">{label}<input className="form-input" value={f[k]} onChange={set(k)} /></label></div>
+        ))}
+        {rating && RISK_FIELDS.map(([k, label]) => (
+          <div className="form-row" key={k}><label className="form-label">{label}
+            <select className="form-input" value={f[k]} onChange={set(k)}><option value="">Not rated</option>{risk.map((r) => <option key={r}>{r}</option>)}</select>
+          </label></div>
         ))}
       </div>
       <button type="submit" className="btn-primary" disabled={busy}>Save</button>{' '}

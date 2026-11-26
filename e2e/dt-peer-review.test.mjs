@@ -112,6 +112,40 @@ test('comment rounds: response, open round, response, closed by the allotted tea
   assert.equal(r.data.summary.comments.avgClosureDays, 4);
 });
 
+test('26 Nov: classification, risk rating and daily log follow the role', async () => {
+  // meta tells the page which overview each login gets.
+  assert.deepEqual((await call('finance', `${B}/meta`)).data.access, { allot: true, head: false, viewer: false, reviewer: false });
+  assert.equal((await call('md', `${B}/meta`)).data.access.viewer, true);
+  assert.equal((await call('peer', `${B}/meta`)).data.access.reviewer, true);
+  assert.deepEqual(Object.keys((await call('peer', `${B}/meta`)).data.categories), ['Analysis', 'Design', 'Detailing']);
+  // The review team classifies comments.
+  let r = await call('peer', `${B}/${pkg._id}/comments`, 'POST', { stage: 'S2', topic: 'Drift', comment: 'Drift exceeds H/500.', commentDate: '2026-08-10', severity: 'Critical', category: 'Analysis', reviewItem: 'Drift', element: 'Core wall' });
+  assert.equal(r.status, 201);
+  const c = r.data.item.comments.at(-1);
+  assert.equal(c.severity, 'Critical'); assert.equal(c.reviewItem, 'Drift'); assert.equal(c.element, 'Core wall');
+  assert.equal((await call('peer', `${B}/${pkg._id}/comments`, 'POST', { stage: 'S2', comment: 'x', severity: 'Severe' })).status, 400);
+  r = await call('peer', `${B}/${pkg._id}/comments/${c._id}`, 'PATCH', { severity: 'Major' });
+  assert.equal(r.status, 200); assert.equal(r.data.item.comments.at(-1).severity, 'Major');
+  for (const role of ['md', 'atd', 'finance']) assert.equal((await call(role, `${B}/${pkg._id}/comments/${c._id}`, 'PATCH', { severity: 'Minor' })).status, 403, role);
+  // Risk rating is Admin's (or the Peer Review Head's), not the team's or a read-only director's.
+  assert.equal((await call('peer', `${B}/${pkg._id}`, 'PATCH', { likelihood: 'High' })).status, 403);
+  assert.equal((await call('md', `${B}/${pkg._id}`, 'PATCH', { likelihood: 'High' })).status, 403);
+  assert.equal((await call('finance', `${B}/${pkg._id}`, 'PATCH', { likelihood: 'Huge' })).status, 400);
+  r = await call('finance', `${B}/${pkg._id}`, 'PATCH', { likelihood: 'High', impact: 'Medium' });
+  assert.equal(r.status, 200); assert.equal(r.data.item.likelihood, 'High'); assert.equal(r.data.item.impact, 'Medium');
+  assert.equal((await call('finance', `${B}/${pkg._id}`, 'PATCH', { client: 'x' })).status, 403);
+  r = await call('peer', `${B}/${pkg._id}`, 'PATCH', { projectType: 'Residential Tower' });
+  assert.equal(r.status, 200); assert.equal(r.data.item.projectType, 'Residential Tower');
+  // Daily review log: the review team only.
+  assert.equal((await call('peer', `${B}/${pkg._id}/activity`, 'POST', {})).status, 400);
+  r = await call('peer', `${B}/${pkg._id}/activity`, 'POST', { date: '2026-08-05', hours: 6.5, docsChecked: 4, note: 'ETABS model' });
+  assert.equal(r.status, 201); assert.equal(r.data.item.activity[0].byName, 'Test peer Workflow'); assert.equal(r.data.item.activity[0].hours, 6.5);
+  for (const role of ['md', 'atd', 'finance']) assert.equal((await call(role, `${B}/${pkg._id}/activity`, 'POST', { hours: 1 })).status, 403, role);
+  // Close the comment so the later sign-off tests start from a clean S2.
+  await call('peer', `${B}/${pkg._id}/comments/${c._id}/rounds`, 'POST', { kind: 'response', response: 'Core stiffened.' });
+  assert.equal((await call('peer', `${B}/${pkg._id}/comments/${c._id}/rounds`, 'POST', { kind: 'review', verdict: 'Closed' })).status, 201);
+});
+
 test('stage sign-off needs closed items and no open comments', async () => {
   let doc = (await call('peer', `${B}/${pkg._id}`)).data.item;
   assert.equal((await call('peer', `${B}/${pkg._id}/stages/S1/sign-off`, 'POST')).status, 409);

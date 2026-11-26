@@ -29,6 +29,17 @@ export const DT_PR_ITEM_STATUS = ['Not Started', 'In Progress', 'Verified', 'N.A
 export const DT_PR_APPROVAL_STATUS = ['Pending', 'Submitted', 'Approved', 'N.A.'];
 // A comment is overdue when the awaited reply is older than this many days.
 export const DT_PR_RESPONSE_TARGET_DAYS = 7;
+// Management overview (26 Nov 2026, client's Peer Review dashboard): each
+// comment is classified so severity, technical breakdown and repeat issues
+// can be reported; each package carries a likelihood x impact risk rating.
+export const DT_PR_SEVERITY = ['Critical', 'Major', 'Moderate', 'Minor'];
+export const DT_PR_CATEGORIES = {
+  Analysis: ['Load assumptions', 'Load combinations', 'Mass source', 'Modal participation', 'Stability', 'P-Delta', 'Drift', 'Torsion', 'Irregularity', 'Seismic system'],
+  Design: ['Flexure', 'Shear', 'Axial capacity', 'Interaction', 'Punching shear', 'Serviceability', 'Crack width', 'Deflection', 'Foundation pressure', 'Settlement'],
+  Detailing: ['Ductile detailing', 'Anchorage', 'Lap locations', 'Confinement', 'Boundary elements', 'Coupling beams', 'Development length', 'Reinforcement congestion'],
+};
+export const DT_PR_ELEMENTS = ['Slab', 'Beam', 'Column', 'Shear wall', 'Core wall', 'Transfer structure', 'Foundation', 'Retaining wall', 'Staircase', 'General'];
+export const DT_PR_RISK = ['Low', 'Medium', 'High'];
 
 const ref = { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null };
 const stamp = { by: ref, byName: { type: String, trim: true }, at: Date };
@@ -47,6 +58,10 @@ const commentSchema = new mongoose.Schema({
   document: { type: String, trim: true, default: '' },
   topic: { type: String, trim: true, default: '' },
   detail: { type: String, trim: true, default: '' },
+  severity: { type: String, enum: [...DT_PR_SEVERITY, ''], default: '' },
+  category: { type: String, enum: [...Object.keys(DT_PR_CATEGORIES), ''], default: '' },
+  reviewItem: { type: String, trim: true, default: '' },
+  element: { type: String, enum: [...DT_PR_ELEMENTS, ''], default: '' },
   rounds: { type: [roundSchema], default: [] },
 }, { timestamps: true });
 
@@ -56,6 +71,18 @@ const dtPeerReviewSchema = new mongoose.Schema({
   client: { type: String, trim: true, default: '' },
   principalConsultant: { type: String, trim: true, default: '' },
   deliverableStage: { type: String, trim: true, default: 'GFC' },
+  projectType: { type: String, trim: true, default: '' },
+  likelihood: { type: String, enum: [...DT_PR_RISK, ''], default: '' },
+  impact: { type: String, enum: [...DT_PR_RISK, ''], default: '' },
+  // Daily review log kept by the review team (hours and documents checked).
+  activity: [new mongoose.Schema({
+    date: { type: Date, required: true },
+    hours: { type: Number, min: 0, max: 24, default: 0 },
+    docsChecked: { type: Number, min: 0, default: 0 },
+    note: { type: String, trim: true, default: '' },
+    by: ref,
+    byName: { type: String, trim: true },
+  }, { timestamps: true })],
   // Allotted by Admin (not typed by the review team): the only people who can work this package.
   reviewTeam: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }], default: [] },
   allottedBy: stamp,

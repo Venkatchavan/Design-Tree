@@ -20,6 +20,8 @@ router.patch('/:id/checklist/:itemId', c.updateChecklistItem);
 router.patch('/:id/approvals/:itemId', c.updateApproval);
 router.post('/:id/comments', c.addComment);
 router.post('/:id/comments/:commentId/rounds', c.addRound);
+router.patch('/:id/comments/:commentId', c.classifyComment);
+router.post('/:id/activity', c.addActivity);
 router.post('/:id/stages/:code/sign-off', c.signOffStage);
 router.post('/:id/release', c.release);
 
