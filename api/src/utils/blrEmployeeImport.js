@@ -7,7 +7,8 @@ export const normalizedName = (value) => String(value ?? '').normalize('NFKC').t
 const fullName = (e) => [e.firstName, e.middleName, e.lastName].filter(Boolean).join(' ');
 const blank = (value) => value === undefined || value === null || String(value).trim() === '';
 const AUTO_EMP_ID = /^EMP-\d+$/i;
-const BRANCH_PATTERN = /beng|bangal|blr/i;
+// "West Bengal" must not match, so "beng" alone is not used.
+const BRANCH_PATTERN = /bengaluru|bangalore|blr|karnataka/i;
 
 // Fields filled only while empty on the existing record (list value -> field).
 const FILL_FIELDS = [
