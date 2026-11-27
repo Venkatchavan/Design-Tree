@@ -108,18 +108,15 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
     return d.items ?? d.teams ?? [];
   }, [teamsQ.data]);
 
-  // TL / ATD view: only the saved reporting team counts toward "Not yet updated",
+  // TL / ATD view: only the saved reporting team counts toward "Not logged in",
   // never the whole company. Same directory as My Team (self excluded, Exited out).
   const teamQ = useQuery({ queryKey: ['reporting-directory-progress'], queryFn: () => teamsApi.directory(false, ''), enabled: isAssocTD, retry: false });
   const teamEmployees = useMemo(
     () => (teamQ.data?.employees ?? []).filter((e) => String(e.status ?? 'Active') !== 'Exited'),
     [teamQ.data],
   );
-  const loggedIds = useMemo(() => new Set(entries.map(empKey)), [entries]);
-  const notUpdatedCount = teamEmployees.filter((e) => !loggedIds.has(String(e._id ?? e.id ?? ''))).length;
-
-  // Sign-ins for the selected day. The API scopes a TL to their own team.
-  const isLead = (bootstrap?.role?.key ?? '') === 'team_lead';
+  // Sign-ins for the selected day. The API scopes a TL / PTL / ATD to their own team.
+  const isLead = isAssocTD;
   const signInsQ = useQuery({
     queryKey: ['work-progress-signins', date],
     queryFn: () => attendanceApi.list({ date }),
@@ -149,15 +146,12 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
     }).sort((a, b) => new Date(a.loginAt) - new Date(b.loginAt)),
     [signIns, hoursByEmp],
   );
-  // 25 Nov 2026: for a TL, "Not yet updated" follows attendance — team members
-  // who signed in on the date but have not logged any work yet. Counting the
-  // whole team (absentees and people on leave included) never moved.
-  const signedInNotUpdated = useMemo(
-    () => new Set(signInRows
-      .map((r) => String(r.employee._id ?? r.employee.id ?? r.employee))
-      .filter((eid) => !loggedIds.has(eid))).size,
-    [signInRows, loggedIds],
-  );
+  // 27 Nov 2026: "Not logged in" — people of my team who have not signed in on
+  // the selected date (team size minus today's sign-ins), for TL / PTL / ATD.
+  const notLoggedInCount = useMemo(() => {
+    const signedIn = new Set(signInRows.map((r) => String(r.employee._id ?? r.employee.id ?? r.employee)));
+    return teamEmployees.filter((e) => !signedIn.has(String(e._id ?? e.id ?? ''))).length;
+  }, [signInRows, teamEmployees]);
 
   const totalHours = entries.reduce((s, e) => addHours(s,e.hours), 0);
   const empIds = useMemo(() => {
@@ -303,10 +297,8 @@ export default function WorkProgressPage({ bootstrap: bootstrapProp }) {
           <KpiCard label={`Total hours logged (${date}, IST)`} value={entriesQ.isLoading || entriesQ.isError ? '—' : hoursText(totalHours)} accent="blueprint" />
           <KpiCard label="Employees logged in" value={entriesQ.isLoading || signInsQ.isLoading ? '…' : empIds.size} accent="forest" />
           <KpiCard
-            label="Not yet updated"
-            value={isLead
-              ? (entriesQ.isLoading || signInsQ.isLoading ? '…' : signInsQ.isError ? '—' : signedInNotUpdated)
-              : (teamQ.isLoading ? '…' : teamQ.isError ? '—' : notUpdatedCount)}
+            label="Not logged in"
+            value={teamQ.isLoading || signInsQ.isLoading ? '…' : teamQ.isError || signInsQ.isError ? '—' : notLoggedInCount}
             accent="rust"
           />
         </div>

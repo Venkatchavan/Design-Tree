@@ -8,4 +8,6 @@
 // BLR roster ids of the people the admin may allot.
 export const DT_PR_ALLOTTER_EMAILS = ['arpithad@designtreeconsultants.com', 'sandeepn@designtreeconsultants.com'];
 export const DT_PR_VIEWER_EMAILS = ['srinivasarao@designtreeconsultants.com'];
-export const DT_PR_REVIEWER_EMP_IDS = ['DT-25-1690', 'DT-26-1859', 'DT-26-1850'];
+// 27 Nov 2026: Anusha T's login is linked to employee EMP-0045; DT-26-1859 is a
+// duplicate record of her without a login, so the review team uses EMP-0045.
+export const DT_PR_REVIEWER_EMP_IDS = ['DT-25-1690', 'EMP-0045', 'DT-26-1850'];

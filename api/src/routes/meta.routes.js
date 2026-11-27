@@ -35,12 +35,20 @@ router.get('/bootstrap', requireAuth, async (req, res, next) => {
   const traveller = !travelManager && ['client', 'architect', 'superuser'].indexOf(role) < 0
     ? await isTraveller(req.user.id)
     : false;
+  const nav = navFor(role, {
+    traveller,
+    dtPeerReview: dtPr.read && !['founding_director', 'working_director', 'executive_director'].includes(role),
+    dtPeerReviewer: dtPr.reviewer,
+    peerDashboard: role === 'peer_reviewer' && dtPr.allot,
+  });
+  // The role's home may be swapped out of this login's nav (Peer Review allotters).
+  const home = role === 'peer_reviewer' && dtPr.allot ? 'peer-dashboard' : homeView(role);
   res.status(200).json({
     roles: ROLES,
     views: VIEWS,
     role: { key: role, label: roleLabel(role) },
-    home: homeView(role),
-    nav: navFor(role, { traveller, dtPeerReview: dtPr.read && !['founding_director', 'working_director', 'executive_director'].includes(role) }),
+    home,
+    nav,
     capabilities: {
       designTeam: designAccess.designTeam,
       stageTimeline: canAccess(role, 'stage-timeline'),

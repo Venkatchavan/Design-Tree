@@ -336,12 +336,11 @@ test('Marketing excludes Admin-created and legacy projects in list, counts and b
 test('Peer dashboard uses live assignments and exposes one Work Tracking path', async () => {
   for (const role of ['peer', 'peerhead']) {
     const boot = (await call(role, '/api/meta/bootstrap')).data;
-    assert.equal(boot.home, 'peer-dashboard');
-    assert(
-      !boot.nav.some((n) =>
-        ['work-tracking', 'update-work-progress'].includes(n.view),
-      ),
-    );
+    // 27 Nov 2026: the review team lands on the engineer / drafter workspace and
+    // logs work from the left nav; the Peer Review dashboard moved into DT Peer Review.
+    assert.equal(boot.home, role === 'peer' ? 'my-work' : 'peer-dashboard');
+    assert(!boot.nav.some((n) => n.view === 'work-tracking'));
+    assert.equal(boot.nav.some((n) => n.view === 'update-work-progress'), role === 'peer');
     const dashboard = await call(role, '/api/projects/peer-dashboard');
     assert.equal(dashboard.status, 200);
     assert(

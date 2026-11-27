@@ -23,7 +23,7 @@ router.patch('/extra-hours/:id', decideExtraHours);
 
 // HR visibility into sign-in / sign-out days (FD/WD bypass via requireRole).
 // Associate/Technical Directors read it for the Management HR tab (read-only).
-// Team Leads / PTLs read it too, limited in the controller to their own team.
-router.get('/', requireRole('hr', 'admin_billing', 'executive_director', 'associate_director', 'technical_director', 'team_lead'), listAttendance);
+// Team Leads / PTLs / ATDs read it too, limited in the controller to their own team.
+router.get('/', requireRole('hr', 'admin_billing', 'executive_director', 'associate_director', 'technical_director', 'assoc_technical_director', 'team_lead'), listAttendance);
 
 export default router;

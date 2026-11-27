@@ -540,8 +540,9 @@ const drawingCrud = makeCrud(Drawing, {
 const DRAWING_LEAD_FIELDS = ['status', 'statusRemark', 'awaitingOn'];
 
 function drawingStatusGuard(req, res) {
-  if (DRAWING_LEAD_FIELDS.some((k) => req.body?.[k] !== undefined) && req.user?.role !== 'team_lead') {
-    res.status(403).json({ message: 'Only the team lead can set a drawing status.' });
+  // 27 Nov 2026: the ATD has the same drawing register rights as the TL / PTL.
+  if (DRAWING_LEAD_FIELDS.some((k) => req.body?.[k] !== undefined) && !['team_lead', 'assoc_technical_director'].includes(req.user?.role)) {
+    res.status(403).json({ message: 'Only the team lead or ATD can set a drawing status.' });
     return false;
   }
   if (req.body?.status === 'Awaiting' && !req.body?.awaitingOn) {
@@ -555,7 +556,7 @@ function drawingStatusGuard(req, res) {
   return true;
 }
 
-// Revise / Awaiting / Approved on a drawing is set by the team lead only.
+// Revise / Awaiting / Approved on a drawing is set by the TL / PTL / ATD only.
 export const drawings = {
   ...drawingCrud,
   async create(req, res, next) {

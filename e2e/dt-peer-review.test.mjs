@@ -12,7 +12,7 @@ async function call(role, path, method = 'GET', body) {
 before(async () => {
   f = await startLocalFixture();
   // Map fixture logins onto the people named in the 7 Nov requirement (config/dtPeerReviewAccess.js).
-  const map = { finance: { email: 'arpithad@designtreeconsultants.com' }, atd: { email: 'srinivasarao@designtreeconsultants.com' }, peer: { empId: 'DT-25-1690' }, qs: { empId: 'DT-26-1859' } };
+  const map = { finance: { email: 'arpithad@designtreeconsultants.com' }, atd: { email: 'srinivasarao@designtreeconsultants.com' }, peer: { empId: 'DT-25-1690' }, qs: { empId: 'EMP-0045' } };
   for (const [key, v] of Object.entries(map)) {
     if (v.email) { await f.models.User.updateOne({ _id: f.cast[key].user }, { email: v.email }); f.cast[key].email = v.email; }
     if (v.empId) await f.models.Employee.updateOne({ _id: f.cast[key].employee }, { empId: v.empId });
@@ -33,7 +33,7 @@ test('Admin allots the project to the review team; directors and others cannot',
   assert.equal(meta.status, 200);
   assert(meta.data.projects.map(p => p._id).includes(f.project));
   assert.equal(meta.data.stages.length, 7);
-  assert.deepEqual(meta.data.employees.map(e => e.empId).sort(), ['DT-25-1690', 'DT-26-1859']);
+  assert.deepEqual(meta.data.employees.map(e => e.empId).sort(), ['DT-25-1690', 'EMP-0045']);
   for (const role of ['peer', 'peerhead', 'md', 'td', 'tl']) assert.equal((await call(role, B, 'POST', { project: f.project, reviewTeam: [f.cast.peer.employee] })).status, 403, role);
   assert.equal((await call('finance', B, 'POST', { project: f.project, reviewTeam: [] })).status, 400);
   // The team can only come from the approved reviewers.

@@ -379,15 +379,21 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
   const reportingTeamQ = useReportingTeam(['team_lead', 'assoc_technical_director'].includes(role) && !projectWorkspace);
   // 13 Nov 2026: a TL's saved reporting chain can reach people of another service
   // (e.g. F&LS under a Structure TL); a TL sees only their own service's people.
+  // 27 Nov 2026: TL, PTL and ATD alike see only their own service's people,
+  // work items and drawings.
+  const myServices = useMemo(
+    () => (['team_lead', 'assoc_technical_director'].includes(role) ? serviceNames([selfEmployee?.department]) : []),
+    [role, selfEmployee?.department],
+  );
   const reportingPeople = useMemo(() => {
     const all = reportingTeamQ.data?.employees ?? [];
-    const mine = role === 'team_lead' ? serviceNames([selfEmployee?.department]) : [];
+    const mine = myServices;
     if (!mine.length) return all;
     return all.filter((e) => {
       const theirs = serviceNames([e.department]);
       return !theirs.length || theirs.some((svc) => mine.includes(svc));
     });
-  }, [reportingTeamQ.data, role, selfEmployee?.department]);
+  }, [reportingTeamQ.data, myServices]);
   const teamMemberCount = new Set([
     ...members.map((m) => idOf(m.employee ?? m)),
     ...reportingPeople.map((e) => idOf(e)),
@@ -401,7 +407,14 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
     enabled: !!selectedId || role === 'team_lead',
     refetchInterval: 15000,
   });
-  const entries = entriesQ.data?.items ?? [];
+  const entries = useMemo(() => {
+    const all = entriesQ.data?.items ?? [];
+    if (!myServices.length) return all;
+    return all.filter((e) => {
+      const theirs = serviceNames([e.employee?.department ?? e.service]);
+      return !theirs.length || theirs.some((svc) => myServices.includes(svc));
+    });
+  }, [entriesQ.data, myServices]);
 
   const tasksQ = useQuery({ queryKey: ['tasks'], queryFn: () => tasksApi.list({}) });
   const allTasks = tasksQ.data?.items ?? [];
@@ -432,10 +445,17 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
   // Refreshes so drawings the team submits, and their status, show up without a reload.
   const drawingsQ = useQuery({ queryKey: ['drawings'], queryFn: () => drawingsApi.list({}), refetchInterval: 15000 });
   const allDrawings = drawingsQ.data?.items ?? [];
+  // Only drawings of the selected team's design service(s). A drawing with no
+  // service, or a team with no design service (QA/QC, QS…), is not narrowed.
+  const teamServiceCodes = useMemo(
+    () => expandServiceCodes([selectedTeam?.service]).filter((c) => DESIGN_SERVICE_CODES.includes(c)),
+    [selectedTeam?.service],
+  );
   const teamDrawings = useMemo(() => {
     if (teamProjectIds.size === 0) return [];
-    return allDrawings.filter((d) => teamProjectIds.has(idOf(d.project)));
-  }, [allDrawings, teamProjectIds]);
+    return allDrawings.filter((d) => teamProjectIds.has(idOf(d.project))
+      && (!teamServiceCodes.length || !d.service || expandServiceCodes([d.service]).some((c) => teamServiceCodes.includes(c))));
+  }, [allDrawings, teamProjectIds, teamServiceCodes]);
 
   const recruitQ = useQuery({
     queryKey: ['recruitment-mine'],
@@ -624,6 +644,8 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
 
   const isTL = role === 'team_lead';
   const isATD = role === 'assoc_technical_director';
+  // 27 Nov 2026: ATD, PTL and TL get the same dashboard features and permissions.
+  const isLeadView = isTL || isATD;
   const emailRows = teamRevisions.flatMap((r) => (r.emailLog ?? []).map((line, i) => ({
     key: `${String(r._id ?? '')}-${i}`,
     revision: r.drawing ?? r.details ?? '—',
@@ -631,7 +653,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
     line,
     when: r.createdAt,
   })));
-  const workspaceTabs = isTL
+  const workspaceTabs = isLeadView
     ? [
       { key: 'overview', label: 'Overview' },
       { key: 'team', label: 'Project & team' },
@@ -669,7 +691,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       { key: 'revision', label: 'Revision' },
       { key: 'drawings', label: 'Drawing register' },
       { key: 'recruitment', label: 'Recruitment requests' },
-      ...(isTL ? [{ key: 'login-hours', label: 'Login hours' }] : []),
+      ...(isLeadView ? [{ key: 'login-hours', label: 'Login hours' }] : []),
       ...(isATD ? [{ key: 'people', label: 'People' }] : []),
     ]) : workspaceTabs;
   // The Team Lead keeps the list of deliverables (with its log) under Assign work.
@@ -789,7 +811,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
       </div>
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
       {tab === 'people' && isATD && <DirectorTeamsPage />}
-      {tab === 'login-hours' && isTL && <TeamLoginHours />}
+      {tab === 'login-hours' && isLeadView && <TeamLoginHours />}
       {tab==='revision'&&<Tabs tabs={[{key:'entry',label:'Revision entry'},{key:'log',label:'Revision log'}]} active={revisionTab} onChange={setRevisionTab}/>}
       {/* 13 Nov 2026: coordination items belong to the Overview tab only. */}
       {tab === 'overview' && (!isATD || selectedTeam) && <CoordinationPanel projectId={scopedProjectId} service={selectedTeam?.service}/>}
@@ -1026,8 +1048,8 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
 
           {tab === 'drawings' && (
             <>
-              {isTL&&<DrawingEntryPanel teamProjects={teamProjects} revisionValues={teamDrawings.map(d=>d.rev||d.revNo).filter(Boolean)}/>}
-              <Panel title="Structural drawing register" sub="Uploaded by design engineers and drafters, across my projects">
+              {isLeadView&&<DrawingEntryPanel teamProjects={teamProjects} revisionValues={teamDrawings.map(d=>d.rev||d.revNo).filter(Boolean)}/>}
+              <Panel title="Drawing register" sub="Uploaded by design engineers and drafters, across my projects">
               <DataTable
                 columns={[
                   { key: 'project', label: 'Project', render: (d) => projLabel(d.project) },
@@ -1045,7 +1067,7 @@ function WorkingTeamPage({ bootstrap: bootstrapProp, projectId, projectWorkspace
                       <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
                         <StatusPill tone={toneFor(d.status === 'Resubmit' ? 'Awaiting' : d.status ?? DRAWING_SUBMITTED)}>{drawingSubmissionLabel(d)}</StatusPill>
                         {d.statusRemark && <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{d.statusRemark}</span>}
-                        {isTL && (
+                        {isLeadView && (
                           <button type="button" className="approve-btn" aria-label={`Set status of drawing ${d.drawingNo ?? ''}`} onClick={() => setDrawingAction(d)}>
                             {d.status ? 'Change status' : 'Set status'}
                           </button>

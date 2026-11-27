@@ -54,9 +54,17 @@ router.get('/filters', requireRole(...PROJECT_READERS), projectFilters);
 router.get('/status-summary', requireRole(...PROJECT_READERS), projectSummary);
 router.get('/next-code', denyRoles(...NO_PROJECT_WRITES), requireRole('admin_billing'), nextProjectCode);
 router.get('/next-job-number', denyRoles(...NO_PROJECT_WRITES), requireRole('admin_billing'), nextJobNumber);
-router.get('/peer-dashboard', requireRole('peer_reviewer','peer_review_head'), async(req,res,next)=>{
+// 27 Nov 2026: also shown inside DT Peer Review, so every login with DT Peer
+// Review access (Admin allotters, the review team, Srinivasa Rao view-only) reads it.
+// Non-peer roles see every peer review project, not their own project scope.
+router.get('/peer-dashboard', async(req,res,next)=>{
   try {
-    const ids=await projectScopeIds(req.user);
+    const peerRole=['peer_reviewer','peer_review_head'].includes(req.user.role);
+    const { dtPrAccess }=await import('../controllers/dtPeerReview.controller.js');
+    const access=await dtPrAccess(req.user);
+    if(!peerRole && !access.read) return res.status(403).json({message:'You do not have access to this area.'});
+    // Admin allotters (Arpitha with the Peer Review role too) see every peer review project.
+    const ids=peerRole && !access.allot?await projectScopeIds(req.user):null;
     const reviews=await PeerReview.find(ids?{project:{$in:ids}}:{}).lean();
     const reviewIds=reviews.map(r=>r.project).filter(Boolean);
     const filter=ids?{_id:{$in:ids}}:{$or:[{services:{$in:['Peer Review','Peer review']}},{'scope.service':{$in:['Peer Review','Peer review']}},{_id:{$in:reviewIds}}]};

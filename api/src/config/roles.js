@@ -50,7 +50,7 @@ export const ROLES = [
   { key: 'gbs_head', label: 'GBS Head', designation: 'GBS Head', home: 'gbs-head' },
   { key: 'peer_review_head', label: 'Peer Review Head', designation: 'Peer Review Head', home: 'peer-dashboard' },
   { key: 'qs_head', label: 'QS Head', designation: 'QS Head', home: 'work-tracking' },
-  { key: 'peer_reviewer', label: 'Peer Review', designation: 'Peer Reviewer, Mechanical', home: 'peer-dashboard' },
+  { key: 'peer_reviewer', label: 'Peer Review', designation: 'Peer Reviewer, Mechanical', home: 'my-work' },
   { key: 'receptionist', label: 'Receptionist', designation: 'Receptionist', home: 'travel-booking' },
   { key: 'client', label: 'Client', designation: 'Client', home: 'project-portal' },
   { key: 'architect', label: 'Architect', designation: 'Architect of record', home: 'project-portal' },
@@ -302,8 +302,12 @@ export const NAV_BY_ROLE = {
   ],
   // 07 Nov 2026: DT Peer Review is added per login (navFor dtPeerReview), only for
   // the review team allotted by Admin, not for every peer reviewer.
+  // 27 Nov 2026: the review team's Dashboard is the engineer / drafter workspace
+  // and Update Work Progress is on the left nav; the Peer Review dashboard now
+  // sits inside DT Peer Review (Admin allotters keep it as their Dashboard).
   peer_reviewer: [
-    {view:'peer-dashboard',label:'Dashboard'},
+    {view:'my-work',label:'Dashboard'},
+    {view:'update-work-progress'},
     {view:'leave-travel'}, {view:'employee-support'}, {view:'my-meetings'},
   ],
   marketing: [
@@ -395,8 +399,12 @@ export const TRAVEL_WRITER_ROLES = ['receptionist'];
 
 // Nav with resolved labels/paths for a role. `traveller` adds the personal
 // Travel Booking entry for a non-manager who has saved bookings.
-export function navFor(role, { traveller = false, dtPeerReview = false } = {}) {
-  const items = [...(NAV_BY_ROLE[role] ?? [])];
+export function navFor(role, { traveller = false, dtPeerReview = false, dtPeerReviewer = false, peerDashboard = false } = {}) {
+  let items = [...(NAV_BY_ROLE[role] ?? [])];
+  // Admin allotters holding the Peer Review role keep the Peer Review dashboard.
+  if (peerDashboard) items = items.map((i) => (i.view === 'my-work' && i.label === 'Dashboard' ? { view: 'peer-dashboard', label: 'Dashboard' } : i));
+  // The DT Peer Review team logs its daily work from the left nav (27 Nov 2026).
+  if (dtPeerReviewer && !items.some((i) => i.view === 'update-work-progress')) items.splice(Math.min(1, items.length), 0, { view: 'update-work-progress' });
   if (ROLE_KEYS.includes(role) && !['client', 'architect', 'superuser'].includes(role)) items.push({ view: 'announcements' });
   const travelVisible = TRAVEL_MANAGER_ROLES.includes(role) || (traveller && INTERNAL_ROLES.includes(role) && role !== 'superuser');
   if (travelVisible && !items.some(i => i.view === 'travel-booking')) items.push({ view: 'travel-booking' });
@@ -428,7 +436,7 @@ export function canAccess(role, view) {
   if (view.startsWith('travel-booking-')) return TRAVEL_WRITER_ROLES.includes(role);
   // Retain the existing DMH workflow API while its menu moves under My Team.
   if (role === 'design_mgmt_head' && view === 'design-mgmt') return true;
-  if (['peer_reviewer','peer_review_head'].includes(role) && ['work-tracking','project-detail'].includes(view)) return true;
+  if (['peer_reviewer','peer_review_head'].includes(role) && ['work-tracking','project-detail','peer-dashboard'].includes(view)) return true;
   if (['announcements', 'announcement-detail'].includes(view)) return ROLE_KEYS.includes(role) && !['client', 'architect', 'superuser'].includes(role);
   if (VIEWS[view].financeOnly && role !== 'finance') return false;
   if (VIEWS[view].adminOnly && role !== 'admin_billing') return false;

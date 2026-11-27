@@ -266,7 +266,7 @@ export async function listAttendance(req, res, next) {
     }
     // Team Leads / PTLs only see the login hours of people on their own team
     // (same reporting chain + led / PTL teams used for extra-hours approvals).
-    if (req.user?.role === 'team_lead') {
+    if (['team_lead', 'assoc_technical_director'].includes(req.user?.role)) {
       const scope = await approverScope(req.user);
       const allowed = new Set((scope.ids ?? []).map(String));
       if (req.query.employee) {

@@ -967,9 +967,9 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
   const meQ = useQuery({ queryKey: ['me'], queryFn: meApi });
   const teamsQ = useQuery({ queryKey: ['my-teams'], queryFn: teamsMineApi.list, refetchInterval: 10000 });
   const tasksMineQ = useQuery({ queryKey: ['tasks-mine'], queryFn: tasksApi.mine });
-  // The drawing log covers every drawing on my allotted projects, not only ones I
-  // uploaded, and refreshes so the team lead's status decisions show up.
-  const drawingsQ = useQuery({ queryKey: ['drawings-recent'], queryFn: () => drawingsApi.list({}), refetchInterval: 15000 });
+  // 27 Nov 2026: only the drawings I submitted myself; the team's drawings show
+  // on the TL / PTL / ATD dashboard. Refreshes so their status decisions show up.
+  const drawingsQ = useQuery({ queryKey: ['drawings-recent'], queryFn: () => drawingsApi.list({ mine: true }), refetchInterval: 15000 });
   const rfisMineQ = useQuery({ queryKey: ['my-work-rfis'], queryFn: () => rfiApi.list({ mine: true }) });
   const transmittalsMineQ = useQuery({ queryKey: ['my-work-transmittals'], queryFn: transmittalsApi.teamScope });
   const entriesMineQ = useQuery({
@@ -1493,7 +1493,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
       {tab === 'deliverables' && (
         <>
           <ProjectDeliverables projects={availableProjects} showList={false} />
-          <Panel title="Drawing submission status" sub="Stage-wise, across my allotted projects">
+          <Panel title="Drawing submission status" sub="Stage-wise, drawings I submitted">
             <DataTable
               columns={[
                 { key: 'project', label: 'Project', render: (d) => projLabel(d.project) },
@@ -1512,7 +1512,7 @@ export default function MyWorkPage({ bootstrap: bootstrapProp, user }) {
                 } },
               ]}
               rows={myProjectDrawings}
-              emptyText="No drawings logged for your projects yet."
+              emptyText="You have not submitted any drawings yet."
             />
           </Panel>
           <Panel title="GFC drawing status">
