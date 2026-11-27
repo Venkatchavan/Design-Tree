@@ -7,22 +7,26 @@ import { employeeOwnership } from './directorTeams.js';
 
 const id = value => String(value?._id ?? value ?? '');
 const OPEN_STATUSES = ['Active', 'On Hold'];
+const HIERARCHY_ROLES = new Set(['team_lead', 'assoc_technical_director']);
 
 // Projects an employee works on without being a member of a Team document:
 //  1. projects of tasks assigned to them (TLs assign from their saved
 //     reporting team, which is not always a project Team), and
 //  2. Executive Director hierarchy: every project carrying the ED's service
 //     (Electrical for Mitra) is reflected under all of that ED's Team Leads
-//     and, below them, their team members (05 Nov 2026 client request).
+//     (05 Nov 2026 client request; team members dropped 27 Nov 2026).
 // Returns [{ project, service, via }] with project ids as strings.
 export async function derivedProjectLinks(user) {
-  const me = await User.findById(user.id).select('employee').lean();
+  const me = await User.findById(user.id).select('employee role').lean();
   if (!me?.employee) return [];
   const own = id(me.employee);
   const links = new Map();
   const tasks = await Task.find({ members: own }).select('project').lean();
   for (const t of tasks) links.set(id(t.project), { project: id(t.project), service: '', via: 'task' });
 
+  // 27 Nov 2026: engineers and other team members see only the projects
+  // assigned to them; the ED's service-wide list stays with leads.
+  if (!HIERARCHY_ROLES.has(me.role ?? user.role)) return [...links.values()];
   const eds = await User.find({ role: 'executive_director' }).select('employee').lean();
   if (eds.length) {
     const [employees, users] = await Promise.all([
