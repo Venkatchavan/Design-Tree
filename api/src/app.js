@@ -39,6 +39,7 @@ import metaRoutes from './routes/meta.routes.js';
 import projectsRoutes from './routes/projects.routes.js';
 import functionsRoutes from './routes/functions.routes.js';
 import dtPeerReviewRoutes from './routes/dtPeerReview.routes.js';
+import workbenchRoutes from './routes/workbench.routes.js';
 import financeOccRoutes from './routes/financeOcc.routes.js';
 import transmittalsRoutes from './routes/transmittals.routes.js';
 import spocRoutes from './routes/spoc.routes.js';
@@ -58,6 +59,8 @@ export function createApp() {
     }),
   );
   app.use(withRequestContext);
+  // Design Workbench elements carry force tables larger than the 100 kB default.
+  app.use('/api/workbench', express.json({ limit: '8mb' }));
   app.use(
     express.json({
       // The Salesforce push is authenticated by an HMAC over the exact bytes
@@ -87,6 +90,7 @@ export function createApp() {
   app.use('/api/work', workflowRoutes);
   app.use('/api/functions', functionsRoutes);
   app.use('/api/dt-peer-review', dtPeerReviewRoutes);
+  app.use('/api/workbench', workbenchRoutes);
   app.use('/api/spoc', spocRoutes);
   app.use('/api/work-entries', workEntriesRoutes);
   app.use('/api/transmittals', transmittalsRoutes);

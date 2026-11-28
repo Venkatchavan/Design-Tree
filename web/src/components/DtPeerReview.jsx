@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from '../lib/api.js';
 import Panel from './Panel.jsx';
@@ -29,6 +29,32 @@ const dmy = (v) => {
 const stampText = (s) => (s?.at ? `${s.byName || '—'} · ${dmy(s.at)}` : '—');
 const projectLabel = (p) => (p ? [p.jobNumber || p.code, p.name].filter(Boolean).join(' · ') : '—');
 const STATUS_TONE = { 'Signed off': 'forest', 'Open comments': 'rust', 'In review': 'amber', 'Not started': 'neutral', Verified: 'forest', 'In Progress': 'amber', 'Not Started': 'neutral', 'N.A.': 'neutral', Approved: 'forest', Submitted: 'teal', Pending: 'amber' };
+
+// Peer Review dashboard tab (28 Nov 2026): the structural design calculation workbench,
+// saved on the DesignTree server (/api/workbench). What each login may do follows
+// the DT Peer Review roles; the API enforces the same rules.
+// Generate PDF there prints the Structural Peer Review status report of the package picked here.
+function PeerReviewWorkbench({ access, packages, selected, onSelect }) {
+  const frame = useRef(null);
+  const share = () => { try { if (frame.current?.contentWindow) frame.current.contentWindow.__DTWB_PKG = selected; } catch { /* same origin only */ } };
+  useEffect(share);
+  const can = access.viewer ? 'View only — you can open projects, calculations and reports but not change them.'
+    : access.allot || access.head ? 'You can create and revise elements, mark them checked, approve them and return them to draft.'
+      : 'You can create and revise elements and mark them checked. Approval is given by the Admin allotters or the Peer Review Head.';
+  return (
+    <>
+      <div className="dtpr-pick dtpr-wb-note">
+        <label className="form-label" htmlFor="dtpr-wb-project">Report project</label>
+        <select id="dtpr-wb-project" className="filter-select" value={selected} onChange={(e) => onSelect(e.target.value)}>
+          {!packages.length && <option value="">No peer review packages yet</option>}
+          {packages.map(({ item, summary }) => <option key={id(item)} value={id(item)}>{projectLabel(item.project)} — {summary.status}</option>)}
+        </select>
+        <span className="page-sub">{can} Generate PDF gives the Structural Peer Review status report for this project.</span>
+      </div>
+      <iframe ref={frame} onLoad={share} className="dtpr-wb" src="/workbench/index.html" title="Peer Review dashboard" />
+    </>
+  );
+}
 
 export default function DtPeerReview() {
   const qc = useQueryClient();
@@ -74,9 +100,9 @@ export default function DtPeerReview() {
         {current && tab === 'report' && <button type="button" className="btn sm" onClick={() => window.print()}>Print report</button>}
       </div>
 
-      <Tabs tabs={[{ key: 'overview', label: overviewLabel }, { key: 'report', label: 'Project report' }]} active={tab} onChange={setTab} label="DT Peer Review view" />
+      <Tabs tabs={[{ key: 'overview', label: overviewLabel }, { key: 'report', label: 'Project report' }, { key: 'workbench', label: 'Peer Review dashboard' }]} active={tab} onChange={setTab} label="DT Peer Review view" />
 
-      {tab === 'overview' ? (
+      {tab === 'workbench' ? <PeerReviewWorkbench access={access} packages={packages} selected={selected} onSelect={setSelected} /> : tab === 'overview' ? (
         list.isLoading ? <EmptyState text="Loading peer review packages…" /> : (
           <>
             {(list.error || meta.error) && <div className="login-error" role="alert" style={{ display: 'block' }}>{(list.error || meta.error).message}</div>}

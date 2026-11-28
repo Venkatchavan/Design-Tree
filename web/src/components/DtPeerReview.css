@@ -77,3 +77,8 @@
 .dtpr-team-pick { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
 .dtpr-team-pick legend { float: left; margin-right: 12px; padding: 0; }
 .dtpr-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+
+/* Design Workbench tab: the workbench page fills the rest of the screen. */
+.dtpr-wb-note { margin: 10px 0 8px; }
+.dtpr-wb { display: block; width: 100%; height: calc(100vh - 230px); min-height: 560px; border: 1px solid var(--line, #dde3ec); border-radius: 8px; background: #fff; }
+@media print { .dtpr-wb, .dtpr-wb-note { display: none; } }

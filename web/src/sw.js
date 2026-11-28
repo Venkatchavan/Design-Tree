@@ -21,7 +21,7 @@ precacheAndRoute(self.__WB_MANIFEST)
 
 registerRoute(
   new NavigationRoute(createHandlerBoundToURL('index.html'), {
-    denylist: [/^\/api/, /^\/socket\.io/],
+    denylist: [/^\/api/, /^\/socket\.io/, /^\/workbench\//],
   }),
 )
 

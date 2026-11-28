@@ -52,6 +52,8 @@ export default defineConfig({
       injectManifest: {
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // The peer review dashboard (workbench) page is large; load it from the network.
+        globIgnores: ['workbench/**'],
       },
       devOptions: {
         enabled: false,
